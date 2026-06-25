@@ -73,7 +73,7 @@ const MapView = ({ children }) => {
 
   const styles = useMemo(() => {
     const filtered = mapStyles.filter((s) => s.available && activeMapStyles.includes(s.id));
-    return filtered.length ? filtered : mapStyles.filter((s) => s.id === 'osm');
+    return filtered.length ? filtered : mapStyles;
   }, [mapStyles, activeMapStyles]);
 
   useAsyncTask(async () => {
@@ -106,7 +106,9 @@ const MapView = ({ children }) => {
   useEffect(() => {
     const style = styles.find((s) => s.id === selectedStyleId);
     if (!style) {
-      setSelectedStyleId(styles[0].id);
+      if (styles.length > 0) {
+        setSelectedStyleId(styles[0].id);
+      }
       return;
     }
     updateReadyValue(false);
