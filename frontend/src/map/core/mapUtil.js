@@ -34,7 +34,7 @@ export const loadImage = (url) =>
     image.src = url;
   });
 
-const canvasTintImage = (image, color) => {
+export const canvasTintImage = (image, color) => {
   const canvas = document.createElement('canvas');
   canvas.width = image.width * devicePixelRatio;
   canvas.height = image.height * devicePixelRatio;

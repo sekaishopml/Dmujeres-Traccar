@@ -1,6 +1,6 @@
 import { grey } from '@mui/material/colors';
 import { createTheme } from '@mui/material';
-import { loadImage, prepareIcon } from './mapUtil';
+import { loadImage, prepareIcon, canvasTintImage } from './mapUtil';
 
 import directionSvg from '../../resources/images/direction.svg';
 import backgroundSvg from '../../resources/images/background.svg';
@@ -75,7 +75,14 @@ const theme = createTheme({
 export default async () => {
   const background = await loadImage(backgroundSvg);
   mapImages.background = await prepareIcon(background);
-  mapImages.direction = await prepareIcon(await loadImage(directionSvg));
+  const direction = await loadImage(directionSvg);
+  mapImages.direction = await prepareIcon(direction);
+  
+  // Create an intense black arrow for the replay page
+  const blackCanvas = canvasTintImage(direction, '#000000');
+  const context = blackCanvas.getContext('2d');
+  mapImages['direction-replay'] = context.getImageData(0, 0, blackCanvas.width, blackCanvas.height);
+  
   await Promise.all(
     Object.keys(mapIcons).map(async (category) => {
       const results = [];

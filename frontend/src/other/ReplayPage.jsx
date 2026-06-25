@@ -256,6 +256,7 @@ const ReplayPage = () => {
             positions={[positions[index]]}
             onMarkerClick={onMarkerClick}
             titleField="fixTime"
+            directionIcon="direction-replay"
           />
         )}
       </MapView>

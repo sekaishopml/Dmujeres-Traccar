@@ -17,6 +17,7 @@ const MapPositions = ({
   selectedPosition,
   titleField,
   disabled,
+  directionIcon = 'direction',
 }) => {
   const id = useId();
   const clusters = `${id}-clusters`;
@@ -153,7 +154,7 @@ const MapPositions = ({
         source,
         filter: ['all', ['!has', 'point_count'], ['==', 'direction', true]],
         layout: {
-          'icon-image': 'direction',
+          'icon-image': directionIcon,
           'icon-size': iconScale,
           'icon-allow-overlap': true,
           'icon-rotate': ['get', 'rotation'],
@@ -220,6 +221,7 @@ const MapPositions = ({
     id,
     selected,
     titleField,
+    directionIcon,
   ]);
 
   useEffect(() => {
