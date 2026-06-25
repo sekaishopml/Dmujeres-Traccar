@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   IconButton,
   Paper,
@@ -8,7 +8,14 @@ import {
   Select,
   MenuItem,
   FormControl,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  List,
+  ListItemButton,
+  ListItemText,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { makeStyles } from 'tss-react/mui';
 import TuneIcon from '@mui/icons-material/Tune';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -18,7 +25,7 @@ import FastForwardIcon from '@mui/icons-material/FastForward';
 import FastRewindIcon from '@mui/icons-material/FastRewind';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import MapView from '../map/core/MapView';
+import MapView, { map } from '../map/core/MapView';
 import MapRoutePath from '../map/MapRoutePath';
 import MapRoutePoints from '../map/MapRoutePoints';
 import MapPositions from '../map/MapPositions';
@@ -183,6 +190,19 @@ const ReplayPage = () => {
     }
   }, [index, positions]);
 
+  const stops = useMemo(() => detectStops(positions), [positions]);
+
+  const handleStopClick = useCallback((stop) => {
+    setIndex(stop.startIndex);
+    if (map) {
+      map.easeTo({
+        center: [stop.longitude, stop.latitude],
+        zoom: 17,
+        duration: 1000
+      });
+    }
+  }, [setIndex]);
+
   const onPointClick = useCallback(
     (_, index) => {
       setIndex(index);
@@ -322,6 +342,61 @@ const ReplayPage = () => {
             <ReportFilter onShow={onShow} deviceType="single" loading={loading} />
           </div>
         </Paper>
+        {loaded && !filterOpen && (
+          <Accordion sx={{ mt: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                {`Paradas Detectadas (${stops.length})`}
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ p: 0, maxHeight: '250px', overflowY: 'auto' }}>
+              <List dense disablePadding>
+                {stops.map((stop, i) => (
+                  <ListItemButton
+                    key={i}
+                    onClick={() => handleStopClick(stop)}
+                    sx={{
+                      borderBottom: '1px solid #eee',
+                      py: 1,
+                      px: 2,
+                      '&:hover': {
+                        backgroundColor: '#f5f5f5',
+                      },
+                    }}
+                  >
+                    <ListItemText
+                      primary={
+                        <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 'bold' }}>
+                          {`Parada ${i + 1}: ${formatDuration(stop.duration)}`}
+                        </Typography>
+                      }
+                      secondary={
+                        <span style={{ display: 'block', marginTop: '4px' }}>
+                          <Typography variant="caption" display="block" color="textPrimary">
+                            {`Permanencia: ${formatTime(stop.startTime, 'minutes')} - ${formatTime(stop.endTime, 'minutes')}`}
+                          </Typography>
+                          {stop.startBattery !== null && (
+                            <Typography variant="caption" display="block" sx={{ fontWeight: 'bold', color: '#2e7d32', mt: 0.5 }}>
+                              {`Batería: ${stop.startBattery}% ➔ ${stop.endBattery}%`}
+                            </Typography>
+                          )}
+                          <Typography variant="caption" display="block" color="textSecondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                            {`Dirección: ${stop.address}`}
+                          </Typography>
+                        </span>
+                      }
+                    />
+                  </ListItemButton>
+                ))}
+                {stops.length === 0 && (
+                  <Typography variant="body2" sx={{ p: 2, textAlign: 'center' }} color="textSecondary">
+                    No se detectaron paradas en esta ruta.
+                  </Typography>
+                )}
+              </List>
+            </AccordionDetails>
+          </Accordion>
+        )}
       </div>
       {showCard && index < positions.length && (
         <StatusCard
@@ -333,6 +408,87 @@ const ReplayPage = () => {
       )}
     </div>
   );
+};
+
+const formatDuration = (ms) => {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const d = Math.floor(hours / 24);
+
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (hours % 24 > 0) parts.push(`${hours % 24}h`);
+  if (minutes % 60 > 0) parts.push(`${minutes % 60}m`);
+  if (seconds % 60 > 0 && parts.length === 0) parts.push(`${seconds % 60}s`);
+  return parts.join(' ') || '0s';
+};
+
+const detectStops = (positions, distanceThreshold = 40, timeThresholdMs = 3 * 60 * 1000) => {
+  const stops = [];
+  if (!positions || positions.length < 2) return stops;
+
+  let i = 0;
+  while (i < positions.length) {
+    let j = i + 1;
+    let stopEndIndex = i;
+    
+    while (j < positions.length) {
+      const pStart = positions[i];
+      const pCurrent = positions[j];
+      
+      const latMid = (pStart.latitude + pCurrent.latitude) * Math.PI / 360;
+      const dy = (pCurrent.latitude - pStart.latitude) * 111320;
+      const dx = (pCurrent.longitude - pStart.longitude) * 111320 * Math.cos(latMid);
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < distanceThreshold) {
+        stopEndIndex = j;
+        j++;
+      } else {
+        break;
+      }
+    }
+    
+    const startPos = positions[i];
+    const endPos = positions[stopEndIndex];
+    const duration = new Date(endPos.fixTime).getTime() - new Date(startPos.fixTime).getTime();
+    
+    if (duration >= timeThresholdMs) {
+      const getBattery = (p) => p.attributes?.batteryLevel ?? p.attributes?.battery ?? null;
+      const startBattery = getBattery(startPos);
+      const endBattery = getBattery(endPos);
+
+      let address = "";
+      for (let k = i; k <= stopEndIndex; k++) {
+        if (positions[k].address) {
+          address = positions[k].address;
+          break;
+        }
+      }
+      if (!address) {
+        address = `${startPos.latitude.toFixed(5)}, ${startPos.longitude.toFixed(5)}`;
+      }
+
+      stops.push({
+        startIndex: i,
+        endIndex: stopEndIndex,
+        startTime: startPos.fixTime,
+        endTime: endPos.fixTime,
+        duration,
+        startBattery,
+        endBattery,
+        address,
+        latitude: startPos.latitude,
+        longitude: startPos.longitude
+      });
+      
+      i = stopEndIndex + 1;
+    } else {
+      i++;
+    }
+  }
+  return stops;
 };
 
 export default ReplayPage;
