@@ -473,6 +473,21 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 		log.Printf("Failed to update device lastupdate: %v", err)
 	}
 
+	var devName string
+	var devUniqueId string
+	var devLastUpdate time.Time
+	var devAttrsBytes []byte
+	err = h.DB.QueryRow(context.Background(),
+		`SELECT name, uniqueid, COALESCE(lastupdate, NOW()), COALESCE(attributes, '{}')
+		 FROM tc_devices WHERE id = $1`, deviceDBID).Scan(&devName, &devUniqueId, &devLastUpdate, &devAttrsBytes)
+
+	var devAttrs map[string]interface{}
+	if err == nil {
+		_ = json.Unmarshal(devAttrsBytes, &devAttrs)
+	} else {
+		devAttrs = make(map[string]interface{})
+	}
+
 	// WS Broadcast to connected web clients in real-time
 	wsMessage := map[string]interface{}{
 		"positions": []interface{}{
@@ -491,6 +506,17 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 				"altitude":   altitude,
 				"accuracy":   accuracy,
 				"attributes": attributes,
+			},
+		},
+		"devices": []interface{}{
+			map[string]interface{}{
+				"id":         deviceDBID,
+				"name":       devName,
+				"uniqueId":   devUniqueId,
+				"status":     "online",
+				"lastUpdate": devLastUpdate.Format(time.RFC3339),
+				"positionId": positionID,
+				"attributes": devAttrs,
 			},
 		},
 	}
