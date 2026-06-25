@@ -271,8 +271,7 @@ const ReplayPage = () => {
               <Slider
                 className={classes.slider}
                 max={positions.length - 1}
-                step={null}
-                marks={positions.map((_, index) => ({ value: index }))}
+                step={1}
                 value={index}
                 onChange={(_, index) => setIndex(index)}
               />
