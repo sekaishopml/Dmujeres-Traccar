@@ -67,7 +67,7 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       source: id,
       filter: ['==', ['get', 'type'], 'stop'],
       paint: {
-        'circle-color': '#ff9800',
+        'circle-color': '#e5004f',
         'circle-radius': 9,
         'circle-stroke-color': '#ffffff',
         'circle-stroke-width': 1.5,
@@ -113,7 +113,7 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
           
           popup.setLngLat(coordinates).setHTML(`
             <div style="padding: 6px 8px; font-family: 'Outfit', 'Inter', sans-serif; font-size: 12px; color: #333; line-height: 1.4;">
-              <strong style="color: #ff9800; font-size: 13px; display: block; margin-bottom: 2px;">Parada #${stopNumber}</strong>
+              <strong style="color: #e5004f; font-size: 13px; display: block; margin-bottom: 2px;">Parada #${stopNumber}</strong>
               <div style="font-weight: 600;">Detenido: ${durationText}</div>
               <div style="color: #666; font-size: 11px; margin-top: 2px;">Horario: ${timeRangeText}</div>
             </div>
