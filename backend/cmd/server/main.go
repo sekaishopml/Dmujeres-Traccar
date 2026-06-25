@@ -101,7 +101,6 @@ func main() {
         api.Put("/users/:id", userHandler.UpdateUser)
         api.Delete("/users/:id", userHandler.DeleteUser)
 
-        // Fallback endpoints to satisfy frontend CachingController
         api.Get("/geofences", func(c *fiber.Ctx) error {
                 return c.JSON([]interface{}{})
         })
@@ -116,6 +115,26 @@ func main() {
         })
         api.Get("/calendars", func(c *fiber.Ctx) error {
                 return c.JSON([]interface{}{})
+        })
+        api.Get("/notifications/types", func(c *fiber.Ctx) error {
+                return c.JSON([]fiber.Map{
+                        {"type": "deviceOnline"},
+                        {"type": "deviceOffline"},
+                        {"type": "deviceMoving"},
+                        {"type": "deviceStopped"},
+                        {"type": "geofenceEnter"},
+                        {"type": "geofenceExit"},
+                        {"type": "alarm"},
+                })
+        })
+        api.Get("/notifications/notificators", func(c *fiber.Ctx) error {
+                return c.JSON([]fiber.Map{
+                        {"type": "web"},
+                        {"type": "mail"},
+                        {"type": "sms"},
+                        {"type": "firebase"},
+                        {"type": "telegram"},
+                })
         })
 
         fmt.Printf("Starting Dmujeres-Traccar Go backend on port %s...\n", cfg.Port)

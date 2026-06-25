@@ -71,7 +71,7 @@ func (h *DeviceHandler) CreateDevice(c *fiber.Ctx) error {
 
 	var deviceID int64
 	err = tx.QueryRow(context.Background(),
-		"INSERT INTO tc_devices (name, uniqueid, lastupdate, attributes) VALUES ($1, $2, NOW(), $3) RETURNING id",
+		"INSERT INTO tc_devices (name, uniqueid, attributes) VALUES ($1, $2, $3) RETURNING id",
 		d.Name, d.UniqueID, d.Attributes).Scan(&deviceID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
