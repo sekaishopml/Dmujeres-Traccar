@@ -35,7 +35,7 @@ export default () => {
         id: 'googleRoad',
         title: t('mapGoogleRoad'),
         style: styleCustom({
-          tiles: ['/google-tiles?lyrs=m&hl=es&x={x}&y={y}&z={z}&s=Ga'],
+          tiles: ['/google-tiles/lyrs=m&hl=es&x={x}&y={y}&z={z}&s=Ga'],
           maxZoom: 20,
           attribution: '© Google',
         }),
