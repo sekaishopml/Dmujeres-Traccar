@@ -488,6 +488,11 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 		devAttrs = make(map[string]interface{})
 	}
 
+	devStatus := "online"
+	if speed <= 0 {
+		devStatus = "unknown"
+	}
+
 	// WS Broadcast to connected web clients in real-time
 	wsMessage := map[string]interface{}{
 		"positions": []interface{}{
@@ -513,7 +518,7 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 				"id":         deviceDBID,
 				"name":       devName,
 				"uniqueId":   devUniqueId,
-				"status":     "online",
+				"status":     devStatus,
 				"lastUpdate": devLastUpdate.Format(time.RFC3339),
 				"positionId": positionID,
 				"attributes": devAttrs,

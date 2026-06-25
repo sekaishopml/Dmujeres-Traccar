@@ -251,6 +251,8 @@
     "deviceStatusOnline": "Online",
     "deviceStatusOffline": "Offline",
     "deviceStatusUnknown": "Stationary",
+    "deviceStatusUnknownToday": "Stationary since {time}",
+    "deviceStatusUnknownOther": "Stationary since {time}",
     "deviceRegisterFirst": "Register your first device",
     "deviceIdentifierHelp": "IMEI, serial number or other id. It has to match the identifier device reports to the server.",
     "groupDialog": "Group",

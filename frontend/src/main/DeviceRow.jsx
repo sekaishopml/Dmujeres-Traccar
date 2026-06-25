@@ -60,6 +60,18 @@ const useStyles = makeStyles()((theme) => ({
   neutral: {
     color: theme.palette.neutral.main,
   },
+  successAvatar: {
+    backgroundColor: theme.palette.success.main,
+  },
+  warningAvatar: {
+    backgroundColor: theme.palette.warning.main,
+  },
+  errorAvatar: {
+    backgroundColor: theme.palette.error.main,
+  },
+  neutralAvatar: {
+    backgroundColor: theme.palette.neutral.main,
+  },
   selected: {
     backgroundColor: theme.palette.action.selected,
   },
@@ -101,6 +113,19 @@ const DeviceRow = ({ devices, index, style }) => {
     let status;
     if (item.status === 'online' || !item.lastUpdate) {
       status = formatStatus(item.status, t);
+    } else if (item.status === 'unknown') {
+      const lastUpdate = dayjs(item.lastUpdate);
+      const isToday = lastUpdate.isSame(dayjs(), 'day');
+      const d = lastUpdate.toDate();
+      if (isToday) {
+        const timeStr = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        const pattern = t('deviceStatusUnknownToday') || 'Stationary since {time}';
+        status = pattern.replace('{time}', timeStr);
+      } else {
+        const timeStr = d.toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+        const pattern = t('deviceStatusUnknownOther') || 'Stationary since {time}';
+        status = pattern.replace('{time}', timeStr);
+      }
     } else {
       status = dayjs(item.lastUpdate).fromNow();
     }
@@ -127,7 +152,7 @@ const DeviceRow = ({ devices, index, style }) => {
         className={selectedDeviceId === item.id ? classes.selected : null}
       >
         <ListItemAvatar>
-          <Avatar>
+          <Avatar className={classes[`${getStatusColor(item.status)}Avatar`] || classes.neutralAvatar}>
             <img className={classes.icon} src={mapIcons[mapIconKey(item.category)]} alt="" />
           </Avatar>
         </ListItemAvatar>
