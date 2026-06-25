@@ -549,7 +549,11 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 3 * 60
     const endPos = positions[stopEndIndex];
     const duration = new Date(endPos.fixTime).getTime() - new Date(startPos.fixTime).getTime();
     
-    if (duration >= timeThresholdMs) {
+    // Average speed filter to avoid false positives (moving slowly / traffic / signal loss)
+    const candidatePoints = positions.slice(i, stopEndIndex + 1);
+    const avgSpeed = candidatePoints.reduce((sum, p) => sum + p.speed, 0) / candidatePoints.length;
+    
+    if (duration >= timeThresholdMs && avgSpeed < 1.5) {
       const getBattery = (p) => p.attributes?.batteryLevel ?? p.attributes?.battery ?? null;
       const startBattery = getBattery(startPos);
       const endBattery = getBattery(endPos);

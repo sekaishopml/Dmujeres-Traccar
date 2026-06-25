@@ -93,9 +93,24 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       if (features.length > 0) {
         const feature = features[0];
         const coordinates = feature.geometry.coordinates.slice();
-        const fixTime = feature.properties.fixTime;
-        if (fixTime) {
-          popup.setLngLat(coordinates).setHTML(`<div style="padding: 4px; font-family: sans-serif; font-size: 12px; color: #333;">${fixTime}</div>`).addTo(map);
+        
+        if (feature.properties.type === 'stop') {
+          const stopNumber = feature.properties.stopNumber;
+          const durationText = feature.properties.durationText;
+          const timeRangeText = feature.properties.timeRangeText;
+          
+          popup.setLngLat(coordinates).setHTML(`
+            <div style="padding: 6px 8px; font-family: 'Outfit', 'Inter', sans-serif; font-size: 12px; color: #333; line-height: 1.4;">
+              <strong style="color: #ff9800; font-size: 13px; display: block; margin-bottom: 2px;">Parada #${stopNumber}</strong>
+              <div style="font-weight: 600;">Detenido: ${durationText}</div>
+              <div style="color: #666; font-size: 11px; margin-top: 2px;">Horario: ${timeRangeText}</div>
+            </div>
+          `).addTo(map);
+        } else {
+          const fixTime = feature.properties.fixTime;
+          if (fixTime) {
+            popup.setLngLat(coordinates).setHTML(`<div style="padding: 4px; font-family: sans-serif; font-size: 12px; color: #333;">${fixTime}</div>`).addTo(map);
+          }
         }
       }
     };
@@ -230,8 +245,9 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
         }));
 
         const stopFeatures = stops
-          .filter(stop => inBounds(stop.longitude, stop.latitude))
-          .map((stop) => ({
+          .map((stop, stopIdx) => ({ stop, stopIdx }))
+          .filter(({ stop }) => inBounds(stop.longitude, stop.latitude))
+          .map(({ stop, stopIdx }) => ({
             type: 'Feature',
             geometry: {
               type: 'Point',
@@ -241,7 +257,9 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
               index: stop.startIndex,
               id: stop.startIndex + 990000,
               type: 'stop',
-              fixTime: formatTime(stop.startTime, 'seconds'),
+              stopNumber: stopIdx + 1,
+              durationText: formatDuration(stop.duration),
+              timeRangeText: `${formatTimeOnly(stop.startTime)} - ${formatTimeOnly(stop.endTime)}`,
             },
           }));
 
@@ -401,7 +419,11 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 3 * 60
     const endPos = positions[stopEndIndex];
     const duration = new Date(endPos.fixTime).getTime() - new Date(startPos.fixTime).getTime();
     
-    if (duration >= timeThresholdMs) {
+    // Average speed filter to avoid false positives (moving slowly / traffic / signal loss)
+    const candidatePoints = positions.slice(i, stopEndIndex + 1);
+    const avgSpeed = candidatePoints.reduce((sum, p) => sum + p.speed, 0) / candidatePoints.length;
+    
+    if (duration >= timeThresholdMs && avgSpeed < 1.5) {
       const getBattery = (p) => p.attributes?.batteryLevel ?? p.attributes?.battery ?? null;
       const startBattery = getBattery(startPos);
       const endBattery = getBattery(endPos);
@@ -437,6 +459,28 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 3 * 60
   }
   
   return mergeStops(stops, positions);
+};
+
+const formatTimeOnly = (value) => {
+  if (value) {
+    const d = new Date(value);
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  return '';
+};
+
+const formatDuration = (ms) => {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const d = Math.floor(hours / 24);
+
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (hours % 24 > 0) parts.push(`${hours % 24}h`);
+  if (minutes % 60 > 0) parts.push(`${minutes % 60}m`);
+  if (seconds % 60 > 0 && parts.length === 0) parts.push(`${seconds % 60}s`);
+  return parts.join(' ') || '0s';
 };
 
 export default MapRoutePoints;
