@@ -32,6 +32,7 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       id,
       type: 'symbol',
       source: id,
+      filter: ['==', ['get', 'type'], 'point'],
       paint: {
         'text-color': ['get', 'color'],
         'text-halo-color': '#ffffff',
@@ -48,6 +49,39 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       },
     });
 
+    map.addLayer({
+      id: `${id}-stops-bg`,
+      type: 'circle',
+      source: id,
+      filter: ['==', ['get', 'type'], 'stop'],
+      paint: {
+        'circle-color': '#ff9800',
+        'circle-radius': 9,
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 1.5,
+        'circle-opacity': 1,
+        'circle-opacity-transition': { duration: 150 },
+      },
+    });
+
+    map.addLayer({
+      id: `${id}-stops-text`,
+      type: 'symbol',
+      source: id,
+      filter: ['==', ['get', 'type'], 'stop'],
+      paint: {
+        'text-color': '#ffffff',
+        'text-opacity': 1,
+        'text-opacity-transition': { duration: 150 },
+      },
+      layout: {
+        'text-font': findFonts(map),
+        'text-size': 11,
+        'text-field': 'P',
+        'text-allow-overlap': true,
+      },
+    });
+
     const popup = new maplibregl.Popup({
       closeButton: false,
       closeOnClick: false,
@@ -55,7 +89,7 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
 
     const onMouseEnter = (e) => {
       map.getCanvas().style.cursor = 'pointer';
-      const features = map.queryRenderedFeatures(e.point, { layers: [id] });
+      const features = map.queryRenderedFeatures(e.point, { layers: [id, `${id}-stops-bg`] });
       if (features.length > 0) {
         const feature = features[0];
         const coordinates = feature.geometry.coordinates.slice();
@@ -75,12 +109,27 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
     map.on('mouseleave', id, onMouseLeave);
     map.on('click', id, onMarkerClick);
 
+    map.on('mouseenter', `${id}-stops-bg`, onMouseEnter);
+    map.on('mouseleave', `${id}-stops-bg`, onMouseLeave);
+    map.on('click', `${id}-stops-bg`, onMarkerClick);
+
     return () => {
       map.off('mouseenter', id, onMouseEnter);
       map.off('mouseleave', id, onMouseLeave);
       map.off('click', id, onMarkerClick);
+
+      map.off('mouseenter', `${id}-stops-bg`, onMouseEnter);
+      map.off('mouseleave', `${id}-stops-bg`, onMouseLeave);
+      map.off('click', `${id}-stops-bg`, onMarkerClick);
+
       popup.remove();
 
+      if (map.getLayer(`${id}-stops-text`)) {
+        map.removeLayer(`${id}-stops-text`);
+      }
+      if (map.getLayer(`${id}-stops-bg`)) {
+        map.removeLayer(`${id}-stops-bg`);
+      }
       if (map.getLayer(id)) {
         map.removeLayer(id);
       }
@@ -127,11 +176,24 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
         const minPixels = 15;
         const degreeThreshold = (360 / (256 * Math.pow(2, zoom))) * minPixels;
         
+        const stops = detectStops(positions);
+        
+        const stoppedIndices = new Set();
+        stops.forEach(stop => {
+          for (let idx = stop.startIndex; idx <= stop.endIndex; idx++) {
+            stoppedIndices.add(idx);
+          }
+        });
+
         const filtered = [];
         let lastPos = null;
         for (let i = 0; i < positions.length; i++) {
           const p = positions[i];
           
+          if (stoppedIndices.has(i)) {
+            continue;
+          }
+
           const isStartOrEnd = i === 0 || i === positions.length - 1;
           if (!isStartOrEnd && !inBounds(p.longitude, p.latitude)) {
             continue;
@@ -151,22 +213,41 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
           }
         }
 
-        map.getSource(id).setData({
-          type: 'FeatureCollection',
-          features: filtered.map(({ p, index }) => ({
+        const arrowFeatures = filtered.map(({ p, index }) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: toMapCoordinates(p.longitude, p.latitude),
+          },
+          properties: {
+            index,
+            id: p.id,
+            type: 'point',
+            rotation: p.course,
+            color: getSpeedColor(p.speed, minSpeed, maxSpeed),
+            fixTime: formatTime(p.fixTime, 'seconds'),
+          },
+        }));
+
+        const stopFeatures = stops
+          .filter(stop => inBounds(stop.longitude, stop.latitude))
+          .map((stop) => ({
             type: 'Feature',
             geometry: {
               type: 'Point',
-              coordinates: toMapCoordinates(p.longitude, p.latitude),
+              coordinates: toMapCoordinates(stop.longitude, stop.latitude),
             },
             properties: {
-              index,
-              id: p.id,
-              rotation: p.course,
-              color: getSpeedColor(p.speed, minSpeed, maxSpeed),
-              fixTime: formatTime(p.fixTime, 'seconds'),
+              index: stop.startIndex,
+              id: stop.startIndex + 990000,
+              type: 'stop',
+              fixTime: formatTime(stop.startTime, 'seconds'),
             },
-          })),
+          }));
+
+        map.getSource(id).setData({
+          type: 'FeatureCollection',
+          features: [...arrowFeatures, ...stopFeatures],
         });
       };
 
@@ -201,6 +282,73 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
   }, [positions, id]);
 
   return showSpeedControl ? <MapSpeedLegend positions={positions} /> : null;
+};
+
+const detectStops = (positions, distanceThreshold = 40, timeThresholdMs = 3 * 60 * 1000) => {
+  const stops = [];
+  if (!positions || positions.length < 2) return stops;
+
+  let i = 0;
+  while (i < positions.length) {
+    let j = i + 1;
+    let stopEndIndex = i;
+    
+    while (j < positions.length) {
+      const pStart = positions[i];
+      const pCurrent = positions[j];
+      
+      const latMid = (pStart.latitude + pCurrent.latitude) * Math.PI / 360;
+      const dy = (pCurrent.latitude - pStart.latitude) * 111320;
+      const dx = (pCurrent.longitude - pStart.longitude) * 111320 * Math.cos(latMid);
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < distanceThreshold) {
+        stopEndIndex = j;
+        j++;
+      } else {
+        break;
+      }
+    }
+    
+    const startPos = positions[i];
+    const endPos = positions[stopEndIndex];
+    const duration = new Date(endPos.fixTime).getTime() - new Date(startPos.fixTime).getTime();
+    
+    if (duration >= timeThresholdMs) {
+      const getBattery = (p) => p.attributes?.batteryLevel ?? p.attributes?.battery ?? null;
+      const startBattery = getBattery(startPos);
+      const endBattery = getBattery(endPos);
+
+      let address = "";
+      for (let k = i; k <= stopEndIndex; k++) {
+        if (positions[k].address) {
+          address = positions[k].address;
+          break;
+        }
+      }
+      if (!address) {
+        address = `${startPos.latitude.toFixed(5)}, ${startPos.longitude.toFixed(5)}`;
+      }
+
+      stops.push({
+        startIndex: i,
+        endIndex: stopEndIndex,
+        startTime: startPos.fixTime,
+        endTime: endPos.fixTime,
+        duration,
+        startBattery,
+        endBattery,
+        address,
+        latitude: startPos.latitude,
+        longitude: startPos.longitude
+      });
+      
+      i = stopEndIndex + 1;
+    } else {
+      i++;
+    }
+  }
+  return stops;
 };
 
 export default MapRoutePoints;
