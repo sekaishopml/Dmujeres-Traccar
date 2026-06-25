@@ -1,5 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { IconButton, Paper, Slider, Toolbar, Typography } from '@mui/material';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  IconButton,
+  Paper,
+  Slider,
+  Toolbar,
+  Typography,
+  Select,
+  MenuItem,
+  FormControl,
+} from '@mui/material';
 import { makeStyles } from 'tss-react/mui';
 import TuneIcon from '@mui/icons-material/Tune';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -78,7 +87,6 @@ const ReplayPage = () => {
   const t = useTranslation();
   const { classes } = useStyles();
   const navigate = useNavigate();
-  const timerRef = useRef();
 
   const [searchParams] = useSearchParams();
 
@@ -93,6 +101,7 @@ const ReplayPage = () => {
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [speed, setSpeed] = useState(1);
 
   const loaded = Boolean(from && to && !loading && positions.length);
 
@@ -112,21 +121,64 @@ const ReplayPage = () => {
     }
   }, [from, to, setPositions]);
 
+  const speedRef = useRef(1);
   useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
+
+  const positionsRef = useRef([]);
+  useEffect(() => {
+    positionsRef.current = positions;
+  }, [positions]);
+
+  useEffect(() => {
+    let animationFrameId;
+    let lastTimestamp = null;
+    let accumulatedTime = 0;
+
+    const loop = (timestamp) => {
+      if (!lastTimestamp) {
+        lastTimestamp = timestamp;
+        animationFrameId = requestAnimationFrame(loop);
+        return;
+      }
+
+      const elapsed = timestamp - lastTimestamp;
+      lastTimestamp = timestamp;
+
+      // Delay between points at 1x speed is 1000ms.
+      const pointDelay = 1000 / speedRef.current;
+      accumulatedTime += elapsed;
+
+      if (accumulatedTime >= pointDelay) {
+        const steps = Math.floor(accumulatedTime / pointDelay);
+        accumulatedTime %= pointDelay;
+
+        setIndex((prevIndex) => {
+          const nextIndex = prevIndex + steps;
+          if (nextIndex >= positionsRef.current.length - 1) {
+            return positionsRef.current.length - 1;
+          }
+          return nextIndex;
+        });
+      }
+
+      animationFrameId = requestAnimationFrame(loop);
+    };
+
     if (playing && positions.length > 0) {
-      timerRef.current = setInterval(() => {
-        setIndex((index) => index + 1);
-      }, 500);
-    } else {
-      clearInterval(timerRef.current);
+      animationFrameId = requestAnimationFrame(loop);
     }
 
-    return () => clearInterval(timerRef.current);
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
   }, [playing, positions]);
 
   useEffect(() => {
     if (index >= positions.length - 1) {
-      clearInterval(timerRef.current);
       setPlaying(false);
     }
   }, [index, positions]);
@@ -150,7 +202,7 @@ const ReplayPage = () => {
       const deviceId = deviceIds.find(() => true);
       setLoading(true);
       setSelectedDeviceId(deviceId);
-      const query = new URLSearchParams({ deviceId, from, to });
+      const query = new URLSearchParams({ deviceId, from, to, tolerance: '0.00002' });
       try {
         const response = await fetchOrThrow(`/api/positions?${query.toString()}`);
         setIndex(0);
@@ -244,6 +296,23 @@ const ReplayPage = () => {
                 >
                   <FastForwardIcon />
                 </IconButton>
+                <FormControl variant="standard" sx={{ minWidth: 60, mx: 1 }}>
+                  <Select
+                    value={speed}
+                    onChange={(e) => setSpeed(Number(e.target.value))}
+                    size="small"
+                    disableUnderline
+                    sx={{ fontSize: '0.875rem' }}
+                  >
+                    <MenuItem value={1}>1x</MenuItem>
+                    <MenuItem value={2}>2x</MenuItem>
+                    <MenuItem value={5}>5x</MenuItem>
+                    <MenuItem value={10}>10x</MenuItem>
+                    <MenuItem value={20}>20x</MenuItem>
+                    <MenuItem value={50}>50x</MenuItem>
+                    <MenuItem value={100}>100x</MenuItem>
+                  </Select>
+                </FormControl>
                 <Typography variant="caption">
                   {formatTime(positions[index].fixTime, 'seconds')}
                 </Typography>

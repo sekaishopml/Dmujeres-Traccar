@@ -32,11 +32,8 @@ const MapRoutePath = ({ positions }) => {
     map.addSource(id, {
       type: 'geojson',
       data: {
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: [],
-        },
+        type: 'FeatureCollection',
+        features: [],
       },
     });
     map.addLayer({
@@ -49,8 +46,15 @@ const MapRoutePath = ({ positions }) => {
       },
       paint: {
         'line-color': ['get', 'color'],
-        'line-width': ['get', 'width'],
-        'line-opacity': ['get', 'opacity'],
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          10, mapLineWidth,
+          14, mapLineWidth * 1.5,
+          18, mapLineWidth * 2.5,
+        ],
+        'line-opacity': mapLineOpacity,
       },
     });
 
@@ -65,31 +69,76 @@ const MapRoutePath = ({ positions }) => {
   }, [id]);
 
   useEffect(() => {
-    const minSpeed = positions.map((p) => p.speed).reduce((a, b) => Math.min(a, b), Infinity);
-    const maxSpeed = positions.map((p) => p.speed).reduce((a, b) => Math.max(a, b), -Infinity);
-    const features = [];
-    for (let i = 0; i < positions.length - 1; i += 1) {
-      features.push({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: [
-            toMapCoordinates(positions[i].longitude, positions[i].latitude),
-            toMapCoordinates(positions[i + 1].longitude, positions[i + 1].latitude),
-          ],
-        },
-        properties: {
-          color: reportColor || getSpeedColor(positions[i + 1].speed, minSpeed, maxSpeed),
-          width: mapLineWidth,
-          opacity: mapLineOpacity,
-        },
+    if (map.getLayer(`${id}-line`)) {
+      map.setPaintProperty(`${id}-line`, 'line-width', [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        10, mapLineWidth,
+        14, mapLineWidth * 1.5,
+        18, mapLineWidth * 2.5,
+      ]);
+    }
+  }, [id, mapLineWidth]);
+
+  useEffect(() => {
+    if (map.getLayer(`${id}-line`)) {
+      map.setPaintProperty(`${id}-line`, 'line-opacity', mapLineOpacity);
+    }
+  }, [id, mapLineOpacity]);
+
+  useEffect(() => {
+    if (!positions || positions.length === 0) {
+      map.getSource(id)?.setData({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      return;
+    }
+
+    if (reportColor) {
+      // Draw a single LineString feature for the entire path
+      map.getSource(id)?.setData({
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: positions.map((p) => toMapCoordinates(p.longitude, p.latitude)),
+            },
+            properties: {
+              color: reportColor,
+            },
+          },
+        ],
+      });
+    } else {
+      // Draw multi-colored segments based on speed
+      const minSpeed = positions.map((p) => p.speed).reduce((a, b) => Math.min(a, b), Infinity);
+      const maxSpeed = positions.map((p) => p.speed).reduce((a, b) => Math.max(a, b), -Infinity);
+      const features = [];
+      for (let i = 0; i < positions.length - 1; i += 1) {
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              toMapCoordinates(positions[i].longitude, positions[i].latitude),
+              toMapCoordinates(positions[i + 1].longitude, positions[i + 1].latitude),
+            ],
+          },
+          properties: {
+            color: getSpeedColor(positions[i + 1].speed, minSpeed, maxSpeed),
+          },
+        });
+      }
+      map.getSource(id)?.setData({
+        type: 'FeatureCollection',
+        features,
       });
     }
-    map.getSource(id)?.setData({
-      type: 'FeatureCollection',
-      features,
-    });
-  }, [theme, positions, reportColor, mapLineWidth, mapLineOpacity, id]);
+  }, [theme, positions, reportColor, id]);
 
   return null;
 };
