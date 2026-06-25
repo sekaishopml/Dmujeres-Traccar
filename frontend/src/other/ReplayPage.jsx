@@ -373,7 +373,7 @@ const ReplayPage = () => {
                       secondary={
                         <span style={{ display: 'block', marginTop: '4px' }}>
                           <Typography variant="caption" display="block" color="textPrimary">
-                            {`Permanencia: ${formatTime(stop.startTime, 'minutes')} - ${formatTime(stop.endTime, 'minutes')}`}
+                            {`Permanencia: ${formatTimeOnly(stop.startTime)} - ${formatTimeOnly(stop.endTime)}`}
                           </Typography>
                           {stop.startBattery !== null && (
                             <Typography variant="caption" display="block" sx={{ fontWeight: 'bold', color: '#2e7d32', mt: 0.5 }}>
@@ -408,6 +408,14 @@ const ReplayPage = () => {
       )}
     </div>
   );
+};
+
+const formatTimeOnly = (value) => {
+  if (value) {
+    const d = new Date(value);
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  return '';
 };
 
 const formatDuration = (ms) => {
