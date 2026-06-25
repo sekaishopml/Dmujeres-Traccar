@@ -102,6 +102,20 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       if (!map.getSource(id)) return;
       
       const zoom = map.getZoom();
+      const bounds = map.getBounds();
+      const west = bounds.getWest();
+      const east = bounds.getEast();
+      const south = bounds.getSouth();
+      const north = bounds.getNorth();
+      
+      const inBounds = (lon, lat) => {
+        if (lat < south || lat > north) return false;
+        if (west <= east) {
+          return lon >= west && lon <= east;
+        }
+        return lon >= west || lon <= east;
+      };
+
       const minPixels = 15;
       const degreeThreshold = (360 / (256 * Math.pow(2, zoom))) * minPixels;
       
@@ -109,15 +123,23 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       let lastPos = null;
       for (let i = 0; i < positions.length; i++) {
         const p = positions[i];
-        if (i === 0 || i === positions.length - 1) {
-          filtered.push(p);
+        
+        // 1. Keep start/end points, or check if point is in bounds
+        const isStartOrEnd = i === 0 || i === positions.length - 1;
+        if (!isStartOrEnd && !inBounds(p.longitude, p.latitude)) {
+          continue;
+        }
+
+        // 2. Distance-based decimation
+        if (filtered.length === 0 || isStartOrEnd) {
+          filtered.push({ p, index: i });
           lastPos = p;
         } else {
           const dx = p.longitude - lastPos.longitude;
           const dy = p.latitude - lastPos.latitude;
           const distSq = dx * dx + dy * dy;
           if (distSq >= degreeThreshold * degreeThreshold) {
-            filtered.push(p);
+            filtered.push({ p, index: i });
             lastPos = p;
           }
         }
@@ -125,23 +147,20 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
 
       map.getSource(id).setData({
         type: 'FeatureCollection',
-        features: filtered.map((position) => {
-          const origIndex = positions.indexOf(position);
-          return {
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: toMapCoordinates(position.longitude, position.latitude),
-            },
-            properties: {
-              index: origIndex >= 0 ? origIndex : 0,
-              id: position.id,
-              rotation: position.course,
-              color: getSpeedColor(position.speed, minSpeed, maxSpeed),
-              fixTime: formatTime(position.fixTime, 'seconds'),
-            },
-          };
-        }),
+        features: filtered.map(({ p, index }) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: toMapCoordinates(p.longitude, p.latitude),
+          },
+          properties: {
+            index,
+            id: p.id,
+            rotation: p.course,
+            color: getSpeedColor(p.speed, minSpeed, maxSpeed),
+            fixTime: formatTime(p.fixTime, 'seconds'),
+          },
+        })),
       });
     };
 
