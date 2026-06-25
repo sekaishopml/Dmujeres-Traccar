@@ -7,16 +7,18 @@ import (
 	"strconv"
 	"time"
 
+	"dmujeres-traccar/internal/ws"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type IngestHandler struct {
-	DB *pgxpool.Pool
+	DB  *pgxpool.Pool
+	Hub *ws.Hub
 }
 
-func NewIngestHandler(db *pgxpool.Pool) *IngestHandler {
-	return &IngestHandler{DB: db}
+func NewIngestHandler(db *pgxpool.Pool, hub *ws.Hub) *IngestHandler {
+	return &IngestHandler{DB: db, Hub: hub}
 }
 
 func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
@@ -49,11 +51,9 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 		deviceTime = time.Now()
 	}
 
-	// Fetch device ID from unique ID
 	var deviceDBID int64
 	err := h.DB.QueryRow(context.Background(), "SELECT id FROM tc_devices WHERE uniqueid = $1", id).Scan(&deviceDBID)
 	if err != nil {
-		// Auto-register device for testing if it doesn't exist
 		log.Printf("Device %s not found in tc_devices, registering default", id)
 		err = h.DB.QueryRow(context.Background(), 
 			"INSERT INTO tc_devices (name, uniqueid, status, lastupdate, attributes) VALUES ($1, $1, 'online', NOW(), '{}') RETURNING id", 
@@ -63,7 +63,6 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 		}
 	}
 
-	// Attributes formatting
 	attributes := map[string]interface{}{}
 	if battStr != "" {
 		batt, _ := strconv.ParseFloat(battStr, 64)
@@ -71,7 +70,6 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 	}
 	attributesBytes, _ := json.Marshal(attributes)
 
-	// Save position
 	var positionID int64
 	insertQuery := `
 		INSERT INTO tc_positions (deviceid, protocol, servertime, devicetime, latitude, longitude, speed, course, altitude, attributes)
@@ -82,7 +80,6 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
 
-	// Update device status and position reference
 	updateQuery := `
 		UPDATE tc_devices
 		SET positionid = $1, lastupdate = NOW(), status = 'online'
@@ -92,6 +89,31 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 		log.Printf("Failed to update device status: %v", err)
 	}
 
-	log.Printf("GPS Ping saved. PositionID=%d for Device=%s (%f, %f)", positionID, id, lat, lon)
+	// WS Broadcast to connected web clients in real-time
+	wsMessage := map[string]interface{}{
+		"positions": []interface{}{
+			map[string]interface{}{
+				"id":         positionID,
+				"deviceId":   deviceDBID,
+				"protocol":   "osmand",
+				"serverTime": time.Now().Format(time.RFC3339),
+				"deviceTime": deviceTime.Format(time.RFC3339),
+				"fixTime":    time.Now().Format(time.RFC3339),
+				"valid":      true,
+				"latitude":   lat,
+				"longitude":  lon,
+				"speed":      speed,
+				"course":     bearing,
+				"altitude":   0.0,
+				"attributes": attributes,
+			},
+		},
+	}
+	wsBytes, err := json.Marshal(wsMessage)
+	if err == nil {
+		h.Hub.Broadcast <- wsBytes
+	}
+
+	log.Printf("GPS Ping saved & broadcasted. PositionID=%d for Device=%s (%f, %f)", positionID, id, lat, lon)
 	return c.SendString("OK")
 }

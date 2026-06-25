@@ -7,9 +7,11 @@ import (
 	"dmujeres-traccar/internal/config"
 	"dmujeres-traccar/internal/db"
 	"dmujeres-traccar/internal/handler"
+	"dmujeres-traccar/internal/ws"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/websocket/v2"
 )
 
 func main() {
@@ -21,13 +23,17 @@ func main() {
 	}
 	defer databasePool.Close()
 
+	// Initialize WebSocket Hub
+	hub := ws.NewHub()
+	go hub.Run()
+
 	app := fiber.New(fiber.Config{
 		AppName: "Dmujeres-Traccar Go API",
 	})
 
 	app.Use(logger.New())
 
-	ingestHandler := handler.NewIngestHandler(databasePool)
+	ingestHandler := handler.NewIngestHandler(databasePool, hub)
 	sessionHandler := handler.NewSessionHandler(databasePool)
 	deviceHandler := handler.NewDeviceHandler(databasePool)
 	positionHandler := handler.NewPositionHandler(databasePool)
@@ -39,8 +45,17 @@ func main() {
 		})
 	})
 
+	// Ingest endpoint (OsmAnd)
 	app.Get("/ingest", ingestHandler.HandleOsmAnd)
 	app.Get("/", ingestHandler.HandleOsmAnd)
+
+	// WebSocket real-time connection endpoint
+	app.Get("/api/socket", websocket.New(func(c *websocket.Conn) {
+		client := &ws.Client{Hub: hub, Conn: c, Send: make(chan []byte, 256)}
+		hub.Register <- client
+		go client.WritePump()
+		client.ReadPump()
+	}))
 
 	api := app.Group("/api")
 
