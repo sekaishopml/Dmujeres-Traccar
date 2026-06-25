@@ -1,0 +1,18 @@
+[Unit]
+Description=Dmujeres-Traccar Go Backend Service
+After=network.target postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/Dmujeres-Traccar/backend
+ExecStart=/home/Dmujeres-Traccar/backend/dmujeres-backend
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=dmujeres-traccar
+
+[Install]
+WantedBy=multi-user.target
+

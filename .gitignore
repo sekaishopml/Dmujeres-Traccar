@@ -1,0 +1,18 @@
+# Binaries
+/backend/dmujeres-backend
+/backend/backend
+
+# Local config
+.env
+*.local
+
+# Node dependencies
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build/
+.eslintcache
+
+# OS files
+.DS_Store
+Thumbs.db
+
