@@ -141,11 +141,10 @@ export const formatAddress = (position, unit) => {
 export const getStatusColor = (status) => {
   switch (status) {
     case 'online':
+    case 'unknown':
       return 'success';
     case 'offline':
       return 'error';
-    case 'unknown':
-      return 'warning';
     default:
       return 'neutral';
   }

@@ -114,18 +114,7 @@ const DeviceRow = ({ devices, index, style }) => {
     if (item.status === 'online' || !item.lastUpdate) {
       status = formatStatus(item.status, t);
     } else if (item.status === 'unknown') {
-      const lastUpdate = dayjs(item.lastUpdate);
-      const isToday = lastUpdate.isSame(dayjs(), 'day');
-      const d = lastUpdate.toDate();
-      if (isToday) {
-        const timeStr = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-        const pattern = t('deviceStatusUnknownToday') || 'Stationary since {time}';
-        status = pattern.replace('{time}', timeStr);
-      } else {
-        const timeStr = d.toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-        const pattern = t('deviceStatusUnknownOther') || 'Stationary since {time}';
-        status = pattern.replace('{time}', timeStr);
-      }
+      status = t('deviceStatusUnknown');
     } else {
       status = dayjs(item.lastUpdate).fromNow();
     }

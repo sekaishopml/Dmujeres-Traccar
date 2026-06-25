@@ -27,8 +27,8 @@ func (h *DeviceHandler) GetDevices(c *fiber.Ctx) error {
 	rows, err := h.DB.Query(context.Background(),
 		`SELECT d.id, d.name, d.uniqueid, 
 		        CASE 
-		          WHEN d.lastupdate IS NOT NULL AND d.lastupdate > NOW() - INTERVAL '10 minutes' AND p.speed > 0 THEN 'online'
-		          WHEN d.lastupdate IS NOT NULL AND d.lastupdate > NOW() - INTERVAL '10 minutes' AND (p.speed <= 0 OR p.speed IS NULL) THEN 'unknown'
+		          WHEN d.lastupdate IS NOT NULL AND d.lastupdate > NOW() - INTERVAL '2 minutes' AND p.speed > 0 THEN 'online'
+		          WHEN d.lastupdate IS NOT NULL AND d.lastupdate > NOW() - INTERVAL '2 minutes' AND (p.speed <= 0 OR p.speed IS NULL) THEN 'unknown'
 		          ELSE 'offline'
 		        END AS status, 
 		        COALESCE(d.lastupdate, '0001-01-01 00:00:00'), COALESCE(d.positionid, 0), COALESCE(d.attributes, '{}')
