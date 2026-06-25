@@ -101,6 +101,23 @@ func main() {
         api.Put("/users/:id", userHandler.UpdateUser)
         api.Delete("/users/:id", userHandler.DeleteUser)
 
+        // Fallback endpoints to satisfy frontend CachingController
+        api.Get("/geofences", func(c *fiber.Ctx) error {
+                return c.JSON([]interface{}{})
+        })
+        api.Get("/groups", func(c *fiber.Ctx) error {
+                return c.JSON([]interface{}{})
+        })
+        api.Get("/drivers", func(c *fiber.Ctx) error {
+                return c.JSON([]interface{}{})
+        })
+        api.Get("/maintenance", func(c *fiber.Ctx) error {
+                return c.JSON([]interface{}{})
+        })
+        api.Get("/calendars", func(c *fiber.Ctx) error {
+                return c.JSON([]interface{}{})
+        })
+
         fmt.Printf("Starting Dmujeres-Traccar Go backend on port %s...\n", cfg.Port)
         log.Fatal(app.Listen(":" + cfg.Port))
 }
