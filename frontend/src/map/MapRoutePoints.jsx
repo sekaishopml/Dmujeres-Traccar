@@ -34,6 +34,8 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       source: id,
       paint: {
         'text-color': ['get', 'color'],
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 1.5,
       },
       layout: {
         'text-font': findFonts(map),
@@ -166,11 +168,11 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
 
     updatePoints();
 
-    map.on('zoom', updatePoints);
+    map.on('zoomend', updatePoints);
     map.on('moveend', updatePoints);
 
     return () => {
-      map.off('zoom', updatePoints);
+      map.off('zoomend', updatePoints);
       map.off('moveend', updatePoints);
     };
   }, [positions, id]);
