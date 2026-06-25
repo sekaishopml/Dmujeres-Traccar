@@ -25,7 +25,9 @@ func (h *DeviceHandler) GetDevices(c *fiber.Ctx) error {
 	}
 
 	rows, err := h.DB.Query(context.Background(),
-		`SELECT d.id, d.name, d.uniqueid, d.status, COALESCE(d.lastupdate, '0001-01-01 00:00:00'), COALESCE(d.positionid, 0), COALESCE(d.attributes, '{}')
+		`SELECT d.id, d.name, d.uniqueid, 
+		        CASE WHEN d.lastupdate IS NOT NULL AND d.lastupdate > NOW() - INTERVAL '5 minutes' THEN 'online' ELSE 'offline' END AS status, 
+		        COALESCE(d.lastupdate, '0001-01-01 00:00:00'), COALESCE(d.positionid, 0), COALESCE(d.attributes, '{}')
 		 FROM tc_devices d 
 		 JOIN tc_user_device ud ON d.id = ud.deviceid 
 		 WHERE ud.userid = $1`, userID)
@@ -69,7 +71,7 @@ func (h *DeviceHandler) CreateDevice(c *fiber.Ctx) error {
 
 	var deviceID int64
 	err = tx.QueryRow(context.Background(),
-		"INSERT INTO tc_devices (name, uniqueid, status, lastupdate, attributes) VALUES ($1, $2, 'offline', NOW(), $3) RETURNING id",
+		"INSERT INTO tc_devices (name, uniqueid, lastupdate, attributes) VALUES ($1, $2, NOW(), $3) RETURNING id",
 		d.Name, d.UniqueID, d.Attributes).Scan(&deviceID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())

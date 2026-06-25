@@ -56,7 +56,7 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("Device %s not found in tc_devices, registering default", id)
 		err = h.DB.QueryRow(context.Background(), 
-			"INSERT INTO tc_devices (name, uniqueid, status, lastupdate, attributes) VALUES ($1, $1, 'online', NOW(), '{}') RETURNING id", 
+			"INSERT INTO tc_devices (name, uniqueid, lastupdate, attributes) VALUES ($1, $1, NOW(), '{}') RETURNING id", 
 			id).Scan(&deviceDBID)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
@@ -82,11 +82,11 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 
 	updateQuery := `
 		UPDATE tc_devices
-		SET positionid = $1, lastupdate = NOW(), status = 'online'
+		SET positionid = $1, lastupdate = NOW()
 		WHERE id = $2`
 	_, err = h.DB.Exec(context.Background(), updateQuery, positionID, deviceDBID)
 	if err != nil {
-		log.Printf("Failed to update device status: %v", err)
+		log.Printf("Failed to update device lastupdate: %v", err)
 	}
 
 	// WS Broadcast to connected web clients in real-time
