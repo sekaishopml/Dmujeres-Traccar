@@ -1,0 +1,7 @@
+[     713ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://65.75.203.248/api/session:0
+[  131066ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://65.75.203.248/api/session:0
+[  236756ms] [WARNING] Geolocation support is not available so the GeolocateControl will be disabled. @ http://65.75.203.248/assets/index-B5Zy6niD.js:42
+[  236759ms] [WARNING] [.WebGL-0x1804000f5400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://65.75.203.248/:0
+[  236808ms] [WARNING] [.WebGL-0x1804000f5400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://65.75.203.248/:0
+[  236837ms] [WARNING] [.WebGL-0x1804000f5400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://65.75.203.248/:0
+[  236860ms] [WARNING] [.WebGL-0x1804000f5400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://65.75.203.248/:0

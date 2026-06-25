@@ -1,0 +1,5 @@
+[     988ms] [WARNING] Geolocation support is not available so the GeolocateControl will be disabled. @ http://65.75.203.248/assets/index-B9V3hpDK.js:42
+[    1573ms] [LOG] MapSelectedDevice effect triggered {currentId: null, position: undefined} @ http://65.75.203.248/assets/MainMap-DGQcyr-e.js:0
+[14213447ms] [LOG] MapSelectedDevice effect triggered {currentId: null, position: undefined} @ http://65.75.203.248/assets/MainMap-DGQcyr-e.js:0
+[23807645ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://65.75.203.248/api/devices:0
+[23807655ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://65.75.203.248/api/positions:0

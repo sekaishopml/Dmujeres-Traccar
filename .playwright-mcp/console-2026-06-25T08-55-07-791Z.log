@@ -1,0 +1,8 @@
+[    1960ms] [WARNING] Geolocation support is not available so the GeolocateControl will be disabled. @ http://65.75.203.248/assets/index-B5Zy6niD.js:42
+[   59786ms] [WARNING] Geolocation support is not available so the GeolocateControl will be disabled. @ http://65.75.203.248/assets/index-B_IaXXA8.js:42
+[   60327ms] [LOG] MapSelectedDevice effect triggered {currentId: null, position: undefined} @ http://65.75.203.248/assets/MainMap-C-PiOwro.js:0
+[  136266ms] [LOG] MapSelectedDevice effect triggered {currentId: null, position: undefined} @ http://65.75.203.248/assets/MainMap-C-PiOwro.js:0
+[  538034ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://65.75.203.248/api/devices:0
+[ 1283530ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://65.75.203.248/api/devices:0
+[ 1457628ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://65.75.203.248/api/devices:0
+[ 1693782ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://65.75.203.248/api/devices:0

@@ -20,6 +20,7 @@ const MapSelectedDevice = () => {
   const previousPosition = usePrevious(position);
 
   useEffect(() => {
+    console.log("MapSelectedDevice effect triggered", { currentId, position });
     const positionChanged =
       position &&
       (!previousPosition ||
@@ -32,6 +33,7 @@ const MapSelectedDevice = () => {
         (mapFollow && positionChanged)) &&
       position
     ) {
+      console.log("Centering map to position", position);
       map.easeTo({
         center: toMapCoordinates(position.longitude, position.latitude),
         zoom: Math.max(map.getZoom(), selectZoom),

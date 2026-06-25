@@ -1,0 +1,22 @@
+14. [GET] http://65.75.203.248/api/server => [200] OK
+15. [GET] http://65.75.203.248/api/session => [404] Not Found
+23. [POST] http://65.75.203.248/api/session => [401] Unauthorized
+24. [POST] http://65.75.203.248/api/session => [200] OK
+34. [GET] http://65.75.203.248/api/devices => [200] OK
+35. [GET] http://65.75.203.248/api/geofences => [200] OK
+36. [GET] http://65.75.203.248/api/groups => [200] OK
+37. [GET] http://65.75.203.248/api/drivers => [200] OK
+38. [GET] http://65.75.203.248/api/maintenance => [200] OK
+39. [GET] http://65.75.203.248/api/calendars => [200] OK
+40. [GET] http://65.75.203.248/api/devices => [200] OK
+42. [GET] http://65.75.203.248/google-tiles/lyrs=m&hl=es&x=1&y=1&z=1&s=Ga => [200] OK
+43. [GET] http://65.75.203.248/google-tiles/lyrs=m&hl=es&x=0&y=1&z=1&s=Ga => [200] OK
+44. [GET] http://65.75.203.248/google-tiles/lyrs=m&hl=es&x=1&y=0&z=1&s=Ga => [200] OK
+45. [GET] http://65.75.203.248/google-tiles/lyrs=m&hl=es&x=0&y=0&z=1&s=Ga => [200] OK
+46. [GET] http://65.75.203.248/google-tiles/lyrs=m&hl=es&x=0&y=1&z=1&s=Ga => [200] OK
+47. [GET] http://65.75.203.248/google-tiles/lyrs=m&hl=es&x=0&y=0&z=1&s=Ga => [200] OK
+48. [GET] http://65.75.203.248/google-tiles/lyrs=m&hl=es&x=1&y=1&z=1&s=Ga => [200] OK
+49. [GET] http://65.75.203.248/google-tiles/lyrs=m&hl=es&x=1&y=0&z=1&s=Ga => [200] OK
+50. [GET] https://nominatim.openstreetmap.org/search?q=&format=geojson&addressdetails=1 => [200] 
+
+Note: 30 static requests not shown, run with "static" option to see them.

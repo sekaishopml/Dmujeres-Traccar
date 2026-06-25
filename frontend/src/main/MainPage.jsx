@@ -7,12 +7,13 @@ import { useDispatch, useSelector } from 'react-redux';
 import DeviceList from './DeviceList';
 import BottomMenu from '../common/components/BottomMenu';
 import StatusCard from '../common/components/StatusCard';
-import { devicesActions } from '../store';
+import { devicesActions, sessionActions } from '../store';
 import usePersistedState from '../common/util/usePersistedState';
 import EventsDrawer from './EventsDrawer';
 import useFilter from './useFilter';
 import MainToolbar from './MainToolbar';
 import { useAttributePreference } from '../common/util/preferences';
+import fetchOrThrow from '../common/util/fetchOrThrow';
 
 const MainMap = lazy(() => import('./MainMap'));
 
@@ -111,6 +112,18 @@ const MainPage = () => {
     setFilteredDevices,
     setFilteredPositions,
   );
+
+  useEffect(() => {
+    if (selectedDeviceId && !positions[selectedDeviceId]) {
+      fetchOrThrow(`/api/positions?deviceId=${selectedDeviceId}`)
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.length > 0) {
+            dispatch(sessionActions.updatePositions(data));
+          }
+        });
+    }
+  }, [selectedDeviceId, positions]);
 
   return (
     <div className={classes.root}>

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from '../../common/components/LocalizationProvider';
 
-const styleCustom = ({ tiles, minZoom, maxZoom, attribution }) => {
+const styleCustom = ({ tiles, minZoom, maxZoom, attribution, rasterFadeDuration }) => {
   const source = {
     type: 'raster',
     tiles,
@@ -9,7 +9,9 @@ const styleCustom = ({ tiles, minZoom, maxZoom, attribution }) => {
     tileSize: 256,
     minzoom: minZoom,
     maxzoom: maxZoom,
+    rasterFadeDuration,
   };
+  Object.keys(source).forEach((key) => source[key] === undefined && delete source[key]);
   return {
     version: 8,
     sources: {
@@ -38,6 +40,7 @@ export default () => {
           tiles: ['/google-tiles/lyrs=m&hl=es&x={x}&y={y}&z={z}&s=Ga'],
           maxZoom: 20,
           attribution: '© Google',
+          rasterFadeDuration: 0,
         }),
         available: true,
       },
