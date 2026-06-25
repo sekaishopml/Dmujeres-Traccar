@@ -511,11 +511,13 @@ const mergeStops = (stops, positions, mergeDistanceThreshold = 80, mergeTimeThre
   return stops;
 };
 
-const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 3 * 60 * 1000) => {
+const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 10 * 60 * 1000) => {
   const stops = [];
   if (!positions || positions.length < 2) return stops;
 
   let i = 0;
+  const maxConsecutiveOutliers = 3;
+  
   while (i < positions.length) {
     let j = i + 1;
     let stopEndIndex = i;
@@ -523,6 +525,8 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 3 * 60
     let sumLat = positions[i].latitude;
     let sumLon = positions[i].longitude;
     let count = 1;
+    
+    let consecutiveOutliers = 0;
     
     while (j < positions.length) {
       const pCurrent = positions[j];
@@ -539,9 +543,14 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 3 * 60
         sumLon += pCurrent.longitude;
         count++;
         stopEndIndex = j;
+        consecutiveOutliers = 0;
         j++;
       } else {
-        break;
+        consecutiveOutliers++;
+        if (consecutiveOutliers >= maxConsecutiveOutliers) {
+          break;
+        }
+        j++;
       }
     }
     
