@@ -202,7 +202,7 @@ const ReplayPage = () => {
       const deviceId = deviceIds.find(() => true);
       setLoading(true);
       setSelectedDeviceId(deviceId);
-      const query = new URLSearchParams({ deviceId, from, to, tolerance: '0.00002' });
+      const query = new URLSearchParams({ deviceId, from, to });
       try {
         const response = await fetchOrThrow(`/api/positions?${query.toString()}`);
         setIndex(0);

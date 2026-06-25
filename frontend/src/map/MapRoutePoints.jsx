@@ -87,25 +87,73 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
   }, [onMarkerClick, id]);
 
   useEffect(() => {
+    if (!positions || positions.length === 0) {
+      map.getSource(id)?.setData({
+        type: 'FeatureCollection',
+        features: [],
+      });
+      return;
+    }
+
     const maxSpeed = positions.reduce((a, p) => Math.max(a, p.speed), -Infinity);
     const minSpeed = positions.reduce((a, p) => Math.min(a, p.speed), Infinity);
-    map.getSource(id)?.setData({
-      type: 'FeatureCollection',
-      features: positions.map((position, index) => ({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: toMapCoordinates(position.longitude, position.latitude),
-        },
-        properties: {
-          index,
-          id: position.id,
-          rotation: position.course,
-          color: getSpeedColor(position.speed, minSpeed, maxSpeed),
-          fixTime: formatTime(position.fixTime, 'seconds'),
-        },
-      })),
-    });
+
+    const updatePoints = () => {
+      if (!map.getSource(id)) return;
+      
+      const zoom = map.getZoom();
+      const minPixels = 15;
+      const degreeThreshold = (360 / (256 * Math.pow(2, zoom))) * minPixels;
+      
+      const filtered = [];
+      let lastPos = null;
+      for (let i = 0; i < positions.length; i++) {
+        const p = positions[i];
+        if (i === 0 || i === positions.length - 1) {
+          filtered.push(p);
+          lastPos = p;
+        } else {
+          const dx = p.longitude - lastPos.longitude;
+          const dy = p.latitude - lastPos.latitude;
+          const distSq = dx * dx + dy * dy;
+          if (distSq >= degreeThreshold * degreeThreshold) {
+            filtered.push(p);
+            lastPos = p;
+          }
+        }
+      }
+
+      map.getSource(id).setData({
+        type: 'FeatureCollection',
+        features: filtered.map((position) => {
+          const origIndex = positions.indexOf(position);
+          return {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: toMapCoordinates(position.longitude, position.latitude),
+            },
+            properties: {
+              index: origIndex >= 0 ? origIndex : 0,
+              id: position.id,
+              rotation: position.course,
+              color: getSpeedColor(position.speed, minSpeed, maxSpeed),
+              fixTime: formatTime(position.fixTime, 'seconds'),
+            },
+          };
+        }),
+      });
+    };
+
+    updatePoints();
+
+    map.on('zoom', updatePoints);
+    map.on('moveend', updatePoints);
+
+    return () => {
+      map.off('zoom', updatePoints);
+      map.off('moveend', updatePoints);
+    };
   }, [positions, id]);
 
   return showSpeedControl ? <MapSpeedLegend positions={positions} /> : null;

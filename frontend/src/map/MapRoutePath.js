@@ -114,25 +114,33 @@ const MapRoutePath = ({ positions }) => {
         ],
       });
     } else {
-      // Draw multi-colored segments based on speed
+      // Group multi-colored segments based on speed to minimize features
       const minSpeed = positions.map((p) => p.speed).reduce((a, b) => Math.min(a, b), Infinity);
       const maxSpeed = positions.map((p) => p.speed).reduce((a, b) => Math.max(a, b), -Infinity);
-      const features = [];
+      
+      const colorGroups = {};
       for (let i = 0; i < positions.length - 1; i += 1) {
-        features.push({
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: [
-              toMapCoordinates(positions[i].longitude, positions[i].latitude),
-              toMapCoordinates(positions[i + 1].longitude, positions[i + 1].latitude),
-            ],
-          },
-          properties: {
-            color: getSpeedColor(positions[i + 1].speed, minSpeed, maxSpeed),
-          },
-        });
+        const rawColor = getSpeedColor(positions[i + 1].speed, minSpeed, maxSpeed);
+        if (!colorGroups[rawColor]) {
+          colorGroups[rawColor] = [];
+        }
+        colorGroups[rawColor].push([
+          toMapCoordinates(positions[i].longitude, positions[i].latitude),
+          toMapCoordinates(positions[i + 1].longitude, positions[i + 1].latitude),
+        ]);
       }
+
+      const features = Object.entries(colorGroups).map(([color, coordPairs]) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'MultiLineString',
+          coordinates: coordPairs,
+        },
+        properties: {
+          color,
+        },
+      }));
+
       map.getSource(id)?.setData({
         type: 'FeatureCollection',
         features,
