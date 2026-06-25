@@ -58,7 +58,9 @@ func main() {
 
         // Ingest endpoint (OsmAnd)
         app.Get("/ingest", ingestHandler.HandleOsmAnd)
+        app.Post("/ingest", ingestHandler.HandleOsmAnd)
         app.Get("/", ingestHandler.HandleOsmAnd)
+        app.Post("/", ingestHandler.HandleOsmAnd)
 
         // Development tiles fallback (302 redirect)
         app.Get("/google-tiles", func(c *fiber.Ctx) error {
