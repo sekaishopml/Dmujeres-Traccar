@@ -515,6 +515,12 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 5 * 60
   const stops = [];
   if (!positions || positions.length < 2) return stops;
 
+  const firstPos = positions[0];
+  const cosLat = Math.cos(firstPos.latitude * Math.PI / 180);
+  const kY = 111320;
+  const kX = 111320 * cosLat;
+  const distanceThresholdSq = distanceThreshold * distanceThreshold;
+
   let i = 0;
   const maxConsecutiveOutliers = 3;
   
@@ -533,12 +539,11 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 5 * 60
       const centroidLat = sumLat / count;
       const centroidLon = sumLon / count;
       
-      const latMid = (centroidLat + pCurrent.latitude) * Math.PI / 360;
-      const dy = (pCurrent.latitude - centroidLat) * 111320;
-      const dx = (pCurrent.longitude - centroidLon) * 111320 * Math.cos(latMid);
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dy = (pCurrent.latitude - centroidLat) * kY;
+      const dx = (pCurrent.longitude - centroidLon) * kX;
+      const distSq = dx * dx + dy * dy;
       
-      if (dist < distanceThreshold) {
+      if (distSq < distanceThresholdSq) {
         sumLat += pCurrent.latitude;
         sumLon += pCurrent.longitude;
         count++;

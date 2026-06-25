@@ -11,3 +11,6 @@
 [25727433ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://65.75.203.248/api/positions:0
 [26171774ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://65.75.203.248/api/devices:0
 [26171781ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://65.75.203.248/api/positions:0
+[43371122ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://65.75.203.248/api/devices:0
+[43629535ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://65.75.203.248/api/devices:0
+[43629539ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://65.75.203.248/api/positions:0

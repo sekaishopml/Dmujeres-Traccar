@@ -87,9 +87,10 @@ func (h *ReportHandler) GetRouteReport(c *fiber.Ctx) error {
 			&p.Address, &p.Accuracy, &p.Network, &attrsBytes,
 		)
 		if err == nil {
-			p.Attributes = make(map[string]interface{})
-			if len(attrsBytes) > 0 {
-				_ = json.Unmarshal(attrsBytes, &p.Attributes)
+			if len(attrsBytes) == 0 {
+				p.Attributes = json.RawMessage("{}")
+			} else {
+				p.Attributes = json.RawMessage(attrsBytes)
 			}
 			positions = append(positions, p)
 		}

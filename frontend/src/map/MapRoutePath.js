@@ -114,27 +114,36 @@ const MapRoutePath = ({ positions }) => {
         ],
       });
     } else {
-      // Group multi-colored segments based on speed to minimize features
+      // Pre-transform coordinates to reduce map conversions by half and reuse arrays
+      const transformedCoords = positions.map((p) => toMapCoordinates(p.longitude, p.latitude));
+
       const minSpeed = positions.map((p) => p.speed).reduce((a, b) => Math.min(a, b), Infinity);
       const maxSpeed = positions.map((p) => p.speed).reduce((a, b) => Math.max(a, b), -Infinity);
       
       const colorGroups = {};
+      let currentLine = null;
+      let lastColor = null;
+
       for (let i = 0; i < positions.length - 1; i += 1) {
         const rawColor = getSpeedColor(positions[i + 1].speed, minSpeed, maxSpeed);
-        if (!colorGroups[rawColor]) {
-          colorGroups[rawColor] = [];
+        
+        if (rawColor !== lastColor) {
+          if (!colorGroups[rawColor]) {
+            colorGroups[rawColor] = [];
+          }
+          currentLine = [transformedCoords[i], transformedCoords[i + 1]];
+          colorGroups[rawColor].push(currentLine);
+          lastColor = rawColor;
+        } else {
+          currentLine.push(transformedCoords[i + 1]);
         }
-        colorGroups[rawColor].push([
-          toMapCoordinates(positions[i].longitude, positions[i].latitude),
-          toMapCoordinates(positions[i + 1].longitude, positions[i + 1].latitude),
-        ]);
       }
 
-      const features = Object.entries(colorGroups).map(([color, coordPairs]) => ({
+      const features = Object.entries(colorGroups).map(([color, lines]) => ({
         type: 'Feature',
         geometry: {
           type: 'MultiLineString',
-          coordinates: coordPairs,
+          coordinates: lines,
         },
         properties: {
           color,

@@ -1,4 +1,4 @@
-import { useId, useCallback, useEffect } from 'react';
+import { useId, useCallback, useEffect, useMemo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { map } from './core/MapView';
 import getSpeedColor from '../common/util/colors';
@@ -19,6 +19,18 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
     },
     [onClick],
   );
+
+  const stops = useMemo(() => detectStops(positions), [positions]);
+
+  const stoppedIndices = useMemo(() => {
+    const set = new Set();
+    stops.forEach((stop) => {
+      for (let idx = stop.startIndex; idx <= stop.endIndex; idx += 1) {
+        set.add(idx);
+      }
+    });
+    return set;
+  }, [stops]);
 
   useEffect(() => {
     map.addSource(id, {
@@ -190,59 +202,56 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
 
         const minPixels = 15;
         const degreeThreshold = (360 / (256 * Math.pow(2, zoom))) * minPixels;
-        
-        const stops = detectStops(positions);
-        
-        const stoppedIndices = new Set();
-        stops.forEach(stop => {
-          for (let idx = stop.startIndex; idx <= stop.endIndex; idx++) {
-            stoppedIndices.add(idx);
-          }
-        });
 
-        const filtered = [];
-        let lastPos = null;
-        for (let i = 0; i < positions.length; i++) {
-          const p = positions[i];
-          
+        const filteredIndices = [];
+        let lastIndex = -1;
+        for (let i = 0; i < positions.length; i += 1) {
           if (stoppedIndices.has(i)) {
             continue;
           }
 
           const isStartOrEnd = i === 0 || i === positions.length - 1;
-          if (!isStartOrEnd && !inBounds(p.longitude, p.latitude)) {
-            continue;
+          if (!isStartOrEnd) {
+            const p = positions[i];
+            if (!inBounds(p.longitude, p.latitude)) {
+              continue;
+            }
           }
 
-          if (filtered.length === 0 || isStartOrEnd) {
-            filtered.push({ p, index: i });
-            lastPos = p;
+          if (filteredIndices.length === 0 || isStartOrEnd) {
+            filteredIndices.push(i);
+            lastIndex = i;
           } else {
+            const p = positions[i];
+            const lastPos = positions[lastIndex];
             const dx = p.longitude - lastPos.longitude;
             const dy = p.latitude - lastPos.latitude;
             const distSq = dx * dx + dy * dy;
             if (distSq >= degreeThreshold * degreeThreshold) {
-              filtered.push({ p, index: i });
-              lastPos = p;
+              filteredIndices.push(i);
+              lastIndex = i;
             }
           }
         }
 
-        const arrowFeatures = filtered.map(({ p, index }) => ({
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: toMapCoordinates(p.longitude, p.latitude),
-          },
-          properties: {
-            index,
-            id: p.id,
-            type: 'point',
-            rotation: p.course,
-            color: getSpeedColor(p.speed, minSpeed, maxSpeed),
-            fixTime: formatTime(p.fixTime, 'seconds'),
-          },
-        }));
+        const arrowFeatures = filteredIndices.map((index) => {
+          const p = positions[index];
+          return {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: toMapCoordinates(p.longitude, p.latitude),
+            },
+            properties: {
+              index,
+              id: p.id,
+              type: 'point',
+              rotation: p.course,
+              color: getSpeedColor(p.speed, minSpeed, maxSpeed),
+              fixTime: formatTime(p.fixTime, 'seconds'),
+            },
+          };
+        });
 
         const stopFeatures = stops
           .map((stop, stopIdx) => ({ stop, stopIdx }))
@@ -297,7 +306,7 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       map.off('zoomend', updatePoints);
       map.off('moveend', updatePoints);
     };
-  }, [positions, id]);
+  }, [positions, stops, stoppedIndices, id]);
 
   return showSpeedControl ? <MapSpeedLegend positions={positions} /> : null;
 };
@@ -385,6 +394,12 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 5 * 60
   const stops = [];
   if (!positions || positions.length < 2) return stops;
 
+  const firstPos = positions[0];
+  const cosLat = Math.cos(firstPos.latitude * Math.PI / 180);
+  const kY = 111320;
+  const kX = 111320 * cosLat;
+  const distanceThresholdSq = distanceThreshold * distanceThreshold;
+
   let i = 0;
   const maxConsecutiveOutliers = 3;
   
@@ -403,12 +418,11 @@ const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 5 * 60
       const centroidLat = sumLat / count;
       const centroidLon = sumLon / count;
       
-      const latMid = (centroidLat + pCurrent.latitude) * Math.PI / 360;
-      const dy = (pCurrent.latitude - centroidLat) * 111320;
-      const dx = (pCurrent.longitude - centroidLon) * 111320 * Math.cos(latMid);
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dy = (pCurrent.latitude - centroidLat) * kY;
+      const dx = (pCurrent.longitude - centroidLon) * kX;
+      const distSq = dx * dx + dy * dy;
       
-      if (dist < distanceThreshold) {
+      if (distSq < distanceThresholdSq) {
         sumLat += pCurrent.latitude;
         sumLon += pCurrent.longitude;
         count++;
