@@ -284,7 +284,86 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
   return showSpeedControl ? <MapSpeedLegend positions={positions} /> : null;
 };
 
-const detectStops = (positions, distanceThreshold = 40, timeThresholdMs = 3 * 60 * 1000) => {
+const mergeStops = (stops, positions, mergeDistanceThreshold = 80, mergeTimeThresholdMs = 5 * 60 * 1000) => {
+  if (stops.length < 2) return stops;
+  
+  let merged = true;
+  while (merged) {
+    merged = false;
+    const nextStops = [];
+    let i = 0;
+    
+    while (i < stops.length) {
+      if (i === stops.length - 1) {
+        nextStops.push(stops[i]);
+        break;
+      }
+      
+      const s1 = stops[i];
+      const s2 = stops[i + 1];
+      
+      const latMid = (s1.latitude + s2.latitude) * Math.PI / 360;
+      const dy = (s2.latitude - s1.latitude) * 111320;
+      const dx = (s2.longitude - s1.longitude) * 111320 * Math.cos(latMid);
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      const timeGap = new Date(s2.startTime).getTime() - new Date(s1.endTime).getTime();
+      
+      if (dist < mergeDistanceThreshold && timeGap < mergeTimeThresholdMs) {
+        const startIndex = s1.startIndex;
+        const endIndex = s2.endIndex;
+        const startTime = s1.startTime;
+        const endTime = s2.endTime;
+        const duration = new Date(endTime).getTime() - new Date(startTime).getTime();
+        
+        const getBattery = (p) => p.attributes?.batteryLevel ?? p.attributes?.battery ?? null;
+        const startBattery = getBattery(positions[startIndex]);
+        const endBattery = getBattery(positions[endIndex]);
+        
+        let sumLat = 0;
+        let sumLon = 0;
+        let count = 0;
+        let address = "";
+        
+        for (let k = startIndex; k <= endIndex; k++) {
+          sumLat += positions[k].latitude;
+          sumLon += positions[k].longitude;
+          count++;
+          if (!address && positions[k].address) {
+            address = positions[k].address;
+          }
+        }
+        
+        if (!address) {
+          address = `${positions[startIndex].latitude.toFixed(5)}, ${positions[startIndex].longitude.toFixed(5)}`;
+        }
+        
+        const mergedStop = {
+          startIndex,
+          endIndex,
+          startTime,
+          endTime,
+          duration,
+          startBattery,
+          endBattery,
+          address,
+          latitude: sumLat / count,
+          longitude: sumLon / count
+        };
+        
+        stops[i + 1] = mergedStop;
+        merged = true;
+      } else {
+        nextStops.push(s1);
+      }
+      i++;
+    }
+    stops = nextStops;
+  }
+  return stops;
+};
+
+const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 3 * 60 * 1000) => {
   const stops = [];
   if (!positions || positions.length < 2) return stops;
 
@@ -293,16 +372,24 @@ const detectStops = (positions, distanceThreshold = 40, timeThresholdMs = 3 * 60
     let j = i + 1;
     let stopEndIndex = i;
     
+    let sumLat = positions[i].latitude;
+    let sumLon = positions[i].longitude;
+    let count = 1;
+    
     while (j < positions.length) {
-      const pStart = positions[i];
       const pCurrent = positions[j];
+      const centroidLat = sumLat / count;
+      const centroidLon = sumLon / count;
       
-      const latMid = (pStart.latitude + pCurrent.latitude) * Math.PI / 360;
-      const dy = (pCurrent.latitude - pStart.latitude) * 111320;
-      const dx = (pCurrent.longitude - pStart.longitude) * 111320 * Math.cos(latMid);
+      const latMid = (centroidLat + pCurrent.latitude) * Math.PI / 360;
+      const dy = (pCurrent.latitude - centroidLat) * 111320;
+      const dx = (pCurrent.longitude - centroidLon) * 111320 * Math.cos(latMid);
       const dist = Math.sqrt(dx * dx + dy * dy);
       
       if (dist < distanceThreshold) {
+        sumLat += pCurrent.latitude;
+        sumLon += pCurrent.longitude;
+        count++;
         stopEndIndex = j;
         j++;
       } else {
@@ -339,8 +426,8 @@ const detectStops = (positions, distanceThreshold = 40, timeThresholdMs = 3 * 60
         startBattery,
         endBattery,
         address,
-        latitude: startPos.latitude,
-        longitude: startPos.longitude
+        latitude: sumLat / count,
+        longitude: sumLon / count
       });
       
       i = stopEndIndex + 1;
@@ -348,7 +435,8 @@ const detectStops = (positions, distanceThreshold = 40, timeThresholdMs = 3 * 60
       i++;
     }
   }
-  return stops;
+  
+  return mergeStops(stops, positions);
 };
 
 export default MapRoutePoints;
