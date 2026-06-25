@@ -381,7 +381,7 @@ const mergeStops = (stops, positions, mergeDistanceThreshold = 80, mergeTimeThre
   return stops;
 };
 
-const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 10 * 60 * 1000) => {
+const detectStops = (positions, distanceThreshold = 50, timeThresholdMs = 5 * 60 * 1000) => {
   const stops = [];
   if (!positions || positions.length < 2) return stops;
 
