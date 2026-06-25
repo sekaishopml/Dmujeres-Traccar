@@ -48,6 +48,7 @@ func main() {
         positionHandler := handler.NewPositionHandler(databasePool)
         reportHandler := handler.NewReportHandler(databasePool)
         userHandler := handler.NewUserHandler(databasePool)
+        serverHandler := handler.NewServerHandler(databasePool)
 
         app.Get("/health", func(c *fiber.Ctx) error {
                 return c.JSON(fiber.Map{
@@ -86,7 +87,8 @@ func main() {
         api.Post("/session", sessionHandler.Login)
         api.Delete("/session", sessionHandler.Logout)
 
-        api.Get("/server", handler.GetServerInfo)
+        api.Get("/server", serverHandler.GetServerInfo)
+        api.Get("/server/geocode", serverHandler.Geocode)
 
         api.Get("/devices", deviceHandler.GetDevices)
         api.Post("/devices", deviceHandler.CreateDevice)

@@ -1,14 +1,13 @@
 import { useId, useCallback, useEffect } from 'react';
+import maplibregl from 'maplibre-gl';
 import { map } from './core/MapView';
 import getSpeedColor from '../common/util/colors';
 import { findFonts, toMapCoordinates } from './core/mapUtil';
 import MapSpeedLegend from './control/MapSpeedLegend';
+import { formatTime } from '../common/util/formatter';
 
 const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
   const id = useId();
-
-  const onMouseEnter = () => (map.getCanvas().style.cursor = 'pointer');
-  const onMouseLeave = () => (map.getCanvas().style.cursor = '');
 
   const onMarkerClick = useCallback(
     (event) => {
@@ -45,6 +44,29 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       },
     });
 
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+    });
+
+    const onMouseEnter = (e) => {
+      map.getCanvas().style.cursor = 'pointer';
+      const features = map.queryRenderedFeatures(e.point, { layers: [id] });
+      if (features.length > 0) {
+        const feature = features[0];
+        const coordinates = feature.geometry.coordinates.slice();
+        const fixTime = feature.properties.fixTime;
+        if (fixTime) {
+          popup.setLngLat(coordinates).setHTML(`<div style="padding: 4px; font-family: sans-serif; font-size: 12px; color: #333;">${fixTime}</div>`).addTo(map);
+        }
+      }
+    };
+
+    const onMouseLeave = () => {
+      map.getCanvas().style.cursor = '';
+      popup.remove();
+    };
+
     map.on('mouseenter', id, onMouseEnter);
     map.on('mouseleave', id, onMouseLeave);
     map.on('click', id, onMarkerClick);
@@ -53,6 +75,7 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
       map.off('mouseenter', id, onMouseEnter);
       map.off('mouseleave', id, onMouseLeave);
       map.off('click', id, onMarkerClick);
+      popup.remove();
 
       if (map.getLayer(id)) {
         map.removeLayer(id);
@@ -79,6 +102,7 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
           id: position.id,
           rotation: position.course,
           color: getSpeedColor(position.speed, minSpeed, maxSpeed),
+          fixTime: formatTime(position.fixTime, 'seconds'),
         },
       })),
     });

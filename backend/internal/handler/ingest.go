@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strconv"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 type IngestPayload struct {
 	DeviceID string `json:"device_id"`
 	Location struct {
-		Timestamp string `json:"timestamp"`
+		Timestamp string   `json:"timestamp"`
 		Latitude  *float64 `json:"latitude"`
 		Longitude *float64 `json:"longitude"`
 		Altitude  *float64 `json:"altitude"`
@@ -24,6 +25,7 @@ type IngestPayload struct {
 		Bearing   *float64 `json:"bearing"`
 		Heading   *float64 `json:"heading"`
 		Accuracy  *float64 `json:"accuracy"`
+		Odometer  *float64 `json:"odometer"`
 		Coords    *struct {
 			Latitude  *float64 `json:"latitude"`
 			Longitude *float64 `json:"longitude"`
@@ -36,6 +38,9 @@ type IngestPayload struct {
 		Battery *struct {
 			Level *float64 `json:"level"`
 		} `json:"battery"`
+		Activity *struct {
+			Type string `json:"type"`
+		} `json:"activity"`
 	} `json:"location"`
 }
 
@@ -46,6 +51,21 @@ type IngestHandler struct {
 
 func NewIngestHandler(db *pgxpool.Pool, hub *ws.Hub) *IngestHandler {
 	return &IngestHandler{DB: db, Hub: hub}
+}
+
+func distance(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371000 // Earth radius in meters
+	phi1 := lat1 * math.Pi / 180
+	phi2 := lat2 * math.Pi / 180
+	deltaPhi := (lat2 - lat1) * math.Pi / 180
+	deltaLambda := (lon2 - lon1) * math.Pi / 180
+
+	a := math.Sin(deltaPhi/2)*math.Sin(deltaPhi/2) +
+		math.Cos(phi1)*math.Cos(phi2)*
+			math.Sin(deltaLambda/2)*math.Sin(deltaLambda/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+
+	return R * c
 }
 
 func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
@@ -63,6 +83,15 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 		bearingStr = c.Query("bearing")
 	}
 	battStr := c.Query("batt")
+	altStr := c.Query("altitude")
+	if altStr == "" {
+		altStr = c.Query("alt")
+	}
+	accStr := c.Query("accuracy")
+	if accStr == "" {
+		accStr = c.Query("acc")
+	}
+	odoStr := c.Query("odometer")
 
 	// If missing query params, try Form parameters (POST urlencoded/form-data)
 	if id == "" {
@@ -89,21 +118,66 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 	if battStr == "" {
 		battStr = c.FormValue("batt")
 	}
+	if altStr == "" {
+		altStr = c.FormValue("altitude")
+		if altStr == "" {
+			altStr = c.FormValue("alt")
+		}
+	}
+	if accStr == "" {
+		accStr = c.FormValue("accuracy")
+		if accStr == "" {
+			accStr = c.FormValue("acc")
+		}
+	}
+	if odoStr == "" {
+		odoStr = c.FormValue("odometer")
+	}
 
 	var lat float64
 	var lon float64
 	var speed float64
 	var bearing float64
+	var altitude float64
+	var accuracy float64
+	var odometer float64
+	var hasOdometer bool
 	var hasValidCoords bool
 	var hasID bool
+
+	attributes := map[string]interface{}{}
 
 	if id != "" && latStr != "" && lonStr != "" {
 		hasID = true
 		lat, _ = strconv.ParseFloat(latStr, 64)
 		lon, _ = strconv.ParseFloat(lonStr, 64)
-		speed, _ = strconv.ParseFloat(speedStr, 64)
-		bearing, _ = strconv.ParseFloat(bearingStr, 64)
+		
+		s, _ := strconv.ParseFloat(speedStr, 64)
+		if s < 0 {
+			speed = 0.0
+		} else {
+			speed = s / 1.852 // Convert km/h to knots
+		}
+
+		b, _ := strconv.ParseFloat(bearingStr, 64)
+		if b < 0 {
+			bearing = 0.0
+		} else {
+			bearing = b
+		}
+
 		hasValidCoords = true
+
+		if altStr != "" {
+			altitude, _ = strconv.ParseFloat(altStr, 64)
+		}
+		if accStr != "" {
+			accuracy, _ = strconv.ParseFloat(accStr, 64)
+		}
+		if odoStr != "" {
+			odometer, _ = strconv.ParseFloat(odoStr, 64)
+			hasOdometer = true
+		}
 	}
 
 	// Try nested JSON format if we still lack device_id or coords
@@ -130,22 +204,34 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 					timestampStr = jsonPayload.Location.Timestamp
 				}
 
+				var rawSpeed float64
 				if jsonPayload.Location.Speed != nil {
-					speed = *jsonPayload.Location.Speed
+					rawSpeed = *jsonPayload.Location.Speed
 				} else if jsonPayload.Location.Coords != nil && jsonPayload.Location.Coords.Speed != nil {
-					speed = *jsonPayload.Location.Coords.Speed
+					rawSpeed = *jsonPayload.Location.Coords.Speed
+				}
+				if rawSpeed < 0 {
+					speed = 0.0
+				} else {
+					speed = rawSpeed * 1.94384 // Convert m/s to knots
 				}
 
+				var rawBearing float64
 				if jsonPayload.Location.Bearing != nil {
-					bearing = *jsonPayload.Location.Bearing
+					rawBearing = *jsonPayload.Location.Bearing
 				} else if jsonPayload.Location.Heading != nil {
-					bearing = *jsonPayload.Location.Heading
+					rawBearing = *jsonPayload.Location.Heading
 				} else if jsonPayload.Location.Coords != nil {
 					if jsonPayload.Location.Coords.Bearing != nil {
-						bearing = *jsonPayload.Location.Coords.Bearing
+						rawBearing = *jsonPayload.Location.Coords.Bearing
 					} else if jsonPayload.Location.Coords.Heading != nil {
-						bearing = *jsonPayload.Location.Coords.Heading
+						rawBearing = *jsonPayload.Location.Coords.Heading
 					}
+				}
+				if rawBearing < 0 {
+					bearing = 0.0
+				} else {
+					bearing = rawBearing
 				}
 
 				if jsonPayload.Location.Battery != nil && jsonPayload.Location.Battery.Level != nil {
@@ -154,6 +240,24 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 						val = val * 100
 					}
 					battStr = strconv.FormatFloat(val, 'f', -1, 64)
+				}
+
+				if jsonPayload.Location.Odometer != nil {
+					odometer = *jsonPayload.Location.Odometer
+					hasOdometer = true
+				}
+				if jsonPayload.Location.Altitude != nil {
+					altitude = *jsonPayload.Location.Altitude
+				} else if jsonPayload.Location.Coords != nil && jsonPayload.Location.Coords.Altitude != nil {
+					altitude = *jsonPayload.Location.Coords.Altitude
+				}
+				if jsonPayload.Location.Accuracy != nil {
+					accuracy = *jsonPayload.Location.Accuracy
+				} else if jsonPayload.Location.Coords != nil && jsonPayload.Location.Coords.Accuracy != nil {
+					accuracy = *jsonPayload.Location.Coords.Accuracy
+				}
+				if jsonPayload.Location.Activity != nil && jsonPayload.Location.Activity.Type != "" {
+					attributes["activity"] = jsonPayload.Location.Activity.Type
 				}
 			}
 		}
@@ -203,14 +307,25 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 
 			if hasValidCoords {
 				if sVal, ok := flatPayload["speed"]; ok {
-					speed, _ = strconv.ParseFloat(fmt.Sprintf("%v", sVal), 64)
+					s, _ := strconv.ParseFloat(fmt.Sprintf("%v", sVal), 64)
+					if s < 0 {
+						speed = 0.0
+					} else {
+						speed = s * 1.94384 // Convert m/s to knots
+					}
 				}
+				var rawBearing float64
 				if hVal, ok := flatPayload["hdg"]; ok {
-					bearing, _ = strconv.ParseFloat(fmt.Sprintf("%v", hVal), 64)
+					rawBearing, _ = strconv.ParseFloat(fmt.Sprintf("%v", hVal), 64)
 				} else if hVal, ok := flatPayload["bearing"]; ok {
-					bearing, _ = strconv.ParseFloat(fmt.Sprintf("%v", hVal), 64)
+					rawBearing, _ = strconv.ParseFloat(fmt.Sprintf("%v", hVal), 64)
 				} else if hVal, ok := flatPayload["heading"]; ok {
-					bearing, _ = strconv.ParseFloat(fmt.Sprintf("%v", hVal), 64)
+					rawBearing, _ = strconv.ParseFloat(fmt.Sprintf("%v", hVal), 64)
+				}
+				if rawBearing < 0 {
+					bearing = 0.0
+				} else {
+					bearing = rawBearing
 				}
 				if bVal, ok := flatPayload["batt"]; ok {
 					battStr = fmt.Sprintf("%v", bVal)
@@ -219,6 +334,20 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 				}
 				if tVal, ok := flatPayload["timestamp"]; ok {
 					timestampStr = fmt.Sprintf("%v", tVal)
+				}
+				if oVal, ok := flatPayload["odometer"]; ok {
+					odometer, _ = strconv.ParseFloat(fmt.Sprintf("%v", oVal), 64)
+					hasOdometer = true
+				}
+				if aVal, ok := flatPayload["altitude"]; ok {
+					altitude, _ = strconv.ParseFloat(fmt.Sprintf("%v", aVal), 64)
+				} else if aVal, ok := flatPayload["alt"]; ok {
+					altitude, _ = strconv.ParseFloat(fmt.Sprintf("%v", aVal), 64)
+				}
+				if aVal, ok := flatPayload["accuracy"]; ok {
+					accuracy, _ = strconv.ParseFloat(fmt.Sprintf("%v", aVal), 64)
+				} else if aVal, ok := flatPayload["acc"]; ok {
+					accuracy, _ = strconv.ParseFloat(fmt.Sprintf("%v", aVal), 64)
 				}
 			}
 		}
@@ -266,27 +395,68 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 	err := h.DB.QueryRow(context.Background(), "SELECT id FROM tc_devices WHERE uniqueid = $1", id).Scan(&deviceDBID)
 	if err != nil {
 		log.Printf("Device %s not found in tc_devices, registering default", id)
-		err = h.DB.QueryRow(context.Background(), 
-			"INSERT INTO tc_devices (name, uniqueid, attributes) VALUES ($1, $1, '{}') RETURNING id", 
+		err = h.DB.QueryRow(context.Background(),
+			"INSERT INTO tc_devices (name, uniqueid, attributes) VALUES ($1, $1, '{}') RETURNING id",
 			id).Scan(&deviceDBID)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 		}
 	}
 
-	attributes := map[string]interface{}{}
 	if battStr != "" {
 		batt, _ := strconv.ParseFloat(battStr, 64)
 		attributes["batteryLevel"] = batt
 	}
+
+	// Calculate segment distance and totalDistance
+	var distanceVal float64
+	var totalDistanceVal float64
+
+	var prevLat, prevLon float64
+	var prevAttrsBytes []byte
+	var hasPrev bool
+
+	err = h.DB.QueryRow(context.Background(),
+		`SELECT latitude, longitude, COALESCE(attributes, '{}')
+		 FROM tc_positions
+		 WHERE id = (SELECT positionid FROM tc_devices WHERE id = $1)`, deviceDBID).Scan(&prevLat, &prevLon, &prevAttrsBytes)
+	if err == nil {
+		hasPrev = true
+	}
+
+	if hasPrev {
+		distanceVal = distance(prevLat, prevLon, lat, lon)
+
+		var prevAttrs map[string]interface{}
+		if json.Unmarshal(prevAttrsBytes, &prevAttrs) == nil {
+			if prevTotalDist, ok := prevAttrs["totalDistance"].(float64); ok {
+				totalDistanceVal = prevTotalDist + distanceVal
+			} else {
+				totalDistanceVal = distanceVal
+			}
+		} else {
+			totalDistanceVal = distanceVal
+		}
+	} else {
+		distanceVal = 0.0
+		totalDistanceVal = 0.0
+	}
+
+	if hasOdometer {
+		totalDistanceVal = odometer
+	}
+
+	attributes["distance"] = distanceVal
+	attributes["totalDistance"] = totalDistanceVal
+
 	attributesBytes, _ := json.Marshal(attributes)
 
 	var positionID int64
 	insertQuery := `
-		INSERT INTO tc_positions (deviceid, protocol, servertime, devicetime, latitude, longitude, speed, course, altitude, attributes)
-		VALUES ($1, 'osmand', NOW(), $2, $3, $4, $5, $6, 0.0, $7)
+		INSERT INTO tc_positions (deviceid, protocol, servertime, devicetime, fixtime, valid, latitude, longitude, speed, course, altitude, address, accuracy, network, attributes)
+		VALUES ($1, 'osmand', NOW(), $2, $2, true, $3, $4, $5, $6, $7, '', $8, '', $9)
 		RETURNING id`
-	err = h.DB.QueryRow(context.Background(), insertQuery, deviceDBID, deviceTime, lat, lon, speed, bearing, string(attributesBytes)).Scan(&positionID)
+	err = h.DB.QueryRow(context.Background(), insertQuery, deviceDBID, deviceTime, lat, lon, speed, bearing, altitude, accuracy, string(attributesBytes)).Scan(&positionID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
@@ -312,13 +482,14 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 				"protocol":   "osmand",
 				"serverTime": time.Now().Format(time.RFC3339),
 				"deviceTime": deviceTime.Format(time.RFC3339),
-				"fixTime":    time.Now().Format(time.RFC3339),
+				"fixTime":    deviceTime.Format(time.RFC3339),
 				"valid":      true,
 				"latitude":   lat,
 				"longitude":  lon,
 				"speed":      speed,
 				"course":     bearing,
-				"altitude":   0.0,
+				"altitude":   altitude,
+				"accuracy":   accuracy,
 				"attributes": attributes,
 			},
 		},
@@ -328,6 +499,6 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 		h.Hub.Broadcast <- wsBytes
 	}
 
-	log.Printf("GPS Ping saved & broadcasted. PositionID=%d for Device=%s (%f, %f)", positionID, id, lat, lon)
+	log.Printf("GPS Ping saved & broadcasted. PositionID=%d for Device=%s (%f, %f) Dist=%.1fm Total=%.1fm", positionID, id, lat, lon, distanceVal, totalDistanceVal)
 	return c.SendString("OK")
 }
