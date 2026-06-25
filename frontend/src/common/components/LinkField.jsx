@@ -79,9 +79,12 @@ const LinkField = ({
     [linked, baseId, keyBase, keyLink],
   );
 
+  const safeId = `link-field-${(label || '').replace(/\s+/g, '-').toLowerCase()}`;
+
   return (
     <>
       <Autocomplete
+        id={safeId}
         size="small"
         loading={active && !items}
         isOptionEqualToValue={(i1, i2) => i1.id === i2.id}

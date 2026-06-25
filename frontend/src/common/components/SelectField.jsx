@@ -70,8 +70,11 @@ const SelectField = ({
       ? (value || []).map((it) => findOption(it)).filter((it) => it != null)
       : findOption(value) || null;
 
+    const safeId = `select-field-${(label || '').replace(/\s+/g, '-').toLowerCase()}`;
+
     return (
       <Autocomplete
+        id={safeId}
         size={singleLine ? 'small' : 'medium'}
         multiple={multiple}
         className={multiple && singleLine ? classes.autocompleteMultiple : undefined}
