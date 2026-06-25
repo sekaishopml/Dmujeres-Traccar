@@ -40,11 +40,21 @@ const { reducer, actions } = createSlice({
       action.payload.forEach((position) => {
         const current = state.positions[position.deviceId];
         if (!current || new Date(position.deviceTime) >= new Date(current.deviceTime)) {
+          const currentTime = current ? new Date(current.deviceTime).getTime() : 0;
+          const newTime = new Date(position.deviceTime).getTime();
+          const gapMinutes = (newTime - currentTime) / 60000;
+          const ageMinutes = (Date.now() - newTime) / 60000;
+
+          if (gapMinutes > 30 && state.history[position.deviceId]?.length > 0) {
+            state.history[position.deviceId] = [];
+          }
+
           state.positions[position.deviceId] = position;
+
           if (liveRoutes !== 'none') {
             const route = state.history[position.deviceId] || [];
             const last = route.at(-1);
-            if (!last || (last[0] !== position.longitude && last[1] !== position.latitude)) {
+            if (ageMinutes < 60 && (!last || (last[0] !== position.longitude && last[1] !== position.latitude))) {
               state.history[position.deviceId] = [
                 ...route.slice(1 - liveRoutesLimit),
                 [position.longitude, position.latitude],
