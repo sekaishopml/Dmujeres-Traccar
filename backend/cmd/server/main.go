@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"dmujeres-traccar/internal/cache"
 	"dmujeres-traccar/internal/config"
 	"dmujeres-traccar/internal/db"
 	"dmujeres-traccar/internal/handler"
@@ -23,6 +24,14 @@ func main() {
 	}
 	defer databasePool.Close()
 
+	// Connect to Redis
+	redisClient, err := cache.ConnectRedis(cfg.RedisURL)
+	if err != nil {
+		log.Printf("Warning: Failed to connect to Redis cache: %v", err)
+	} else {
+		defer redisClient.Client.Close()
+	}
+
 	// Initialize WebSocket Hub
 	hub := ws.NewHub()
 	go hub.Run()
@@ -37,6 +46,7 @@ func main() {
 	sessionHandler := handler.NewSessionHandler(databasePool)
 	deviceHandler := handler.NewDeviceHandler(databasePool)
 	positionHandler := handler.NewPositionHandler(databasePool)
+	reportHandler := handler.NewReportHandler(databasePool)
 
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -70,6 +80,9 @@ func main() {
 	api.Delete("/devices/:id", deviceHandler.DeleteDevice)
 
 	api.Get("/positions", positionHandler.GetPositions)
+
+	// Reports
+	api.Get("/reports/route", reportHandler.GetRouteReport)
 
 	fmt.Printf("Starting Dmujeres-Traccar Go backend on port %s...\n", cfg.Port)
 	log.Fatal(app.Listen(":" + cfg.Port))
