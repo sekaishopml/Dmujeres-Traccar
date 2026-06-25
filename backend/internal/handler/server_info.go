@@ -18,6 +18,8 @@ func GetServerInfo(c *fiber.Ctx) error {
                 "version":          "6.2",
                 "forceSettings":    false,
                 "coordinateFormat": "",
-                "attributes":       fiber.Map{},
+                "attributes": fiber.Map{
+                        "googleKey": "AIzaSyD2hKDNTxveRoCj08_HFR8Ciz4RWEXwBqA",
+                },
         })
 }
