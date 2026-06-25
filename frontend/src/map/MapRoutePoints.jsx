@@ -36,6 +36,8 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
         'text-color': ['get', 'color'],
         'text-halo-color': '#ffffff',
         'text-halo-width': 1.5,
+        'text-opacity': 1,
+        'text-opacity-transition': { duration: 150 },
       },
       layout: {
         'text-font': findFonts(map),
@@ -100,70 +102,88 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
     const maxSpeed = positions.reduce((a, p) => Math.max(a, p.speed), -Infinity);
     const minSpeed = positions.reduce((a, p) => Math.min(a, p.speed), Infinity);
 
+    let isFirstRun = true;
+    let fadeTimeout = null;
+
     const updatePoints = () => {
-      if (!map.getSource(id)) return;
+      if (!map.getSource(id) || !map.getLayer(id)) return;
       
-      const zoom = map.getZoom();
-      const bounds = map.getBounds();
-      const west = bounds.getWest();
-      const east = bounds.getEast();
-      const south = bounds.getSouth();
-      const north = bounds.getNorth();
-      
-      const inBounds = (lon, lat) => {
-        if (lat < south || lat > north) return false;
-        if (west <= east) {
-          return lon >= west && lon <= east;
-        }
-        return lon >= west || lon <= east;
-      };
-
-      const minPixels = 15;
-      const degreeThreshold = (360 / (256 * Math.pow(2, zoom))) * minPixels;
-      
-      const filtered = [];
-      let lastPos = null;
-      for (let i = 0; i < positions.length; i++) {
-        const p = positions[i];
+      const computeAndSetData = () => {
+        const zoom = map.getZoom();
+        const bounds = map.getBounds();
+        const west = bounds.getWest();
+        const east = bounds.getEast();
+        const south = bounds.getSouth();
+        const north = bounds.getNorth();
         
-        // 1. Keep start/end points, or check if point is in bounds
-        const isStartOrEnd = i === 0 || i === positions.length - 1;
-        if (!isStartOrEnd && !inBounds(p.longitude, p.latitude)) {
-          continue;
-        }
+        const inBounds = (lon, lat) => {
+          if (lat < south || lat > north) return false;
+          if (west <= east) {
+            return lon >= west && lon <= east;
+          }
+          return lon >= west || lon <= east;
+        };
 
-        // 2. Distance-based decimation
-        if (filtered.length === 0 || isStartOrEnd) {
-          filtered.push({ p, index: i });
-          lastPos = p;
-        } else {
-          const dx = p.longitude - lastPos.longitude;
-          const dy = p.latitude - lastPos.latitude;
-          const distSq = dx * dx + dy * dy;
-          if (distSq >= degreeThreshold * degreeThreshold) {
+        const minPixels = 15;
+        const degreeThreshold = (360 / (256 * Math.pow(2, zoom))) * minPixels;
+        
+        const filtered = [];
+        let lastPos = null;
+        for (let i = 0; i < positions.length; i++) {
+          const p = positions[i];
+          
+          const isStartOrEnd = i === 0 || i === positions.length - 1;
+          if (!isStartOrEnd && !inBounds(p.longitude, p.latitude)) {
+            continue;
+          }
+
+          if (filtered.length === 0 || isStartOrEnd) {
             filtered.push({ p, index: i });
             lastPos = p;
+          } else {
+            const dx = p.longitude - lastPos.longitude;
+            const dy = p.latitude - lastPos.latitude;
+            const distSq = dx * dx + dy * dy;
+            if (distSq >= degreeThreshold * degreeThreshold) {
+              filtered.push({ p, index: i });
+              lastPos = p;
+            }
           }
         }
-      }
 
-      map.getSource(id).setData({
-        type: 'FeatureCollection',
-        features: filtered.map(({ p, index }) => ({
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: toMapCoordinates(p.longitude, p.latitude),
-          },
-          properties: {
-            index,
-            id: p.id,
-            rotation: p.course,
-            color: getSpeedColor(p.speed, minSpeed, maxSpeed),
-            fixTime: formatTime(p.fixTime, 'seconds'),
-          },
-        })),
-      });
+        map.getSource(id).setData({
+          type: 'FeatureCollection',
+          features: filtered.map(({ p, index }) => ({
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: toMapCoordinates(p.longitude, p.latitude),
+            },
+            properties: {
+              index,
+              id: p.id,
+              rotation: p.course,
+              color: getSpeedColor(p.speed, minSpeed, maxSpeed),
+              fixTime: formatTime(p.fixTime, 'seconds'),
+            },
+          })),
+        });
+      };
+
+      if (isFirstRun) {
+        computeAndSetData();
+        isFirstRun = false;
+      } else {
+        if (fadeTimeout) {
+          clearTimeout(fadeTimeout);
+        }
+        map.setPaintProperty(id, 'text-opacity', 0);
+        fadeTimeout = setTimeout(() => {
+          if (!map.getSource(id) || !map.getLayer(id)) return;
+          computeAndSetData();
+          map.setPaintProperty(id, 'text-opacity', 1);
+        }, 150);
+      }
     };
 
     updatePoints();
@@ -172,6 +192,9 @@ const MapRoutePoints = ({ positions, onClick, showSpeedControl }) => {
     map.on('moveend', updatePoints);
 
     return () => {
+      if (fadeTimeout) {
+        clearTimeout(fadeTimeout);
+      }
       map.off('zoomend', updatePoints);
       map.off('moveend', updatePoints);
     };
