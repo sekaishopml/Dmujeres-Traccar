@@ -38,18 +38,21 @@ const { reducer, actions } = createSlice({
         state.server.attributes['web.liveRouteLength'] ||
         10;
       action.payload.forEach((position) => {
-        state.positions[position.deviceId] = position;
-        if (liveRoutes !== 'none') {
-          const route = state.history[position.deviceId] || [];
-          const last = route.at(-1);
-          if (!last || (last[0] !== position.longitude && last[1] !== position.latitude)) {
-            state.history[position.deviceId] = [
-              ...route.slice(1 - liveRoutesLimit),
-              [position.longitude, position.latitude],
-            ];
+        const current = state.positions[position.deviceId];
+        if (!current || new Date(position.deviceTime) >= new Date(current.deviceTime)) {
+          state.positions[position.deviceId] = position;
+          if (liveRoutes !== 'none') {
+            const route = state.history[position.deviceId] || [];
+            const last = route.at(-1);
+            if (!last || (last[0] !== position.longitude && last[1] !== position.latitude)) {
+              state.history[position.deviceId] = [
+                ...route.slice(1 - liveRoutesLimit),
+                [position.longitude, position.latitude],
+              ];
+            }
+          } else {
+            state.history = {};
           }
-        } else {
-          state.history = {};
         }
       });
     },

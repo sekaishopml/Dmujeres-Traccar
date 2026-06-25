@@ -292,10 +292,13 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 	}
 
 	updateQuery := `
-		UPDATE tc_devices
+		UPDATE tc_devices d
 		SET positionid = $1, lastupdate = NOW()
-		WHERE id = $2`
-	_, err = h.DB.Exec(context.Background(), updateQuery, positionID, deviceDBID)
+		WHERE d.id = $2 AND (
+			d.positionid IS NULL OR 
+			$3 >= (SELECT devicetime FROM tc_positions WHERE id = d.positionid)
+		)`
+	_, err = h.DB.Exec(context.Background(), updateQuery, positionID, deviceDBID, deviceTime)
 	if err != nil {
 		log.Printf("Failed to update device lastupdate: %v", err)
 	}
