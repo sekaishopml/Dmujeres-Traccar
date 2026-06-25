@@ -59,6 +59,16 @@ func main() {
 	app.Get("/ingest", ingestHandler.HandleOsmAnd)
 	app.Get("/", ingestHandler.HandleOsmAnd)
 
+	// Development tiles fallback (302 redirect)
+	app.Get("/google-tiles", func(c *fiber.Ctx) error {
+		lyrs := c.Query("lyrs")
+		x := c.Query("x")
+		y := c.Query("y")
+		z := c.Query("z")
+		url := fmt.Sprintf("https://mt1.google.com/vt/lyrs=%s&hl=es&x=%s&y=%s&z=%s&s=Ga", lyrs, x, y, z)
+		return c.Redirect(url, 302)
+	})
+
 	// WebSocket real-time connection endpoint
 	app.Get("/api/socket", websocket.New(func(c *websocket.Conn) {
 		client := &ws.Client{Hub: hub, Conn: c, Send: make(chan []byte, 256)}
