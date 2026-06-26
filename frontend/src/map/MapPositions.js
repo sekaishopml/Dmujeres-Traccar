@@ -18,6 +18,7 @@ const MapPositions = ({
   titleField,
   disabled,
   directionIcon = 'direction',
+  iconColor,
 }) => {
   const id = useId();
   const clusters = `${id}-clusters`;
@@ -57,12 +58,12 @@ const MapPositions = ({
         name: device.name,
         fixTime: formatTime(position.fixTime, 'seconds'),
         category: mapIconKey(device.category),
-        color: showStatus ? position.attributes.color || getStatusColor(device.status) : 'neutral',
+        color: iconColor || (showStatus ? position.attributes.color || getStatusColor(device.status) : 'neutral'),
         rotation: position.course,
         direction: showDirection,
       };
     },
-    [directionType, showStatus],
+    [directionType, showStatus, iconColor],
   );
 
   const onMouseEnter = () => (map.getCanvas().style.cursor = 'pointer');

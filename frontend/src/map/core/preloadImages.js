@@ -83,6 +83,8 @@ export default async () => {
   const context = blackCanvas.getContext('2d');
   mapImages['direction-replay'] = context.getImageData(0, 0, blackCanvas.width, blackCanvas.height);
   
+  const blackBackground = canvasTintImage(background, '#1a1a1a');
+
   await Promise.all(
     Object.keys(mapIcons).map(async (category) => {
       const results = [];
@@ -97,6 +99,15 @@ export default async () => {
           }),
         );
       });
+      results.push(
+        loadImage(mapIcons[category]).then((icon) => {
+          mapImages[`${category}-replay`] = prepareIcon(
+            blackBackground,
+            icon,
+            '#ffffff',
+          );
+        }),
+      );
       await Promise.all(results);
     }),
   );
