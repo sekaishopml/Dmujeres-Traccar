@@ -27,6 +27,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PendingIcon from '@mui/icons-material/Pending';
 
+import dayjs from 'dayjs';
 import { useTranslation } from './LocalizationProvider';
 import RemoveDialog from './RemoveDialog';
 import PositionValue from './PositionValue';
@@ -36,6 +37,7 @@ import { devicesActions } from '../../store';
 import { useCatch, useCatchCallback } from '../../reactHelper';
 import { useAttributePreference } from '../util/preferences';
 import fetchOrThrow from '../util/fetchOrThrow';
+import { getStatusColor } from '../util/formatter';
 
 const useStyles = makeStyles()((theme, { desktopPadding }) => ({
   card: {
@@ -97,6 +99,22 @@ const useStyles = makeStyles()((theme, { desktopPadding }) => ({
     },
     transform: 'translateX(-50%)',
   },
+  success: {
+    color: theme.palette.success.main,
+    fontWeight: 'bold',
+  },
+  warning: {
+    color: theme.palette.warning.main,
+    fontWeight: 'bold',
+  },
+  error: {
+    color: theme.palette.error.main,
+    fontWeight: 'bold',
+  },
+  neutral: {
+    color: theme.palette.neutral.main,
+    fontWeight: 'bold',
+  },
 }));
 
 const StatusRow = ({ name, content }) => {
@@ -139,6 +157,32 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
 
   const navigationAppLink = useAttributePreference('navigationAppLink');
   const navigationAppTitle = useAttributePreference('navigationAppTitle');
+
+  const getStatusText = () => {
+    if (!device) return '';
+    if (device.status === 'unknown') {
+      if (device.lastUpdate) {
+        const lastUpdate = dayjs(device.lastUpdate);
+        const isToday = lastUpdate.isSame(dayjs(), 'day');
+        const d = lastUpdate.toDate();
+        const timeStr = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        if (isToday) {
+          return t('deviceStatusUnknownToday').replace('{time}', timeStr);
+        } else {
+          const dateStr = d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
+          return t('deviceStatusUnknownOther').replace('{time}', `${dateStr} ${timeStr}`);
+        }
+      }
+      return t('deviceStatusUnknown');
+    }
+    if (device.status === 'online') {
+      return t('deviceStatusOnline');
+    }
+    if (device.status === 'offline') {
+      return t('deviceStatusOffline');
+    }
+    return t(`deviceStatus${device.status.charAt(0).toUpperCase() + device.status.slice(1)}`) || device.status;
+  };
 
   const [anchorEl, setAnchorEl] = useState(null);
 
@@ -199,6 +243,16 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
                 <CardContent className={classes.content}>
                   <Table size="small" className={classes.table}>
                     <TableBody>
+                      {device && (
+                        <StatusRow
+                          name={t('deviceStatus')}
+                          content={
+                            <span className={classes[getStatusColor(device.status)]}>
+                              {getStatusText()}
+                            </span>
+                          }
+                        />
+                      )}
                       {positionItems
                         .split(',')
                         .filter(
