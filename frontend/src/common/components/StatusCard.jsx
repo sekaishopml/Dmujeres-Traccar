@@ -257,7 +257,7 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
                         <StatusRow
                           name={t('deviceStatus')}
                           content={
-                            <span className={classes[disableActions ? 'success' : getStatusColor(device.status)]}>
+                            <span className={classes[disableActions ? 'success' : (device.status === 'unknown' ? 'warning' : getStatusColor(device.status))]}>
                               {getStatusText()}
                             </span>
                           }
