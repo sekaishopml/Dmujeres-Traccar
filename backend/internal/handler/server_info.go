@@ -39,6 +39,7 @@ func (h *ServerHandler) GetServerInfo(c *fiber.Ctx) error {
 		"attributes": fiber.Map{
 			"googleKey": "AIzaSyD2hKDNTxveRoCj08_HFR8Ciz4RWEXwBqA",
 			"speedUnit": "kmh",
+			"timezone":  "America/Guayaquil",
 		},
 	})
 }

@@ -15,6 +15,7 @@ SyslogIdentifier=dmujeres-traccar
 Environment="DATABASE_URL=postgres://traccar:traccar_pass_556@127.0.0.1:5432/traccar?sslmode=disable"
 Environment="PORT=8082"
 Environment="REDIS_URL=localhost:6379"
+Environment="TZ=America/Guayaquil"
 
 [Install]
 WantedBy=multi-user.target
