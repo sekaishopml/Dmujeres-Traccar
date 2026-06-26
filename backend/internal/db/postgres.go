@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -13,6 +14,12 @@ func ConnectPostgres(databaseURL string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse database url: %w", err)
 	}
+
+	// Optimize connection pooling for production loads
+	config.MaxConns = 25
+	config.MinConns = 5
+	config.MaxConnIdleTime = 15 * time.Minute
+	config.MaxConnLifetime = 1 * time.Hour
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {

@@ -49,3 +49,9 @@ func (h *Hub) Run() {
 		}
 	}
 }
+
+func (h *Hub) ClientCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.Clients)
+}

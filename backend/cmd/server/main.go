@@ -48,7 +48,7 @@ func main() {
         positionHandler := handler.NewPositionHandler(databasePool)
         reportHandler := handler.NewReportHandler(databasePool)
         userHandler := handler.NewUserHandler(databasePool)
-        serverHandler := handler.NewServerHandler(databasePool)
+        serverHandler := handler.NewServerHandler(databasePool, redisClient)
 
         app.Get("/health", func(c *fiber.Ctx) error {
                 return c.JSON(fiber.Map{
@@ -75,6 +75,12 @@ func main() {
 
         // WebSocket real-time connection endpoint
         app.Get("/api/socket", websocket.New(func(c *websocket.Conn) {
+                if hub.ClientCount() >= 1000 {
+                        log.Printf("WS upgrade rejected: max connection limit (1000) reached")
+                        c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "Max connection limit reached"))
+                        c.Close()
+                        return
+                }
                 client := &ws.Client{Hub: hub, Conn: c, Send: make(chan []byte, 256)}
                 hub.Register <- client
                 go client.WritePump()

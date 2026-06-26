@@ -9,16 +9,18 @@ import (
 	"strconv"
 	"time"
 
+	"dmujeres-traccar/internal/cache"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ServerHandler struct {
-	DB *pgxpool.Pool
+	DB    *pgxpool.Pool
+	Redis *cache.RedisClient
 }
 
-func NewServerHandler(db *pgxpool.Pool) *ServerHandler {
-	return &ServerHandler{DB: db}
+func NewServerHandler(db *pgxpool.Pool, rdb *cache.RedisClient) *ServerHandler {
+	return &ServerHandler{DB: db, Redis: rdb}
 }
 
 func (h *ServerHandler) GetServerInfo(c *fiber.Ctx) error {
@@ -54,6 +56,35 @@ func (h *ServerHandler) Geocode(c *fiber.Ctx) error {
 	latVal, _ := strconv.ParseFloat(latStr, 64)
 	lonVal, _ := strconv.ParseFloat(lonStr, 64)
 
+	redisKey := fmt.Sprintf("geocode:%.5f:%.5f", latVal, lonVal)
+	ctx := context.Background()
+
+	// Layer 1: Check Redis cache
+	if h.Redis != nil {
+		if cachedAddr, err := h.Redis.Client.Get(ctx, redisKey).Result(); err == nil && cachedAddr != "" {
+			return c.SendString(cachedAddr)
+		}
+	}
+
+	// Layer 2: Check database (tc_positions) for coordinates within ~5 meters tolerance
+	var dbAddress string
+	err := h.DB.QueryRow(ctx,
+		`SELECT address FROM tc_positions 
+		 WHERE latitude BETWEEN $1 - 0.00005 AND $1 + 0.00005 
+		   AND longitude BETWEEN $2 - 0.00005 AND $2 + 0.00005 
+		   AND address IS NOT NULL AND address <> '' 
+		 ORDER BY (ABS(latitude - $1) + ABS(longitude - $2)) ASC 
+		 LIMIT 1`, latVal, lonVal).Scan(&dbAddress)
+
+	if err == nil && dbAddress != "" {
+		// Cache in Redis for next time
+		if h.Redis != nil {
+			_ = h.Redis.Client.Set(ctx, redisKey, dbAddress, 30*24*time.Hour).Err()
+		}
+		return c.SendString(dbAddress)
+	}
+
+	// Layer 3: Call external Google Maps API
 	// User's Google Maps API Key
 	googleKey := "AIzaSyD2hKDNTxveRoCj08_HFR8Ciz4RWEXwBqA"
 	url := fmt.Sprintf("https://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f&key=%s&hl=es", latVal, lonVal, googleKey)
@@ -81,6 +112,11 @@ func (h *ServerHandler) Geocode(c *fiber.Ctx) error {
 	if len(result.Results) > 0 {
 		address := result.Results[0].FormattedAddress
 
+		// Cache in Redis
+		if h.Redis != nil {
+			_ = h.Redis.Client.Set(ctx, redisKey, address, 30*24*time.Hour).Err()
+		}
+
 		// Proactively cache the address in the database for positions with these coordinates
 		go func(addr string, lt, ln float64) {
 			_, err := h.DB.Exec(context.Background(),
@@ -89,7 +125,8 @@ func (h *ServerHandler) Geocode(c *fiber.Ctx) error {
 				 WHERE latitude = $2 AND longitude = $3 AND (address IS NULL OR address = '')`,
 				addr, lt, ln)
 			if err != nil {
-				log.Printf("Failed to cache address in database: %v", err)
+				// Don't treat this as critical (e.g. partition could be compressed/locked)
+				log.Printf("DB geocode cache update: %v (expected on compressed old chunks)", err)
 			}
 		}(address, latVal, lonVal)
 
