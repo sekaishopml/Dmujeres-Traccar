@@ -170,7 +170,8 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
       return t('deviceStatusUnknown');
     }
     if (device.status === 'unknown') {
-      if (device.lastUpdate) {
+      const isZeroDate = !device.lastUpdate || device.lastUpdate.startsWith('0001-01-01') || device.lastUpdate.startsWith('1970-01-01');
+      if (device.lastUpdate && !isZeroDate) {
         const lastUpdate = dayjs(device.lastUpdate);
         const isToday = lastUpdate.isSame(dayjs(), 'day');
         const d = lastUpdate.toDate();

@@ -111,7 +111,8 @@ const DeviceRow = ({ devices, index, style }) => {
 
   const secondaryText = () => {
     let status;
-    if (item.status === 'online' || !item.lastUpdate) {
+    const isZeroDate = !item.lastUpdate || item.lastUpdate.startsWith('0001-01-01') || item.lastUpdate.startsWith('1970-01-01');
+    if (item.status === 'online' || isZeroDate) {
       status = formatStatus(item.status, t);
     } else if (item.status === 'unknown') {
       status = t('deviceStatusUnknown');
