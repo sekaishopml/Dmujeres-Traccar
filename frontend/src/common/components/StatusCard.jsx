@@ -147,6 +147,10 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
   const user = useSelector((state) => state.session.user);
   const device = useSelector((state) => state.devices.items[deviceId]);
 
+  const isRecentlyStopped = device && device.status === 'offline' &&
+    position && (position.speed === 0 || !position.speed) &&
+    device.lastUpdate && dayjs().diff(dayjs(device.lastUpdate), 'minute') < 30;
+
   const deviceImage = device?.attributes?.deviceImage;
 
   const positionAttributes = usePositionAttributes(t);
@@ -169,7 +173,7 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
       }
       return t('deviceStatusUnknown');
     }
-    if (device.status === 'unknown') {
+    if (device.status === 'unknown' || isRecentlyStopped) {
       const isZeroDate = !device.lastUpdate || device.lastUpdate.startsWith('0001-01-01') || device.lastUpdate.startsWith('1970-01-01');
       if (device.lastUpdate && !isZeroDate) {
         const lastUpdate = dayjs(device.lastUpdate);
@@ -257,7 +261,7 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
                         <StatusRow
                           name={t('deviceStatus')}
                           content={
-                            <span className={classes[disableActions ? 'success' : (device.status === 'unknown' ? 'warning' : getStatusColor(device.status))]}>
+                            <span className={classes[disableActions ? 'success' : ((device.status === 'unknown' || isRecentlyStopped) ? 'warning' : getStatusColor(device.status))]}>
                               {getStatusText()}
                             </span>
                           }
