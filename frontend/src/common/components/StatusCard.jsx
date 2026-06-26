@@ -150,16 +150,25 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
   const deviceImage = device?.attributes?.deviceImage;
 
   const positionAttributes = usePositionAttributes(t);
-  const positionItems = useAttributePreference(
+  const preferenceItems = useAttributePreference(
     'positionItems',
     'fixTime,address,speed,totalDistance,course',
   );
+  const positionItems = disableActions
+    ? 'fixTime,address,speed,batteryLevel'
+    : preferenceItems;
 
   const navigationAppLink = useAttributePreference('navigationAppLink');
   const navigationAppTitle = useAttributePreference('navigationAppTitle');
 
   const getStatusText = () => {
     if (!device) return '';
+    if (disableActions) {
+      if (position && position.speed > 0) {
+        return t('deviceStatusOnline');
+      }
+      return t('deviceStatusUnknown');
+    }
     if (device.status === 'unknown') {
       if (device.lastUpdate) {
         const lastUpdate = dayjs(device.lastUpdate);
@@ -247,7 +256,7 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
                         <StatusRow
                           name={t('deviceStatus')}
                           content={
-                            <span className={classes[getStatusColor(device.status)]}>
+                            <span className={classes[disableActions ? 'success' : getStatusColor(device.status)]}>
                               {getStatusText()}
                             </span>
                           }
