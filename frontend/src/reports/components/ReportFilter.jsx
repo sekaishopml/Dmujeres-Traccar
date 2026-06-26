@@ -58,9 +58,11 @@ const ReportFilter = ({ children, onShow, onExport, onSchedule, deviceType, load
   const to = searchParams.get('to');
   const [period, setPeriod] = useState('today');
   const [customFrom, setCustomFrom] = useState(() =>
-    dayjs().subtract(1, 'hour').locale('en').format('YYYY-MM-DDTHH:mm'),
+    dayjs().startOf('day').locale('en').format('YYYY-MM-DDTHH:mm'),
   );
-  const [customTo, setCustomTo] = useState(() => dayjs().locale('en').format('YYYY-MM-DDTHH:mm'));
+  const [customTo, setCustomTo] = useState(() =>
+    dayjs().endOf('day').locale('en').format('YYYY-MM-DDTHH:mm'),
+  );
   const [selectedOption, setSelectedOption] = useState('json');
 
   const [description, setDescription] = useState();
@@ -252,7 +254,12 @@ const ReportFilter = ({ children, onShow, onExport, onSchedule, deviceType, load
                 label={t('reportFrom')}
                 type="datetime-local"
                 value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val) {
+                    setCustomFrom(val.split('T')[0] + 'T00:00');
+                  }
+                }}
                 fullWidth
               />
             </div>
@@ -263,7 +270,12 @@ const ReportFilter = ({ children, onShow, onExport, onSchedule, deviceType, load
                 label={t('reportTo')}
                 type="datetime-local"
                 value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val) {
+                    setCustomTo(val.split('T')[0] + 'T23:59');
+                  }
+                }}
                 fullWidth
               />
             </div>
