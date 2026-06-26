@@ -367,7 +367,7 @@ const ReplayPage = () => {
                   >
                     <ListItemText
                       primary={
-                        <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 'bold' }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: '#e5004f' }}>
                           {`Parada ${i + 1}: ${formatDuration(stop.duration)}`}
                         </Typography>
                       }
