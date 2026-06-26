@@ -90,6 +90,37 @@ const useStyles = makeStyles()((theme) => ({
   },
 }));
 
+const StopAddress = ({ latitude, longitude, originalAddress }) => {
+  const [address, setAddress] = useState(originalAddress);
+
+  useEffect(() => {
+    const isCoordinates = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(originalAddress || '');
+    if (!originalAddress || isCoordinates) {
+      const fetchAddress = async () => {
+        try {
+          const query = new URLSearchParams({ latitude, longitude });
+          const response = await fetch(`/api/server/geocode?${query.toString()}`);
+          if (response.ok) {
+            const text = await response.text();
+            setAddress(text);
+          }
+        } catch (e) {
+          // ignore
+        }
+      };
+      fetchAddress();
+    } else {
+      setAddress(originalAddress);
+    }
+  }, [latitude, longitude, originalAddress]);
+
+  const coordsText = `(${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+  if (address && !/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(address)) {
+    return `${address} ${coordsText}`;
+  }
+  return coordsText;
+};
+
 const ReplayPage = () => {
   const t = useTranslation();
   const { classes } = useStyles();
@@ -375,7 +406,7 @@ const ReplayPage = () => {
                       secondary={
                         <span style={{ display: 'block', marginTop: '4px' }}>
                           <Typography variant="caption" display="block" color="textPrimary">
-                            {`Permanencia: ${formatTimeOnly(stop.startTime)} - ${formatTimeOnly(stop.endTime)}`}
+                            {`Detenido: ${formatTimeOnly(stop.startTime)} - ${formatTimeOnly(stop.endTime)}`}
                           </Typography>
                           {stop.startBattery !== null && (
                             <Typography variant="caption" display="block" sx={{ fontWeight: 'bold', color: '#2e7d32', mt: 0.5 }}>
@@ -383,7 +414,7 @@ const ReplayPage = () => {
                             </Typography>
                           )}
                           <Typography variant="caption" display="block" color="textSecondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
-                            {`Dirección: ${stop.address}`}
+                            Dirección: <StopAddress latitude={stop.latitude} longitude={stop.longitude} originalAddress={stop.address} />
                           </Typography>
                         </span>
                       }
