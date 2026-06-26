@@ -89,6 +89,7 @@ func main() {
 
         api.Get("/server", serverHandler.GetServerInfo)
         api.Get("/server/geocode", serverHandler.Geocode)
+        api.Get("/server/timezones", serverHandler.GetTimezones)
 
         api.Get("/devices", deviceHandler.GetDevices)
         api.Post("/devices", deviceHandler.CreateDevice)

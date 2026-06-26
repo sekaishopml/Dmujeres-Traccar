@@ -99,3 +99,44 @@ func (h *ServerHandler) Geocode(c *fiber.Ctx) error {
 	fallback := fmt.Sprintf("%.5f, %.5f", latVal, lonVal)
 	return c.SendString(fallback)
 }
+
+func (h *ServerHandler) GetTimezones(c *fiber.Ctx) error {
+	timezones := []string{
+		"Africa/Abidjan", "Africa/Accra", "Africa/Addis_Ababa", "Africa/Algiers",
+		"Africa/Cairo", "Africa/Casablanca", "Africa/Johannesburg", "Africa/Lagos",
+		"Africa/Nairobi", "Africa/Tunis",
+		"America/Anchorage", "America/Argentina/Buenos_Aires", "America/Bogota",
+		"America/Caracas", "America/Chicago", "America/Costa_Rica", "America/Denver",
+		"America/El_Salvador", "America/Guatemala", "America/Guayaquil",
+		"America/Havana", "America/La_Paz", "America/Lima", "America/Los_Angeles",
+		"America/Managua", "America/Manaus", "America/Mexico_City", "America/Monterrey",
+		"America/Montevideo", "America/New_York", "America/Panama",
+		"America/Phoenix", "America/Santiago", "America/Sao_Paulo",
+		"America/St_Johns", "America/Tegucigalpa", "America/Tijuana", "America/Toronto",
+		"Asia/Almaty", "Asia/Baghdad", "Asia/Baku", "Asia/Bangkok", "Asia/Beirut",
+		"Asia/Calcutta", "Asia/Colombo", "Asia/Damascus", "Asia/Dhaka", "Asia/Dubai",
+		"Asia/Hong_Kong", "Asia/Irkutsk", "Asia/Istanbul", "Asia/Jakarta",
+		"Asia/Jerusalem", "Asia/Kabul", "Asia/Kamchatka", "Asia/Karachi",
+		"Asia/Kathmandu", "Asia/Kolkata", "Asia/Krasnoyarsk", "Asia/Kuala_Lumpur",
+		"Asia/Kuwait", "Asia/Magadan", "Asia/Manila", "Asia/Muscat",
+		"Asia/Novosibirsk", "Asia/Omsk", "Asia/Riyadh", "Asia/Seoul",
+		"Asia/Shanghai", "Asia/Singapore", "Asia/Taipei", "Asia/Tashkent",
+		"Asia/Tehran", "Asia/Tokyo", "Asia/Vladivostok", "Asia/Yakutsk",
+		"Asia/Yekaterinburg", "Asia/Yerevan",
+		"Atlantic/Azores", "Atlantic/Cape_Verde", "Atlantic/Reykjavik",
+		"Australia/Adelaide", "Australia/Brisbane", "Australia/Darwin",
+		"Australia/Hobart", "Australia/Melbourne", "Australia/Perth", "Australia/Sydney",
+		"Europe/Amsterdam", "Europe/Athens", "Europe/Belgrade", "Europe/Berlin",
+		"Europe/Brussels", "Europe/Bucharest", "Europe/Budapest", "Europe/Copenhagen",
+		"Europe/Dublin", "Europe/Helsinki", "Europe/Kiev", "Europe/Lisbon",
+		"Europe/London", "Europe/Madrid", "Europe/Minsk", "Europe/Moscow",
+		"Europe/Oslo", "Europe/Paris", "Europe/Prague", "Europe/Riga",
+		"Europe/Rome", "Europe/Samara", "Europe/Sofia", "Europe/Stockholm",
+		"Europe/Tallinn", "Europe/Vienna", "Europe/Vilnius", "Europe/Warsaw",
+		"Europe/Zurich",
+		"Pacific/Auckland", "Pacific/Fiji", "Pacific/Guam", "Pacific/Honolulu",
+		"Pacific/Midway", "Pacific/Noumea", "Pacific/Pago_Pago", "Pacific/Tongatapu",
+		"UTC",
+	}
+	return c.JSON(timezones)
+}
