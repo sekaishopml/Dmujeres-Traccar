@@ -58,7 +58,16 @@ const MapPositions = ({
         name: device.name,
         fixTime: formatTime(position.fixTime, 'seconds'),
         category: mapIconKey(device.category),
-        color: iconColor || (showStatus ? position.attributes.color || getStatusColor(device.status) : 'neutral'),
+        color: iconColor || (showStatus ? position.attributes.color || (() => {
+          if (device.status === 'unknown') return 'warning';
+          if (device.status === 'offline' && (position.speed === 0 || !position.speed)) {
+            const lastUpdateMs = device.lastUpdate ? new Date(device.lastUpdate).getTime() : 0;
+            if (Date.now() - lastUpdateMs < 30 * 60 * 1000) {
+              return 'warning';
+            }
+          }
+          return getStatusColor(device.status);
+        })() : 'neutral'),
         rotation: position.course,
         direction: showDirection,
       };
