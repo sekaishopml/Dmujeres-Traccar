@@ -114,11 +114,14 @@ const StopAddress = ({ latitude, longitude, originalAddress }) => {
     }
   }, [latitude, longitude, originalAddress]);
 
-  const coordsText = `(${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
-  if (address && !/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(address)) {
-    return `${address} ${coordsText}`;
+  let cleanAddress = address || '';
+  // Remove coordinates in parentheses, e.g., " (-0.18415, -78.49203)"
+  cleanAddress = cleanAddress.replace(/\s*\(\s*-?\d+\.\d+,\s*-?\d+\.\d+\s*\)\s*$/, '');
+
+  if (cleanAddress && !/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(cleanAddress)) {
+    return cleanAddress;
   }
-  return coordsText;
+  return '';
 };
 
 const ReplayPage = () => {
@@ -407,12 +410,12 @@ const ReplayPage = () => {
                         <div style={{ display: 'flex', flexDirection: 'column', marginTop: '4px' }}>
                           <div style={{ fontSize: '11px', color: '#333' }}>
                             {`Detenido: ${formatTimeOnly(stop.startTime)} - ${formatTimeOnly(stop.endTime)}`}
-                            {stop.startBattery !== null && (
-                              <span style={{ fontWeight: 'bold', color: '#2e7d32', marginLeft: '8px' }}>
-                                {`• Batería: ${stop.startBattery}% ➔ ${stop.endBattery}%`}
-                              </span>
-                            )}
                           </div>
+                          {stop.startBattery !== null && (
+                            <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#2e7d32', marginTop: '2px' }}>
+                              {`Batería: ${stop.startBattery}% ➔ ${stop.endBattery}%`}
+                            </div>
+                          )}
                           <div style={{ fontSize: '11px', color: '#666', fontStyle: 'italic', marginTop: '2px' }}>
                             Dirección: <StopAddress latitude={stop.latitude} longitude={stop.longitude} originalAddress={stop.address} />
                           </div>
