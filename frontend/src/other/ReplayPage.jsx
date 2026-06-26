@@ -404,19 +404,19 @@ const ReplayPage = () => {
                         </Typography>
                       }
                       secondary={
-                        <span style={{ display: 'block', marginTop: '4px' }}>
-                          <Typography variant="caption" display="block" color="textPrimary">
+                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '4px' }}>
+                          <div style={{ fontSize: '11px', color: '#333' }}>
                             {`Detenido: ${formatTimeOnly(stop.startTime)} - ${formatTimeOnly(stop.endTime)}`}
-                          </Typography>
-                          {stop.startBattery !== null && (
-                            <Typography variant="caption" display="block" sx={{ fontWeight: 'bold', color: '#2e7d32', mt: 0.5 }}>
-                              {`Batería: ${stop.startBattery}% ➔ ${stop.endBattery}%`}
-                            </Typography>
-                          )}
-                          <Typography variant="caption" display="block" color="textSecondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                            {stop.startBattery !== null && (
+                              <span style={{ fontWeight: 'bold', color: '#2e7d32', marginLeft: '8px' }}>
+                                {`• Batería: ${stop.startBattery}% ➔ ${stop.endBattery}%`}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#666', fontStyle: 'italic', marginTop: '2px' }}>
                             Dirección: <StopAddress latitude={stop.latitude} longitude={stop.longitude} originalAddress={stop.address} />
-                          </Typography>
-                        </span>
+                          </div>
+                        </div>
                       }
                     />
                   </ListItemButton>
