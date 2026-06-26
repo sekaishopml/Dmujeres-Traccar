@@ -252,6 +252,7 @@
     "deviceStatusOnline": "En línea",
     "deviceStatusOffline": "Fuera de línea",
     "deviceStatusUnknown": "Detenido",
+    "deviceStatusStopped": "Detenido",
     "deviceStatusUnknownToday": "Detenido desde las {time}",
     "deviceStatusUnknownOther": "Detenido desde {time}",
     "deviceRegisterFirst": "Registre su primer dispositivo",

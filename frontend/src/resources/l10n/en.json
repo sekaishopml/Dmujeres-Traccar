@@ -251,6 +251,7 @@
     "deviceStatusOnline": "Online",
     "deviceStatusOffline": "Offline",
     "deviceStatusUnknown": "Stationary",
+    "deviceStatusStopped": "Stopped",
     "deviceStatusUnknownToday": "Stationary since {time}",
     "deviceStatusUnknownOther": "Stationary since {time}",
     "deviceRegisterFirst": "Register your first device",

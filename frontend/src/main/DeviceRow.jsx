@@ -111,10 +111,9 @@ const DeviceRow = ({ devices, index, style }) => {
 
   const secondaryText = () => {
     let status;
-    const statusKey = item.status === 'unknown' ? 'online' : item.status;
     const isZeroDate = !item.lastUpdate || item.lastUpdate.startsWith('0001-01-01') || item.lastUpdate.startsWith('1970-01-01');
-    if (statusKey === 'online' || isZeroDate) {
-      status = formatStatus(statusKey, t);
+    if (item.status === 'online' || isZeroDate) {
+      status = formatStatus(item.status, t);
     } else {
       status = dayjs(item.lastUpdate).fromNow();
     }
@@ -126,7 +125,7 @@ const DeviceRow = ({ devices, index, style }) => {
             {' • '}
           </>
         )}
-        <span className={classes[getStatusColor(statusKey)]}>{status}</span>
+        <span className={classes[getStatusColor(item.status)]}>{status}</span>
       </>
     );
   };
@@ -141,7 +140,7 @@ const DeviceRow = ({ devices, index, style }) => {
         className={selectedDeviceId === item.id ? classes.selected : null}
       >
         <ListItemAvatar>
-          <Avatar className={classes[`${getStatusColor(item.status === 'unknown' ? 'online' : item.status)}Avatar`] || classes.neutralAvatar}>
+          <Avatar className={classes[`${getStatusColor(item.status)}Avatar`] || classes.neutralAvatar}>
             <img className={classes.icon} src={mapIcons[mapIconKey(item.category)]} alt="" />
           </Avatar>
         </ListItemAvatar>

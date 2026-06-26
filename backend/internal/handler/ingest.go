@@ -489,9 +489,6 @@ func (h *IngestHandler) HandleOsmAnd(c *fiber.Ctx) error {
 	}
 
 	devStatus := "online"
-	if speed <= 0 {
-		devStatus = "unknown"
-	}
 
 	// WS Broadcast to connected web clients in real-time
 	wsMessage := map[string]interface{}{

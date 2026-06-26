@@ -147,9 +147,6 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
   const user = useSelector((state) => state.session.user);
   const device = useSelector((state) => state.devices.items[deviceId]);
 
-  const isRecentlyStopped = device && device.status === 'offline' &&
-    position && (position.speed === 0 || !position.speed) &&
-    device.lastUpdate && dayjs().diff(dayjs(device.lastUpdate), 'minute') < 30;
 
   const deviceImage = device?.attributes?.deviceImage;
 
@@ -171,9 +168,15 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
       if (position && position.speed > 0) {
         return t('deviceStatusOnline');
       }
-      return t('deviceStatusUnknown');
+      return `${t('deviceStatusOnline')} - ${t('deviceStatusStopped')}`;
     }
-    if (device.status === 'unknown' || isRecentlyStopped) {
+    if (device.status === 'online') {
+      if (position && (position.speed <= 0 || !position.speed)) {
+        return `${t('deviceStatusOnline')} - ${t('deviceStatusStopped')}`;
+      }
+      return t('deviceStatusOnline');
+    }
+    if (device.status === 'offline') {
       const isZeroDate = !device.lastUpdate || device.lastUpdate.startsWith('0001-01-01') || device.lastUpdate.startsWith('1970-01-01');
       if (device.lastUpdate && !isZeroDate) {
         const lastUpdate = dayjs(device.lastUpdate);
@@ -181,18 +184,11 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
         const d = lastUpdate.toDate();
         const timeStr = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
         if (isToday) {
-          return t('deviceStatusUnknownToday').replace('{time}', timeStr);
-        } else {
-          const dateStr = d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
-          return t('deviceStatusUnknownOther').replace('{time}', `${dateStr} ${timeStr}`);
+          return `${t('deviceStatusOffline')} - ${timeStr}`;
         }
+        const dateStr = d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
+        return `${t('deviceStatusOffline')} - ${dateStr} ${timeStr}`;
       }
-      return t('deviceStatusUnknown');
-    }
-    if (device.status === 'online') {
-      return t('deviceStatusOnline');
-    }
-    if (device.status === 'offline') {
       return t('deviceStatusOffline');
     }
     return t(`deviceStatus${device.status.charAt(0).toUpperCase() + device.status.slice(1)}`) || device.status;
@@ -261,7 +257,7 @@ const StatusCard = ({ deviceId, position, onClose, disableActions, desktopPaddin
                         <StatusRow
                           name={t('deviceStatus')}
                           content={
-                            <span className={classes[disableActions ? 'success' : ((device.status === 'unknown' || isRecentlyStopped) ? 'warning' : getStatusColor(device.status))]}>
+                            <span className={classes[getStatusColor(device.status)]}>
                               {getStatusText()}
                             </span>
                           }
