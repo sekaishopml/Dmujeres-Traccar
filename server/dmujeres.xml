@@ -25,4 +25,6 @@
     <entry key='database.user'>traccar</entry>
     <entry key='database.password'>traccar</entry>
 
+    <entry key='dmujeres.port'>8010</entry>
+
 </properties>
