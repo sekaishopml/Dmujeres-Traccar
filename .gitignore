@@ -1,28 +1,39 @@
-# Dependencias
-node_modules/
-vendor/
+# === Java / Gradle (server) ===
+server/target/
+server/build/
+server/.gradle/
+**/*.class
 
-# Builds / artefactos
-dist/
-build/
-out/
-bin/
-*.exe
+# === Node / Vite (web) ===
+web/node_modules/
+web/build/
+web/dist/
+.eslintcache
 
-# Configuración local / secretos
+# === Android (mobile) ===
+mobile/**/build/
+mobile/.gradle/
+mobile/local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# === Datos y logs locales ===
+*.log
+server/run.log
+server/build.log
+web/build.log
+data/
+media/
+
+# === Config local / secretos ===
 .env
 .env.*
 *.local
 
-# Logs
-*.log
-logs/
-
-# Archivos del sistema operativo
+# === Sistema operativo / editores ===
 .DS_Store
 Thumbs.db
-
-# Editores / IDE
 .idea/
-.vscode/
 *.swp

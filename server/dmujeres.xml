@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM 'http://java.sun.com/dtd/properties.dtd'>
+<!--
+  Configuracion de desarrollo del fork (Dmujeres).
+  Apunta el servidor a PostgreSQL + TimescaleDB en lugar del H2 por defecto.
+  Las credenciales de desarrollo son locales; en produccion usar variables/Secrets.
+-->
+<properties>
+
+    <entry key='web.path'>../web/build</entry>
+    <entry key='web.localizationPath'>../web/src/resources/l10n</entry>
+    <entry key='web.debug'>false</entry>
+    <entry key='web.console'>true</entry>
+
+    <entry key='geocoder.type'>pluscodes</entry>
+
+    <entry key='media.path'>./target/media</entry>
+
+    <entry key='logger.console'>true</entry>
+    <entry key='logger.queries'>false</entry>
+    <entry key='logger.fullStackTraces'>true</entry>
+
+    <entry key='database.driver'>org.postgresql.Driver</entry>
+    <entry key='database.url'>jdbc:postgresql://localhost:5432/traccar</entry>
+    <entry key='database.user'>traccar</entry>
+    <entry key='database.password'>traccar</entry>
+
+</properties>

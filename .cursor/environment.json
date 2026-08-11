@@ -1,0 +1,16 @@
+{
+  "name": "Dmujeres GPS (fork Traccar)",
+  "install": "bash infra/scripts/install.sh",
+  "start": "bash infra/scripts/start-services.sh",
+  "terminals": [
+    {
+      "name": "Server API",
+      "command": "cd server && java -jar target/tracker-server.jar dmujeres.xml"
+    },
+    {
+      "name": "Web Dev",
+      "command": "cd web && npm run start"
+    }
+  ],
+  "ports": [8082, 3000, 1883]
+}
