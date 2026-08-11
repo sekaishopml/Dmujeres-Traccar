@@ -1,0 +1,45 @@
+name: Android Release
+
+# Compila el APK y publica una Release en GitHub al crear un tag vX.Y.Z.
+# (Archivo interno del equipo; los usuarios finales NO usan GitHub: se actualizan
+#  desde el boton "Actualizar" de la app contra el servidor propio.)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build debug APK
+        working-directory: mobile
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp mobile/app/build/outputs/apk/debug/app-debug.apk \
+             dist/dmujeres-gps-${GITHUB_REF_NAME}.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true

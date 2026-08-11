@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DMujeres GPS</string>
+    <string name="notification_channel_tracking">Rastreo GPS</string>
+    <string name="notification_channel_alerts">Alertas</string>
+    <string name="notification_tracking_title">Rastreo activo</string>
+    <string name="notification_tracking_text">Enviando ubicación en segundo plano</string>
+    <string name="notification_no_signal_title">Sin señal</string>
+    <string name="notification_no_signal_text">Sin conexión, reintentando…</string>
+</resources>

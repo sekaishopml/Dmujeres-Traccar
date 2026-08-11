@@ -20,6 +20,10 @@ mobile/local.properties
 *.keystore
 *.jks
 
+# === Canal de actualizaciones (generado por publish-update.sh) ===
+infra/update/*.apk
+infra/update/latest.json
+
 # === Datos y logs locales ===
 *.log
 server/run.log

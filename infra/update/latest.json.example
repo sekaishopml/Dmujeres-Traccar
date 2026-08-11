@@ -1,0 +1,8 @@
+{
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "url": "https://TU-SERVIDOR/update/dmujeres-1.0.0.apk",
+  "minVersionCode": 1,
+  "mandatory": false,
+  "notes": "Version inicial"
+}

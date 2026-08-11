@@ -84,13 +84,13 @@ public class DmujeresProtocolDecoder extends BaseMqttProtocolDecoder {
             longitude = json.getJsonNumber("longitude").doubleValue();
         }
 
-        if (latitude != null && longitude != null) {
-            position.setValid(true);
-            position.setLatitude(latitude);
-            position.setLongitude(longitude);
-        } else {
-            getLastLocation(position, position.getDeviceTime());
+        if (latitude == null || longitude == null) {
+            // Mensajes sin coordenadas (p. ej. estado online/offline) no generan posiciones.
+            return null;
         }
+        position.setValid(true);
+        position.setLatitude(latitude);
+        position.setLongitude(longitude);
 
         if (json.containsKey("speed")) {
             double speed = json.getJsonNumber("speed").doubleValue();

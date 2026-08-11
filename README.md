@@ -68,10 +68,39 @@ curl -H "Content-Type: application/json" \
 - Desarrollo: `server/dmujeres.xml` (apunta a PostgreSQL+TimescaleDB).
 - Producción: usar variables de entorno / Secrets, nunca credenciales en el repo.
 
+## App Android (`mobile/`)
+
+App nativa (Kotlin + Jetpack Compose) para teléfonos de empresa, distribuida por **APK (sideload)**.
+- **Rastreo continuo**: foreground service + FusedLocation; publica por **MQTT** (`clientId = uniqueId`, tópico `dmujeres/position`, QoS 1) al servidor (puerto 8010).
+- **Resiliencia**: cola offline (Room) con reenvío al reconectar; watchdog (WorkManager 15 min) + auto-arranque al encender (BootReceiver) + `START_STICKY`; notificación de "sin señal".
+- **UI**: ID de equipo, servidor, switch Activar/Desactivar (persistente), estado en vivo y botón **Actualizar**.
+
+### Compilar el APK
+```bash
+export ANDROID_HOME=$HOME/android-sdk   # ver infra/scripts/install-android-sdk.sh
+cd mobile && ./gradlew assembleDebug
+# APK: mobile/app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Actualizaciones desde la app (sin GitHub para el usuario)
+La app se actualiza sola desde **tu servidor**:
+1. La app consulta `GET {updateBaseUrl}/update/latest.json`.
+2. Si `versionCode` es mayor, el botón **Actualizar** descarga el APK y lo instala.
+3. Si la versión instalada es menor que `minVersionCode`, la app **se bloquea** hasta actualizar (update obligatorio).
+
+Publicar una versión nueva (dev → producción):
+```bash
+PUBLIC_BASE_URL="https://tu-servidor" \
+  bash infra/scripts/publish-update.sh app-release.apk 5 1.0.5 3 false
+# copia el APK a infra/update/ y genera latest.json
+```
+En producción, el reverse proxy sirve `/update/` (ver `infra/nginx/dmujeres.conf`).
+`.github/workflows/android-release.yml` publica además una Release interna en GitHub al crear un tag `vX.Y.Z` (opcional, solo para el equipo).
+
 ## Roadmap
 - **Fase 0** — Fundaciones: monorepo, infra, entorno reproducible, fork corriendo e2e. ✅
 - **Fase 1** — Backend base sobre PostgreSQL+TimescaleDB (API + WebSocket en tiempo real). ✅
 - **Fase 2** — Ingesta GPS de alta frecuencia por **MQTT** (protocolo `dmujeres`). ✅
-- **Fase 3** — App Android (foreground service, cola offline, watchdog, notificaciones de señal).
+- **Fase 3** — App Android (foreground service, MQTT, cola offline, watchdog, auto-update). ✅
 - **Fase 4** — Dashboard con Google Maps forzado + optimización de rendimiento.
 - **Fase 5** — Hardening (secretos, sesiones, retención Timescale, observabilidad) y despliegue.
