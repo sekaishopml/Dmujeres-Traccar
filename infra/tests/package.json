@@ -1,0 +1,13 @@
+{
+  "name": "dmujeres-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas de verificacion e2e del backend (dev).",
+  "scripts": {
+    "ws-realtime": "node ws-realtime-test.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}

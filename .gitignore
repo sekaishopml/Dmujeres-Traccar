@@ -6,6 +6,7 @@ server/.gradle/
 
 # === Node / Vite (web) ===
 web/node_modules/
+infra/tests/node_modules/
 web/build/
 web/dist/
 .eslintcache

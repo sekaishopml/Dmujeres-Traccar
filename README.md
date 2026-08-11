@@ -60,7 +60,7 @@ curl -H "Content-Type: application/json" \
 
 ## Roadmap
 - **Fase 0** — Fundaciones: monorepo, infra, entorno reproducible, fork corriendo e2e. ✅
-- **Fase 1** — Backend base sobre PostgreSQL+TimescaleDB (API + WebSocket).
+- **Fase 1** — Backend base sobre PostgreSQL+TimescaleDB (API + WebSocket en tiempo real). ✅
 - **Fase 2** — Ingesta GPS de alta frecuencia (MQTT QoS1 + LWT).
 - **Fase 3** — App Android (foreground service, cola offline, watchdog, notificaciones de señal).
 - **Fase 4** — Dashboard con Google Maps forzado + optimización de rendimiento.
