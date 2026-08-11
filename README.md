@@ -68,6 +68,15 @@ curl -H "Content-Type: application/json" \
 - Desarrollo: `server/dmujeres.xml` (apunta a PostgreSQL+TimescaleDB).
 - Producción: usar variables de entorno / Secrets, nunca credenciales en el repo.
 
+## Dashboard (`web/`)
+
+- **Mapa por defecto: OpenFreeMap** (carreteras, **gratis y sin API key**). En el selector de capas
+  quedan disponibles **Google (Road/Satellite)** y LocationIQ; Google se activa solo con configurar
+  su `googleKey` (billing). No se cachean tiles de Google (cumple sus términos).
+- **Realtime optimizado**: `web/src/store/throttleMiddleware.js` agrupa y limita los updates de
+  posiciones/dispositivos por WebSocket de forma adaptativa (soporta muchos equipos sin saturar la UI);
+  el mapa usa capas GL de MapLibre (no marcadores DOM) y la lista de dispositivos está virtualizada.
+
 ## App Android (`mobile/`)
 
 App nativa (Kotlin + Jetpack Compose) para teléfonos de empresa, distribuida por **APK (sideload)**.
@@ -102,5 +111,5 @@ En producción, el reverse proxy sirve `/update/` (ver `infra/nginx/dmujeres.con
 - **Fase 1** — Backend base sobre PostgreSQL+TimescaleDB (API + WebSocket en tiempo real). ✅
 - **Fase 2** — Ingesta GPS de alta frecuencia por **MQTT** (protocolo `dmujeres`). ✅
 - **Fase 3** — App Android (foreground service, MQTT, cola offline, watchdog, auto-update). ✅
-- **Fase 4** — Dashboard con Google Maps forzado + optimización de rendimiento.
+- **Fase 4** — Dashboard: mapa de carreteras gratis (OpenFreeMap) por defecto + realtime optimizado. ✅
 - **Fase 5** — Hardening (secretos, sesiones, retención Timescale, observabilidad) y despliegue.
