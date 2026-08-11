@@ -46,6 +46,16 @@ cd server && java -jar target/tracker-server.jar dmujeres.xml
 cd web && npm run start   # http://localhost:3000
 ```
 
+### Ingesta GPS por MQTT (protocolo `dmujeres`)
+La app Android se conecta por **MQTT directamente al servidor** (puerto `8010`) y publica posiciones:
+- **clientId MQTT** = `uniqueId` del dispositivo (identifica el equipo en el CONNECT).
+- **Publicar** (QoS 1) un JSON de posición a cualquier tópico, p. ej. `dmujeres/position`:
+```json
+{"lat":-2.19,"lon":-79.88,"ts":1786453618,"speed":8.5,"course":45,"alt":10,"acc":4,"batt":76}
+```
+`speed` en m/s, `ts` epoch (s/ms) o ISO-8601. Traccar decodifica, almacena en TimescaleDB
+y reenvía en tiempo real por WebSocket, reusando todo su pipeline (distancia, movimiento, etc.).
+
 ### Primer uso
 El primer usuario creado es administrador:
 ```bash
@@ -61,7 +71,7 @@ curl -H "Content-Type: application/json" \
 ## Roadmap
 - **Fase 0** — Fundaciones: monorepo, infra, entorno reproducible, fork corriendo e2e. ✅
 - **Fase 1** — Backend base sobre PostgreSQL+TimescaleDB (API + WebSocket en tiempo real). ✅
-- **Fase 2** — Ingesta GPS de alta frecuencia (MQTT QoS1 + LWT).
+- **Fase 2** — Ingesta GPS de alta frecuencia por **MQTT** (protocolo `dmujeres`). ✅
 - **Fase 3** — App Android (foreground service, cola offline, watchdog, notificaciones de señal).
 - **Fase 4** — Dashboard con Google Maps forzado + optimización de rendimiento.
 - **Fase 5** — Hardening (secretos, sesiones, retención Timescale, observabilidad) y despliegue.

@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Pruebas de verificacion e2e del backend (dev).",
   "scripts": {
-    "ws-realtime": "node ws-realtime-test.mjs"
+    "ws-realtime": "node ws-realtime-test.mjs",
+    "mqtt-realtime": "node mqtt-realtime-test.mjs"
   },
   "dependencies": {
     "ws": "^8.21.3"

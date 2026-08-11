@@ -19,3 +19,11 @@ llega **en vivo** por el socket:
 npm run ws-realtime
 ```
 Salida esperada: `SUCCESS: la posicion llego por WebSocket en tiempo real.`
+
+## Prueba de ingesta MQTT + tiempo real
+Publica una posición por **MQTT** (protocolo `dmujeres`, puerto 8010) y comprueba que
+llega en vivo por WebSocket. Requiere `mosquitto-clients` instalado.
+```bash
+npm run mqtt-realtime
+```
+Salida esperada: `SUCCESS: posicion publicada por MQTT llego en vivo por WebSocket.`
