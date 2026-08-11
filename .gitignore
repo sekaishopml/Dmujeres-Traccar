@@ -1,0 +1,28 @@
+# Dependencias
+node_modules/
+vendor/
+
+# Builds / artefactos
+dist/
+build/
+out/
+bin/
+*.exe
+
+# Configuración local / secretos
+.env
+.env.*
+*.local
+
+# Logs
+*.log
+logs/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editores / IDE
+.idea/
+.vscode/
+*.swp
