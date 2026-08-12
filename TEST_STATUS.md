@@ -57,6 +57,9 @@ tipo web `always=true` vinculada al usuario (ver README de la suite).
 | PT-206 | Lease/recovery de mensajes `processing` | ✔ PASÓ | Reserva manual con lease vencido (attempts=5) → reclamada, procesada y `accepted` (attempts=6, positionid=20) |
 | PT-207 | ACL/authN EMQX 5.8 (override dev) | ✔ PASÓ (aislado) | 8/8 escenarios: consumer suscribe `+/telemetry`+publica `+/ack`; device publica/suscribe su propio topic; wildcards y topics ajenos denegados |
 | PT-208 | Compose dev/dev+auth/prod validan | ✔ PASÓ | `docker compose config` OK para las 3 variantes |
+| PT-209 | HTTP fallback batch (accepted/duplicate) | ✔ PASÓ | `http:e2e`: primer envío `accepted`, segundo `duplicate` |
+| PT-210 | Idempotencia cruzada MQTT↔HTTP | ✔ PASÓ | Mensaje aceptado por MQTT → HTTP devuelve `duplicate` (hash canónico, sin doble posición) |
+| PT-211 | Carga end-to-end MQTT (ACK de aplicación) | ✔ PASÓ | `mqtt:e2e:load`: 20 dispositivos × 10 mensajes = 200/200 `accepted`, 0 pérdidas, 0 duplicados, ~124 msg/s |
 
 **Alcance PT-203**: mide sólo PUBACK del broker EMQX. No es todavía ACK de negocio,
 persistencia en TimescaleDB ni deduplicación end-to-end. Esos resultados quedan
