@@ -73,3 +73,16 @@
 - Limitaciones explícitas: no atomicidad JDBC posición+dedupe, no lease/recovery automático
   de `processing`, EMQX dev anónimo y sin ACL/TLS de producción. Este consumidor no se
   considera listo para producción.
+
+## 2026-08-12 — FASE 2.2: atomicidad, lease y seguridad MQTT
+
+- `MobileAtomicPersistence`: posición + dedupe en una transacción JDBC (QueryBuilder puede
+  reutilizar una conexión sin cerrarla). Crash antes del commit revierte; después deja
+  `accepted` para redelivery `duplicate`.
+- Lease/recovery: columnas `leaseuntil`, `leasetoken`, `attempts` (changelog 6.14.1/6.14.2)
+  y reclamación de reservas vencidas. Validado: attempts 5→6 con lease expirado.
+- EMQX 5.8: templates de authN (`built_in_database`+`bootstrap_file`) y ACL por archivo,
+  override dev `docker-compose.emqx-auth.yml`, `mqtt-users.sh` vía API, docs de seguridad.
+  Detectadas incompatibilidades 5.x: `EMQX_ALLOW_ANONYMOUS` es no-op; no existe `backend=file`;
+  no hay `emqx ctl` para usuarios.
+- Pendiente Fase 2.3+: HTTP fallback, TLS real de producción, carga end-to-end.

@@ -41,15 +41,50 @@ services:
     environment:
       EMQX_NODE_NAME: mqtt@127.0.0.1
       EMQX_TELEMETRY_ENABLED: "false"
-      EMQX_ALLOW_ANONYMOUS: "false"
+      # NOTA EMQX 5.8: `EMQX_ALLOW_ANONYMOUS` no es una clave del schema 5.x (es
+      # ignorada). El acceso anónimo se bloquea configurando autenticación (abajo)
+      # y `authorization.no_match = deny`.
+      #
+      # --- Autenticación: password_based, backend archivo (bootstrap CSV) ---
+      EMQX_AUTHENTICATION__1__MECHANISM: "password_based"
+      EMQX_AUTHENTICATION__1__BACKEND: "built_in_database"
+      EMQX_AUTHENTICATION__1__USER_ID_TYPE: "username"
+      EMQX_AUTHENTICATION__1__PASSWORD_HASH_ALGORITHM__NAME: "sha256"
+      EMQX_AUTHENTICATION__1__PASSWORD_HASH_ALGORITHM__SALT_POSITION: "prefix"
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_FILE: "/opt/emqx/etc/auth-file.csv"
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_TYPE: "hash"
+      # --- Autorización: ACL por archivo; todo lo no listado queda denegado ---
+      EMQX_AUTHORIZATION__NO_MATCH: "deny"
+      EMQX_AUTHORIZATION__DENY_ACTION: "ignore"
+      EMQX_AUTHORIZATION__SOURCES__1__TYPE: "file"
+      EMQX_AUTHORIZATION__SOURCES__1__PATH: "/opt/emqx/etc/acl-file.conf"
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?}
-      EMQX_AUTHENTICATION__1__USERNAME: ${MQTT_USER:?}
-      EMQX_AUTHENTICATION__1__PASSWORD: ${MQTT_PASSWORD:?}
+      # --- TLS listener ssl:default (8883) — rutas de certificados por variables ---
+      # Secretos NO versionados: montar el directorio ${EMQX_CERTS_DIR} (host) con
+      # los certs y apuntar aquí. Formato PEM. Ejemplo certbot:
+      #   EMQX_CERTS_DIR=/etc/letsencrypt/live/mqtt.dmujeres.example
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: ${EMQX_CERTFILE:?}
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: ${EMQX_KEYFILE:?}
+      # Opcional: CACERTFILE solo si se sirve una cadena separada o se usa mTLS.
+      # NO fijar en vacío (EMQX loguea cert_file_not_found). Descomentar si aplica:
+      # EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: ${EMQX_CACERTFILE:?}
+      # Atención: los certs NO se versionan; solo su ruta.
     ports:
-      - "8883:8883"   # MQTT+TLS (dominio estable, cert vía reverse proxy o certbot)
-      - "18083:18083" # Dashboard admin — RESTRINGIR por firewall al IP de admin
+      - "8883:8883" # MQTT+TLS (dominio estable; cert vía certbot/reverse proxy)
+      # Dashboard admin EMQX NO se publica en producción. Para acceso de admin:
+      #   1) sin exponerlo: abrir túnel SSH:  ssh -L 18083:127.0.0.1:18083 user@host
+      #   2) o exponerlo SOLO al IP del admin con firewall y luego descomentar:
+      #      - "18083:18083"   # ufw allow from <TU_IP> to any port 18083 proto tcp
+      # NUNCA exponer 18083 a 0.0.0.0.
     volumes:
       - dmj-prod-mqttdata:/opt/emqx/data
+      # Templates por defecto (infrastructure/emqx/). En PRODUCCIÓN sobreescribir con
+      # archivos NO versionados vía .env (ver EMQX_AUTH_FILE/EMQX_ACL_FILE):
+      #   EMQX_AUTH_FILE=/ruta/al/auth-file.csv (credenciales reales, fuera del repo)
+      - ${EMQX_AUTH_FILE:-../emqx/auth-file.csv}:/opt/emqx/etc/auth-file.csv:ro
+      - ${EMQX_ACL_FILE:-../emqx/acl-file.conf}:/opt/emqx/etc/acl-file.conf:ro
+      # Certs PEM (host) montados en /opt/emqx/certs. Requerido si se usa TLS.
+      - ${EMQX_CERTS_DIR:-./emqx-certs}:/opt/emqx/certs:ro
     healthcheck:
       test: ["CMD", "emqx", "ctl", "status"]
       interval: 15s
