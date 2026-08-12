@@ -33,9 +33,13 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [x] Tabla `tc_mobile_messages` para deduplicación `(deviceid, sequence)` + `messageid`
 - [x] Validación envelope v1 con tests unitarios
 - [x] Baseline MQTT broker-only 1/10/100/1000 (PUBACK; no equivale a persistencia)
-- [ ] Consumidor MQTT embebido con ACK de aplicación posterior a persistencia
+- [x] Consumidor MQTT embebido experimental con ACK de aplicación posterior a persistencia
+- [x] E2E experimental `accepted`/`duplicate` con una posición física
 - [ ] Pipeline común invocable sin `ChannelHandlerContext`
 - [ ] Endpoint HTTP batch con envelope/idempotencia compartidos
+- [ ] Lease/recovery para mensajes `processing`
+- [ ] Transacción JDBC posición+dedupe
+- [ ] TLS, autenticación y ACL de EMQX para producción
 - [ ] Protocolo propio + ACK + deduplicación + offline + reintentos
 - [ ] Integración Traccar + TimescaleDB + WebSocket
 - [ ] Pruebas de carga (1/10/100/1000 dispositivos simulados) y métricas
