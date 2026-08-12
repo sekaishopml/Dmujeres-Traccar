@@ -35,7 +35,7 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [x] Baseline MQTT broker-only 1/10/100/1000 (PUBACK; no equivale a persistencia)
 - [x] Consumidor MQTT embebido experimental con ACK de aplicación posterior a persistencia
 - [x] E2E experimental `accepted`/`duplicate` con una posición física
-- [ ] Pipeline común invocable sin `ChannelHandlerContext`
+- [x] Pipeline común invocable sin `ChannelHandlerContext` (refactor + manejo excepcional)
 - [ ] Endpoint HTTP batch con envelope/idempotencia compartidos
 - [ ] Lease/recovery para mensajes `processing`
 - [ ] Transacción JDBC posición+dedupe

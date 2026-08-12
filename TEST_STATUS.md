@@ -59,8 +59,9 @@ persistencia en TimescaleDB ni deduplicación end-to-end. Esos resultados quedan
 pendientes del consumidor MQTT.
 
 **Alcance PT-204**: demuestra el flujo local con broker anónimo y no certifica
-producción. Persisten dos filas antiguas en estado `processing` de intentos fallidos;
-lease/recovery y atomicidad posición+dedupe siguen pendientes.
+producción. Las reservas `processing` generadas durante los intentos fallidos fueron
+marcadas `rejected` en la BD dev; lease/recovery y atomicidad posición+dedupe siguen
+pendientes.
 
 ## Fases 2.2-5
 - Pendiente consumidor MQTT, pipeline común, ACK post-commit, HTTP fallback y carga end-to-end.
