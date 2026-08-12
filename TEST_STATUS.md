@@ -73,3 +73,13 @@ con el override `docker-compose.emqx-auth.yml` (validado de forma aislada).
 
 ## Fases 2.2-5
 - Pendiente consumidor MQTT, pipeline común, ACK post-commit, HTTP fallback y carga end-to-end.
+
+## FASE 3 — App Android (compilación y revisión)
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-301 | Compilación APK debug (Kotlin + Room + MQTT) | ✔ PASÓ | `./gradlew assembleDebug` BUILD SUCCESSFUL; `app-debug.apk` 6.6 MB; package `com.dmujeres.traccar`, targetSdk 34 |
+| PT-302 | Revisión técnica/seguridad app | ✔ PASÓ (correcciones aplicadas) | 2 críticos + 7 medios corregidos: re-suscripción ACK, backoff/techo reintentos, @Volatile, guard trackingEnabled, try/catch startForeground, scope recreado |
+| PT-303 | Permisos/políticas manifest | ✔ PASÓ | FGS tipo location + ServiceCompat; sin ACCESS_BACKGROUND_LOCATION (correcto); boot receiver con opt-in |
+
+**Limitación**: la prueba real de GPS/MQTT necesita un teléfono físico; no es emulable.

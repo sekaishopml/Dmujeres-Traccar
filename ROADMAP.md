@@ -45,9 +45,13 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [ ] Integración Traccar + TimescaleDB + WebSocket
 - [ ] Pruebas de carga (1/10/100/1000 dispositivos simulados) y métricas
 
-## FASE 3 — Android
-- [ ] App Kotlin: foreground service, Fused Location, MQTT QoS1, Room offline queue,
-      watchdog, boot receiver, notificaciones, toggle de tracking
+## FASE 3 — Android ✔ EN CURSO (MVP compilado 2026-08-12)
+- [x] App Kotlin: foreground service (tipo location), Fused Location Provider, MQTT QoS1
+      con ACK de aplicación, Room offline queue con backoff exponencial, watchdog con
+      estados, boot receiver, notificaciones, toggle de tracking (user opt-in)
+- [x] APK debug compilado (SDK 34) y revisión técnica (críticos corregidos)
+- [ ] targetSdk 35 antes de Play Store
+- [ ] Prueba en teléfono físico (GPS/MQTT reales)
 
 ## FASE 4 — Dashboard empresarial
 - [ ] Fork profundo de traccar-web, MapProvider abstraído, empresas/equipos/reportes,
