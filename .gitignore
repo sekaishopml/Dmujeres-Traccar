@@ -1,0 +1,29 @@
+# Secretos y estado local
+.env
+.env.*
+!.env.example
+
+# Node / Vite
+node_modules/
+dist/
+build/
+
+# Gradle / Java
+.gradle/
+target/
+
+# Dependencias Android
+mobile/.gradle/
+mobile/build/
+mobile/local.properties
+
+# Logs y datos locales
+logs/
+data/
+*.log
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
