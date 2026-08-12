@@ -86,3 +86,17 @@
   Detectadas incompatibilidades 5.x: `EMQX_ALLOW_ANONYMOUS` es no-op; no existe `backend=file`;
   no hay `emqx ctl` para usuarios.
 - Pendiente Fase 2.3+: HTTP fallback, TLS real de producción, carga end-to-end.
+
+## 2026-08-12 — FASE 2.2: HTTP fallback, hash canónico y carga end-to-end
+
+- `MobileIngestionService` compartido: MQTT y HTTP usan la misma validación, reserva,
+  lease y persistencia atómica.
+- `MobileHttpResource` (`POST /api/mobile/v1/positions`, X-Api-Key): batch con el mismo
+  envelope; `accepted`/`duplicate`/`rejected`/`invalid`/`expired` y 503 con `error` para
+  reintento.
+- **Corrección de idempotencia**: el hash de deduplicación pasó a ser canónico (orden de
+  campos del contrato) en vez de bytes crudos del transporte, que rompía la dedup cruzada
+  MQTT↔HTTP. Verificado: aceptado por MQTT → HTTP `duplicate`.
+- Carga end-to-end: 20 dispositivos × 10 mensajes = 200/200 `accepted`, 0 pérdidas,
+  0 duplicados (~124 msg/s con ACK de aplicación).
+- Scripts de prueba: `mqtt-e2e-load.mjs`, `http-e2e.mjs` (idempotentes con nonce).

@@ -19,9 +19,11 @@ sin `ChannelHandlerContext`, preservando el comportamiento de los protocolos Net
 
 FASE 2.1 cerrada: ADR-002, contrato v1, migración aplicada en TimescaleDB, validator
 unitario y baseline MQTT broker-only versionado en `infrastructure/load-tests/`.
-FASE 2.2: consumidor con persistencia atómica posición+dedupe y lease/recovery validados
-(PT-205/206); ACL/authN EMQX 5.8 con override dev validado aislado (PT-207/208).
-Pendiente: HTTP fallback, TLS real de producción y carga end-to-end final.
+FASE 2.2 cerrada: consumidor con persistencia atómica posición+dedupe y lease/recovery
+validados (PT-205/206); ACL/authN EMQX 5.8 con override dev validado aislado (PT-207/208);
+HTTP fallback con hash canónico e idempotencia cruzada (PT-209/210); carga end-to-end
+200/200 accepted (PT-211).
+Pendiente (Fase 2.3/hardening): TLS real de producción con certificados y despliegue externo.
 
 ### En progreso
 - [x] T-000 Auditoría (entorno + server + web) — completada, ver ARCHITECTURE.md

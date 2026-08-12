@@ -38,7 +38,8 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [x] Pipeline común invocable sin `ChannelHandlerContext` (refactor + manejo excepcional)
 - [x] Transacción JDBC posición+dedupe y lease/recovery (`leaseuntil`/`leasetoken`/`attempts`)
 - [x] Templates ACL/authN/TLS EMQX 5.8 + override dev `docker-compose.emqx-auth.yml` (validado aislado)
-- [ ] Endpoint HTTP batch con envelope/idempotencia compartidos
+- [x] HTTP fallback batch `/api/mobile/v1/positions` con hash canónico e idempotencia cruzada
+- [x] Carga end-to-end MQTT 200/200 accepted (PT-211)
 - [ ] TLS real de producción (certs por .env) en un despliegue externo
 - [ ] Protocolo propio + ACK + deduplicación + offline + reintentos
 - [ ] Integración Traccar + TimescaleDB + WebSocket
