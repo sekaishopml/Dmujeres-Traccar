@@ -111,3 +111,13 @@
   backoff/bloqueo de cola (C2), volatilidad de estado, guard de trackingEnabled,
   try/catch de startForeground Android 14, scope recreado.
 - APK debug compilado con Android SDK 34; documentación en docs/android/README.md.
+
+## 2026-08-12 — FASE 4: dashboard optimizado sin cambiar el diseño
+
+- Vite manualChunks: carga inicial 1.6MB→124KB; total JS 7.0→6.8MB; 227→158 chunks.
+- Server: CompressionHandler de Jetty configurado (gzip) envolviendo el servlet (en
+  upstream era inerte); transferencia JS+CSS -69%.
+- MapProvider (`src/map/provider/MapProvider.js`) con default OpenFreeMap; Google solo con
+  API key (se eliminaron tiles no oficiales de mt*.google.com); API keys hardcodeadas de
+  LocationIQ/OrdnanceSurvey retiradas (ahora por configuración).
+- Sin regresiones: WS/CRUD 10/10; build OK.
