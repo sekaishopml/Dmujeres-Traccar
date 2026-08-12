@@ -83,3 +83,12 @@ con el override `docker-compose.emqx-auth.yml` (validado de forma aislada).
 | PT-303 | Permisos/políticas manifest | ✔ PASÓ | FGS tipo location + ServiceCompat; sin ACCESS_BACKGROUND_LOCATION (correcto); boot receiver con opt-in |
 
 **Limitación**: la prueba real de GPS/MQTT necesita un teléfono físico; no es emulable.
+
+## FASE 4 — Dashboard (optimización, sin regresión)
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-401 | Chunk inicial reducido | ✔ PASÓ | `index` 1.6 MB → 124 KB (manualChunks) |
+| PT-402 | Compresión gzip del server | ✔ PASÓ | JS+CSS 6631 KB → 2028 KB (69%); `Content-Encoding: gzip` |
+| PT-403 | Sin regresión API/WS tras gzip | ✔ PASÓ | ws-test 10/10 + crud-test 10/10 |
+| PT-404 | Build dashboard con cambios MapProvider | ✔ PASÓ | `npm run build` OK; mapa default OpenFreeMap; fallback seguro |
