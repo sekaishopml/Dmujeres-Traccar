@@ -19,6 +19,8 @@ sin `ChannelHandlerContext`, preservando el comportamiento de los protocolos Net
 
 FASE 2.1 cerrada: ADR-002, contrato v1, migración aplicada en TimescaleDB, validator
 unitario y baseline MQTT broker-only versionado en `infrastructure/load-tests/`.
+FASE 2.2 parcial: consumidor experimental validado con accepted/duplicate; sigue
+bloqueado para producción hasta cerrar atomicidad posición+dedupe, lease/recovery y ACL.
 
 ### En progreso
 - [x] T-000 Auditoría (entorno + server + web) — completada, ver ARCHITECTURE.md
