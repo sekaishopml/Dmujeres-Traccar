@@ -22,3 +22,10 @@
 ## Pendiente en esta sesión
 - Completar infraestructura Docker, build/arranque del server con PostgreSQL,
   build del dashboard, verificación E2E y primer commit de Fase 0.
+## 2026-08-12 — FASE 0 completada (2ª pasada)
+- Corregido por revisión de auditor: secretos fuera de conf/ (env vars + gitignore),
+  puertos dev bindeados a 127.0.0.1, password BD rotado, restore robusto (drop/create),
+  backup extendido (env+conf+versiones, verificación pg_restore --list), prod compose creado,
+  submódulos formalizados (.gitmodules), runbook de recuperación, docs de seguridad.
+- Bugs corregidos: dev.sh down sin forward de args; mapeo DATABASE_PASSWORD en launcher dev.
+- PT-009 (recuperación en entorno limpio) validado con evidencia real.
