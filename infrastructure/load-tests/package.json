@@ -1,0 +1,11 @@
+{
+  "name": "dmujeres-traccar-load-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mqtt:baseline": "node mqtt-baseline.mjs"
+  },
+  "dependencies": {
+    "mqtt": "^5.14.1"
+  }
+}
