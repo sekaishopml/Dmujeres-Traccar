@@ -1,7 +1,7 @@
 # TEST STATUS — DMujeres Traccar Platform
 
 > Estado de pruebas con evidencia. Nunca marcar "verificado" sin evidencia.
-> Última actualización: 2026-08-12 (Fase 0 completada).
+> Última actualización: 2026-08-12 (Fase 2.1).
 
 ## FASE 0
 
@@ -45,6 +45,17 @@ Ejecutada: 2026-08-12, server v6.14.5 + PostgreSQL/TimescaleDB.
 **Nota**: el push de eventos requiere transición de estado (unknown→online) y notificación
 tipo web `always=true` vinculada al usuario (ver README de la suite).
 
-## Fases 2-5
-- Sin pruebas definidas todavía (no iniciadas).
-- Fase 2: carga con 1/10/100/1000 dispositivos (tool `test-generator.py` upstream) + métricas.
+## FASE 2.1 — contrato, deduplicación y baseline MQTT
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-201 | Migración `tc_mobile_messages` aplicada en TimescaleDB | ✔ PASÓ | Liquibase exitoso; uniques `(deviceid, sequence)`/`messageid`; FK device; FK a `tc_positions` omitido por incompatibilidad hypertable y documentado |
+| PT-202 | Validación envelope v1 | ✔ PASÓ | `MobileEnvelopeValidatorTest`: schema, topic/device, timestamps, coordenadas y límites |
+| PT-203 | Baseline MQTT QoS1 broker-only | ✔ PASÓ | `infrastructure/load-tests`: 1/10/100/1000 dispositivos, 0 pérdidas PUBACK; p99 2.1/7.3/10.8/53.6 ms en este VPS |
+
+**Alcance PT-203**: mide sólo PUBACK del broker EMQX. No es todavía ACK de negocio,
+persistencia en TimescaleDB ni deduplicación end-to-end. Esos resultados quedan
+pendientes del consumidor MQTT.
+
+## Fases 2.2-5
+- Pendiente consumidor MQTT, pipeline común, ACK post-commit, HTTP fallback y carga end-to-end.
