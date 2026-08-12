@@ -60,3 +60,16 @@
 - `MobileEnvelopeValidator` + tests unitarios.
 - Benchmark MQTT broker-only versionado: 1/10/100/1000 dispositivos, QoS1, 0 pérdidas
   PUBACK; p99 2.1/7.3/10.8/53.6 ms. No representa todavía persistencia end-to-end.
+
+## 2026-08-12 — FASE 2.2 parcial: consumidor MQTT experimental
+
+- Consumidor HiveMQ MQTT 5 desactivado por defecto; QoS1, manual acknowledgement,
+  cola acotada, serialización por dispositivo, validación de topic/envelope y ACK de
+  aplicación posterior a `PositionPipeline`.
+- E2E local: `accepted` con posición `dmj-mqtt` persistida; redelivery idéntica `duplicate`
+  sin segunda posición física. Velocidad km/h convertida a nudos.
+- Refactor `PositionPipeline` invocable sin `ChannelHandlerContext`, preservando el
+  adapter Netty y liberando colas ante excepciones.
+- Limitaciones explícitas: no atomicidad JDBC posición+dedupe, no lease/recovery automático
+  de `processing`, EMQX dev anónimo y sin ACL/TLS de producción. Este consumidor no se
+  considera listo para producción.
