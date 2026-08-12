@@ -29,6 +29,22 @@
    volúmenes sobrevivían y un password rotado no tomaba efecto. Corregido con `shift`.
 3. **Entorno**: puerto 5432 ocupado por otro proyecto (sekai-dev-db) → dev usa 5433 externo.
 
-## Fases 1-5
+## FASE 1 — Server baseline (upstream sin modificar)
+
+Suite ejecutable versionada en `infrastructure/tests/` (README con instrucciones).
+Ejecutada: 2026-08-12, server v6.14.5 + PostgreSQL/TimescaleDB.
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-101 | WebSocket realtime: conexión con token, push de posiciones en tiempo real, keepalive 55s | ✔ PASÓ (10/10) | `node ws-test.js`; push `{"positions":[...]}` recibido <4s tras envío OsmAnd; `{}` keepalive |
+| PT-102 | Autenticación: cookie, token firmado ECDSA (base64url), Basic | ✔ PASÓ | AUTH-1..4: 200 en login/emisión/validación/Basic |
+| PT-103 | CRUD API + aislamiento de permisos multi-usuario | ✔ PASÓ (10/10) | `node crud-test.js`; operador no-admin ve solo su dispositivo (1/4) |
+| PT-104a | Eventos de estado por WS (deviceOnline con mensaje) | ✔ PASÓ | `node event-test.js`; evento `{"events":[{"type":"deviceOnline","message":...}]}` en tiempo real |
+| PT-104b | Persistencia tras reinicio del server | ✔ PASÓ | 2 usuarios, 1 dispositivo, 11 posiciones, 2 notificaciones, eventos; login OK; 10 posiciones históricas vía API |
+
+**Nota**: el push de eventos requiere transición de estado (unknown→online) y notificación
+tipo web `always=true` vinculada al usuario (ver README de la suite).
+
+## Fases 2-5
 - Sin pruebas definidas todavía (no iniciadas).
 - Fase 2: carga con 1/10/100/1000 dispositivos (tool `test-generator.py` upstream) + métricas.

@@ -63,3 +63,8 @@ en Fase de despliegue. No alterar build upstream sin razón.
 **Estado**: ADOPTADA (Fase 3)
 **Decisión**: App propia: foreground service, Fused Location, MQTT QoS1, Room,
 offline queue, watchdog, boot receiver. Verificar políticas Android 14+/15+ y Play Store.
+## D-011 (2026-08-12): Consola web de debug y binds en dev
+**Estado**: ADOPTADA
+`web.console=true` SOLO en dev (bind 127.0.0.1). En producción (Fase 5): `web.console=false`
+y bind por reverse proxy con TLS. `WEB_SECRET_TOKEN` debe inyectarse como env para
+sesiones/tokens estables entre reinicios (evitado en dev por defecto).

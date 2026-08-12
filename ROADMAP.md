@@ -1,6 +1,6 @@
 # ROADMAP — DMujeres Traccar Platform
 
-Estado: **FASE 0 COMPLETADA — siguiente: FASE 1 (Server)**
+Estado: **FASE 1 COMPLETADA — siguiente: FASE 2 (GPS/MQTT)**
 
 ## FASE 0 — Auditoría y Fundaciones
 Objetivo: proyecto reproducible desde cero en una máquina nueva.
@@ -19,10 +19,13 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 
 **Definición de completado Fase 0**: máquina nueva + `docker compose up` + `./scripts/...` → server y dashboard funcionando.
 
-## FASE 1 — Server (baseline Traccar)
-- [ ] Config oficial: PostgreSQL, migraciones Liquibase
-- [ ] Autenticación, API, dispositivos, usuarios, WebSocket realtime
-- [ ] Validación de que el core upstream funciona sin modificar
+## FASE 1 — Server (baseline Traccar) ✔ COMPLETADA 2026-08-12
+- [x] Config oficial: PostgreSQL, migraciones Liquibase (PT-005, 33 changesets)
+- [x] Autenticación (cookie/token/Basic) + API + dispositivos + usuarios (PT-102/103)
+- [x] WebSocket realtime: posiciones y eventos en tiempo real (PT-101/104a)
+- [x] Persistencia tras reinicio (PT-104b)
+- [x] Evidencia ejecutable versionada en infrastructure/tests/ (10/10 + 10/10 + eventos)
+- [x] Config dev generada desde template sin secretos; token de firma estable (WEB_SECRET_TOKEN)
 
 ## FASE 2 — GPS / MQTT (canal alta frecuencia)
 - [ ] Diseño y elección del canal (MQTT QoS1 vs WebSocket vs HTTP batch) con comparativa
