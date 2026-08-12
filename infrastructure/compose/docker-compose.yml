@@ -47,8 +47,15 @@ services:
     environment:
       EMQX_NODE_NAME: dmj-mqtt@127.0.0.1
       EMQX_TELEMETRY_ENABLED: "false"
-      # Dev: anónimo permitido SOLO porque el puerto bindea 127.0.0.1.
-      # Fase 2: autenticación de clientes (usuarios/password) antes de abrir a la red.
+      # Dev: conexiones anónimas permitidas SOLO porque 1883/8083 bindean 127.0.0.1.
+      # MOTIVO: infrastructure/load-tests (mqtt-baseline / mqtt-e2e) conectan hoy sin
+      # credenciales; desactivar anónimo los rompería. Para auth+ACL en dev usar el
+      # override documentado: docker-compose.emqx-auth.yml (monta auth-file + acl-file).
+      # NOTA EMQX 5.8: `EMQX_ALLOW_ANONYMOUS` NO es una clave válida del schema (es
+      # ignorada). El anonimato lo controla la cadena de autenticación: al no haber
+      # authentication{...} configurada, cualquiera conecta. Mantener esta línea es
+      # inofensivo pero no tiene efecto; no hay que "desactivarla": hay que añadir el
+      # authenticator (ver docker-compose.emqx-auth.yml).
       EMQX_ALLOW_ANONYMOUS: "true"
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-public}
     ports:

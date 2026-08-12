@@ -1,0 +1,3 @@
+user_id,password_hash,salt,is_superuser
+dmj-consumer,5b3b65e78578d08453dd424215e34e61089707c1bf95822548b22b12eb953a45,af8dec675d9dfe65bcc602631526beb0,false
+dmj-device-demo,a87e1f4559e79392d4341387398c3aee7aae845eb1f364d26a54ac3ce2cc9d50,d357e61e682c9706926857a0554f37bc,false

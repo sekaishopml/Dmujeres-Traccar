@@ -53,15 +53,20 @@ tipo web `always=true` vinculada al usuario (ver README de la suite).
 | PT-202 | Validación envelope v1 | ✔ PASÓ | `MobileEnvelopeValidatorTest`: schema, topic/device, timestamps, coordenadas y límites |
 | PT-203 | Baseline MQTT QoS1 broker-only | ✔ PASÓ | `infrastructure/load-tests`: 1/10/100/1000 dispositivos, 0 pérdidas PUBACK; p99 2.1/7.3/10.8/53.6 ms en este VPS |
 | PT-204 | MQTT experimental end-to-end accepted/duplicate | ✔ PASÓ (experimental) | `mqtt:e2e`: `accepted` con `positionid=18`; redelivery byte-identical `duplicate`; 1 posición física |
+| PT-205 | Persistencia atómica posición+dedupe (JDBC transaccional) | ✔ PASÓ | Mismo flujo con `MobileAtomicPersistence`: `accepted` (positionid=19) y redelivery `duplicate`; una sola posición física; lease limpio tras commit |
+| PT-206 | Lease/recovery de mensajes `processing` | ✔ PASÓ | Reserva manual con lease vencido (attempts=5) → reclamada, procesada y `accepted` (attempts=6, positionid=20) |
+| PT-207 | ACL/authN EMQX 5.8 (override dev) | ✔ PASÓ (aislado) | 8/8 escenarios: consumer suscribe `+/telemetry`+publica `+/ack`; device publica/suscribe su propio topic; wildcards y topics ajenos denegados |
+| PT-208 | Compose dev/dev+auth/prod validan | ✔ PASÓ | `docker compose config` OK para las 3 variantes |
 
 **Alcance PT-203**: mide sólo PUBACK del broker EMQX. No es todavía ACK de negocio,
 persistencia en TimescaleDB ni deduplicación end-to-end. Esos resultados quedan
 pendientes del consumidor MQTT.
 
-**Alcance PT-204**: demuestra el flujo local con broker anónimo y no certifica
-producción. Las reservas `processing` generadas durante los intentos fallidos fueron
-marcadas `rejected` en la BD dev; lease/recovery y atomicidad posición+dedupe siguen
-pendientes.
+**Alcance PT-204/205/206**: flujo local con broker dev. La atomicidad queda garantizada
+por transacción JDBC (posición + `accepted` en un commit); un crash antes del commit revierte
+todo y un crash después deja `accepted` para redelivery `duplicate`. La ACL real en el
+compose dev principal sigue desactivada para no romper los load-tests anónimos; se activa
+con el override `docker-compose.emqx-auth.yml` (validado de forma aislada).
 
 ## Fases 2.2-5
 - Pendiente consumidor MQTT, pipeline común, ACK post-commit, HTTP fallback y carga end-to-end.
