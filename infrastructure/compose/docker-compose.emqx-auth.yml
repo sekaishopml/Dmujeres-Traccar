@@ -1,0 +1,50 @@
+# =============================================================================
+# OVERRIDE DEV OPCIONAL — EMQX con autenticación + ACL por archivo
+# =============================================================================
+# Activa authN (password_based, built_in_database + bootstrap CSV) y authZ
+# (ACL por archivo, no_match=deny) en el broker MQTT de desarrollo.
+#
+# NO forma parte del compose dev por defecto: infrastructure/load-tests conecta
+# de forma anónima, así que desactivar anónimo rompería esos tests. Usar este
+# override cuando se quiera validar el canal móvil con seguridad, y correr los
+# load-tests con MQTT_USER/MQTT_PASSWORD de auth-file.csv.
+#
+# Uso (equivalente a COMPOSE_FILE en .env):
+#   docker compose --env-file ../.env \
+#     -f docker-compose.yml -f docker-compose.emqx-auth.yml up -d
+#
+# o en .env:
+#   COMPOSE_FILE=infrastructure/compose/docker-compose.yml:infrastructure/compose/docker-compose.emqx-auth.yml
+# y luego:  ./infrastructure/scripts/dev.sh up        # recrea mqtt con la nueva config
+#
+# NOTA: para aplicar cambios de env hay que RECREAR el contenedor (no basta `restart`):
+#   ./infrastructure/scripts/dev.sh up
+#
+# Credenciales de ejemplo (SOLO dev) en infrastructure/emqx/auth-file.csv:
+#   dmj-consumer    / dmj-consumer-dev-pass       (cliente server)
+#   dmj-device-demo / dmj-device-demo-dev-pass    (dispositivo móvil demo)
+# Añadir más usuarios:  ./infrastructure/scripts/mqtt-users.sh add <id> <password>
+#
+# Validación de la config resultante:  docker compose config -f docker-compose.yml -f docker-compose.emqx-auth.yml
+
+services:
+  mqtt:
+    environment:
+      # --- Autenticación (EMQX 5.8): password_based, backend archivo (bootstrap CSV) ---
+      EMQX_AUTHENTICATION__1__MECHANISM: "password_based"
+      EMQX_AUTHENTICATION__1__BACKEND: "built_in_database"
+      EMQX_AUTHENTICATION__1__USER_ID_TYPE: "username"
+      EMQX_AUTHENTICATION__1__PASSWORD_HASH_ALGORITHM__NAME: "sha256"
+      EMQX_AUTHENTICATION__1__PASSWORD_HASH_ALGORITHM__SALT_POSITION: "prefix"
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_FILE: "/opt/emqx/etc/auth-file.csv"
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_TYPE: "hash"
+      # --- Autorización (ACL por archivo): todo lo no listado, denegado ---
+      EMQX_AUTHORIZATION__NO_MATCH: "deny"
+      EMQX_AUTHORIZATION__DENY_ACTION: "ignore"
+      EMQX_AUTHORIZATION__SOURCES__1__TYPE: "file"
+      EMQX_AUTHORIZATION__SOURCES__1__PATH: "/opt/emqx/etc/acl-file.conf"
+    volumes:
+      # NOTA: NO volver a montar dmj-mqttdata:/opt/emqx/data (ya lo monta el compose
+      # base; las listas `volumes` se concatenan entre -f files).
+      - ../emqx/auth-file.csv:/opt/emqx/etc/auth-file.csv:ro
+      - ../emqx/acl-file.conf:/opt/emqx/etc/acl-file.conf:ro

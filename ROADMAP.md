@@ -36,10 +36,10 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [x] Consumidor MQTT embebido experimental con ACK de aplicación posterior a persistencia
 - [x] E2E experimental `accepted`/`duplicate` con una posición física
 - [x] Pipeline común invocable sin `ChannelHandlerContext` (refactor + manejo excepcional)
+- [x] Transacción JDBC posición+dedupe y lease/recovery (`leaseuntil`/`leasetoken`/`attempts`)
+- [x] Templates ACL/authN/TLS EMQX 5.8 + override dev `docker-compose.emqx-auth.yml` (validado aislado)
 - [ ] Endpoint HTTP batch con envelope/idempotencia compartidos
-- [ ] Lease/recovery para mensajes `processing`
-- [ ] Transacción JDBC posición+dedupe
-- [ ] TLS, autenticación y ACL de EMQX para producción
+- [ ] TLS real de producción (certs por .env) en un despliegue externo
 - [ ] Protocolo propio + ACK + deduplicación + offline + reintentos
 - [ ] Integración Traccar + TimescaleDB + WebSocket
 - [ ] Pruebas de carga (1/10/100/1000 dispositivos simulados) y métricas
