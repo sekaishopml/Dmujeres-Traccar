@@ -9,11 +9,15 @@
 Todas las tareas T-000..T-009 completadas con evidencia (ver TEST_STATUS.md).
 FASE 0 cumple su definición de completado: entorno limpio + up + restore + server = sistema funcionando.
 
-## Siguiente tarea (FASE 1 — Server)
+## Siguiente tarea (FASE 2 — GPS / MQTT)
 
-**T-010: Baseline FASE 1** — config oficial PostgreSQL, autenticación, API, dispositivos,
-usuarios, WebSocket realtime. Objetivo: demostrar que el core upstream funciona sin modificar
-el código. Pendiente de arranque tras aprobación implícita del hito Fase 0.
+**T-020: Diseño y elección del canal de alta frecuencia** — comparativa técnica MQTT QoS1
+vs WebSocket vs HTTP batching vs lo existente en Traccar (BaseMqttProtocolDecoder,
+PositionForwarderMqtt). Luego: protocolo propio + ACK + deduplicación + cola offline +
+reintentos, integración con TimescaleDB y WebSocket, pruebas de carga 1/10/100/1000
+dispositivos con métricas (latencia, pérdida, throughput, CPU, RAM, DB writes).
+
+FASE 1 cerrada con evidencia: suite versionada en infrastructure/tests/ (PT-101..104).
 
 ### En progreso
 - [x] T-000 Auditoría (entorno + server + web) — completada, ver ARCHITECTURE.md
