@@ -1,0 +1,90 @@
+# DMujeres Traccar Platform — PRODUCCIÓN
+# Todo en red interna; SOLO se exponen: web (8082) y MQTT con TLS (8883).
+# La imagen del server (Dockerfile propio del fork) se construye en Fase 1.
+# Requiere .env con todos los secretos. Uso:
+#   docker compose --env-file ../.env -f docker-compose.prod.yml up -d
+
+services:
+
+  database:
+    image: timescale/timescaledb:latest-pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      TIMESCALEDB_TELEMETRY: "off"
+    volumes:
+      - dmj-prod-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Sin puertos publicados: solo red interna.
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?}"]
+    volumes:
+      - dmj-prod-redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mqtt:
+    image: emqx/emqx:5.8.5
+    restart: unless-stopped
+    environment:
+      EMQX_NODE_NAME: mqtt@127.0.0.1
+      EMQX_TELEMETRY_ENABLED: "false"
+      EMQX_ALLOW_ANONYMOUS: "false"
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?}
+      EMQX_AUTHENTICATION__1__USERNAME: ${MQTT_USER:?}
+      EMQX_AUTHENTICATION__1__PASSWORD: ${MQTT_PASSWORD:?}
+    ports:
+      - "8883:8883"   # MQTT+TLS (dominio estable, cert vía reverse proxy o certbot)
+      - "18083:18083" # Dashboard admin — RESTRINGIR por firewall al IP de admin
+    volumes:
+      - dmj-prod-mqttdata:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "emqx", "ctl", "status"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # traccar:
+  #   # IMAGEN PROPIA DEL FORK (se construirá en Fase 1: server/Dockerfile)
+  #   build:
+  #     context: ../../server
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   depends_on:
+  #     database:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   environment:
+  #     CONFIG_USE_ENVIRONMENT_VARIABLES: "true"
+  #     DATABASE_DRIVER: org.postgresql.Driver
+  #     DATABASE_URL: jdbc:postgresql://database:5432/${POSTGRES_DB}
+  #     DATABASE_USER: ${POSTGRES_USER}
+  #     DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+  #     CONFIG_WEB_ADDRESS: "0.0.0.0"
+  #     CONFIG_WEB_PORT: 8082
+  #     CONFIG_WEB_CONSOLE: "false"
+  #     CONFIG_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+  #   ports:
+  #     - "8082:8082"
+  #     - "5000-5500:5000-5500"  # protocolos GPS upstream (ajustar por protocolo)
+  #   volumes:
+  #     - dmj-prod-logs:/opt/traccar/logs
+
+volumes:
+  dmj-prod-pgdata:
+  dmj-prod-redisdata:
+  dmj-prod-mqttdata:
+  dmj-prod-logs:
