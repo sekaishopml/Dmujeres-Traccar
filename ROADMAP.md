@@ -1,6 +1,6 @@
 # ROADMAP — DMujeres Traccar Platform
 
-Estado: **EN CURSO — FASE 0**
+Estado: **FASE 0 COMPLETADA — siguiente: FASE 1 (Server)**
 
 ## FASE 0 — Auditoría y Fundaciones
 Objetivo: proyecto reproducible desde cero en una máquina nueva.
@@ -11,11 +11,11 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [x] Clones completos en `server/` y `dashboard/` con rama `dev`
 - [x] Documentación fundacional
 - [ ] Infraestructura Docker dev (timescaledb, redis, mqtt) + .env.example
-- [ ] Build del server (Gradle) con evidencia
-- [ ] Server arrancando con PostgreSQL + healthcheck OK
-- [ ] Build del dashboard (npm/vite) + servido por server
-- [ ] Prueba E2E básica (login + página principal)
-- [ ] Prueba de recuperación infraestructura en entorno limpio
+- [x] Build del server (Gradle) con evidencia (597 tests OK)
+- [x] Server arrancando con PostgreSQL/TimescaleDB + healthcheck OK
+- [x] Build del dashboard (npm/vite) + servido por server
+- [x] Prueba E2E básica (login + dispositivo + posición)
+- [x] Prueba de recuperación infraestructura en entorno limpio (PT-009)
 
 **Definición de completado Fase 0**: máquina nueva + `docker compose up` + `./scripts/...` → server y dashboard funcionando.
 
