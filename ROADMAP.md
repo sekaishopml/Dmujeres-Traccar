@@ -53,9 +53,13 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [ ] targetSdk 35 antes de Play Store
 - [ ] Prueba en teléfono físico (GPS/MQTT reales)
 
-## FASE 4 — Dashboard empresarial
-- [ ] Fork profundo de traccar-web, MapProvider abstraído, empresas/equipos/reportes,
-      optimización de rendimiento (virtualización, clustering, code splitting)
+## FASE 4 — Dashboard (optimización sin rediseño) ✔ EN CURSO 2026-08-12
+- [x] División de vendors: carga inicial 1.6MB→124KB, total JS 7.0→6.8MB, 227→158 chunks
+- [x] Compresión gzip en server: transferencia JS+CSS -69% (6.6MB→2.0MB)
+- [x] MapProvider abstraído (default OpenFreeMap); Google sin key ya no usa tiles no oficiales
+- [x] API keys hardcodeadas eliminadas (LocationIQ/OrdnanceSurvey, ahora por configuración)
+- [x] Sin regresión: WS/CRUD 10/10 + 10/10
+- [ ] Empresas/equipos/reportes avanzados (requiere multi-tenancy del server, Fase 1/5)
 
 ## FASE 5 — Hardening y Producción
 - [ ] RBAC, multi-tenant validado por tests de seguridad, auditoría, backups/restore
