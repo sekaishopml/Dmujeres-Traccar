@@ -23,7 +23,11 @@ FASE 2.2 cerrada: consumidor con persistencia atómica posición+dedupe y lease/
 validados (PT-205/206); ACL/authN EMQX 5.8 con override dev validado aislado (PT-207/208);
 HTTP fallback con hash canónico e idempotencia cruzada (PT-209/210); carga end-to-end
 200/200 accepted (PT-211).
-Pendiente (Fase 2.3/hardening): TLS real de producción con certificados y despliegue externo.
+FASE 3: app Android MVP compilada (APK debug, SDK 34). Críticos de revisión corregidos
+(re-suscripción ACK tras reconexión, backoff/techo de reintentos). Pendiente: prueba en
+teléfono físico y subir targetSdk a 35 para Play Store.
+
+Pendiente transversal: TLS real de producción con certificados y despliegue externo.
 
 ### En progreso
 - [x] T-000 Auditoría (entorno + server + web) — completada, ver ARCHITECTURE.md

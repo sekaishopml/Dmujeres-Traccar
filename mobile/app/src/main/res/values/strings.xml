@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DMujeres Tracking</string>
+    <string name="tracking_on">Tracking activo</string>
+    <string name="tracking_off">Tracking desactivado</string>
+    <string name="start">Activar tracking</string>
+    <string name="stop">Desactivar tracking</string>
+    <string name="server_hint">Servidor (mqtt://ip:puerto)</string>
+    <string name="device_hint">ID del dispositivo</string>
+    <string name="state">Estado</string>
+    <string name="save">Guardar y aplicar</string>
+    <string name="pending">Pendientes por enviar</string>
+    <string name="permission_title">Permisos necesarios</string>
+    <string name="permission_body">Para hacer tracking se necesita acceso a la ubicación (también en segundo plano) y notificaciones.</string>
+    <string name="grant">Conceder permisos</string>
+    <string name="channel_name">Estado del tracking</string>
+</resources>
