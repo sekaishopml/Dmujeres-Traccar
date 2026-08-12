@@ -9,15 +9,16 @@
 Todas las tareas T-000..T-009 completadas con evidencia (ver TEST_STATUS.md).
 FASE 0 cumple su definición de completado: entorno limpio + up + restore + server = sistema funcionando.
 
-## Siguiente tarea (FASE 2 — GPS / MQTT)
+## Siguiente tarea (FASE 2.2 — consumidor MQTT)
 
-**T-020: Diseño y elección del canal de alta frecuencia** — comparativa técnica MQTT QoS1
-vs WebSocket vs HTTP batching vs lo existente en Traccar (BaseMqttProtocolDecoder,
-PositionForwarderMqtt). Luego: protocolo propio + ACK + deduplicación + cola offline +
-reintentos, integración con TimescaleDB y WebSocket, pruebas de carga 1/10/100/1000
-dispositivos con métricas (latencia, pérdida, throughput, CPU, RAM, DB writes).
+**T-021: Consumidor MQTT embebido y pipeline común** — implementar `MobileMqttConsumer`
+con HiveMQ MQTT 5, manual acknowledgement, validación del envelope, resolución de
+dispositivo, persistencia idempotente y ACK de aplicación sólo después del commit.
+Antes de aceptar mensajes reales debe extraerse una frontera `PositionPipeline` invocable
+sin `ChannelHandlerContext`, preservando el comportamiento de los protocolos Netty.
 
-FASE 1 cerrada con evidencia: suite versionada en infrastructure/tests/ (PT-101..104).
+FASE 2.1 cerrada: ADR-002, contrato v1, migración aplicada en TimescaleDB, validator
+unitario y baseline MQTT broker-only versionado en `infrastructure/load-tests/`.
 
 ### En progreso
 - [x] T-000 Auditoría (entorno + server + web) — completada, ver ARCHITECTURE.md
@@ -25,11 +26,11 @@ FASE 1 cerrada con evidencia: suite versionada en infrastructure/tests/ (PT-101.
 - [x] T-002 Documentación fundacional (7 archivos)
 - [x] T-003 JDK 21 instalado (apt, openjdk-21.0.11)
 - [x] T-004 Clones completos @ v6.14.5 (master=upstream, dev=fork)
-- [ ] T-005 docker-compose dev + .env.example + scripts
-- [ ] T-006 Build del server (./gradlew build) + evidencia
-- [ ] T-007 Config server → PostgreSQL + arranque + healthcheck
-- [ ] T-008 Build dashboard (npm ci + build) + servido por server
-- [ ] T-009 Prueba E2E Fase 0 + TEST_STATUS + commit
+- [x] T-005 docker-compose dev + .env.example + scripts
+- [x] T-006 Build del server (./gradlew build) + evidencia
+- [x] T-007 Config server → PostgreSQL + arranque + healthcheck
+- [x] T-008 Build dashboard (npm ci + build) + servido por server
+- [x] T-009 Prueba E2E Fase 0 + TEST_STATUS + commit
 
 ### Bloqueos
 - Ninguno por el momento.
