@@ -100,3 +100,14 @@
 - Carga end-to-end: 20 dispositivos × 10 mensajes = 200/200 `accepted`, 0 pérdidas,
   0 duplicados (~124 msg/s con ACK de aplicación).
 - Scripts de prueba: `mqtt-e2e-load.mjs`, `http-e2e.mjs` (idempotentes con nonce).
+
+## 2026-08-12 — FASE 3: app Android MVP
+
+- App Kotlin `com.dmujeres.traccar` (minSdk 26 / targetSdk 34): foreground service de
+  ubicación, Fused Location Provider, MQTT Paho QoS1 con ACK de aplicación, cola offline
+  Room con backoff exponencial y techo de reintentos, watchdog con estados, boot receiver
+  con opt-in, notificaciones y toggle de tracking.
+- Corregidos en revisión: re-suscripción al ACK tras reconexión (C1), reintentos sin
+  backoff/bloqueo de cola (C2), volatilidad de estado, guard de trackingEnabled,
+  try/catch de startForeground Android 14, scope recreado.
+- APK debug compilado con Android SDK 34; documentación en docs/android/README.md.

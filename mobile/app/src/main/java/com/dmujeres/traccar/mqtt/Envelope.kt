@@ -1,0 +1,53 @@
+package com.dmujeres.traccar.mqtt
+
+import org.json.JSONObject
+import java.time.Instant
+import java.util.Locale
+
+/**
+ * Envelope v1 del contrato (docs/mqtt/protocol-v1.md). El orden de campos es fijo porque
+ * el servidor deduplica con un hash canónico por campos, no por los bytes del transporte.
+ */
+object Envelope {
+
+    fun nowIso(): String = Instant.now().toString()
+
+    fun buildPosition(
+        messageId: String,
+        deviceId: String,
+        sequence: Long,
+        latitude: Double,
+        longitude: Double,
+        accuracy: Double,
+        speed: Double,
+        bearing: Double,
+        altitude: Double,
+        observedAt: String
+    ): String {
+        val payload = JSONObject()
+        payload.put("latitude", latitude)
+        payload.put("longitude", longitude)
+        payload.put("accuracy", accuracy)
+        payload.put("speed", speed)
+        payload.put("bearing", bearing)
+        payload.put("altitude", altitude)
+
+        val body = JSONObject()
+        body.put("schema", 1)
+        body.put("type", "position")
+        body.put("messageId", messageId)
+        body.put("deviceId", deviceId)
+        body.put("sequence", sequence)
+        body.put("sentAt", nowIso())
+        body.put("observedAt", observedAt)
+        body.put("payload", payload)
+        return body.toString()
+    }
+
+    /** Genera un messageId único por reintento (no cambia si se reenvía la misma posición). */
+    fun newMessageId(deviceId: String, sequence: Long): String {
+        val devicePart = Integer.toUnsignedString(deviceId.hashCode(), 16).padStart(8, '0')
+        val sequencePart = java.lang.Long.toHexString(sequence).padStart(8, '0')
+        return ("01JAND" + devicePart + sequencePart).take(26)
+    }
+}
