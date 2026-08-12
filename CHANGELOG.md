@@ -47,3 +47,16 @@
   log en server/logs/, web.address=127.0.0.1 en dev.
 - Hallazgo documentado: notificaciones web requieren always=true y vínculo por permisos
   para llegar por WS (CacheManager.getDeviceNotifications); keepalive 55s.
+
+## 2026-08-12 — FASE 2.1: contrato y baseline de ingesta
+
+- ADR-002: MQTT 5/TLS QoS1 primario + ACK de aplicación post-persistencia + HTTP batch
+  fallback; WebSocket queda como salida al dashboard.
+- Contrato v1 en `docs/mqtt/protocol-v1.md` con `messageId`, `deviceId`, `sequence`,
+  timestamps, envelope y estados de ACK.
+- Migración Liquibase `tc_mobile_messages` con deduplicación persistente y modelo
+  `MobileMessage`. Validada en TimescaleDB real; el FK a `tc_positions` se descartó
+  por incompatibilidad con hypertables.
+- `MobileEnvelopeValidator` + tests unitarios.
+- Benchmark MQTT broker-only versionado: 1/10/100/1000 dispositivos, QoS1, 0 pérdidas
+  PUBACK; p99 2.1/7.3/10.8/53.6 ms. No representa todavía persistencia end-to-end.

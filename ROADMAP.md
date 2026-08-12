@@ -1,6 +1,6 @@
 # ROADMAP — DMujeres Traccar Platform
 
-Estado: **FASE 1 COMPLETADA — siguiente: FASE 2 (GPS/MQTT)**
+Estado: **FASE 2.1 COMPLETADA — siguiente: consumidor MQTT y pipeline común**
 
 ## FASE 0 — Auditoría y Fundaciones
 Objetivo: proyecto reproducible desde cero en una máquina nueva.
@@ -28,7 +28,14 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [x] Config dev generada desde template sin secretos; token de firma estable (WEB_SECRET_TOKEN)
 
 ## FASE 2 — GPS / MQTT (canal alta frecuencia)
-- [ ] Diseño y elección del canal (MQTT QoS1 vs WebSocket vs HTTP batch) con comparativa
+- [x] Diseño y elección del canal (MQTT QoS1 vs WebSocket vs HTTP batch) con comparativa
+- [x] ADR-002 + contrato `docs/mqtt/protocol-v1.md`
+- [x] Tabla `tc_mobile_messages` para deduplicación `(deviceid, sequence)` + `messageid`
+- [x] Validación envelope v1 con tests unitarios
+- [x] Baseline MQTT broker-only 1/10/100/1000 (PUBACK; no equivale a persistencia)
+- [ ] Consumidor MQTT embebido con ACK de aplicación posterior a persistencia
+- [ ] Pipeline común invocable sin `ChannelHandlerContext`
+- [ ] Endpoint HTTP batch con envelope/idempotencia compartidos
 - [ ] Protocolo propio + ACK + deduplicación + offline + reintentos
 - [ ] Integración Traccar + TimescaleDB + WebSocket
 - [ ] Pruebas de carga (1/10/100/1000 dispositivos simulados) y métricas
