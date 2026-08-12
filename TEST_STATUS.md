@@ -52,10 +52,15 @@ tipo web `always=true` vinculada al usuario (ver README de la suite).
 | PT-201 | Migración `tc_mobile_messages` aplicada en TimescaleDB | ✔ PASÓ | Liquibase exitoso; uniques `(deviceid, sequence)`/`messageid`; FK device; FK a `tc_positions` omitido por incompatibilidad hypertable y documentado |
 | PT-202 | Validación envelope v1 | ✔ PASÓ | `MobileEnvelopeValidatorTest`: schema, topic/device, timestamps, coordenadas y límites |
 | PT-203 | Baseline MQTT QoS1 broker-only | ✔ PASÓ | `infrastructure/load-tests`: 1/10/100/1000 dispositivos, 0 pérdidas PUBACK; p99 2.1/7.3/10.8/53.6 ms en este VPS |
+| PT-204 | MQTT experimental end-to-end accepted/duplicate | ✔ PASÓ (experimental) | `mqtt:e2e`: `accepted` con `positionid=18`; redelivery byte-identical `duplicate`; 1 posición física |
 
 **Alcance PT-203**: mide sólo PUBACK del broker EMQX. No es todavía ACK de negocio,
 persistencia en TimescaleDB ni deduplicación end-to-end. Esos resultados quedan
 pendientes del consumidor MQTT.
+
+**Alcance PT-204**: demuestra el flujo local con broker anónimo y no certifica
+producción. Persisten dos filas antiguas en estado `processing` de intentos fallidos;
+lease/recovery y atomicidad posición+dedupe siguen pendientes.
 
 ## Fases 2.2-5
 - Pendiente consumidor MQTT, pipeline común, ACK post-commit, HTTP fallback y carga end-to-end.

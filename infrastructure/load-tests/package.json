@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "mqtt:baseline": "node mqtt-baseline.mjs"
+    "mqtt:baseline": "node mqtt-baseline.mjs",
+    "mqtt:e2e": "node mqtt-e2e.mjs"
   },
   "dependencies": {
     "mqtt": "^5.14.1"
