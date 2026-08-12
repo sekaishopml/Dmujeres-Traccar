@@ -29,3 +29,21 @@
   submódulos formalizados (.gitmodules), runbook de recuperación, docs de seguridad.
 - Bugs corregidos: dev.sh down sin forward de args; mapeo DATABASE_PASSWORD en launcher dev.
 - PT-009 (recuperación en entorno limpio) validado con evidencia real.
+
+## 2026-08-12 — FASE 1 completada (server baseline)
+
+### Validado (upstream sin modificar)
+- WebSocket realtime `/api/socket`: auth por token firmado, push de posiciones en tiempo real
+  (PostProcessHandler→ConnectionManager), eventos deviceOnline con mensaje, keepalive 55s.
+- Auth: cookie, token ECDSA (POST /api/session/token), Basic.
+- CRUD completo (grupos, dispositivos, geocercas, usuarios) + aislamiento de permisos.
+- Persistencia tras reinicio (posiciones, usuarios, notificaciones, eventos).
+
+### Entregables
+- Suite de integración versionada: infrastructure/tests/ (ws-test, crud-test, event-test,
+  README, lockfile) — idempotente, credenciales por env, resultados registrados.
+- server/conf/traccar-dev.xml.example (template sin secretos) + make-config.
+- run-server-dev.sh: inyecta WEB_SECRET_TOKEN (sesiones estables entre reinicios),
+  log en server/logs/, web.address=127.0.0.1 en dev.
+- Hallazgo documentado: notificaciones web requieren always=true y vínculo por permisos
+  para llegar por WS (CacheManager.getDeviceNotifications); keepalive 55s.
