@@ -92,3 +92,14 @@ con el override `docker-compose.emqx-auth.yml` (validado de forma aislada).
 | PT-402 | Compresión gzip del server | ✔ PASÓ | JS+CSS 6631 KB → 2028 KB (69%); `Content-Encoding: gzip` |
 | PT-403 | Sin regresión API/WS tras gzip | ✔ PASÓ | ws-test 10/10 + crud-test 10/10 |
 | PT-404 | Build dashboard con cambios MapProvider | ✔ PASÓ | `npm run build` OK; mapa default OpenFreeMap; fallback seguro |
+
+## Optimización de datos — compresión TimescaleDB (D-014)
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-501 | Compresión habilitada y aplicada | ✔ PASÓ | `tc_positions` compression_enabled=t; 24/38 chunks comprimidos en ~6 s |
+| PT-502 | Ratio de compresión real | ✔ PASÓ | 5.19x (80.7%) compresión pura; 2.34x con ventana reciente |
+| PT-503 | Rendimiento de consulta sobre datos comprimidos | ✔ PASÓ | Ruta 1 día/dispositivo (8.7k filas): execution 2.3–4.4 ms |
+| PT-504 | Proyección 5 años / 100GB | ✔ PASÓ | 10 disp @10s=7.5GB; 50=37.3GB; 100=74.6GB; ~134 disp @10s caben |
+
+Detalle en `infrastructure/database/measurement-results.md`.
