@@ -59,14 +59,17 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [x] MapProvider abstraído (default OpenFreeMap); Google sin key ya no usa tiles no oficiales
 - [x] API keys hardcodeadas eliminadas (LocationIQ/OrdnanceSurvey, ahora por configuración)
 - [x] Sin regresión: WS/CRUD 10/10 + 10/10
-- [ ] Empresas/equipos/reportes avanzados (requiere multi-tenancy del server, Fase 1/5)
+- [x] (Decisión D-012) SIN empresas/multi-tenancy: entorno privado de una sola empresa
 
-## FASE 5 — Hardening y Producción
-- [ ] RBAC, multi-tenant validado por tests de seguridad, auditoría, backups/restore
-      probados, observabilidad, despliegue, prueba de recuperación real
+## FASE 5 — Hardening y Producción (entorno privado de UNA empresa)
+- [ ] Seguridad de acceso: TLS/HTTPS, auth fuerte, firewall/VPN, mínima exposición pública
+- [ ] RBAC plano validado (admin → usuarios/grupos) con tests de seguridad
+- [ ] Backups/restore probados y recuperación real en máquina limpia
+- [ ] Observabilidad: logs, métricas, health checks, alertas
+- [ ] Despliegue reproducible (dominios estables, certs por .env) y prueba de recuperación
 
 ## Requisitos transversales
-- Multi-tenancy (empresas) — NO existe en upstream, se diseñará en Fase 1/2
-- MapProvider abstracto — MapLibre ya abstrae providers; formalizar en Fase 4
+- Multi-tenancy: **DESCARTADO** (D-012) — plataforma privada y confidencial de una sola empresa
+- MapProvider abstracto — MapLibre ya abstrae providers; formalizado en Fase 4
 - Infraestructura portable — VPS reemplazable vía Docker + scripts + backups
 - Dominios estables para API/dashboard/MQTT (nunca IPs en la app)
