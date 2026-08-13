@@ -9,11 +9,17 @@ Plataforma empresarial de tracking GPS (hard fork de Traccar) con:
 
 - **Server**: fork de `traccar/traccar` (Java 21, Jetty 12, Jersey 4, Guice 7, Netty 4.2)
 - **Dashboard**: fork de `traccar/traccar-web` (React 19, MUI 9, Redux Toolkit, MapLibre GL 5)
-- **Mobile**: app Android nueva en Kotlin (FASE 3, aún no iniciada)
+- **Mobile**: app Android nueva en Kotlin (FASE 3, MVP compilado)
+
+## Alcance (decisión D-012)
+
+Plataforma **privada y confidencial de UNA sola empresa**. **Sin multi-tenancy**:
+se mantiene el modelo plano de Traccar (usuarios/grupos/dispositivos con permisos).
+La seguridad se centra en proteger el acceso al entorno (TLS, auth, firewall/VPN, backups).
 
 ## Estado actual
 
-- **Fase**: FASE 0 — Auditoría y Fundaciones (EN CURSO)
+- **Fase**: FASE 4 completada; FASE 5 (hardening y producción) pendiente
 - **Upstream**: 6.14.5 (server y web)
 - **Licencia upstream**: Apache 2.0 (ambos repos)
 

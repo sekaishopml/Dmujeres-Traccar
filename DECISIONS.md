@@ -68,3 +68,20 @@ offline queue, watchdog, boot receiver. Verificar políticas Android 14+/15+ y P
 `web.console=true` SOLO en dev (bind 127.0.0.1). En producción (Fase 5): `web.console=false`
 y bind por reverse proxy con TLS. `WEB_SECRET_TOKEN` debe inyectarse como env para
 sesiones/tokens estables entre reinicios (evitado en dev por defecto).
+
+## D-012 (2026-08-12): SIN multi-tenancy — plataforma privada de una sola empresa
+**Estado**: ADOPTADA (supersede la idea de empresas de D-006)
+**Decisión**: El despliegue es un **entorno privado y confidencial para una sola empresa**.
+No se implementa el modelo de empresas/tenants. Se mantiene el modelo plano de Traccar
+(usuarios + grupos + dispositivos con permisos).
+**Consecuencias**:
+- NO se crea `tc_companies` ni filtros por tenant ni tests de aislamiento entre empresas.
+- La seguridad se centra en proteger el acceso al entorno: TLS, autenticación fuerte,
+  firewall/VPN, mínima exposición pública, backups y auditoría (Fase 5).
+- El dashboard conserva su diseño original; no habrá selector de empresas.
+- El administrador gestiona usuarios/dispositivos/grupos del modelo plano de Traccar.
+
+## D-013 (2026-08-12): Permisos de usuarios en entorno de una sola empresa
+**Estado**: ADOPTADA
+Se mantiene el RBAC plano de Traccar (administrador → usuarios con limites de dispositivos
+y grupos). Suficiente para una empresa; sin tenant layer.
