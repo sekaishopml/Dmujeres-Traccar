@@ -121,3 +121,12 @@
   API key (se eliminaron tiles no oficiales de mt*.google.com); API keys hardcodeadas de
   LocationIQ/OrdnanceSurvey retiradas (ahora por configuración).
 - Sin regresiones: WS/CRUD 10/10; build OK.
+
+## 2026-08-13 — Optimización de datos: compresión TimescaleDB (D-014)
+
+- Scripts `infrastructure/database/timescale-compression.sql` y `scripts/db-timescale.sh`
+  (chunk mensual, compresión segment_by=deviceid order_by=fixtime DESC, política >1 día,
+  retención desactivada: se conserva TODO).
+- Mediciones reales con 2.7M filas: compresión 5.19x (80.7%), consultas 2-4ms.
+- Proyección 5 años/100GB documentada (10 dispositivos @10s ≈ 7.5GB).
+- Decisión D-014: sin borrado automático; histórico completo mes a mes.

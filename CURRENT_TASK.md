@@ -30,8 +30,13 @@ teléfono físico y subir targetSdk a 35 para Play Store.
 Pendiente transversal: TLS real de producción con certificados y despliegue externo.
 
 FASE 4: dashboard optimizado sin rediseño (chunk inicial 1.6MB→124KB, gzip -69%,
-MapProvider con default OpenFreeMap, keys hardcodeadas eliminadas). Pendiente:
-multi-tenancy/empresas (requiere trabajo de server) para reportes por empresa.
+MapProvider con default OpenFreeMap, keys hardcodeadas eliminadas).
+
+Optimización de datos (D-014): compresión TimescaleDB activa y medida (5.19x, consultas
+2-4ms); se conserva TODO el histórico (sin borrado). Proyección: ~134 dispositivos @10s
+caben en 100GB/5 años.
+
+Pendiente: FASE 5 (hardening/producción) cuando el usuario la autorice.
 
 ### En progreso
 - [x] T-000 Auditoría (entorno + server + web) — completada, ver ARCHITECTURE.md

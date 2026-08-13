@@ -85,3 +85,14 @@ No se implementa el modelo de empresas/tenants. Se mantiene el modelo plano de T
 **Estado**: ADOPTADA
 Se mantiene el RBAC plano de Traccar (administrador → usuarios con limites de dispositivos
 y grupos). Suficiente para una empresa; sin tenant layer.
+
+## D-014 (2026-08-13): Conservar TODO el histórico GPS; compresión TimescaleDB
+**Estado**: ADOPTADA
+**Decisión**: No hay borrado automático (retención desactivada). El histórico se conserva
+mes a mes y año a año. Para caber en ~100 GB / 5 años se usa compresión TimescaleDB sobre
+`tc_positions` (segment_by=deviceid, order_by=fixtime DESC, comprimir chunks > 1 día).
+**Evidencia**: ratio de compresión 5.19x (80.7%), consultas 2-4 ms sobre datos comprimidos;
+proyección: 10 dispositivos @10s ≈ 7.5 GB/5 años; ~134 dispositivos @10s caben en 100 GB
+(ver `infrastructure/database/measurement-results.md`).
+**Consecuencia**: si la flota supera ~130 dispositivos @10s, subir el intervalo de la app
+a 30 s (≈12 GB/5 años para 50 dispositivos).

@@ -61,6 +61,12 @@ Objetivo: proyecto reproducible desde cero en una máquina nueva.
 - [x] Sin regresión: WS/CRUD 10/10 + 10/10
 - [x] (Decisión D-012) SIN empresas/multi-tenancy: entorno privado de una sola empresa
 
+## Optimización de datos (D-014) ✔ COMPLETADA 2026-08-13
+- [x] Compresión TimescaleDB en tc_positions (chunk mensual, comprimir >1 día, sin borrado)
+- [x] Medición real: ratio 5.19x (80.7%), consultas 2-4ms; scripts versionados
+- [x] Proyección 5 años documentada: 10 dispositivos @10s ≈ 7.5GB (hasta ~134 @10s en 100GB)
+- [ ] Ajustar intervalo de la app (30s/60s) si la flota crece (decisión de negocio)
+
 ## FASE 5 — Hardening y Producción (entorno privado de UNA empresa)
 - [ ] Seguridad de acceso: TLS/HTTPS, auth fuerte, firewall/VPN, mínima exposición pública
 - [ ] RBAC plano validado (admin → usuarios/grupos) con tests de seguridad
