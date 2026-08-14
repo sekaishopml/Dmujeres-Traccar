@@ -14,4 +14,22 @@
     <string name="permission_body">Para hacer tracking se necesita acceso a la ubicación (también en segundo plano) y notificaciones.</string>
     <string name="grant">Conceder permisos</string>
     <string name="channel_name">Estado del tracking</string>
+    <string name="device_id_label">ID del dispositivo (para agregarlo en el panel)</string>
+    <string name="device_id_hint">Este ID se genera solo. Cópialo y agrégalo en el panel de Traccar: Dispositivos → Añadir → pega el ID. Es el único paso que requiere el administrador.</string>
+    <string name="copy">Copiar</string>
+    <string name="copied">ID copiado</string>
+    <string name="frequency_label">Frecuencia de envío (segundos, mínimo 3)</string>
+    <string name="buffer_label">Buffer máximo de pendientes (10–5000)</string>
+    <string name="permissions_button">Permisos y batería</string>
+    <string name="welcome_title">Configuración inicial</string>
+    <string name="welcome_body">Sigue los 4 pasos para que el tracking funcione siempre, incluso con la pantalla apagada y en segundo plano. Marca todo lo que te pida.</string>
+    <string name="step_location">1. Permisos de ubicación</string>
+    <string name="grant_location">Permitir ubicación (siempre)</string>
+    <string name="step_notifications">2. Notificaciones</string>
+    <string name="grant_notifications">Permitir notificaciones</string>
+    <string name="step_battery">3. Batería (para que nunca se detenga)</string>
+    <string name="grant_battery">Permitir sin límite de batería</string>
+    <string name="step_gps">4. GPS activado</string>
+    <string name="grant_gps">Abrir ajustes de ubicación y activarla</string>
+    <string name="finish">Listo, continuar</string>
 </resources>

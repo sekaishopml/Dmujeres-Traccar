@@ -20,8 +20,8 @@ android {
         applicationId = "com.dmujeres.traccar"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
     }
 
     buildTypes {
@@ -69,4 +69,5 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 }

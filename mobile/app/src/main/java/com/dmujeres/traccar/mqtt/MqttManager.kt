@@ -92,8 +92,8 @@ class MqttManager(
 
             val options = MqttConnectOptions().apply {
                 isAutomaticReconnect = true
-                maxReconnectDelay = 30_000
-                connectionTimeout = 15
+                maxReconnectDelay = 10_000
+                connectionTimeout = 10
                 isCleanSession = true
                 if (config.username.isNotBlank()) {
                     userName = config.username
@@ -165,10 +165,10 @@ class MqttManager(
                     withContext(Dispatchers.IO) { dao.updateAttempts(next.messageId, attempts) }
                     val backoffMs = 5_000L * (1L shl minOf(attempts, 8))
                     retryAt[next.messageId] = now + backoffMs
-                    if (attempts > 30) {
+                    if (attempts > config.maxRetries) {
                         withContext(Dispatchers.IO) { dao.delete(next.messageId) }
                         retryAt.remove(next.messageId)
-                        messageCallback("Mensaje descartado tras 30 reintentos: ${next.messageId}")
+                        messageCallback("Mensaje descartado tras ${config.maxRetries} reintentos: ${next.messageId}")
                     }
                 }
             }
@@ -186,7 +186,7 @@ class MqttManager(
             current.publish(config.telemetryTopic(), message)
             return withContext(Dispatchers.IO) {
                 try {
-                    future.get(15, TimeUnit.SECONDS)
+                    future.get(config.ackTimeoutSeconds.toLong(), TimeUnit.SECONDS)
                 } catch (e: TimeoutException) {
                     null
                 }
