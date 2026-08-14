@@ -170,3 +170,14 @@
 - E2E completo con evidencia (infrastructure/database/collaborator-e2e-evidence.md):
   crear colaborador, 3 posiciones accepted, dedupe (duplicate), ACL deniega topics ajenos,
   dispositivo online en panel.
+
+## 2026-08-14 — App 1.0.5: provisión desde Dispositivos + ONLINE
+
+- El formulario de Dispositivos incorpora **Acceso del colaborador**: usuario, contraseña,
+  frecuencia y buffer. Botón "Crear acceso y dispositivo" llama a `/api/mobile/provision`.
+- Endpoint admin de provisión: crea dispositivo Traccar + usuario MQTT EMQX; nunca guarda ni
+  devuelve la contraseña en atributos/GET. Guarda solo preferencias no sensibles.
+- App 1.0.5: el colaborador ingresa usuario+contraseña; desaparece el requisito de ID
+  autogenerado. Servidor sigue preconfigurado `mqtt://64.176.219.221:1883`.
+- Fix H-1 validado: posición móvil aceptada marca el dispositivo `online` y actualiza
+  `lastUpdate`; `panel-maria` E2E confirmado online en el dashboard.
