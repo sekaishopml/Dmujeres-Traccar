@@ -1,3 +1,4 @@
 local.properties
 build/
 .cxx/
+keystore.properties

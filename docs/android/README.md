@@ -60,6 +60,15 @@ export ANDROID_HOME=/opt/android-sdk   # ruta a tu SDK
 > Para MQTT autenticado, rellenar usuario/contraseña en la app y configurar auth/ACL
 > (override `docker-compose.emqx-auth.yml`).
 
+## Firma de release (keystore)
+
+El APK de release se firma con una clave propia (`/root/keystore/dmujeres-release.jks`
+en el VPS de build; credenciales en `mobile/keystore.properties`, **gitignored**).
+
+⚠️ **Hacer copia de seguridad del keystore y sus contraseñas en un lugar seguro**: sin
+esa clave no se pueden publicar actualizaciones de la app (la firma debe ser siempre la
+misma). No se sube a GitHub.
+
 ## Políticas Android/Play (cumplidas)
 
 - Foreground service de tipo `location` declarado y arrancado con `ServiceCompat` (obligatorio
