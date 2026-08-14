@@ -16,6 +16,7 @@ import com.dmujeres.traccar.DmujeresApp
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.db.PendingPosition
 import com.dmujeres.traccar.mqtt.Envelope
+import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.util.Notifications
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -231,7 +232,7 @@ class TrackingService : Service() {
     private fun refreshStateAndNotify() {
         serviceScope.launch {
             val pending = withContext(Dispatchers.IO) { dao.countFlow().first() }
-            val text = currentState.label + " · " + pending + " pendientes"
+            val text = currentState.label + " · " + MqttStatus.status + " · " + pending + " pendientes"
             Notifications.update(this@TrackingService, "DMujeres Tracking", text)
         }
     }

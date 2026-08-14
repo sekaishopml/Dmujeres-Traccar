@@ -181,3 +181,12 @@
   autogenerado. Servidor sigue preconfigurado `mqtt://64.176.219.221:1883`.
 - Fix H-1 validado: posición móvil aceptada marca el dispositivo `online` y actualiza
   `lastUpdate`; `panel-maria` E2E confirmado online en el dashboard.
+
+## 2026-08-14 — App 1.0.6: estado de conexión y alta limpia desde Dispositivos
+
+- La app muestra explícitamente `Conectando...`, `Conectado al servidor` o `Sin conexión`
+  en la notificación/estado (antes mostraba Tracking activo aunque MQTT hubiera fallado).
+- El dashboard ya no muestra el bloque **Obligatorio** (Nombre/Identificador); el alta se
+  realiza únicamente desde **Acceso del colaborador**, como pidió el usuario.
+- El panel crea dispositivo + usuario MQTT + preferencias sin exponer la contraseña.
+- E2E verificado: `panel-maria` → MQTT autenticado → ACK accepted → dashboard ONLINE.
