@@ -1,9 +1,6 @@
 package com.dmujeres.traccar
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -35,19 +32,15 @@ class MainActivity : AppCompatActivity() {
         config = AppConfig(this)
         Notifications.ensureChannel(this)
 
-        binding.deviceInput.setText(config.deviceId)
+        binding.usernameInput.setText(config.username)
+        binding.passwordInput.setText(config.password)
         binding.serverInput.setText(config.serverUrl)
         binding.intervalInput.setText(config.intervalSeconds.toString())
         binding.bufferInput.setText(config.bufferMax.toString())
 
-        binding.copyIdButton.setOnClickListener {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("deviceId", config.deviceId))
-            Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
-        }
-
         binding.saveButton.setOnClickListener {
-            config.deviceId = binding.deviceInput.text.toString()
+            config.username = binding.usernameInput.text.toString()
+            config.password = binding.passwordInput.text.toString()
             config.serverUrl = binding.serverInput.text.toString()
             config.intervalSeconds = binding.intervalInput.text.toString().toLongOrNull() ?: 10L
             config.bufferMax = binding.bufferInput.text.toString().toIntOrNull() ?: 500
@@ -64,10 +57,8 @@ class MainActivity : AppCompatActivity() {
                 TrackingService.stop(this)
                 updateUi()
             } else {
-                if (allPermissionsGranted()) {
-                    config.trackingEnabled = true
-                    TrackingService.start(this)
-                    updateUi()
+                if (config.username.isBlank() || config.password.isBlank()) {
+                    Toast.makeText(this, R.string.credentials_required, Toast.LENGTH_LONG).show()
                 } else {
                     startIfReady()
                 }
@@ -81,10 +72,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startIfReady() {
-        if (allPermissionsGranted()) {
-            config.trackingEnabled = true
-            TrackingService.start(this)
+        if (!allPermissionsGranted()) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            return
         }
+        config.trackingEnabled = true
+        TrackingService.start(this)
         updateUi()
     }
 
@@ -104,7 +97,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUi() {
-        binding.deviceInput.setText(config.deviceId)
+        binding.usernameInput.setText(config.username)
+        binding.passwordInput.setText(config.password)
         binding.serverInput.setText(config.serverUrl)
         binding.intervalInput.setText(config.intervalSeconds.toString())
         binding.bufferInput.setText(config.bufferMax.toString())

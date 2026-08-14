@@ -1,28 +1,30 @@
 #!/usr/bin/env bash
 # =============================================================================
-# mqtt-users.sh — gestión de usuarios MQTT (authN file) en EMQX 5.8
+# mqtt-users.sh — gestión de usuarios MQTT (authN built_in_database) en EMQX 5.8
 # =============================================================================
 # EMQX 5.8 NO expone un comando `emqx ctl` para usuarios MQTT (solo dashboard
-# admins). La vía oficial es la API HTTP del dashboard (o la UI). Este script
-# la usa y además genera líneas de bootstrap para auth-file.csv.
+# admins). La vía oficial es la API HTTP (/api/v5) o la UI. Este script la usa y
+# además genera líneas de bootstrap para auth-file.csv.
 #
-# Autenticador esperado: password_based / built_in_database (ver emqx.conf).
+# Autenticador esperado: password_based / built_in_database (ver compose).
 #
 # Uso:
 #   scripts/mqtt-users.sh hash <password>              # línea CSV bootstrap (sha256+sal prefix)
-#   scripts/mqtt-users.sh add <user_id> <password>     # alta en caliente vía API
+#   scripts/mqtt-users.sh add <user_id> <password>     # alta en caliente vía API (también en runtime)
 #   scripts/mqtt-users.sh list                         # listar usuarios
 #   scripts/mqtt-users.sh del <user_id>                # borrar usuario
 #
-# Variables (o .env):
-#   EMQX_API_HOST (default 127.0.0.1)
-#   EMQX_API_PORT (default 18083)         # dashboard HTTP (dev) o HTTPS (prod vía tunel/fw)
-#   EMQX_DASHBOARD_PASSWORD (default public, dev)
-#   EMQX_AUTH_ID (default password_based:built_in_database)
+# Credenciales de la API EMQX (o .env):
+#   EMQX_API_URL      (default http://127.0.0.1:18083) — URL base del dashboard API
+#   EMQX_API_KEY      + EMQX_API_SECRET                 — API key de EMQX (recomendado)
+#   Si no se definen, fallback dev: login admin del dashboard con
+#   EMQX_DASHBOARD_PASSWORD (default public) — emite AVISO; NO usar en producción.
+#   Compat legacy: EMQX_API_HOST/EMQX_API_PORT (default 127.0.0.1:18083).
+#   EMQX_AUTH_ID      (default password_based:built_in_database)
 #
 # Ejemplo:
 #   ./infrastructure/scripts/mqtt-users.sh hash 'misecreto'
-#   ./infrastructure/scripts/mqtt-users.sh add dmj-device-abc123 'misecreto'
+#   ./infrastructure/scripts/mqtt-users.sh add juan-001 'misecreto'
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -34,9 +36,12 @@ fi
 
 HOST="${EMQX_API_HOST:-127.0.0.1}"
 PORT="${EMQX_API_PORT:-18083}"
+API_URL="${EMQX_API_URL:-http://${HOST}:${PORT}}"
+API_KEY="${EMQX_API_KEY:-}"
+API_SECRET="${EMQX_API_SECRET:-}"
 DASH_PASS="${EMQX_DASHBOARD_PASSWORD:-public}"
 AUTH_ID="${EMQX_AUTH_ID:-password_based:built_in_database}"
-BASE="http://${HOST}:${PORT}/api/v5"
+BASE="${API_URL%/}/api/v5"
 AUTH_ENDPOINT="$BASE/authentication/$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$AUTH_ID")/users"
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -44,10 +49,27 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
-dashboard_token() {
-  curl -fsS -X POST -H 'Content-Type: application/json' \
-    -d "{\"username\":\"admin\",\"password\":\"$DASH_PASS\"}" \
-    "$BASE/login" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
+# Cabecera de autenticación: API key (Basic) si está definida; si no, login admin
+# del dashboard (dev) con AVISO.
+auth_header() {
+  if [[ -n "$API_KEY" || -n "$API_SECRET" ]]; then
+    if [[ -z "$API_KEY" || -z "$API_SECRET" ]]; then
+      echo "ERROR: EMQX_API_KEY y EMQX_API_SECRET deben definirse ambas." >&2
+      exit 1
+    fi
+    local creds
+    creds="$(printf '%s:%s' "$API_KEY" "$API_SECRET" | base64 | tr -d '\n')"
+    echo "Authorization: Basic $creds"
+  else
+    echo "AVISO: sin EMQX_API_KEY/EMQX_API_SECRET — usando admin del dashboard" >&2
+    echo "       (${EMQX_DASHBOARD_USER:-admin}). Solo válido para dev; en" >&2
+    echo "       producción crea una API key en EMQX y defínela en .env." >&2
+    local token
+    token="$(curl -fsS -X POST -H 'Content-Type: application/json' \
+      -d "{\"username\":\"${EMQX_DASHBOARD_USER:-admin}\",\"password\":\"$DASH_PASS\"}" \
+      "$BASE/login" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')"
+    echo "Authorization: Bearer $token"
+  fi
 }
 
 cmd="${1:-}"
@@ -70,16 +92,14 @@ case "$cmd" in
       echo "uso: $0 add <user_id> <password>" >&2
       exit 1
     fi
-    token="$(dashboard_token)"
-    curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+    curl -fsS -X POST -H "$(auth_header)" -H 'Content-Type: application/json' \
       -d "{\"user_id\":\"$2\",\"password\":\"$3\",\"is_superuser\":false}" \
       "$AUTH_ENDPOINT"
     echo
     echo "OK: usuario '$2' añadido (password hasheado por EMQX en el servidor)."
     ;;
   list)
-    token="$(dashboard_token)"
-    curl -fsS -H "Authorization: Bearer $token" "$AUTH_ENDPOINT" \
+    curl -fsS -H "$(auth_header)" "$AUTH_ENDPOINT" \
       | python3 -c 'import sys,json; [print(u["user_id"], "superuser" if u["is_superuser"] else "") for u in json.load(sys.stdin)["data"]]'
     ;;
   del)
@@ -87,16 +107,15 @@ case "$cmd" in
       echo "uso: $0 del <user_id>" >&2
       exit 1
     fi
-    token="$(dashboard_token)"
     enc="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$2")"
-    curl -fsS -X DELETE -H "Authorization: Bearer $token" "$AUTH_ENDPOINT/$enc"
+    curl -fsS -X DELETE -H "$(auth_header)" "$AUTH_ENDPOINT/$enc"
     echo
     echo "OK: usuario '$2' eliminado."
     ;;
   *)
     echo "uso: $0 {hash <password>|add <user_id> <password>|list|del <user_id>}" >&2
     echo "  hash  -> imprime línea CSV para auth-file.csv (bootstrap, sin tocar el broker)" >&2
-    echo "  add   -> alta en caliente vía API HTTP del dashboard EMQX" >&2
+    echo "  add   -> alta en caliente vía API HTTP de EMQX (también en runtime)" >&2
     exit 1
     ;;
 esac

@@ -41,20 +41,21 @@ No sustituye a `docs/mqtt/protocol-v1.md` (contrato) ni a `docs/security/`.
 | --- | --- | --- | --- |
 | `dmj-consumer` (server) | subscribe | `dmj/v1/devices/+/telemetry` | allow |
 | `dmj-consumer` (server) | publish | `dmj/v1/devices/+/ack` | allow |
-| `dmj-device-*` (móvil) | publish | `dmj/v1/devices/${username}/telemetry` | allow |
-| `dmj-device-*` (móvil) | subscribe | `dmj/v1/devices/${username}/ack` | allow |
+| cualquier móvil `${username}` | publish | `dmj/v1/devices/${username}/telemetry` | allow |
+| cualquier móvil `${username}` | subscribe | `dmj/v1/devices/${username}/ack` | allow |
 | cualquier otro | publish/subscribe | cualquier topic (incl. `$SYS/#`, wildcards) | deny |
 
-El placeholder `${username}` ata el topic al usuario autenticado: un dispositivo con
-`user_id = dmj-device-<id>` solo toca `dmj/v1/devices/dmj-device-<id>/...`. El server
-nunca publica telemetry ni se suscribe a acks de un dispositivo concreto.
+El placeholder `${username}` ata el topic al usuario autenticado: un móvil con
+`user_id = <id>` solo toca `dmj/v1/devices/<id>/...` (el username ES el deviceId).
+Sin wildcards para móviles. El server nunca publica telemetry ni se suscribe a acks
+de un dispositivo concreto.
 
 ## Credenciales por dispositivo
 
-Modelo recomendado: **un `user_id` por dispositivo**, con formato `dmj-device-<id>`.
+Modelo: **un `user_id` por colaborador/dispositivo, y ese `user_id` ES el deviceId**.
 
 - El `user_id` se usa como identidad: en el ACL, `${username}` deriva el topic; en la
-  app debe ser estable en el tiempo.
+  app debe ser estable en el tiempo y coincidir con el `deviceId` que publica.
 - El `deviceId` del envelope MQTT debe coincidir con el `user_id` autenticado
   (validación de aplicación también — el ACL no inspecciona el payload).
 - `is_superuser = false` siempre para móvil y para el server consumer.
@@ -62,7 +63,7 @@ Modelo recomendado: **un `user_id` por dispositivo**, con formato `dmj-device-<i
 Crear un dispositivo (alta en caliente, sin reiniciar el broker):
 
 ```bash
-./infrastructure/scripts/mqtt-users.sh add dmj-device-abc123 'secreto'
+./infrastructure/scripts/mqtt-users.sh add juan-001 'Juan2026!'
 # Añade el usuario con password (EMQX lo hashea en el servidor) vía API.
 # Nada más que hacer: el ACL por ${username} ya lo habilita a su topic.
 ```
@@ -99,11 +100,11 @@ Provisionar el seed de arranque (auth-file.csv) con un hash:
 
 ## Pasos de prueba
 
-Con el compose auth activo (dev override o prod):
+Con la auth/ACL activa en el compose dev (integrada por defecto en `docker-compose.yml`):
 
 ```bash
 # 1) Broker arriba
-./infrastructure/scripts/dev.sh up          # con COMPOSE_FILE incl. docker-compose.emqx-auth.yml
+./infrastructure/scripts/dev.sh up          # recrea mqtt con auth+ACL (dev por defecto)
 
 # 2) Confirmar authN y authZ aplicados (dashboard API)
 curl -s -X POST -H 'Content-Type: application/json' \
@@ -123,27 +124,29 @@ mosquitto_sub  -h 127.0.0.1 -p 1883 -u dmj-consumer -P dmj-consumer-dev-pass \
 mosquitto_pub  -h 127.0.0.1 -p 1883 -u dmj-consumer -P dmj-consumer-dev-pass \
   -t 'dmj/v1/devices/demo-001/ack' -m '{"status":"accepted","messageId":"01..."}' -q 1
 
-#    Dispositivo — publish propio + subscribe a su ack:
-mosquitto_pub  -h 127.0.0.1 -p 1883 -u dmj-device-demo -P dmj-device-demo-dev-pass \
-  -t 'dmj/v1/devices/dmj-device-demo/telemetry' -m '{"schema":1,"type":"position",...}' -q 1
-mosquitto_sub  -h 127.0.0.1 -p 1883 -u dmj-device-demo -P dmj-device-demo-dev-pass \
-  -t 'dmj/v1/devices/dmj-device-demo/ack' -q 1
+#    Dispositivo — publish propio + subscribe a su ack (usuario = deviceId):
+mosquitto_pub  -h 127.0.0.1 -p 1883 -u juan-001 -P 'Juan2026!' \
+  -t 'dmj/v1/devices/juan-001/telemetry' -m '{"schema":1,"type":"position",...}' -q 1
+mosquitto_sub  -h 127.0.0.1 -p 1883 -u juan-001 -P 'Juan2026!' \
+  -t 'dmj/v1/devices/juan-001/ack' -q 1
 
 #    Negativos esperados (deben fallar):
 mosquitto_pub -h 127.0.0.1 -u dmj-consumer -P dmj-consumer-dev-pass \
-  -t 'dmj/v1/devices/demo-001/telemetry' ...   # → "Not authorized" (consumer no publica telemetry)
-mosquitto_pub -h 127.0.0.1 -u dmj-device-demo -P dmj-device-demo-dev-pass \
+  -t 'dmj/v1/devices/juan-001/telemetry' ...   # → "Not authorized" (consumer no publica telemetry)
+mosquitto_pub -h 127.0.0.1 -u juan-001 -P 'Juan2026!' \
   -t 'dmj/v1/devices/otro/telemetry' ...       # → "Not authorized" (solo su propio deviceId)
+mosquitto_sub -h 127.0.0.1 -u juan-001 -P 'Juan2026!' \
+  -t 'dmj/v1/devices/+/telemetry' ...          # → "Not authorized" (sin wildcards para móviles)
 #    Anónimo / password incorrecto:
 mosquitto_pub -h 127.0.0.1 ... -t 'dmj/v1/devices/demo/telemetry'  # → "Not authorized" (no autentica)
 
-# 5) Load-tests (baseline/e2e) con credenciales:
-MQTT_USER=dmj-consumer MQTT_PASSWORD=dmj-consumer-dev-pass npm run mqtt:baseline -- --devices 10 --duration 30
-#    (el harness mqtt-e2e usa dos clientes sin usuario: correrlo con auth requiere
-#     usuarios para consumer y publisher — ver infrastructure/load-tests/README.md)
+# 5) Load-tests con credenciales (username = deviceId por la ACL):
+MQTT_USER=juan-001 MQTT_PASSWORD='Juan2026!' MQTT_DEVICE_ID=juan-001 npm run mqtt:e2e
+#    mqtt:baseline usa IDs falsos load-N: necesita un usuario por ID simulado
+#    (mqtt-users.sh add load-1 ...) — ver infrastructure/load-tests/README.md
 
 # 6) TLS (prod): conectar al 8883 con cert de la CA de confianza
-mosquitto_pub --cafile /path/ca.pem -h mqtt.dmujeres.example -p 8883 -u dmj-device-demo -P ... -t '...' -m '...'
+mosquitto_pub --cafile /path/ca.pem -h mqtt.dmujeres.example -p 8883 -u juan-001 -P ... -t '...' -m '...'
 ```
 
 Referencias oficiales:

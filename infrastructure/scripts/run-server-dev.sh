@@ -23,6 +23,16 @@ export WEB_SECRET_TOKEN="${WEB_SECRET_TOKEN:-}"
 # Canal móvil ACTIVO por defecto (la app Android depende de MQTT)
 export MOBILE_MQTT_ENABLE="${MOBILE_MQTT_ENABLE:-true}"
 export MOBILE_MQTT_URL="${MOBILE_MQTT_URL:-mqtt://127.0.0.1:1883}"
+# Cliente MQTT del server en el broker EMQX (auth obligatoria en dev).
+# Usuario: dmj-consumer (ACL: subscribe +/telemetry, publish +/ack).
+# Password: default SOLO dev (auth-file.csv); definir MOBILE_MQTT_PASSWORD en .env
+# si auth-file.csv se regenera con otro password (p. ej. mqtt-users.sh).
+export MOBILE_MQTT_USERNAME="${MOBILE_MQTT_USERNAME:-dmj-consumer}"
+export MOBILE_MQTT_PASSWORD="${MOBILE_MQTT_PASSWORD:-dmj-consumer-dev-pass}"
+if [[ "${MOBILE_MQTT_PASSWORD}" == "dmj-consumer-dev-pass" ]]; then
+  echo "AVISO: MOBILE_MQTT_PASSWORD usa el default dev (dmj-consumer-dev-pass)."
+  echo "       Definir MOBILE_MQTT_PASSWORD en .env si el CSV cambió."
+fi
 if [[ -z "${WEB_SECRET_TOKEN}" ]]; then
   echo "AVISO: WEB_SECRET_TOKEN no definido en .env — las sesiones/tokens se invalidan al reiniciar."
 fi

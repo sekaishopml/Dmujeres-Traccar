@@ -2,14 +2,16 @@ import mqtt from 'mqtt';
 
 const url = process.env.MQTT_URL || 'mqtt://127.0.0.1:1883';
 const deviceId = process.env.MQTT_DEVICE_ID || 'demo-001';
-const messageId = process.env.MQTT_MESSAGE_ID || `01JDMJ${Date.now().toString(36).toUpperCase()}`;
+const messageId = process.env.MQTT_MESSAGE_ID || `01JDMJ${Date.now().toString(36).toUpperCase().padStart(10, '0')}`;
 const sequence = Number(process.env.MQTT_SEQUENCE || Date.now());
 const sentAt = process.env.MQTT_SENT_AT || new Date().toISOString();
 const observedAt = process.env.MQTT_OBSERVED_AT || sentAt;
 const topic = `dmj/v1/devices/${deviceId}/telemetry`;
 const ackTopic = `dmj/v1/devices/${deviceId}/ack`;
 
-const options = { protocolVersion: 5, reconnectPeriod: 0, clean: true };
+const options = { protocolVersion: 5, reconnectPeriod: 0, clean: true,
+  ...(process.env.MQTT_USER ? { username: process.env.MQTT_USER } : {}),
+  ...(process.env.MQTT_PASSWORD ? { password: process.env.MQTT_PASSWORD } : {}) };
 const consumer = mqtt.connect(url, options);
 const publisher = mqtt.connect(url, options);
 

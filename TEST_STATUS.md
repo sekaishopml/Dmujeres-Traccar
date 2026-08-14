@@ -67,9 +67,9 @@ pendientes del consumidor MQTT.
 
 **Alcance PT-204/205/206**: flujo local con broker dev. La atomicidad queda garantizada
 por transacción JDBC (posición + `accepted` en un commit); un crash antes del commit revierte
-todo y un crash después deja `accepted` para redelivery `duplicate`. La ACL real en el
-compose dev principal sigue desactivada para no romper los load-tests anónimos; se activa
-con el override `docker-compose.emqx-auth.yml` (validado de forma aislada).
+todo y un crash después deja `accepted` para redelivery `duplicate`. La auth+ACL está
+integrada de forma permanente en el compose dev principal (`docker-compose.yml`); los
+load-tests conectan con `MQTT_USER`/`MQTT_PASSWORD` (ver `infrastructure/load-tests/README.md`).
 
 ## Fases 2.2-5
 - Pendiente consumidor MQTT, pipeline común, ACK post-commit, HTTP fallback y carga end-to-end.
@@ -103,3 +103,11 @@ con el override `docker-compose.emqx-auth.yml` (validado de forma aislada).
 | PT-504 | Proyección 5 años / 100GB | ✔ PASÓ | 10 disp @10s=7.5GB; 50=37.3GB; 100=74.6GB; ~134 disp @10s caben |
 
 Detalle en `infrastructure/database/measurement-results.md`.
+
+## Flujo colaborador — usuario/contraseña (1.0.4)
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-601 | EMQX auth+ACL permanentes (anónimo rechazado, ACL por usuario) | ✔ PASÓ | mqtt-auth-evidence.md: pub/sus topics ajenos DENEGADOS |
+| PT-602 | E2E colaborador (create → 3 posiciones accepted → dedupe → ACL) | ✔ PASÓ | collaborator-e2e-evidence.md; duplicate sin fila extra |
+| PT-603 | Dispositivo ONLINE en panel tras posición móvil | ✔ PASÓ | maria-001 status=online, lastUpdate actualizado (fix H-1) |
