@@ -57,8 +57,9 @@ export ANDROID_HOME=/opt/android-sdk   # ruta a tu SDK
 
 > En dev, el broker EMQX escucha en `127.0.0.1`; para probar con un teléfono físico hay
 > que exponer el puerto 1883 con firewall (documentado en `docs/mqtt/emqx-security.md`).
-> Para MQTT autenticado, rellenar usuario/contraseña en la app y configurar auth/ACL
-> (override `docker-compose.emqx-auth.yml`).
+> Para MQTT autenticado, rellenar usuario/contraseña en la app (usuario = deviceId)
+> y crear el usuario con `infrastructure/scripts/mqtt-users.sh add` (la auth/ACL ya
+> está integrada en el compose dev).
 
 ## Firma de release (keystore)
 
@@ -87,13 +88,13 @@ misma). No se sube a GitHub.
 ## Uso para el colaborador (sin pasos técnicos)
 
 1. Instalar el APK (permitir "orígenes desconocidos" la primera vez).
-2. Abrir la app → seguir los 4 pasos del asistente (permisos de ubicación, notificaciones,
-   batería sin límite y GPS activado).
-3. Pulsar "Activar tracking".
-4. El servidor ya viene preconfigurado (mqtt://64.176.219.221:1883).
+2. Abrir la app → escribir **usuario y contraseña** que le entregó la empresa.
+3. Seguir los 4 pasos del asistente (permisos de ubicación, notificaciones, batería sin
+   límite y GPS activado) y pulsar "Activar tracking".
 
-El ID del dispositivo se genera solo (botón "Copiar"): el administrador lo agrega en el
-panel de Traccar (Dispositivos → Añadir → pegar el ID) para que el servidor lo acepte.
+El servidor viene preconfigurado (mqtt://64.176.219.221:1883). El usuario ES el
+dispositivo: el administrador lo crea con `scripts/create-collaborator.sh <usuario> <pass>`
+(crea el dispositivo en Traccar + el usuario MQTT en EMQX con su ACL).
 
 ## Seguridad del acceso MQTT (pendiente Fase 5)
 

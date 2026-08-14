@@ -154,3 +154,19 @@
 - Puerto MQTT 1883 abierto al exterior (bind 0.0.0.0 + ufw); server con consumidor MQTT
   activo por defecto. Verificado el ciclo completo por IP pública (accepted).
 - Riesgo documentado: MQTT sin autenticación hasta Fase 5 (ver docs).
+
+## 2026-08-14 — App 1.0.4: acceso por usuario+contraseña + fix ONLINE
+
+- NUEVO modelo de identidad: el colaborador ingresa usuario+contraseña creados por el
+  administrador; el usuario ES el dispositivo (topic/envelope/uniqueId). Se elimina el ID
+  autogenerado. Cero pasos para el colaborador.
+- EMQX: autenticación y ACL permanentes (integrado en el compose dev; anónimo rechazado).
+  ACL: cada móvil solo publica/suscribe en sus propios topics; server con dmj-consumer.
+- `scripts/create-collaborator.sh <usuario> <pass>`: crea el dispositivo en Traccar y el
+  usuario MQTT de una vez (el administrador entrega los datos al colaborador).
+- FIX (raíz del "fuera de línea"): el canal móvil ahora marca el dispositivo ONLINE con
+  hora actual al aceptar una posición (antes solo el canal Netty lo hacía); el offline por
+  timeout automático de Traccar sigue funcionando.
+- E2E completo con evidencia (infrastructure/database/collaborator-e2e-evidence.md):
+  crear colaborador, 3 posiciones accepted, dedupe (duplicate), ACL deniega topics ajenos,
+  dispositivo online en panel.

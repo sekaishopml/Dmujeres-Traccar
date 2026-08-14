@@ -47,16 +47,23 @@ services:
     environment:
       EMQX_NODE_NAME: dmj-mqtt@127.0.0.1
       EMQX_TELEMETRY_ENABLED: "false"
-      # Dev: conexiones anónimas permitidas SOLO porque 1883/8083 bindean 127.0.0.1.
-      # MOTIVO: infrastructure/load-tests (mqtt-baseline / mqtt-e2e) conectan hoy sin
-      # credenciales; desactivar anónimo los rompería. Para auth+ACL en dev usar el
-      # override documentado: docker-compose.emqx-auth.yml (monta auth-file + acl-file).
-      # NOTA EMQX 5.8: `EMQX_ALLOW_ANONYMOUS` NO es una clave válida del schema (es
-      # ignorada). El anonimato lo controla la cadena de autenticación: al no haber
-      # authentication{...} configurada, cualquiera conecta. Mantener esta línea es
-      # inofensivo pero no tiene efecto; no hay que "desactivarla": hay que añadir el
-      # authenticator (ver docker-compose.emqx-auth.yml).
-      EMQX_ALLOW_ANONYMOUS: "true"
+      # --- Autenticación PERMANENTE (EMQX 5.8): password_based + bootstrap CSV ---
+      # Sin anónimo: en EMQX 5.x el anonimato lo controla (a) la presencia de la
+      # cadena `authentication` y (b) `authorization.no_match`. Con autenticador
+      # presente + no_match=deny, toda conexión sin credenciales válidas se rechaza.
+      # NOTA: `EMQX_ALLOW_ANONYMOUS` NO es clave válida del schema 5.8 (se ignora).
+      EMQX_AUTHENTICATION__1__MECHANISM: "password_based"
+      EMQX_AUTHENTICATION__1__BACKEND: "built_in_database"
+      EMQX_AUTHENTICATION__1__USER_ID_TYPE: "username"
+      EMQX_AUTHENTICATION__1__PASSWORD_HASH_ALGORITHM__NAME: "sha256"
+      EMQX_AUTHENTICATION__1__PASSWORD_HASH_ALGORITHM__SALT_POSITION: "prefix"
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_FILE: "/opt/emqx/etc/auth-file.csv"
+      EMQX_AUTHENTICATION__1__BOOTSTRAP_TYPE: "hash"
+      # --- Autorización (ACL por archivo): todo lo no listado, denegado ---
+      EMQX_AUTHORIZATION__NO_MATCH: "deny"
+      EMQX_AUTHORIZATION__DENY_ACTION: "ignore"
+      EMQX_AUTHORIZATION__SOURCES__1__TYPE: "file"
+      EMQX_AUTHORIZATION__SOURCES__1__PATH: "/opt/emqx/etc/acl-file.conf"
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-public}
     ports:
       - "1883:1883"    # MQTT (acceso externo para la app; ver nota de seguridad)
@@ -64,6 +71,10 @@ services:
       - "127.0.0.1:18083:18083"  # Dashboard admin EMQX (solo local en dev)
     volumes:
       - dmj-mqttdata:/opt/emqx/data
+      # Credenciales SOLO dev (auth-file.csv NO debe versionar secretos reales;
+      # producción: generar con infrastructure/scripts/mqtt-users.sh)
+      - ../emqx/auth-file.csv:/opt/emqx/etc/auth-file.csv:ro
+      - ../emqx/acl-file.conf:/opt/emqx/etc/acl-file.conf:ro
     healthcheck:
       test: ["CMD", "emqx", "ctl", "status"]
       interval: 15s

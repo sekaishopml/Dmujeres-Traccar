@@ -12,8 +12,8 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/infrastructure/compose/docker-compose.yml}"
 
-# COMPOSE_FILE puede ser una lista separada por ':' (p. ej. compose dev + override
-# docker-compose.emqx-auth.yml). `docker compose -f` NO divide por ':' en v2, así
+# COMPOSE_FILE puede ser una lista separada por ':' (p. ej. compose dev + override).
+# `docker compose -f` NO divide por ':' en v2, así
 # que se expande la lista a múltiples -f.
 IFS=':' read -r -a COMPOSE_FILES <<< "$COMPOSE_FILE"
 COMPOSE_ARGS=()

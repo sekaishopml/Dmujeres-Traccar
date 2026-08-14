@@ -16,42 +16,42 @@
             android:text="@string/app_name"
             android:textAppearance="@style/TextAppearance.Material3.HeadlineMedium"
             android:textColor="@color/primary"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/login_body"
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
             android:layout_marginBottom="16dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/device_id_label"
+            android:text="@string/username_label"
             android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
 
-        <LinearLayout
+        <EditText
+            android:id="@+id/usernameInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/deviceInput"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:inputType="text"
-                android:textIsSelectable="true" />
-
-            <Button
-                android:id="@+id/copyIdButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/copy" />
-
-        </LinearLayout>
+            android:hint="@string/username_hint"
+            android:inputType="text"
+            android:layout_marginBottom="12dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/device_id_hint"
-            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-            android:textColor="#666666"
-            android:layout_marginBottom="16dp" />
+            android:text="@string/password_label"
+            android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
+
+        <EditText
+            android:id="@+id/passwordInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/password_hint"
+            android:inputType="textPassword"
+            android:layout_marginBottom="12dp" />
 
         <TextView
             android:layout_width="wrap_content"
