@@ -197,3 +197,12 @@
   con hora adelantada era rechazado (invalid) y quedaba 'fuera de línea' aunque conectara.
 - App: messageId único por posición (hora+secuencia+dispositivo), estable en reintentos.
 - Verificado: posición con reloj +10 min → accepted; dispositivo test → ONLINE.
+
+## 2026-08-14 — App 1.0.8: validación completa de credenciales en la app
+
+- Al pulsar 'Guardar y aplicar' o 'Activar tracking', la app COMPRUEBA la conexión y
+  muestra el resultado real en un diálogo: 'Conectado correctamente', 'Usuario o
+  contraseña incorrectos', 'Acceso denegado' o 'No se pudo conectar al servidor'.
+- Ya no se guarda en silencio: hay proceso visible ('Comprobando conexión...').
+- Server: provisión idempotente (si el usuario MQTT ya existe, actualiza la contraseña).
+- Verificado: usuario santiago desde IP externa → conecta, ACK accepted, dispositivo ONLINE.
