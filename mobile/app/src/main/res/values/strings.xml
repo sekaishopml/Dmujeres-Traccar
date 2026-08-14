@@ -56,4 +56,9 @@
     <string name="warning_title">Aviso de la jornada</string>
     <string name="ok_title">Todo en orden</string>
     <string name="ok_body">El servicio está funcionando correctamente.</string>
+    <string name="battery_title">Activa "Sin límite de batería"</string>
+    <string name="battery_body">Sin este permiso, Android pausa el GPS cuando la tablet está en reposo y la ubicación deja de enviarse (como pasó entre las 2:43 y las 7:00). Toca el botón y elige "Permitir" o "Sin restricciones".</string>
+    <string name="battery_grant">Ir a los ajustes</string>
+    <string name="wake_title">Se detuvo el envío de ubicación</string>
+    <string name="wake_body">Revisa la tablet: no se ha recibido ubicación en 10 minutos. Abre la app para continuar la jornada.</string>
 </resources>
