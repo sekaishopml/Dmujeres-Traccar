@@ -2,7 +2,6 @@ package com.dmujeres.traccar.config
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.provider.Settings
 
 /**
  * Configuración persistida del dispositivo. El servidor viene preconfigurado con la IP del
@@ -20,13 +19,10 @@ class AppConfig(context: Context) {
             .ifBlank { DEFAULT_SERVER }
         set(value) = prefs.edit().putString(KEY_SERVER, value.trim().ifBlank { DEFAULT_SERVER }).apply()
 
-    var deviceId: String
-        get() {
-            prefs.getString(KEY_DEVICE_ID, null)?.let { return it }
-            return generateDeviceId()
-        }
-        set(value) = prefs.edit().putString(KEY_DEVICE_ID, value.trim()).apply()
-
+    /**
+     * Usuario del colaborador (lo crea el administrador). El usuario ES el identificador
+     * del dispositivo: el topic y el envelope usan este nombre.
+     */
     var username: String
         get() = prefs.getString(KEY_USERNAME, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_USERNAME, value.trim()).apply()
@@ -34,6 +30,10 @@ class AppConfig(context: Context) {
     var password: String
         get() = prefs.getString(KEY_PASSWORD, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_PASSWORD, value).apply()
+
+    /** Identificador del dispositivo para topics/envelope: derivado del usuario. */
+    val deviceId: String
+        get() = username.filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
 
     var trackingEnabled: Boolean
         get() = prefs.getBoolean(KEY_TRACKING, false)
@@ -77,18 +77,12 @@ class AppConfig(context: Context) {
     }
 
     /**
-     * Genera un ID de dispositivo estable y legible basado en el identificador del teléfono.
-     * Se guarda la primera vez y ya no cambia: el administrador lo agrega al panel.
+     * Genera un ID estable para el messageId basado en el usuario (no expone el ID completo).
+     * El messageId real se compone en Envelope con este valor.
      */
-    private fun generateDeviceId(): String {
-        val androidId = runCatching {
-            Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
-        }.getOrNull().orEmpty()
-        val base = androidId.filter { it.isLetterOrDigit() }
-        val hash = if (base.length >= 8) base.take(8) else (base + "dmj2026").take(8)
-        val id = "dmj-$hash"
-        prefs.edit().putString(KEY_DEVICE_ID, id).apply()
-        return id
+    fun deviceHash(): String {
+        val base = username.hashCode()
+        return Integer.toUnsignedString(base, 16).padStart(8, '0')
     }
 
     companion object {
@@ -96,7 +90,6 @@ class AppConfig(context: Context) {
         const val DEFAULT_SERVER = "mqtt://64.176.219.221:1883"
 
         private const val KEY_SERVER = "server_url"
-        private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
         private const val KEY_TRACKING = "tracking_enabled"

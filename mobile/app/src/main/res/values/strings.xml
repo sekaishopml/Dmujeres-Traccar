@@ -6,7 +6,12 @@
     <string name="start">Activar tracking</string>
     <string name="stop">Desactivar tracking</string>
     <string name="server_hint">Servidor (mqtt://ip:puerto)</string>
-    <string name="device_hint">ID del dispositivo</string>
+    <string name="username_label">Usuario</string>
+    <string name="username_hint">Tu usuario (te lo entregó la empresa)</string>
+    <string name="password_label">Contraseña</string>
+    <string name="password_hint">Tu contraseña</string>
+    <string name="credentials_required">Primero ingresa tu usuario y contraseña</string>
+    <string name="login_body">Ingresa los datos que te entregó la empresa y pulsa "Activar tracking". El resto ya está configurado.</string>
     <string name="state">Estado</string>
     <string name="save">Guardar y aplicar</string>
     <string name="pending">Pendientes por enviar</string>
@@ -14,8 +19,8 @@
     <string name="permission_body">Para hacer tracking se necesita acceso a la ubicación (también en segundo plano) y notificaciones.</string>
     <string name="grant">Conceder permisos</string>
     <string name="channel_name">Estado del tracking</string>
-    <string name="device_id_label">ID del dispositivo (para agregarlo en el panel)</string>
-    <string name="device_id_hint">Este ID se genera solo. Cópialo y agrégalo en el panel de Traccar: Dispositivos → Añadir → pega el ID. Es el único paso que requiere el administrador.</string>
+    <string name="device_id_label">ID del dispositivo</string>
+    <string name="device_id_hint">ID autogenerado (legado)</string>
     <string name="copy">Copiar</string>
     <string name="copied">ID copiado</string>
     <string name="frequency_label">Frecuencia de envío (segundos, mínimo 3)</string>
