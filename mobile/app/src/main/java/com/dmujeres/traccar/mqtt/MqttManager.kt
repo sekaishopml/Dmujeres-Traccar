@@ -54,23 +54,28 @@ class MqttManager(
         val server = config.serverUrl
         val deviceId = config.deviceId
         if (server.isBlank() || deviceId.isBlank()) {
-            lastError = "Falta servidor o ID de dispositivo"
+            lastError = "Falta servidor o usuario"
+            MqttStatus.status = MqttStatus.DISCONNECTED
             messageCallback("Falta configuración")
             return
         }
         val uri = try { URI(server) } catch (e: Exception) {
             lastError = "Servidor inválido: $server"
+            MqttStatus.status = MqttStatus.DISCONNECTED
             messageCallback("Servidor inválido")
             return
         }
         val clientId = "dmj-" + deviceId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+        MqttStatus.status = MqttStatus.CONNECTING
+        messageCallback("Conectando al servidor...")
         try {
             val newClient = MqttAsyncClient(server, clientId, MemoryPersistence())
             newClient.setCallback(object : MqttCallbackExtended {
                 override fun connectComplete(reconnect: Boolean, serverURI: String) {
                     connected = true
                     lastError = null
-                    messageCallback(if (reconnect) "Reconectado" else "Conectado")
+                    MqttStatus.status = MqttStatus.CONNECTED
+                    messageCallback("Conectado al servidor")
                     subscribeAndDispatch()
                 }
 
@@ -78,7 +83,8 @@ class MqttManager(
                     connected = false
                     subscribed = false
                     lastError = cause?.message ?: "Conexión perdida"
-                    messageCallback("MQTT desconectado: $lastError")
+                    MqttStatus.status = MqttStatus.DISCONNECTED
+                    messageCallback("Sin conexión: $lastError")
                 }
 
                 override fun deliveryComplete(token: IMqttDeliveryToken) {
@@ -106,7 +112,8 @@ class MqttManager(
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
                     connected = false
                     lastError = exception?.message ?: "Fallo de conexión"
-                    messageCallback("Error de conexión: $lastError")
+                    MqttStatus.status = MqttStatus.DISCONNECTED
+                    messageCallback("Sin conexión: $lastError")
                 }
             })
         } catch (e: Exception) {
@@ -221,5 +228,6 @@ class MqttManager(
         client = null
         connected = false
         subscribed = false
+        MqttStatus.status = MqttStatus.DISCONNECTED
     }
 }
