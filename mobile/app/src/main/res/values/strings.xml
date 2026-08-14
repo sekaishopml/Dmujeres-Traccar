@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DMujeres Tracking</string>
-    <string name="tracking_on">Tracking activo</string>
-    <string name="tracking_off">Tracking desactivado</string>
-    <string name="start">Activar tracking</string>
-    <string name="stop">Desactivar tracking</string>
+    <string name="tracking_on">Jornada de trabajo en curso</string>
+    <string name="tracking_off">Jornada finalizada</string>
+    <string name="start">Iniciar jornada</string>
+    <string name="stop">Finalizar jornada</string>
     <string name="server_hint">Servidor (mqtt://ip:puerto)</string>
     <string name="username_label">Usuario</string>
     <string name="username_hint">Tu usuario (te lo entregó la empresa)</string>
@@ -44,4 +44,16 @@
     <string name="dialog_error_title">Error de conexión</string>
     <string name="dialog_close">Cerrar</string>
     <string name="app_version">Versión %1$s</string>
+    <string name="channel_alerts">Avisos de la jornada</string>
+    <string name="jornada_iniciada">Jornada de trabajo iniciada</string>
+    <string name="jornada_iniciada_body">Tu jornada quedó registrada y se enviará tu ubicación al equipo.</string>
+    <string name="jornada_finalizada">Jornada de trabajo finalizada</string>
+    <string name="jornada_finalizada_body">Gracias. Tu recorrido quedó guardado.</string>
+    <string name="connected_title">Conectado al servidor</string>
+    <string name="connected_body">La comunicación con el servidor está activa.</string>
+    <string name="disconnected_title">Desconectado del servidor</string>
+    <string name="disconnected_body">Se intentará reconectar automáticamente. Las posiciones pendientes no se pierden.</string>
+    <string name="warning_title">Aviso de la jornada</string>
+    <string name="ok_title">Todo en orden</string>
+    <string name="ok_body">El servicio está funcionando correctamente.</string>
 </resources>

@@ -218,3 +218,12 @@
   acepta 'mqtt://', solo 'tcp://'. La app ahora normaliza cualquier formato a tcp://
   (o ssl:// si es seguro) y añade el puerto por defecto si falta.
 - La pantalla principal muestra la versión de la app para diagnóstico.
+
+## 2026-08-14 — App 1.0.11: notificaciones de jornada y conexión
+
+- Alertas con sonido: 'Conectado al servidor' / 'Desconectado del servidor (se reintenta)'.
+- Inicio/fin de jornada: la app ya no dice 'rastreador'; usa 'Iniciar jornada' / 'Finalizar
+  jornada' y notifica 'Jornada de trabajo iniciada/finalizada'.
+- Avisos del watchdog con notificación: GPS sin señal, sin internet, batería baja,
+  permisos faltantes; y 'Todo en orden' al recuperarse.
+- La notificación permanente muestra estado + conexión + pendientes.

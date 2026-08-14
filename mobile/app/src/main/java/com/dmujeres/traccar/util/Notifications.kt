@@ -13,24 +13,29 @@ import com.dmujeres.traccar.R
 object Notifications {
 
     const val CHANNEL_ID = "dmj_tracking"
+    const val CHANNEL_ALERTS = "dmj_alerts"
     const val NOTIFICATION_ID = 1
+    const val ALERT_ID = 2
 
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(
+        val ongoing = NotificationChannel(
             CHANNEL_ID, context.getString(R.string.channel_name), NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = context.getString(R.string.channel_name)
             setShowBadge(false)
         }
-        manager.createNotificationChannel(channel)
+        val alerts = NotificationChannel(
+            CHANNEL_ALERTS, context.getString(R.string.channel_alerts), NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = context.getString(R.string.channel_alerts)
+        }
+        manager.createNotificationChannel(ongoing)
+        manager.createNotificationChannel(alerts)
     }
 
     fun foregroundNotification(context: Context, title: String, text: String): Notification {
-        val intent = Intent(context, MainActivity::class.java)
-        val pending = PendingIntent.getActivity(
-            context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val pending = pendingIntent(context)
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
@@ -39,6 +44,27 @@ object Notifications {
             .setContentIntent(pending)
             .setOnlyAlertOnce(true)
             .build()
+    }
+
+    /** Alerta puntual con sonido (conectado/desconectado, inicio/fin de jornada, avisos). */
+    fun alert(context: Context, title: String, text: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent(context))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        manager.notify(ALERT_ID, notification)
+    }
+
+    private fun pendingIntent(context: Context): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
+        return PendingIntent.getActivity(
+            context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
     }
 
     fun update(context: Context, title: String, text: String) {
