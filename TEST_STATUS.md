@@ -111,3 +111,11 @@ Detalle en `infrastructure/database/measurement-results.md`.
 | PT-601 | EMQX auth+ACL permanentes (anónimo rechazado, ACL por usuario) | ✔ PASÓ | mqtt-auth-evidence.md: pub/sus topics ajenos DENEGADOS |
 | PT-602 | E2E colaborador (create → 3 posiciones accepted → dedupe → ACL) | ✔ PASÓ | collaborator-e2e-evidence.md; duplicate sin fila extra |
 | PT-603 | Dispositivo ONLINE en panel tras posición móvil | ✔ PASÓ | maria-001 status=online, lastUpdate actualizado (fix H-1) |
+
+## Provisión desde dashboard (1.0.5)
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-604 | `/api/mobile/provision` admin crea dispositivo + usuario MQTT | ✔ PASÓ | `panel-maria` creado (deviceId 35), preferencias guardadas, password no en attributes |
+| PT-605 | App simulada con usuario/contraseña panel-maria | ✔ PASÓ | MQTT auth, ACL propia, ACK `accepted`, posición persistida |
+| PT-606 | Dashboard muestra ONLINE tras posición móvil | ✔ PASÓ | `panel-maria`: status=online, lastUpdate actualizado |
