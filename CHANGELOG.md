@@ -227,3 +227,12 @@
 - Avisos del watchdog con notificación: GPS sin señal, sin internet, batería baja,
   permisos faltantes; y 'Todo en orden' al recuperarse.
 - La notificación permanente muestra estado + conexión + pendientes.
+
+## 2026-08-14 — App 1.0.12: persistencia ante reposo (Doze)
+
+- CAUSA del salto 2:43→7:00: Android congeló el GPS/red de la tablet en reposo porque la
+  app no tenía la exención de batería. Ahora la app la EXIGE al arrancar (diálogo que
+  lleva a 'Sin límite de batería') y recuerda si falta.
+- Si deja de enviar 10 min: notificación de pantalla completa que ENCIENDE la tablet
+  (requiere permiso 'Full screen', con aviso para concederlo).
+- Registro de último envío (lastSentAt) para detectar cortes.

@@ -208,16 +208,28 @@ class TrackingService : Service() {
                 }
                 dao.insert(pending)
             }
+            config.lastSentAt = System.currentTimeMillis()
             refreshStateAndNotify()
         }
     }
 
     private suspend fun watchdogLoop() {
+        var lastWakeAlertAt = 0L
         while (serviceScope.isActive) {
             delay(30_000)
             if (!config.trackingEnabled) {
                 setState(TrackingState.TRACKING_DISABLED_BY_USER)
                 continue
+            }
+            val now = System.currentTimeMillis()
+            if (config.lastSentAt > 0 && now - config.lastSentAt > 10 * 60_000
+                && now - lastWakeAlertAt > 20 * 60_000) {
+                lastWakeAlertAt = now
+                Notifications.wakeScreen(
+                    this,
+                    getString(R.string.wake_title),
+                    getString(R.string.wake_body),
+                )
             }
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED

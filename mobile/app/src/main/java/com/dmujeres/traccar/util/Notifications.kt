@@ -16,6 +16,7 @@ object Notifications {
     const val CHANNEL_ALERTS = "dmj_alerts"
     const val NOTIFICATION_ID = 1
     const val ALERT_ID = 2
+    const val WAKE_ID = 3
 
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -58,6 +59,32 @@ object Notifications {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         manager.notify(ALERT_ID, notification)
+    }
+
+    /** Notificación de máxima prioridad que ENCIENDE la pantalla (con permiso). */
+    fun wakeScreen(context: Context, title: String, text: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val intent = Intent(context, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(
+            context, 3, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+            && !manager.canUseFullScreenIntent()
+        ) {
+            alert(context, title, text)
+            return
+        }
+        val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pending)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(pending, true)
+            .setAutoCancel(true)
+            .build()
+        manager.notify(WAKE_ID, notification)
     }
 
     private fun pendingIntent(context: Context): PendingIntent {

@@ -3,8 +3,11 @@ package com.dmujeres.traccar
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -51,6 +54,8 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, OnboardingActivity::class.java))
         }
 
+        ensureBatteryExemption()
+
         binding.toggleButton.setOnClickListener {
             if (config.trackingEnabled) {
                 config.trackingEnabled = false
@@ -71,6 +76,28 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateUi()
+        if (config.trackingEnabled) {
+            ensureBatteryExemption()
+        }
+    }
+
+    /** Exige la exención de batería: sin ella Android congela el GPS en reposo. */
+    private fun ensureBatteryExemption() {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.battery_title)
+            .setMessage(R.string.battery_body)
+            .setPositiveButton(R.string.battery_grant) { _, _ ->
+                val intent = Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:$packageName")
+                )
+                runCatching { startActivity(intent) }
+            }
+            .setNegativeButton(R.string.dialog_close, null)
+            .setCancelable(false)
+            .show()
     }
 
     private fun saveAndTest(onDone: ((Boolean) -> Unit)? = null) {
