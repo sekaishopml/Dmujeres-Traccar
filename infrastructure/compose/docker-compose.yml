@@ -59,8 +59,8 @@ services:
       EMQX_ALLOW_ANONYMOUS: "true"
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-public}
     ports:
-      - "127.0.0.1:1883:1883"    # MQTT
-      - "127.0.0.1:8083:8083"    # MQTT/WebSocket
+      - "1883:1883"    # MQTT (acceso externo para la app; ver nota de seguridad)
+      - "127.0.0.1:8083:8083"    # MQTT/WebSocket (solo local)
       - "127.0.0.1:18083:18083"  # Dashboard admin EMQX (solo local en dev)
     volumes:
       - dmj-mqttdata:/opt/emqx/data

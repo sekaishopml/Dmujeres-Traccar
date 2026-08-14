@@ -138,3 +138,19 @@
   original que el cliente usa desde hace años). Google Carreteras pasa a ser el mapa por
   defecto y aparece primero en el selector de capas.
 - Verificado: endpoints mt0-3 responden 200 desde el VPS; build OK; dashboard 200.
+
+## 2026-08-14 — App 1.0.3: lista para el colaborador
+
+- ID de dispositivo AUTOGENERADO (estable por teléfono) + botón copiar; el administrador
+  solo lo agrega al panel.
+- Servidor preconfigurado: mqtt://64.176.219.221:1883 (el colaborador no configura nada).
+- Asistente de primeros pasos al instalar: ubicación, notificaciones, batería (sin límite)
+  y GPS — todo lo necesario para funcionar siempre.
+- Panel de configuración completo: frecuencia (3-300 s), buffer máx (10-5000), servidor,
+  credenciales opcionales.
+- Ultra-resistencia: reconexión MQTT agresiva (10 s), onTaskRemoved + WorkManager de
+  recuperación cada 15 min, buffer con descarte del más antiguo, timeout de ACK y máximo
+  de reintentos configurables.
+- Puerto MQTT 1883 abierto al exterior (bind 0.0.0.0 + ufw); server con consumidor MQTT
+  activo por defecto. Verificado el ciclo completo por IP pública (accepted).
+- Riesgo documentado: MQTT sin autenticación hasta Fase 5 (ver docs).

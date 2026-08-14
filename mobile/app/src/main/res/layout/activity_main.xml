@@ -21,6 +21,41 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:text="@string/device_id_label"
+            android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/deviceInput"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="text"
+                android:textIsSelectable="true" />
+
+            <Button
+                android:id="@+id/copyIdButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/copy" />
+
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/device_id_hint"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:textColor="#666666"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="@string/server_hint"
             android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
 
@@ -28,29 +63,49 @@
             android:id="@+id/serverInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="mqtt://direccion:1883"
             android:inputType="textUri"
             android:layout_marginBottom="12dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/device_hint"
+            android:text="@string/frequency_label"
             android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
 
         <EditText
-            android:id="@+id/deviceInput"
+            android:id="@+id/intervalInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="mi-vehiculo-001"
-            android:inputType="text"
+            android:inputType="number"
+            android:hint="10"
             android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/buffer_label"
+            android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
+
+        <EditText
+            android:id="@+id/bufferInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:hint="500"
+            android:layout_marginBottom="16dp" />
 
         <Button
             android:id="@+id/saveButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/save"
+            android:layout_marginBottom="12dp" />
+
+        <Button
+            android:id="@+id/permissionsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/permissions_button"
             android:layout_marginBottom="20dp" />
 
         <TextView

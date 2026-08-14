@@ -83,3 +83,21 @@ misma). No se sube a GitHub.
   con TLS (Paho soporta SSL; el server/EMQX lo expone en 8883).
 - `rejected/invalid/expired` se descartan tras registrarse (decisión documentada en DECISIONS).
 - La verificación real del GPS requiere un teléfono físico (no emulable).
+
+## Uso para el colaborador (sin pasos técnicos)
+
+1. Instalar el APK (permitir "orígenes desconocidos" la primera vez).
+2. Abrir la app → seguir los 4 pasos del asistente (permisos de ubicación, notificaciones,
+   batería sin límite y GPS activado).
+3. Pulsar "Activar tracking".
+4. El servidor ya viene preconfigurado (mqtt://64.176.219.221:1883).
+
+El ID del dispositivo se genera solo (botón "Copiar"): el administrador lo agrega en el
+panel de Traccar (Dispositivos → Añadir → pegar el ID) para que el servidor lo acepte.
+
+## Seguridad del acceso MQTT (pendiente Fase 5)
+
+El puerto 1883 está abierto a internet sin autenticación para que los teléfonos conecten
+sin configuración. Riesgo: cualquiera podría publicar basura en los topics. La Fase 5
+(seguridad) añadirá autenticación por dispositivo, ACL y TLS (mqtts://8883). Hasta entonces
+se recomienda no exponer más puertos de los necesarios.

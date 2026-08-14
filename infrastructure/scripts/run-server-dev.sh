@@ -20,6 +20,9 @@ cmd="${1:-start}"
 export DATABASE_PASSWORD="${POSTGRES_PASSWORD}"
 export DATABASE_USER="${POSTGRES_USER:-traccar}"
 export WEB_SECRET_TOKEN="${WEB_SECRET_TOKEN:-}"
+# Canal móvil ACTIVO por defecto (la app Android depende de MQTT)
+export MOBILE_MQTT_ENABLE="${MOBILE_MQTT_ENABLE:-true}"
+export MOBILE_MQTT_URL="${MOBILE_MQTT_URL:-mqtt://127.0.0.1:1883}"
 if [[ -z "${WEB_SECRET_TOKEN}" ]]; then
   echo "AVISO: WEB_SECRET_TOKEN no definido en .env — las sesiones/tokens se invalidan al reiniciar."
 fi
