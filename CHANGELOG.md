@@ -190,3 +190,10 @@
   realiza únicamente desde **Acceso del colaborador**, como pidió el usuario.
 - El panel crea dispositivo + usuario MQTT + preferencias sin exponer la contraseña.
 - E2E verificado: `panel-maria` → MQTT autenticado → ACK accepted → dashboard ONLINE.
+
+## 2026-08-14 — App 1.0.7: tolerancia de reloj y messageId únicos
+
+- Server: tolerancia a reloj del teléfono adelantado (de 5 min a 24 h). Antes, un teléfono
+  con hora adelantada era rechazado (invalid) y quedaba 'fuera de línea' aunque conectara.
+- App: messageId único por posición (hora+secuencia+dispositivo), estable en reintentos.
+- Verificado: posición con reloj +10 min → accepted; dispositivo test → ONLINE.
