@@ -211,3 +211,10 @@
 
 - La app acepta la dirección como se escriba: '64.176.219.221:1883', 'http://...' o
   'mqtt://...' y la normaliza automáticamente (antes fallaba sin el prefijo mqtt://).
+
+## 2026-08-14 — App 1.0.10: prefijo correcto tcp:// (Paho)
+
+- CAUSA RAÍZ del 'La dirección del servidor no es válida': la librería MQTT (Paho) NO
+  acepta 'mqtt://', solo 'tcp://'. La app ahora normaliza cualquier formato a tcp://
+  (o ssl:// si es seguro) y añade el puerto por defecto si falta.
+- La pantalla principal muestra la versión de la app para diagnóstico.

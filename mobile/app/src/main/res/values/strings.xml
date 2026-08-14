@@ -43,4 +43,5 @@
     <string name="dialog_ok_title">Conexión exitosa</string>
     <string name="dialog_error_title">Error de conexión</string>
     <string name="dialog_close">Cerrar</string>
+    <string name="app_version">Versión %1$s</string>
 </resources>

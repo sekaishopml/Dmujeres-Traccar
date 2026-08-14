@@ -275,13 +275,23 @@ class MqttManager(
             }
         }
 
-        /** Acepta direcciones escritas de cualquier forma y las convierte a mqtt://host:puerto. */
+        /**
+         * Convierte la dirección a un formato que Paho entiende (tcp:// o ssl://).
+         * Paho NO acepta mqtt:// (por eso fallaba). Añade puerto por defecto si falta.
+         */
         fun normalizeServer(server: String): String {
-            var value = server.trim()
+            var value = server.trim().trimEnd('/')
+            var secure = false
+            if (value.startsWith("mqtts://")) { value = value.removePrefix("mqtts://"); secure = true }
+            if (value.startsWith("ssl://")) { value = value.removePrefix("ssl://"); secure = true }
+            if (value.startsWith("mqtt://")) value = value.removePrefix("mqtt://")
             if (value.startsWith("http://")) value = value.removePrefix("http://")
-            if (value.startsWith("https://")) value = value.removePrefix("https://")
-            if (!value.contains("://")) value = "mqtt://$value"
-            return value
+            if (value.startsWith("https://")) { value = value.removePrefix("https://"); secure = true }
+            if (value.contains("://")) return value
+            val hostPort = value.substringBefore('/')
+            val hasPort = hostPort.contains(':')
+            val defaultPort = if (secure) ":8883" else ":1883"
+            return (if (secure) "ssl://" else "tcp://") + hostPort + if (hasPort) "" else defaultPort
         }
 
         private fun friendlyMqttError(raw: String?): String {
