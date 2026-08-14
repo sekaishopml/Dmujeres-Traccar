@@ -13,6 +13,7 @@ import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.DmujeresApp
+import com.dmujeres.traccar.R
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.db.PendingPosition
 import com.dmujeres.traccar.mqtt.Envelope
@@ -123,18 +124,35 @@ class TrackingService : Service() {
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         startedTrackingAt = System.currentTimeMillis()
 
+        Notifications.alert(this, getString(R.string.jornada_iniciada), getString(R.string.jornada_iniciada_body))
         val manager = MqttManager(
             context = this,
             config = config,
             dao = dao,
             scope = serviceScope,
-            onStateChange = { refreshStateAndNotify() }
+            onStateChange = { onMqttStateChanged() }
         )
         mqtt = manager
         manager.connect()
 
         requestLocationUpdates()
         serviceScope.launch { watchdogLoop() }
+    }
+
+    @Volatile private var lastMqttStatus: String = ""
+
+    private fun onMqttStateChanged() {
+        val status = MqttStatus.status
+        if (status != lastMqttStatus) {
+            when (status) {
+                MqttStatus.CONNECTED ->
+                    Notifications.alert(this, getString(R.string.connected_title), getString(R.string.connected_body))
+                MqttStatus.DISCONNECTED ->
+                    Notifications.alert(this, getString(R.string.disconnected_title), getString(R.string.disconnected_body))
+            }
+            lastMqttStatus = status
+        }
+        refreshStateAndNotify()
     }
 
     private fun requestLocationUpdates() {
@@ -225,7 +243,15 @@ class TrackingService : Service() {
 
     private fun setState(state: TrackingState) {
         if (currentState == state) return
+        val previous = currentState
         currentState = state
+        if (state != TrackingState.TRACKING_ACTIVE && state != TrackingState.TRACKING_DISABLED_BY_USER
+            && state != TrackingState.SERVICE_RECOVERY) {
+            Notifications.alert(this, getString(R.string.warning_title), state.label)
+        }
+        if (state == TrackingState.TRACKING_ACTIVE && previous != TrackingState.TRACKING_ACTIVE) {
+            Notifications.alert(this, getString(R.string.ok_title), getString(R.string.ok_body))
+        }
         refreshStateAndNotify()
     }
 
@@ -254,6 +280,7 @@ class TrackingService : Service() {
 
     private fun stopTracking() {
         started.set(false)
+        Notifications.alert(this, getString(R.string.jornada_finalizada), getString(R.string.jornada_finalizada_body))
         try {
             fused?.removeLocationUpdates(locationCallback)
         } catch (e: Exception) {
