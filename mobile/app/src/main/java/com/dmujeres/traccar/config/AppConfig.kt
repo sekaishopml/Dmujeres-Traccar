@@ -73,6 +73,11 @@ class AppConfig(context: Context) {
         get() = prefs.getInt(KEY_ACK_TIMEOUT, 15)
         set(value) = prefs.edit().putInt(KEY_ACK_TIMEOUT, value.coerceIn(5, 60)).apply()
 
+    /** Última vez que se guardó una posición para enviar (para detectar envíos detenidos). */
+    var lastSentAt: Long
+        get() = prefs.getLong(KEY_LAST_SENT, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_SENT, value).apply()
+
     /** Máximo de reintentos de un mensaje antes de descartarlo. */
     var maxRetries: Int
         get() = prefs.getInt(KEY_MAX_RETRIES, 30)
@@ -113,5 +118,6 @@ class AppConfig(context: Context) {
         private const val KEY_BUFFER = "buffer_max"
         private const val KEY_ACK_TIMEOUT = "ack_timeout"
         private const val KEY_MAX_RETRIES = "max_retries"
+        private const val KEY_LAST_SENT = "last_sent_at"
     }
 }
