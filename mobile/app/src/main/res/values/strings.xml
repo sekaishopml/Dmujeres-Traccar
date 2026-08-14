@@ -37,4 +37,10 @@
     <string name="step_gps">4. GPS activado</string>
     <string name="grant_gps">Abrir ajustes de ubicación y activarla</string>
     <string name="finish">Listo, continuar</string>
+    <string name="checking">Comprobando…</string>
+    <string name="checking_connection">Comprobando conexión con el servidor…</string>
+    <string name="connect_success">Conectado correctamente al servidor</string>
+    <string name="dialog_ok_title">Conexión exitosa</string>
+    <string name="dialog_error_title">Error de conexión</string>
+    <string name="dialog_close">Cerrar</string>
 </resources>

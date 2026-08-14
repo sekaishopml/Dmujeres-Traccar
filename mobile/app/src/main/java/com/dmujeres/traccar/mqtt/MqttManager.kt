@@ -230,4 +230,63 @@ class MqttManager(
         subscribed = false
         MqttStatus.status = MqttStatus.DISCONNECTED
     }
+    companion object {
+        /** Prueba la conexión con las credenciales dadas y devuelve un mensaje claro. */
+        fun testConnection(
+            server: String,
+            username: String,
+            password: String,
+            onResult: (Boolean, String) -> Unit
+        ) {
+            if (server.isBlank() || username.isBlank()) {
+                onResult(false, "Falta la dirección del servidor o el usuario")
+                return
+            }
+            val clientId = "dmj-test-" + username.filter { it.isLetterOrDigit() }.take(16)
+            val testClient = try {
+                MqttAsyncClient(server, clientId, MemoryPersistence())
+            } catch (e: Exception) {
+                onResult(false, "La dirección del servidor no es válida")
+                return
+            }
+            val options = MqttConnectOptions().apply {
+                connectionTimeout = 10
+                isCleanSession = true
+                isAutomaticReconnect = false
+                if (username.isNotBlank()) {
+                    userName = username
+                    this.password = password.toCharArray()
+                }
+            }
+            try {
+                testClient.connect(options, null, object : IMqttActionListener {
+                    override fun onSuccess(asyncActionToken: IMqttToken?) {
+                        runCatching { testClient.disconnect() }
+                        onResult(true, "Conectado correctamente al servidor")
+                    }
+
+                    override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                        runCatching { testClient.disconnect() }
+                        onResult(false, friendlyMqttError(exception?.message))
+                    }
+                })
+            } catch (e: Exception) {
+                onResult(false, "No se pudo conectar al servidor. Revisa Internet o la dirección.")
+            }
+        }
+
+        private fun friendlyMqttError(raw: String?): String {
+            val message = raw.orEmpty().lowercase()
+            return when {
+                message.contains("user name or password") || message.contains("bad_username") ->
+                    "Usuario o contraseña incorrectos"
+                message.contains("not authorized") -> "Acceso denegado para este usuario"
+                message.contains("unable to connect") || message.contains("connection refused")
+                    || message.contains("timed out") || message.contains("server unavailable")
+                    || message.contains("timeout") ->
+                    "No se pudo conectar al servidor. Revisa Internet o la dirección del servidor."
+                else -> "Fallo de conexión: $raw"
+            }
+        }
+    }
 }

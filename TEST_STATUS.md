@@ -129,3 +129,7 @@ Detalle en `infrastructure/database/measurement-results.md`.
 
 | PT-609 | Reloj adelantado (teléfono) aceptado | ✔ PASÓ | sentAt +10 min → ACK accepted |
 | PT-610 | messageId único por posición | ✔ PASÓ | patrón 01JAND+time+seq, 26 chars |
+
+| PT-611 | App valida credenciales con feedback real | ✔ PASÓ compilación | Diálogos Conectado/incorrectos/denegado/servidor |
+| PT-612 | Provisión idempotente (actualiza password si existe) | ✔ PASÓ | POST repetido → HTTP 200 |
+| PT-613 | E2E santiago desde IP pública | ✔ PASÓ | CONECTA → ACK accepted → ONLINE |
