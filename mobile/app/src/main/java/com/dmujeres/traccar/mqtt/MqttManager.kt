@@ -59,7 +59,7 @@ class MqttManager(
             messageCallback("Falta configuración")
             return
         }
-        val uri = try { URI(server) } catch (e: Exception) {
+        val uri = try { URI(normalizeServer(server)) } catch (e: Exception) {
             lastError = "Servidor inválido: $server"
             MqttStatus.status = MqttStatus.DISCONNECTED
             messageCallback("Servidor inválido")
@@ -69,7 +69,7 @@ class MqttManager(
         MqttStatus.status = MqttStatus.CONNECTING
         messageCallback("Conectando al servidor...")
         try {
-            val newClient = MqttAsyncClient(server, clientId, MemoryPersistence())
+            val newClient = MqttAsyncClient(normalizeServer(server), clientId, MemoryPersistence())
             newClient.setCallback(object : MqttCallbackExtended {
                 override fun connectComplete(reconnect: Boolean, serverURI: String) {
                     connected = true
@@ -244,7 +244,7 @@ class MqttManager(
             }
             val clientId = "dmj-test-" + username.filter { it.isLetterOrDigit() }.take(16)
             val testClient = try {
-                MqttAsyncClient(server, clientId, MemoryPersistence())
+                MqttAsyncClient(normalizeServer(server), clientId, MemoryPersistence())
             } catch (e: Exception) {
                 onResult(false, "La dirección del servidor no es válida")
                 return
@@ -273,6 +273,15 @@ class MqttManager(
             } catch (e: Exception) {
                 onResult(false, "No se pudo conectar al servidor. Revisa Internet o la dirección.")
             }
+        }
+
+        /** Acepta direcciones escritas de cualquier forma y las convierte a mqtt://host:puerto. */
+        fun normalizeServer(server: String): String {
+            var value = server.trim()
+            if (value.startsWith("http://")) value = value.removePrefix("http://")
+            if (value.startsWith("https://")) value = value.removePrefix("https://")
+            if (!value.contains("://")) value = "mqtt://$value"
+            return value
         }
 
         private fun friendlyMqttError(raw: String?): String {
