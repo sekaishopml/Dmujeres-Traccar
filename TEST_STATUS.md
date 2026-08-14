@@ -126,3 +126,6 @@ Detalle en `infrastructure/database/measurement-results.md`.
 |---|---|---|---|
 | PT-607 | App muestra estado MQTT real | ✔ PASÓ compilación | `MqttStatus`: Conectando/Conectado/Sin conexión; APK 1.0.6 compilado |
 | PT-608 | Bloque Obligatorio retirado del formulario | ✔ PASÓ | Build dashboard OK; alta concentrada en Acceso del colaborador |
+
+| PT-609 | Reloj adelantado (teléfono) aceptado | ✔ PASÓ | sentAt +10 min → ACK accepted |
+| PT-610 | messageId único por posición | ✔ PASÓ | patrón 01JAND+time+seq, 26 chars |

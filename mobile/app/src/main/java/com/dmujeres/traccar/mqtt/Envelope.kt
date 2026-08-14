@@ -44,10 +44,11 @@ object Envelope {
         return body.toString()
     }
 
-    /** Genera un messageId único por reintento (no cambia si se reenvía la misma posición). */
+    /** Genera un messageId único por posición (no cambia en reintentos: se guarda en Room). */
     fun newMessageId(deviceId: String, sequence: Long): String {
         val devicePart = Integer.toUnsignedString(deviceId.hashCode(), 16).padStart(8, '0')
-        val sequencePart = java.lang.Long.toHexString(sequence).padStart(8, '0')
-        return ("01JAND" + devicePart + sequencePart).take(26)
+        val timePart = java.lang.Long.toHexString(System.currentTimeMillis()).padStart(12, '0')
+        val sequencePart = java.lang.Long.toHexString(sequence).padStart(4, '0')
+        return ("01JAND" + devicePart + timePart + sequencePart).take(26)
     }
 }
