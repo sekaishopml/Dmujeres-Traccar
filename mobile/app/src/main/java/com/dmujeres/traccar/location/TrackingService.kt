@@ -41,6 +41,25 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class TrackingService : Service() {
 
+    companion object {
+        const val ACTION_START = "com.dmujeres.traccar.START"
+        const val ACTION_STOP = "com.dmujeres.traccar.STOP"
+
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+
+        fun start(context: Context) {
+            val intent = Intent(context, TrackingService::class.java).setAction(ACTION_START)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun stop(context: Context) {
+            val intent = Intent(context, TrackingService::class.java).setAction(ACTION_STOP)
+            context.startService(intent)
+        }
+    }
+
     private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var config: AppConfig
     private lateinit var dao: com.dmujeres.traccar.db.PositionDao
@@ -60,6 +79,7 @@ class TrackingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         Notifications.ensureChannel(this)
         config = AppConfig(this)
         dao = (application as DmujeresApp).database.positionDao()
@@ -162,7 +182,13 @@ class TrackingService : Service() {
             observedAt = Envelope.nowIso()
         )
         serviceScope.launch {
-            withContext(Dispatchers.IO) { dao.insert(pending) }
+            withContext(Dispatchers.IO) {
+                val count = dao.count()
+                if (count >= config.bufferMax) {
+                    dao.deleteOldest(count - config.bufferMax + 1)
+                }
+                dao.insert(pending)
+            }
             refreshStateAndNotify()
         }
     }
@@ -241,8 +267,18 @@ class TrackingService : Service() {
         stopSelf()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // Si el usuario cierra la app desde la lista de recientes, el tracking continúa.
+        if (config.trackingEnabled) {
+            Notifications.ensureChannel(this)
+            runCatching { TrackingService.start(this) }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         serviceScope.cancel()
         try {
             fused?.removeLocationUpdates(locationCallback)
@@ -253,19 +289,4 @@ class TrackingService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    companion object {
-        const val ACTION_START = "com.dmujeres.traccar.START"
-        const val ACTION_STOP = "com.dmujeres.traccar.STOP"
-
-        fun start(context: Context) {
-            val intent = Intent(context, TrackingService::class.java).setAction(ACTION_START)
-            ContextCompat.startForegroundService(context, intent)
-        }
-
-        fun stop(context: Context) {
-            val intent = Intent(context, TrackingService::class.java).setAction(ACTION_STOP)
-            context.startService(intent)
-        }
-    }
 }

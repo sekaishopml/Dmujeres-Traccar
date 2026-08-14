@@ -17,6 +17,9 @@ interface PositionDao {
     @Query("UPDATE pending_positions SET attempts = :attempts WHERE messageId = :messageId")
     suspend fun updateAttempts(messageId: String, attempts: Int)
 
+    @Query("DELETE FROM pending_positions WHERE messageId IN (SELECT messageId FROM pending_positions ORDER BY sequence ASC LIMIT :count)")
+    suspend fun deleteOldest(count: Int)
+
     @Query("DELETE FROM pending_positions WHERE messageId = :messageId")
     suspend fun delete(messageId: String)
 
