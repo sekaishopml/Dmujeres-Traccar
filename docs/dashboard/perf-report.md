@@ -37,9 +37,10 @@ El WebSocket y la API no se ven afectados (tests de regresión 10/10 + 10/10).
 - Nuevo módulo `src/map/provider/MapProvider.js`: API única para elegir proveedor, con
   default **OpenFreeMap** (gratuito, sin key) y fallback seguro.
 - El dashboard sigue usando el mismo selector de mapas y los mismos proveedores.
-- **Corrección de cumplimiento**: Google ya no usa tiles no oficiales de `mt0-3.google.com`
-  cuando no hay API key (violaba términos); ahora solo se ofrece con key legítima.
-- Se eliminaron API keys hardcodeadas (LocationIQ, OrdnanceSurvey): esos proveedores solo
+- Decisión del cliente (D-015): Google Maps se ofrece siempre — con API key si existe, y
+  sin key con los tiles clásicos `mt0-3.google.com/vt/...` (uso heredado del Traccar
+  original). Google Carreteras es el mapa por defecto. Riesgo documentado en DECISIONS.md.
+- Se eliminaron API keys hardcodeadas de LocationIQ/OrdnanceSurvey: esos proveedores solo
   se ofrecen si la key está configurada en los ajustes del server.
 
 ## 4. Conservado (ya estaba bien)
