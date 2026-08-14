@@ -86,6 +86,17 @@ No se implementa el modelo de empresas/tenants. Se mantiene el modelo plano de T
 Se mantiene el RBAC plano de Traccar (administrador → usuarios con limites de dispositivos
 y grupos). Suficiente para una empresa; sin tenant layer.
 
+## D-015 (2026-08-13): Google Maps sin API key — tiles clásicos mt0-3.google.com
+**Estado**: ADOPTADA (decisión explícita del cliente)
+**Decisión**: Google Maps (Carreteras/Satélite/Híbrido) se ofrece SIEMPRE en el dashboard:
+con API key legítima si está configurada, y sin key usando los tiles `mt0-3.google.com/vt/...`
+(comportamiento del Traccar original que el cliente usa desde hace años). Google Carreteras
+es el mapa por defecto.
+**Riesgo documentado**: esos endpoints no son un servicio público autorizado (no es el
+acceso oficial por API) y Google podría bloquearlos en el futuro; en ese caso el mapa se
+vería en gris hasta configurar una API key legítima. Fallback técnico: OpenFreeMap/OSM
+siguen disponibles en el selector.
+
 ## D-014 (2026-08-13): Conservar TODO el histórico GPS; compresión TimescaleDB
 **Estado**: ADOPTADA
 **Decisión**: No hay borrado automático (retención desactivada). El histórico se conserva

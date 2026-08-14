@@ -130,3 +130,11 @@
 - Mediciones reales con 2.7M filas: compresión 5.19x (80.7%), consultas 2-4ms.
 - Proyección 5 años/100GB documentada (10 dispositivos @10s ≈ 7.5GB).
 - Decisión D-014: sin borrado automático; histórico completo mes a mes.
+
+## 2026-08-13 — Google Maps restaurado por defecto (D-015)
+
+- Google Carreteras/Satélite/Híbrido disponibles siempre: con API key si existe, y sin key
+  mediante los tiles clásicos `mt0-3.google.com/vt/...` (comportamiento del Traccar
+  original que el cliente usa desde hace años). Google Carreteras pasa a ser el mapa por
+  defecto y aparece primero en el selector de capas.
+- Verificado: endpoints mt0-3 responden 200 desde el VPS; build OK; dashboard 200.
