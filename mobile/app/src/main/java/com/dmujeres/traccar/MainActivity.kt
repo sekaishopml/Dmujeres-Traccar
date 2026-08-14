@@ -15,6 +15,7 @@ import com.dmujeres.traccar.databinding.ActivityMainBinding
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.util.Notifications
+import com.dmujeres.traccar.BuildConfig
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,6 +36,7 @@ class MainActivity : AppCompatActivity() {
         config = AppConfig(this)
         Notifications.ensureChannel(this)
 
+        binding.versionText.text = getString(R.string.app_version, BuildConfig.VERSION_NAME)
         binding.usernameInput.setText(config.username)
         binding.passwordInput.setText(config.password)
         binding.serverInput.setText(config.serverUrl)
@@ -141,6 +143,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUi() {
+        binding.versionText.text = getString(R.string.app_version, BuildConfig.VERSION_NAME)
         binding.usernameInput.setText(config.username)
         binding.passwordInput.setText(config.password)
         binding.serverInput.setText(config.serverUrl)

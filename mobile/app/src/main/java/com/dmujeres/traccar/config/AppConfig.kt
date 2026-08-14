@@ -20,11 +20,18 @@ class AppConfig(context: Context) {
         set(value) = prefs.edit().putString(KEY_SERVER, normalizeServer(value)).apply()
 
     private fun normalizeServer(value: String): String {
-        var server = value.trim()
+        var server = value.trim().trimEnd('/')
+        var secure = false
+        if (server.startsWith("mqtts://")) { server = server.removePrefix("mqtts://"); secure = true }
+        if (server.startsWith("ssl://")) { server = server.removePrefix("ssl://"); secure = true }
+        if (server.startsWith("mqtt://")) server = server.removePrefix("mqtt://")
         if (server.startsWith("http://")) server = server.removePrefix("http://")
-        if (server.startsWith("https://")) server = server.removePrefix("https://")
-        if (!server.contains("://")) server = "mqtt://$server"
-        return server
+        if (server.startsWith("https://")) { server = server.removePrefix("https://"); secure = true }
+        if (server.contains("://")) return server
+        val hostPort = server.substringBefore('/')
+        val hasPort = hostPort.contains(':')
+        val defaultPort = if (secure) ":8883" else ":1883"
+        return (if (secure) "ssl://" else "tcp://") + hostPort + if (hasPort) "" else defaultPort
     }
 
     /**
@@ -95,7 +102,7 @@ class AppConfig(context: Context) {
 
     companion object {
         /** Servidor por defecto: IP pública del entorno + puerto MQTT. */
-        const val DEFAULT_SERVER = "mqtt://64.176.219.221:1883"
+        const val DEFAULT_SERVER = "tcp://64.176.219.221:1883"
 
         private const val KEY_SERVER = "server_url"
         private const val KEY_USERNAME = "username"
