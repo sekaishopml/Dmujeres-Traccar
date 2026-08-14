@@ -1,12 +1,13 @@
 # Monorepo DMujeres Traccar Platform
 # server/ y dashboard/ son SUBMÓDULOS (forks con historia upstream propia).
 # Clonar: git clone <monorepo> && git submodule update --init --recursive
-# Los remotes apuntan a upstream; cuando exista el remote propio del fork se actualiza aquí.
+# Los remotes propios del fork viven en github.com/sekaishopml (rama dev);
+# upstream sigue disponible como remote `upstream` dentro de cada submódulo.
 [submodule "server"]
 	path = server
-	url = https://github.com/traccar/traccar.git
-	branch = master
+	url = https://github.com/sekaishopml/Dmujeres-Traccar-server.git
+	branch = dev
 [submodule "dashboard"]
 	path = dashboard
-	url = https://github.com/traccar/traccar-web.git
-	branch = master
+	url = https://github.com/sekaishopml/Dmujeres-Traccar-dashboard.git
+	branch = dev
