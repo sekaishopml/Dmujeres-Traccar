@@ -206,3 +206,8 @@
 - Ya no se guarda en silencio: hay proceso visible ('Comprobando conexión...').
 - Server: provisión idempotente (si el usuario MQTT ya existe, actualiza la contraseña).
 - Verificado: usuario santiago desde IP externa → conecta, ACK accepted, dispositivo ONLINE.
+
+## 2026-08-14 — App 1.0.9: dirección de servidor tolerante
+
+- La app acepta la dirección como se escriba: '64.176.219.221:1883', 'http://...' o
+  'mqtt://...' y la normaliza automáticamente (antes fallaba sin el prefijo mqtt://).
