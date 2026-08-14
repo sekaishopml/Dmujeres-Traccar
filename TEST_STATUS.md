@@ -119,3 +119,10 @@ Detalle en `infrastructure/database/measurement-results.md`.
 | PT-604 | `/api/mobile/provision` admin crea dispositivo + usuario MQTT | ✔ PASÓ | `panel-maria` creado (deviceId 35), preferencias guardadas, password no en attributes |
 | PT-605 | App simulada con usuario/contraseña panel-maria | ✔ PASÓ | MQTT auth, ACL propia, ACK `accepted`, posición persistida |
 | PT-606 | Dashboard muestra ONLINE tras posición móvil | ✔ PASÓ | `panel-maria`: status=online, lastUpdate actualizado |
+
+## Corrección panel/app 1.0.6
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-607 | App muestra estado MQTT real | ✔ PASÓ compilación | `MqttStatus`: Conectando/Conectado/Sin conexión; APK 1.0.6 compilado |
+| PT-608 | Bloque Obligatorio retirado del formulario | ✔ PASÓ | Build dashboard OK; alta concentrada en Acceso del colaborador |
