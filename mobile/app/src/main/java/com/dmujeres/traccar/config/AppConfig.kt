@@ -17,7 +17,15 @@ class AppConfig(context: Context) {
     var serverUrl: String
         get() = prefs.getString(KEY_SERVER, DEFAULT_SERVER).orEmpty()
             .ifBlank { DEFAULT_SERVER }
-        set(value) = prefs.edit().putString(KEY_SERVER, value.trim().ifBlank { DEFAULT_SERVER }).apply()
+        set(value) = prefs.edit().putString(KEY_SERVER, normalizeServer(value)).apply()
+
+    private fun normalizeServer(value: String): String {
+        var server = value.trim()
+        if (server.startsWith("http://")) server = server.removePrefix("http://")
+        if (server.startsWith("https://")) server = server.removePrefix("https://")
+        if (!server.contains("://")) server = "mqtt://$server"
+        return server
+    }
 
     /**
      * Usuario del colaborador (lo crea el administrador). El usuario ES el identificador
