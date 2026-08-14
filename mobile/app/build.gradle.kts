@@ -1,7 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+}
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
 android {
@@ -12,13 +20,23 @@ android {
         applicationId = "com.dmujeres.traccar"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.create("release").apply {
+                    keyAlias = keystoreProperties["keyAlias"] as String?
+                    keyPassword = keystoreProperties["keyPassword"] as String?
+                    storeFile = file(keystoreProperties["storeFile"] as String?)
+                    storePassword = keystoreProperties["storePassword"] as String?
+                }
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
