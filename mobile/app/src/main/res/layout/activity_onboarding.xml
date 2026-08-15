@@ -85,6 +85,29 @@
             android:text="@string/grant_gps"
             android:layout_marginBottom="24dp" />
 
+        <TextView
+            android:id="@+id/vendorTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+            android:textColor="@color/primary"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/vendorBody"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/vendorButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/finishButton"
             android:layout_width="match_parent"
