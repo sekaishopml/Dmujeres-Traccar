@@ -73,10 +73,25 @@ class AppConfig(context: Context) {
         get() = prefs.getInt(KEY_ACK_TIMEOUT, 15)
         set(value) = prefs.edit().putInt(KEY_ACK_TIMEOUT, value.coerceIn(5, 60)).apply()
 
-    /** Última vez que se guardó una posición para enviar (para detectar envíos detenidos). */
-    var lastSentAt: Long
-        get() = prefs.getLong(KEY_LAST_SENT, 0L)
-        set(value) = prefs.edit().putLong(KEY_LAST_SENT, value).apply()
+    /** Último fix GPS válido recibido. */
+    var lastFixAt: Long
+        get() = prefs.getLong(KEY_LAST_FIX, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_FIX, value).apply()
+
+    /** Última posición insertada correctamente en la cola Room. */
+    var lastEnqueuedAt: Long
+        get() = prefs.getLong(KEY_LAST_ENQUEUED, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_ENQUEUED, value).apply()
+
+    /** Último publish MQTT aceptado localmente por Paho. */
+    var lastPublishedAt: Long
+        get() = prefs.getLong(KEY_LAST_PUBLISHED, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_PUBLISHED, value).apply()
+
+    /** Último ACK de aplicación recibido del servidor. */
+    var lastAckAt: Long
+        get() = prefs.getLong(KEY_LAST_ACK, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_ACK, value).apply()
 
     /** Máximo de reintentos de un mensaje antes de descartarlo. */
     var maxRetries: Int
@@ -118,6 +133,9 @@ class AppConfig(context: Context) {
         private const val KEY_BUFFER = "buffer_max"
         private const val KEY_ACK_TIMEOUT = "ack_timeout"
         private const val KEY_MAX_RETRIES = "max_retries"
-        private const val KEY_LAST_SENT = "last_sent_at"
+        private const val KEY_LAST_FIX = "last_fix_at"
+        private const val KEY_LAST_ENQUEUED = "last_enqueued_at"
+        private const val KEY_LAST_PUBLISHED = "last_published_at"
+        private const val KEY_LAST_ACK = "last_ack_at"
     }
 }

@@ -236,3 +236,16 @@
 - Si deja de enviar 10 min: notificación de pantalla completa que ENCIENDE la tablet
   (requiere permiso 'Full screen', con aviso para concederlo).
 - Registro de último envío (lastSentAt) para detectar cortes.
+
+## 2026-08-15 — App 1.0.13: dispatcher persistente y huecos reales
+
+- Android: dispatcher MQTT ya no se duerme cuando la cola queda vacía; se despierta al
+  insertar nuevas posiciones y espera el próximo retry. Re-suscribe ACK tras reconexión.
+- Métricas separadas: último fix, enqueue, publish y ACK; watchdog detecta cola sin ACK,
+  no solo posiciones guardadas localmente.
+- Procesa todas las ubicaciones agrupadas de Fused Location; observa fallos asíncronos
+  de registro; buffer y evicciones quedan medidos.
+- Dashboard: repetición no dibuja una línea entre posiciones separadas más de 5 minutos;
+  el hueco queda visible. Corregido historial en vivo que descartaba cambios de un solo eje.
+- Diagnóstico Santiago documentado: server/BD no perdió la persistencia; llegaron ráfagas
+  atrasadas, con 4 huecos >10 min. La app tenía dispatcher dormido/OS reposo como causas.

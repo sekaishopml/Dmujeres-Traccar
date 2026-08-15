@@ -1,5 +1,6 @@
 package com.dmujeres.traccar.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -14,5 +15,7 @@ data class PendingPosition(
     val sequence: Long,
     val payload: String,
     val observedAt: String,
+    @ColumnInfo(defaultValue = "0")
+    val enqueuedAt: Long = System.currentTimeMillis(),
     val attempts: Int = 0
 )

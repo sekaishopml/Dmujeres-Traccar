@@ -10,6 +10,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.DmujeresApp
@@ -27,6 +28,7 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -34,6 +36,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -46,6 +50,7 @@ class TrackingService : Service() {
     companion object {
         const val ACTION_START = "com.dmujeres.traccar.START"
         const val ACTION_STOP = "com.dmujeres.traccar.STOP"
+        private const val TAG = "TrackingService"
 
         @Volatile
         var isRunning: Boolean = false
@@ -68,14 +73,14 @@ class TrackingService : Service() {
     private var fused: FusedLocationProviderClient? = null
     private var mqtt: MqttManager? = null
     private val started = AtomicBoolean(false)
-    @Volatile private var lastFixAt = 0L
     @Volatile private var currentState = TrackingState.TRACKING_DISABLED_BY_USER
     @Volatile private var startedTrackingAt = 0L
+    private val enqueueMutex = Mutex()
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-            val location = result.lastLocation ?: return
-            onNewLocation(location)
+            // FLP puede agrupar varios fixes mientras el proceso estaba ocupado o dormido.
+            result.locations.forEach { onNewLocation(it) }
         }
     }
 
@@ -130,7 +135,7 @@ class TrackingService : Service() {
             config = config,
             dao = dao,
             scope = serviceScope,
-            onStateChange = { onMqttStateChanged() }
+            onStateChange = { _ -> onMqttStateChanged() }
         )
         mqtt = manager
         manager.connect()
@@ -167,20 +172,38 @@ class TrackingService : Service() {
             config.intervalSeconds * 1000L
         ).setMinUpdateIntervalMillis(config.intervalSeconds * 500L).build()
         try {
-            fused?.requestLocationUpdates(request, locationCallback, null)
-            setState(TrackingState.TRACKING_ACTIVE)
+            val task = fused?.requestLocationUpdates(request, locationCallback, null)
+            if (task == null) {
+                setState(TrackingState.GPS_DISABLED)
+                return
+            }
+            task.addOnSuccessListener {
+                if (started.get()) setState(TrackingState.TRACKING_ACTIVE)
+            }
+            task.addOnFailureListener { error ->
+                Log.e(TAG, "No se pudieron solicitar actualizaciones de ubicación", error)
+                if (started.get()) setState(TrackingState.GPS_DISABLED)
+            }
+            task.addOnCanceledListener {
+                Log.e(TAG, "La solicitud de actualizaciones de ubicación fue cancelada")
+                if (started.get()) setState(TrackingState.GPS_DISABLED)
+            }
         } catch (e: SecurityException) {
             setState(TrackingState.PERMISSION_MISSING)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al solicitar actualizaciones de ubicación", e)
+            setState(TrackingState.GPS_DISABLED)
         }
     }
 
     private fun onNewLocation(location: Location) {
         if (!location.isValidLocation()) return
-        lastFixAt = System.currentTimeMillis()
+        config.lastFixAt = System.currentTimeMillis()
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
         val sequence = config.nextSequence()
         val messageId = Envelope.newMessageId(deviceId, sequence)
+        val observedAt = Envelope.nowIso()
         val payload = Envelope.buildPosition(
             messageId = messageId,
             deviceId = deviceId,
@@ -191,25 +214,46 @@ class TrackingService : Service() {
             speed = location.speed.toDouble().coerceAtLeast(0.0),
             bearing = location.bearing.toDouble(),
             altitude = location.altitude.toDouble(),
-            observedAt = Envelope.nowIso()
+            observedAt = observedAt
         )
+        val enqueuedAt = System.currentTimeMillis()
         val pending = PendingPosition(
             messageId = messageId,
             deviceId = deviceId,
             sequence = sequence,
             payload = payload,
-            observedAt = Envelope.nowIso()
+            observedAt = observedAt,
+            enqueuedAt = enqueuedAt
         )
         serviceScope.launch {
-            withContext(Dispatchers.IO) {
-                val count = dao.count()
-                if (count >= config.bufferMax) {
-                    dao.deleteOldest(count - config.bufferMax + 1)
+            try {
+                enqueueMutex.withLock {
+                    val discarded = withContext(Dispatchers.IO) {
+                        dao.insertWithinLimit(pending, config.bufferMax)
+                    }
+                    config.lastEnqueuedAt = maxOf(config.lastEnqueuedAt, System.currentTimeMillis())
+                    mqtt?.wakeDispatch()
+                    if (discarded > 0) {
+                        Log.w(TAG, "Buffer Room lleno; se descartaron $discarded posiciones")
+                        Notifications.alert(
+                            this@TrackingService,
+                            getString(R.string.buffer_warning_title),
+                            getString(R.string.buffer_warning_body, discarded),
+                        )
+                    }
                 }
-                dao.insert(pending)
+                refreshStateAndNotify()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "No se pudo guardar la posición en Room", e)
+                Notifications.alert(
+                    this@TrackingService,
+                    getString(R.string.storage_warning_title),
+                    getString(R.string.storage_warning_body),
+                )
+                refreshStateAndNotify()
             }
-            config.lastSentAt = System.currentTimeMillis()
-            refreshStateAndNotify()
         }
     }
 
@@ -222,35 +266,78 @@ class TrackingService : Service() {
                 continue
             }
             val now = System.currentTimeMillis()
-            if (config.lastSentAt > 0 && now - config.lastSentAt > 10 * 60_000
+            val pendingInfo = try {
+                withContext(Dispatchers.IO) {
+                    dao.count() to dao.oldestEnqueuedAt()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (error: Exception) {
+                Log.e(TAG, "No se pudo consultar la cola Room", error)
+                0 to null
+            }
+            val pendingCount = pendingInfo.first
+            val oldestPendingAt = pendingInfo.second
+            val lastFixAt = config.lastFixAt
+            val fixForCurrentRun = lastFixAt >= startedTrackingAt && lastFixAt > 0L
+            val fixStaleAfter = maxOf(60_000L, config.intervalSeconds * 3_000L)
+            val gpsWithoutFix =
+                (!fixForCurrentRun && now - startedTrackingAt > 60_000L) ||
+                    (fixForCurrentRun && now - lastFixAt > fixStaleAfter)
+            val pendingWithoutAck = pendingCount > 0 && pendingAgeExceedsLimit(
+                now = now,
+                oldestPendingAt = oldestPendingAt,
+            )
+            val mqttUnavailable = mqtt?.ready != true
+
+            if ((gpsWithoutFix || mqttUnavailable || pendingWithoutAck)
                 && now - lastWakeAlertAt > 20 * 60_000) {
                 lastWakeAlertAt = now
                 Notifications.wakeScreen(
                     this,
                     getString(R.string.wake_title),
-                    getString(R.string.wake_body),
+                    when {
+                        gpsWithoutFix -> getString(R.string.wake_gps_body)
+                        pendingWithoutAck -> getString(R.string.wake_pending_body)
+                        else -> getString(R.string.wake_mqtt_body)
+                    },
                 )
             }
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED
             ) {
                 setState(TrackingState.PERMISSION_MISSING)
-            } else if (lastFixAt == 0L
-                && System.currentTimeMillis() - startedTrackingAt > 60_000
-            ) {
-                setState(TrackingState.GPS_DISABLED)
-            } else if (lastFixAt > 0 && System.currentTimeMillis() - lastFixAt > 3 * config.intervalSeconds * 1000) {
+            } else if (gpsWithoutFix) {
                 setState(TrackingState.GPS_DISABLED)
             } else if (!isNetworkAvailable()) {
                 setState(TrackingState.NETWORK_OFFLINE)
-            } else if (mqtt?.connected == false) {
+            } else if (mqttUnavailable) {
                 setState(TrackingState.MQTT_DISCONNECTED)
+            } else if (pendingWithoutAck) {
+                setState(TrackingState.PENDING_ACK_TIMEOUT)
             } else if (isBatteryLow()) {
                 setState(TrackingState.BATTERY_LOW)
             } else {
                 setState(TrackingState.TRACKING_ACTIVE)
             }
         }
+    }
+
+    private fun pendingAgeExceedsLimit(now: Long, oldestPendingAt: Long?): Boolean {
+        val tenMinutes = 10 * 60_000L
+        val knownOldest = oldestPendingAt?.takeIf { it > 0L }
+        if (knownOldest != null) return now - knownOldest > tenMinutes
+
+        // Rows created before the Room migration have no per-row timestamp. Do not use
+        // the latest metric here: a newer position must not hide an older stuck row.
+        val fallback = startedTrackingAt.takeIf { it > 0L }
+            ?: listOf(
+                config.lastEnqueuedAt,
+                config.lastPublishedAt,
+                config.lastAckAt,
+            ).filter { it > 0L }.minOrNull()
+            ?: 0L
+        return fallback > 0L && now - fallback > tenMinutes
     }
 
     private fun setState(state: TrackingState) {
@@ -270,9 +357,34 @@ class TrackingService : Service() {
     private fun refreshStateAndNotify() {
         serviceScope.launch {
             val pending = withContext(Dispatchers.IO) { dao.countFlow().first() }
-            val text = currentState.label + " · " + MqttStatus.status + " · " + pending + " pendientes"
+            val now = System.currentTimeMillis()
+            val metrics = listOf(
+                "fix=" + metricAge(config.lastFixAt, now),
+                "enc=" + metricAge(config.lastEnqueuedAt, now),
+                "pub=" + metricAge(config.lastPublishedAt, now),
+                "ACK=" + metricAge(config.lastAckAt, now),
+            ).joinToString(" ")
+            val error = mqtt?.lastError?.takeIf { it.isNotBlank() }
+            val text = buildString {
+                append(currentState.label)
+                append(" · ")
+                append(MqttStatus.status)
+                append(" · ")
+                append(pending)
+                append(" pendientes · ")
+                append(metrics)
+                if (error != null) {
+                    append(" · ")
+                    append(error)
+                }
+            }
             Notifications.update(this@TrackingService, "DMujeres Tracking", text)
         }
+    }
+
+    private fun metricAge(timestamp: Long, now: Long): String {
+        if (timestamp <= 0L) return "nunca"
+        return "${((now - timestamp).coerceAtLeast(0L)) / 1_000}s"
     }
 
     private fun isNetworkAvailable(): Boolean {
