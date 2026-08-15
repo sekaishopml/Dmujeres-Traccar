@@ -259,3 +259,19 @@
   durante 1 minuto, envía un heartbeat ligero cada 60 s. El servidor lo acepta, mantiene el
   dispositivo ONLINE y actualiza lastUpdate SIN crear posiciones ficticias.
 - Verificado: presence → ACK accepted → santiago online, 0 posiciones nuevas.
+
+## 2026-08-15 — App 1.0.15: compatibilidad por fabricante + telemetría + fallback HTTP
+
+- Buffer por defecto 5000 (≈14 h offline a 10 s) y política configurable: descartar lo más
+  antiguo o detener captura al llenarse.
+- Fallback HTTP automático: si MQTT no está disponible, envía pendientes por HTTPS
+  (POST /api/mobile/v1/positions) con la misma idempotencia; al volver MQTT, retoma.
+- Telemetría en cada heartbeat/posición: pendientes, batería, red, marca, modelo, versión y
+  GPS. El servidor la guarda en atributos del dispositivo (mobile.pending/battery/network/
+  vendor/model/appVersion/gps).
+- Asistente por fabricante (Xiaomi/Redmi, Samsung, Honor/Huawei, Infinix/Tecno): pasos
+  exactos y botón que abre los ajustes de autostart/arranque de la marca.
+- Reacción inmediata al recuperar internet (callback de red) y keepalive MQTT 45 s.
+- Detección de 'app detenida por el sistema' al reabrir, con reactivación en un toque.
+- targetSdk 35 (Android 15) y versión visible en pantalla.
+- Dashboard: dispositivos sin señal muestran 'Sin señal hace X • N pendientes • batería Y%'.

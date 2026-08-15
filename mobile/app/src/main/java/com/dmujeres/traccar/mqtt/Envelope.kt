@@ -22,7 +22,8 @@ object Envelope {
         speed: Double,
         bearing: Double,
         altitude: Double,
-        observedAt: String
+        observedAt: String,
+        pending: Int
     ): String {
         val payload = JSONObject()
         payload.put("latitude", latitude)
@@ -31,6 +32,7 @@ object Envelope {
         payload.put("speed", speed)
         payload.put("bearing", bearing)
         payload.put("altitude", altitude)
+        payload.put("pending", pending)
 
         val body = JSONObject()
         body.put("schema", 1)
@@ -45,8 +47,27 @@ object Envelope {
     }
 
     /** Genera un messageId único por posición (no cambia en reintentos: se guarda en Room). */
-    /** Heartbeat de presencia: la app sigue viva aunque no haya fix de GPS (parking interior). */
-    fun buildPresence(messageId: String, deviceId: String, sequence: Long): String {
+    /** Heartbeat de presencia con telemetría (parking interior / sin fix de GPS). */
+    fun buildPresence(
+        messageId: String,
+        deviceId: String,
+        sequence: Long,
+        pending: Int,
+        battery: Int,
+        network: String,
+        vendor: String,
+        model: String,
+        appVersion: String,
+        gps: String
+    ): String {
+        val payload = JSONObject()
+        payload.put("pending", pending)
+        payload.put("battery", battery)
+        payload.put("network", network)
+        payload.put("vendor", vendor)
+        payload.put("model", model)
+        payload.put("appVersion", appVersion)
+        payload.put("gps", gps)
         val body = JSONObject()
         body.put("schema", 1)
         body.put("type", "presence")
@@ -55,7 +76,7 @@ object Envelope {
         body.put("sequence", sequence)
         body.put("sentAt", nowIso())
         body.put("observedAt", nowIso())
-        body.put("payload", JSONObject())
+        body.put("payload", payload)
         return body.toString()
     }
 

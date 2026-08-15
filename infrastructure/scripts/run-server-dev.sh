@@ -23,6 +23,8 @@ export WEB_SECRET_TOKEN="${WEB_SECRET_TOKEN:-}"
 # Canal móvil ACTIVO por defecto (la app Android depende de MQTT)
 export MOBILE_MQTT_ENABLE="${MOBILE_MQTT_ENABLE:-true}"
 export MOBILE_MQTT_URL="${MOBILE_MQTT_URL:-mqtt://127.0.0.1:1883}"
+export MOBILE_HTTP_ENABLE="${MOBILE_HTTP_ENABLE:-true}"
+export MOBILE_HTTP_API_KEY="${MOBILE_HTTP_API_KEY:-dmj-dev-fallback-key}"
 # Cliente MQTT del server en el broker EMQX (auth obligatoria en dev).
 # Usuario: dmj-consumer (ACL: subscribe +/telemetry, publish +/ack).
 # Password: default SOLO dev (auth-file.csv); definir MOBILE_MQTT_PASSWORD en .env

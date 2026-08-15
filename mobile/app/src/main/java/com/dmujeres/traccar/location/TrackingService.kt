@@ -9,8 +9,11 @@ import android.location.Location
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
+import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
+import com.dmujeres.traccar.BuildConfig
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.DmujeresApp
@@ -18,6 +21,7 @@ import com.dmujeres.traccar.R
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.db.PendingPosition
 import com.dmujeres.traccar.mqtt.Envelope
+import com.dmujeres.traccar.mqtt.HttpFallbackDispatcher
 import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.util.Notifications
@@ -141,10 +145,41 @@ class TrackingService : Service() {
         manager.connect()
 
         requestLocationUpdates()
+        registerNetworkCallback()
         serviceScope.launch { watchdogLoop() }
     }
 
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    private fun registerNetworkCallback() {
+        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                if (mqtt?.connected != true) {
+                    serviceScope.launch { mqtt?.connect() }
+                }
+                if (config.trackingEnabled) {
+                    serviceScope.launch {
+                        try {
+                            HttpFallbackDispatcher.flush(dao, config)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Fallback HTTP al recuperar red", e)
+                        }
+                    }
+                }
+            }
+        }
+        try {
+            connectivity.registerDefaultNetworkCallback(networkCallback!!)
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo registrar el callback de red", e)
+        }
+    }
+
     @Volatile private var lastMqttStatus: String = ""
+    @Volatile private var lastBufferFullAlertAt = 0L
 
     private fun onMqttStateChanged() {
         val status = MqttStatus.status
@@ -196,7 +231,7 @@ class TrackingService : Service() {
         }
     }
 
-    /** Si no hay fix de GPS reciente (parking interior/plaza), envía 'presence' para seguir online. */
+    /** Si no hay fix de GPS reciente (parking interior/plaza), envía 'presence' con telemetría. */
     private fun sendPresenceHeartbeat() {
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
@@ -206,7 +241,19 @@ class TrackingService : Service() {
         if (hasRecentFix) return
         val sequence = config.nextSequence()
         val messageId = Envelope.newMessageId(deviceId, sequence)
-        val payload = Envelope.buildPresence(messageId, deviceId, sequence)
+        val telemetry = telemetry()
+        val payload = Envelope.buildPresence(
+            messageId = messageId,
+            deviceId = deviceId,
+            sequence = sequence,
+            pending = telemetry.pending,
+            battery = telemetry.battery,
+            network = telemetry.network,
+            vendor = telemetry.vendor,
+            model = telemetry.model,
+            appVersion = telemetry.appVersion,
+            gps = telemetry.gps,
+        )
         val pending = PendingPosition(
             messageId = messageId,
             deviceId = deviceId,
@@ -222,38 +269,96 @@ class TrackingService : Service() {
         }
     }
 
+    private data class Telemetry(
+        val pending: Int,
+        val battery: Int,
+        val network: String,
+        val vendor: String,
+        val model: String,
+        val appVersion: String,
+        val gps: String,
+    )
+
+    private fun telemetry(): Telemetry {
+        val pendingCount = try {
+            runBlockingSafe { dao.count() }
+        } catch (e: Exception) {
+            0
+        }
+        val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
+        val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = when {
+            connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "wifi"
+            connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true -> "mobile"
+            else -> "none"
+        }
+        val gpsMode = Settings.Secure.getInt(contentResolver, Settings.Secure.LOCATION_MODE, 0)
+        return Telemetry(
+            pending = pendingCount,
+            battery = battery,
+            network = network,
+            vendor = Build.MANUFACTURER.orEmpty(),
+            model = Build.MODEL.orEmpty(),
+            appVersion = BuildConfig.VERSION_NAME,
+            gps = if (gpsMode != 0) "on" else "off",
+        )
+    }
+
+    private fun runBlockingSafe(block: suspend () -> Int): Int =
+        runCatching { kotlinx.coroutines.runBlocking { withContext(Dispatchers.IO) { block() } } }
+            .getOrDefault(0)
+
     private fun onNewLocation(location: Location) {
         if (!location.isValidLocation()) return
         config.lastFixAt = System.currentTimeMillis()
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
-        val sequence = config.nextSequence()
-        val messageId = Envelope.newMessageId(deviceId, sequence)
-        val observedAt = Envelope.nowIso()
-        val payload = Envelope.buildPosition(
-            messageId = messageId,
-            deviceId = deviceId,
-            sequence = sequence,
-            latitude = location.latitude,
-            longitude = location.longitude,
-            accuracy = location.accuracy.toDouble(),
-            speed = location.speed.toDouble().coerceAtLeast(0.0),
-            bearing = location.bearing.toDouble(),
-            altitude = location.altitude.toDouble(),
-            observedAt = observedAt
-        )
-        val enqueuedAt = System.currentTimeMillis()
-        val pending = PendingPosition(
-            messageId = messageId,
-            deviceId = deviceId,
-            sequence = sequence,
-            payload = payload,
-            observedAt = observedAt,
-            enqueuedAt = enqueuedAt
-        )
         serviceScope.launch {
             try {
                 enqueueMutex.withLock {
+                    val currentCount = withContext(Dispatchers.IO) { dao.count() }
+                    if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE
+                        && currentCount >= config.bufferMax
+                    ) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastBufferFullAlertAt > 60_000) {
+                            lastBufferFullAlertAt = now
+                            Notifications.alert(
+                                this@TrackingService,
+                                getString(R.string.buffer_warning_title),
+                                getString(R.string.buffer_full_stop_body),
+                            )
+                        }
+                        return@withLock
+                    }
+                    val sequence = config.nextSequence()
+                    val messageId = Envelope.newMessageId(deviceId, sequence)
+                    val observedAt = Envelope.nowIso()
+                    val payload = Envelope.buildPosition(
+                        messageId = messageId,
+                        deviceId = deviceId,
+                        sequence = sequence,
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        accuracy = location.accuracy.toDouble(),
+                        speed = location.speed.toDouble().coerceAtLeast(0.0),
+                        bearing = location.bearing.toDouble(),
+                        altitude = location.altitude.toDouble(),
+                        observedAt = observedAt,
+                        pending = currentCount,
+                    )
+                    val enqueuedAt = System.currentTimeMillis()
+                    val pending = PendingPosition(
+                        messageId = messageId,
+                        deviceId = deviceId,
+                        sequence = sequence,
+                        payload = payload,
+                        observedAt = observedAt,
+                        enqueuedAt = enqueuedAt,
+                    )
                     val discarded = withContext(Dispatchers.IO) {
                         dao.insertWithinLimit(pending, config.bufferMax)
                     }
@@ -320,6 +425,18 @@ class TrackingService : Service() {
                 oldestPendingAt = oldestPendingAt,
             )
             val mqttUnavailable = mqtt?.ready != true
+            if (mqttUnavailable && pendingCount > 0) {
+                try {
+                    val flushed = HttpFallbackDispatcher.flush(dao, config)
+                    if (flushed > 0) {
+                        Log.i(TAG, "Fallback HTTP confirmó $flushed mensajes")
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Fallback HTTP falló", e)
+                }
+            }
 
             if ((gpsWithoutFix || mqttUnavailable || pendingWithoutAck)
                 && now - lastWakeAlertAt > 20 * 60_000) {
@@ -435,6 +552,13 @@ class TrackingService : Service() {
 
     private fun stopTracking() {
         started.set(false)
+        networkCallback?.let {
+            runCatching {
+                (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager)
+                    .unregisterNetworkCallback(it)
+            }
+        }
+        networkCallback = null
         Notifications.alert(this, getString(R.string.jornada_finalizada), getString(R.string.jornada_finalizada_body))
         try {
             fused?.removeLocationUpdates(locationCallback)

@@ -147,3 +147,12 @@ Causa: ráfagas atrasadas antes de persistencia, consistente con app/OS dispatch
 no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba física.
 
 | PT-705 | Heartbeat presence mantiene ONLINE sin posición | ✔ PASÓ | ACK accepted; status online; lastUpdate actualizado; 0 filas tc_positions nuevas |
+
+## Compatibilidad fabricantes / telemetría / fallback (1.0.15)
+
+| ID | Prueba | Estado | Evidencia |
+|---|---|---|---|
+| PT-706 | Telemetría presence → atributos del dispositivo | ✔ PASÓ | mobile.pending=7, battery=83, network=wifi, vendor=Xiaomi, model, appVersion, gps |
+| PT-707 | Fallback HTTP batch | ✔ PASÓ | POST /api/mobile/v1/positions con X-Api-Key → accepted |
+| PT-708 | targetSdk 35 build | ✔ PASÓ | assembleRelease OK con compileSdk/targetSdk 35 |
+| PT-709 | Dashboard indicador sin señal/pendientes/batería | ✔ PASÓ | DeviceRow actualizado; lint+build OK |
