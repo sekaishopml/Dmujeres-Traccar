@@ -249,3 +249,13 @@
   el hueco queda visible. Corregido historial en vivo que descartaba cambios de un solo eje.
 - Diagnóstico Santiago documentado: server/BD no perdió la persistencia; llegaron ráfagas
   atrasadas, con 4 huecos >10 min. La app tenía dispatcher dormido/OS reposo como causas.
+
+## 2026-08-15 — Heartbeat de presencia (parking interior) — app 1.0.14
+
+- PROBLEMA: colaboradores parados en malls/plazas/centros comerciales perdían señal GPS en
+  interiores; sin coordenadas no había envío y el panel los marcaba 'fuera de línea' a los
+  10 minutos aunque tuvieran la app encendida.
+- SOLUCIÓN: nuevo tipo de mensaje 'presence' (protocolo v1). Si la app no recibe fix de GPS
+  durante 1 minuto, envía un heartbeat ligero cada 60 s. El servidor lo acepta, mantiene el
+  dispositivo ONLINE y actualiza lastUpdate SIN crear posiciones ficticias.
+- Verificado: presence → ACK accepted → santiago online, 0 posiciones nuevas.

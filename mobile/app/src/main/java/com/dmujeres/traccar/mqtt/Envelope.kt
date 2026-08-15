@@ -45,6 +45,20 @@ object Envelope {
     }
 
     /** Genera un messageId único por posición (no cambia en reintentos: se guarda en Room). */
+    /** Heartbeat de presencia: la app sigue viva aunque no haya fix de GPS (parking interior). */
+    fun buildPresence(messageId: String, deviceId: String, sequence: Long): String {
+        val body = JSONObject()
+        body.put("schema", 1)
+        body.put("type", "presence")
+        body.put("messageId", messageId)
+        body.put("deviceId", deviceId)
+        body.put("sequence", sequence)
+        body.put("sentAt", nowIso())
+        body.put("observedAt", nowIso())
+        body.put("payload", JSONObject())
+        return body.toString()
+    }
+
     fun newMessageId(deviceId: String, sequence: Long): String {
         val devicePart = Integer.toUnsignedString(deviceId.hashCode(), 16).padStart(8, '0')
         val timePart = java.lang.Long.toHexString(System.currentTimeMillis()).padStart(12, '0')
