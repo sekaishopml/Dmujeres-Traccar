@@ -10,6 +10,7 @@ enum class TrackingState(val label: String) {
     NETWORK_OFFLINE("Sin conexión a Internet"),
     MQTT_DISCONNECTED("Servidor de mensajes no disponible"),
     SERVER_UNAVAILABLE("Servidor no disponible"),
+    PENDING_ACK_TIMEOUT("Pendientes sin confirmación"),
     BATTERY_LOW("Batería baja"),
     PERMISSION_MISSING("Permisos de ubicación requeridos"),
     SERVICE_RECOVERY("Recuperando servicio"),

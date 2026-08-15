@@ -61,4 +61,11 @@
     <string name="battery_grant">Ir a los ajustes</string>
     <string name="wake_title">Se detuvo el envío de ubicación</string>
     <string name="wake_body">Revisa la tablet: no se ha recibido ubicación en 10 minutos. Abre la app para continuar la jornada.</string>
+    <string name="wake_gps_body">Revisa la tablet: no se ha recibido un fix GPS reciente. Abre la app y comprueba el GPS.</string>
+    <string name="wake_mqtt_body">Revisa la tablet: MQTT no está conectado. Se reintentará enviar las posiciones pendientes.</string>
+    <string name="wake_pending_body">Revisa la tablet: hay posiciones pendientes sin ACK de servidor desde hace más de 10 minutos.</string>
+    <string name="buffer_warning_title">Buffer de ubicación lleno</string>
+    <string name="buffer_warning_body">Se descartaron %1$d posiciones antiguas para mantener el límite configurado.</string>
+    <string name="storage_warning_title">No se pudo guardar la ubicación</string>
+    <string name="storage_warning_body">La posición actual no pudo guardarse en el buffer local. Revisa el almacenamiento de la tablet.</string>
 </resources>
