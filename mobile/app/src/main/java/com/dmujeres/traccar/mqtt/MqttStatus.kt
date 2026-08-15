@@ -9,4 +9,9 @@ object MqttStatus {
     @Volatile
     var status: String = DISCONNECTED
         internal set
+
+    /** Último error crudo reportado por Paho, conservado hasta una conexión exitosa. */
+    @Volatile
+    var lastError: String? = null
+        internal set
 }

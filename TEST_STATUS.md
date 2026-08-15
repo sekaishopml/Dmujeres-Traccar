@@ -133,3 +133,15 @@ Detalle en `infrastructure/database/measurement-results.md`.
 | PT-611 | App valida credenciales con feedback real | ✔ PASÓ compilación | Diálogos Conectado/incorrectos/denegado/servidor |
 | PT-612 | Provisión idempotente (actualiza password si existe) | ✔ PASÓ | POST repetido → HTTP 200 |
 | PT-613 | E2E santiago desde IP pública | ✔ PASÓ | CONECTA → ACK accepted → ONLINE |
+
+## Diagnóstico Santiago 2026-08-15
+
+| ID | Prueba | Resultado |
+|---|---|---|
+| PT-701 | BD: gaps de Santiago | 4 gaps >10 min; máximo 12h55; serverTime-fixTime alto, DB insert 0.006s |
+| PT-702 | Server/broker | MQTT y consumer activos; posiciones accepted; transacción/leases sanos |
+| PT-703 | Corrección app dispatcher | Build release OK; dispatcher persistente, ACK/lastAck y wake tras insert |
+| PT-704 | Corrección replay dashboard | Build/lint OK; gaps >5 min ya no se dibujan como línea continua |
+
+Causa: ráfagas atrasadas antes de persistencia, consistente con app/OS dispatcher/reposo;
+no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba física.

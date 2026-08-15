@@ -4,12 +4,16 @@ import android.content.Context
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.db.PendingPosition
 import com.dmujeres.traccar.db.PositionDao
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.eclipse.paho.client.mqttv3.IMqttActionListener
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.IMqttToken
@@ -40,157 +44,270 @@ class MqttManager(
     @Volatile private var client: MqttAsyncClient? = null
     @Volatile var connected: Boolean = false
         private set
+    @Volatile var ready: Boolean = false
+        private set
     @Volatile var lastError: String? = null
         private set
 
     private val ackFutures = ConcurrentHashMap<String, CompletableFuture<String>>()
     private val retryAt = ConcurrentHashMap<String, Long>()
+    private val dispatchWake = Channel<Unit>(Channel.CONFLATED)
     private var dispatchJob: Job? = null
+    private var subscriptionRetryJob: Job? = null
     @Volatile private var subscribed = false
 
-    private val messageCallback: (String) -> Unit = { message -> onStateChange(message) }
+    /** Despierta el dispatcher después de insertar una posición en Room. */
+    fun wakeDispatch() {
+        dispatchWake.trySend(Unit)
+        if (ready) startDispatch()
+    }
+
+    private fun notifyState(message: String) {
+        runCatching { onStateChange(message) }
+    }
+
+    private fun errorText(error: Throwable?, fallback: String): String =
+        error?.message?.takeIf { it.isNotBlank() }
+            ?: error?.toString()?.takeIf { it.isNotBlank() }
+            ?: fallback
+
+    private fun notifyDisconnected(error: String, message: String) {
+        lastError = error
+        MqttStatus.lastError = error
+        MqttStatus.status = MqttStatus.DISCONNECTED
+        notifyState(message)
+        dispatchWake.trySend(Unit)
+    }
 
     fun connect() {
         val server = config.serverUrl
         val deviceId = config.deviceId
         if (server.isBlank() || deviceId.isBlank()) {
-            lastError = "Falta servidor o usuario"
-            MqttStatus.status = MqttStatus.DISCONNECTED
-            messageCallback("Falta configuración")
+            connected = false
+            ready = false
+            subscribed = false
+            notifyDisconnected("Falta servidor o usuario", "Falta configuración")
             return
         }
-        val uri = try { URI(normalizeServer(server)) } catch (e: Exception) {
-            lastError = "Servidor inválido: $server"
-            MqttStatus.status = MqttStatus.DISCONNECTED
-            messageCallback("Servidor inválido")
+
+        val normalizedServer = try {
+            normalizeServer(server).also { URI(it) }
+        } catch (e: Exception) {
+            val error = "Servidor inválido: $server"
+            connected = false
+            ready = false
+            subscribed = false
+            notifyDisconnected(error, error)
             return
         }
         val clientId = "dmj-" + deviceId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+        connected = false
+        ready = false
+        subscribed = false
         MqttStatus.status = MqttStatus.CONNECTING
-        messageCallback("Conectando al servidor...")
-        try {
-            val newClient = MqttAsyncClient(normalizeServer(server), clientId, MemoryPersistence())
-            newClient.setCallback(object : MqttCallbackExtended {
-                override fun connectComplete(reconnect: Boolean, serverURI: String) {
-                    connected = true
-                    lastError = null
-                    MqttStatus.status = MqttStatus.CONNECTED
-                    messageCallback("Conectado al servidor")
-                    subscribeAndDispatch()
-                }
+        notifyState("Conectando al servidor...")
 
-                override fun connectionLost(cause: Throwable?) {
-                    connected = false
-                    subscribed = false
-                    lastError = cause?.message ?: "Conexión perdida"
-                    MqttStatus.status = MqttStatus.DISCONNECTED
-                    messageCallback("Sin conexión: $lastError")
-                }
+        val newClient = try {
+            MqttAsyncClient(normalizedServer, clientId, MemoryPersistence())
+        } catch (e: Exception) {
+            val error = errorText(e, "No se pudo crear el cliente MQTT")
+            notifyDisconnected(error, "Error MQTT: $error")
+            return
+        }
 
-                override fun deliveryComplete(token: IMqttDeliveryToken) {
-                    // PUBACK del broker: no es la confirmación de negocio.
-                }
-
-                override fun messageArrived(topic: String, message: MqttMessage) {
-                    handleAck(message)
-                }
-            })
-
-            val options = MqttConnectOptions().apply {
-                isAutomaticReconnect = true
-                maxReconnectDelay = 10_000
-                connectionTimeout = 10
-                isCleanSession = true
-                if (config.username.isNotBlank()) {
-                    userName = config.username
-                    password = config.password.toCharArray()
-                }
+        newClient.setCallback(object : MqttCallbackExtended {
+            override fun connectComplete(reconnect: Boolean, serverURI: String) {
+                if (client !== newClient) return
+                connected = true
+                ready = false
+                subscribed = false
+                lastError = null
+                MqttStatus.lastError = null
+                MqttStatus.status = MqttStatus.CONNECTED
+                subscriptionRetryJob?.cancel()
+                subscriptionRetryJob = null
+                notifyState(if (reconnect) "Reconectado al servidor" else "Conectado al servidor")
+                dispatchWake.trySend(Unit)
+                subscribeAndDispatch()
             }
-            client = newClient
+
+            override fun connectionLost(cause: Throwable?) {
+                if (client !== newClient) return
+                connected = false
+                ready = false
+                subscribed = false
+                val error = errorText(cause, "Conexión perdida")
+                completeInFlightWithoutAck()
+                notifyDisconnected(error, "Sin conexión: $error")
+            }
+
+            override fun deliveryComplete(token: IMqttDeliveryToken) {
+                // PUBACK del broker: no es la confirmación de negocio.
+            }
+
+            override fun messageArrived(topic: String, message: MqttMessage) {
+                handleAck(message)
+            }
+        })
+        client = newClient
+
+        val options = MqttConnectOptions().apply {
+            isAutomaticReconnect = true
+            maxReconnectDelay = 10_000
+            connectionTimeout = 10
+            isCleanSession = true
+            if (config.username.isNotBlank()) {
+                userName = config.username
+                password = config.password.toCharArray()
+            }
+        }
+        try {
             newClient.connect(options, null, object : IMqttActionListener {
                 override fun onSuccess(asyncActionToken: IMqttToken?) = Unit
+
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                    if (client !== newClient) return
                     connected = false
-                    lastError = exception?.message ?: "Fallo de conexión"
-                    MqttStatus.status = MqttStatus.DISCONNECTED
-                    messageCallback("Sin conexión: $lastError")
+                    ready = false
+                    subscribed = false
+                    val error = errorText(exception, "Fallo de conexión")
+                    completeInFlightWithoutAck()
+                    notifyDisconnected(error, "Sin conexión: $error")
                 }
             })
         } catch (e: Exception) {
-            lastError = e.message
-            messageCallback("Error MQTT: ${e.message}")
+            if (client === newClient) {
+                connected = false
+                ready = false
+                subscribed = false
+                val error = errorText(e, "Fallo de conexión")
+                notifyDisconnected(error, "Error MQTT: $error")
+            }
         }
     }
 
     private fun subscribeAndDispatch() {
         val current = client ?: return
+        if (!connected) return
         if (subscribed) {
+            ready = true
             startDispatch()
             return
         }
+        ready = false
         try {
             current.subscribe(config.ackTopic(), 1, null, object : IMqttActionListener {
                 override fun onSuccess(asyncActionToken: IMqttToken?) {
+                    if (client !== current || !connected) return
                     subscribed = true
+                    ready = true
+                    lastError = null
+                    MqttStatus.lastError = null
+                    MqttStatus.status = MqttStatus.CONNECTED
+                    subscriptionRetryJob?.cancel()
+                    subscriptionRetryJob = null
                     startDispatch()
+                    dispatchWake.trySend(Unit)
                 }
 
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                    lastError = exception?.message
-                    messageCallback("No se pudo suscribir al ACK")
+                    if (client !== current) return
+                    subscribed = false
+                    ready = false
+                    val error = errorText(exception, "Fallo al suscribir el ACK")
+                    notifyDisconnected(error, "No se pudo suscribir al ACK: $error")
+                    scheduleSubscriptionRetry(current)
                 }
             })
         } catch (e: Exception) {
-            lastError = e.message
+            if (client !== current) return
+            subscribed = false
+            ready = false
+            val error = errorText(e, "Fallo al suscribir el ACK")
+            notifyDisconnected(error, "No se pudo suscribir al ACK: $error")
+            scheduleSubscriptionRetry(current)
+        }
+    }
+
+    private fun scheduleSubscriptionRetry(current: MqttAsyncClient) {
+        if (subscriptionRetryJob?.isActive == true || !scope.isActive) return
+        subscriptionRetryJob = scope.launch {
+            delay(5_000)
+            subscriptionRetryJob = null
+            if (client === current && connected && !subscribed) {
+                subscribeAndDispatch()
+            }
         }
     }
 
     private fun startDispatch() {
-        if (dispatchJob?.isActive == true) return
+        if (!ready || dispatchJob?.isActive == true) return
         dispatchJob = scope.launch { dispatchLoop() }
     }
 
     private suspend fun dispatchLoop() {
-        while (scope.isActive && connected) {
+        while (scope.isActive) {
+            if (!ready) {
+                dispatchWake.receive()
+                continue
+            }
+
+            val pending = withContext(Dispatchers.IO) { dao.allOrdered() }
+            if (!ready) continue
+
             val now = System.currentTimeMillis()
-            val next = dao.allOrdered().firstOrNull {
+            val next = pending.firstOrNull {
                 val retry = retryAt[it.messageId]
                 retry == null || retry <= now
-            } ?: break
+            }
+            if (next == null) {
+                val nextRetryAt = pending.mapNotNull { retryAt[it.messageId] }.minOrNull()
+                if (nextRetryAt == null) {
+                    dispatchWake.receive()
+                } else {
+                    val waitMs = (nextRetryAt - System.currentTimeMillis()).coerceAtLeast(1L)
+                    withTimeoutOrNull(waitMs) { dispatchWake.receive() }
+                }
+                continue
+            }
+
             val status = publishWithAck(next)
             when (status) {
                 "accepted", "duplicate", "rejected", "invalid", "expired" -> {
                     withContext(Dispatchers.IO) { dao.delete(next.messageId) }
                     retryAt.remove(next.messageId)
                     if (status != "accepted" && status != "duplicate") {
-                        messageCallback("Mensaje rechazado por el servidor ($status): ${next.messageId}")
+                        notifyState("Mensaje rechazado por el servidor ($status): ${next.messageId}")
                     }
                 }
+
                 else -> {
                     // Sin ACK: backoff exponencial y continuar con el resto de la cola.
                     val attempts = next.attempts + 1
                     withContext(Dispatchers.IO) { dao.updateAttempts(next.messageId, attempts) }
                     val backoffMs = 5_000L * (1L shl minOf(attempts, 8))
-                    retryAt[next.messageId] = now + backoffMs
+                    retryAt[next.messageId] = System.currentTimeMillis() + backoffMs
                     if (attempts > config.maxRetries) {
                         withContext(Dispatchers.IO) { dao.delete(next.messageId) }
                         retryAt.remove(next.messageId)
-                        messageCallback("Mensaje descartado tras ${config.maxRetries} reintentos: ${next.messageId}")
+                        notifyState("Mensaje descartado tras ${config.maxRetries} reintentos: ${next.messageId}")
                     }
                 }
             }
-            // Pequeña pausa entre mensajes para no saturar el canal.
-            kotlinx.coroutines.delay(200)
+            delay(200)
         }
     }
 
     private suspend fun publishWithAck(position: PendingPosition): String? {
+        if (!ready) return null
         val future = CompletableFuture<String>()
         ackFutures[position.messageId] = future
         try {
             val current = client ?: return null
+            if (!current.isConnected) return null
             val message = MqttMessage(position.payload.toByteArray(Charsets.UTF_8)).apply { qos = 1 }
             current.publish(config.telemetryTopic(), message)
+            config.lastPublishedAt = System.currentTimeMillis()
             return withContext(Dispatchers.IO) {
                 try {
                     future.get(config.ackTimeoutSeconds.toLong(), TimeUnit.SECONDS)
@@ -198,12 +315,32 @@ class MqttManager(
                     null
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            lastError = e.message
+            val error = errorText(e, "Fallo al publicar")
+            lastError = error
+            MqttStatus.lastError = error
+            val current = client
+            if (current == null || !current.isConnected) {
+                connected = false
+                ready = false
+                subscribed = false
+                notifyDisconnected(error, "Sin conexión: $error")
+            } else {
+                ready = false
+                subscribed = false
+                notifyDisconnected(error, "Error MQTT al publicar: $error")
+                scheduleSubscriptionRetry(current)
+            }
             return null
         } finally {
             ackFutures.remove(position.messageId)
         }
+    }
+
+    private fun completeInFlightWithoutAck() {
+        ackFutures.values.forEach { it.complete("") }
     }
 
     private fun handleAck(message: MqttMessage) {
@@ -211,6 +348,8 @@ class MqttManager(
             val json = JSONObject(String(message.payload, Charsets.UTF_8))
             val messageId = json.optString("messageId")
             val status = json.optString("status")
+            if (messageId.isBlank() || status.isBlank()) return
+            config.lastAckAt = System.currentTimeMillis()
             ackFutures[messageId]?.complete(status)
         } catch (e: Exception) {
             // ACK ilegible: se ignora y el mensaje se reintentará.
@@ -219,17 +358,23 @@ class MqttManager(
 
     fun disconnect() {
         dispatchJob?.cancel()
-        ackFutures.keys.toList().forEach { ackFutures[it]?.complete("") }
-        try {
-            client?.disconnect()
-        } catch (e: Exception) {
-            // ignorar
-        }
+        subscriptionRetryJob?.cancel()
+        subscriptionRetryJob = null
+        completeInFlightWithoutAck()
+        val oldClient = client
         client = null
         connected = false
+        ready = false
         subscribed = false
+        try {
+            oldClient?.disconnect()
+        } catch (e: Exception) {
+            // ignorar al detener voluntariamente el servicio
+        }
         MqttStatus.status = MqttStatus.DISCONNECTED
+        dispatchWake.trySend(Unit)
     }
+
     companion object {
         /** Prueba la conexión con las credenciales dadas y devuelve un mensaje claro. */
         fun testConnection(
