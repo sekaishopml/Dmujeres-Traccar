@@ -155,6 +155,7 @@ class MqttManager(
             isAutomaticReconnect = true
             maxReconnectDelay = 10_000
             connectionTimeout = 10
+            keepAliveInterval = 45
             isCleanSession = true
             if (config.username.isNotBlank()) {
                 userName = config.username

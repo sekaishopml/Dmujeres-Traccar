@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.databinding.ActivityOnboardingBinding
+import com.dmujeres.traccar.util.VendorSettings
 
 /**
  * Asistente de primeros pasos: guía al colaborador por TODOS los permisos necesarios
@@ -33,6 +34,8 @@ class OnboardingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityOnboardingBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        setupVendorStep()
 
         binding.stepLocationButton.setOnClickListener {
             locationLauncher.launch(
@@ -66,6 +69,26 @@ class OnboardingActivity : AppCompatActivity() {
         refresh()
     }
 
+    private var vendorPressed = false
+
+    private fun setupVendorStep() {
+        val vendor = VendorSettings.currentVendor() ?: return
+        val guide = VendorSettings.guideFor(vendor) ?: return
+        binding.vendorTitle.visibility = android.view.View.VISIBLE
+        binding.vendorBody.visibility = android.view.View.VISIBLE
+        binding.vendorButton.visibility = android.view.View.VISIBLE
+        binding.vendorTitle.text = getString(R.string.vendor_step_title, guide.vendorName)
+        binding.vendorBody.text = guide.steps.joinToString("\n")
+        binding.vendorButton.text = getString(R.string.vendor_open_settings, guide.vendorName)
+        binding.vendorButton.setOnClickListener {
+            vendorPressed = true
+            val intent = guide.settingsIntent
+            runCatching { startActivity(intent) }
+                .onFailure { runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName"))) } }
+            refresh()
+        }
+    }
+
     private fun refresh() {
         val locationOk = ContextCompat.checkSelfPermission(
             this, Manifest.permission.ACCESS_FINE_LOCATION
@@ -83,6 +106,10 @@ class OnboardingActivity : AppCompatActivity() {
         setDone(binding.stepGpsTitle, binding.stepGpsButton, gpsOk)
 
         binding.finishButton.isEnabled = locationOk && notificationsOk && batteryOk && gpsOk
+        if (binding.vendorButton.visibility == android.view.View.VISIBLE && vendorPressed) {
+            binding.vendorTitle.text = "✓ " + binding.vendorTitle.text.toString().removePrefix("✓ ")
+            binding.vendorButton.isEnabled = false
+        }
     }
 
     private fun setDone(title: android.widget.TextView, button: android.widget.Button, done: Boolean) {

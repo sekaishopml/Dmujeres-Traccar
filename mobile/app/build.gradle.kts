@@ -14,14 +14,14 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.dmujeres.traccar"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.dmujeres.traccar"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 15
-        versionName = "1.0.14"
+        targetSdk = 35
+        versionCode = 16
+        versionName = "1.0.15"
     }
 
     buildTypes {

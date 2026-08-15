@@ -102,6 +102,18 @@
             android:hint="500"
             android:layout_marginBottom="16dp" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/policy_label"
+            android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
+
+        <Spinner
+            android:id="@+id/policySpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp" />
+
         <Button
             android:id="@+id/saveButton"
             android:layout_width="match_parent"

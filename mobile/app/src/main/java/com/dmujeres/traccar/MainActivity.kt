@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -18,6 +19,7 @@ import com.dmujeres.traccar.databinding.ActivityMainBinding
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.util.Notifications
+import com.dmujeres.traccar.util.VendorSettings
 import com.dmujeres.traccar.BuildConfig
 
 class MainActivity : AppCompatActivity() {
@@ -45,6 +47,17 @@ class MainActivity : AppCompatActivity() {
         binding.serverInput.setText(config.serverUrl)
         binding.intervalInput.setText(config.intervalSeconds.toString())
         binding.bufferInput.setText(config.bufferMax.toString())
+
+        val policies = listOf(
+            AppConfig.POLICY_DROP_OLDEST to getString(R.string.policy_drop_oldest),
+            AppConfig.POLICY_STOP_CAPTURE to getString(R.string.policy_stop_capture),
+        )
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, policies.map { it.second })
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.policySpinner.adapter = adapter
+        binding.policySpinner.setSelection(
+            policies.indexOfFirst { it.first == config.bufferPolicy }.coerceAtLeast(0)
+        )
 
         binding.saveButton.setOnClickListener {
             saveAndTest()
@@ -78,6 +91,17 @@ class MainActivity : AppCompatActivity() {
         updateUi()
         if (config.trackingEnabled) {
             ensureBatteryExemption()
+            if (!TrackingService.isRunning) {
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.killed_title)
+                    .setMessage(R.string.killed_body)
+                    .setPositiveButton(R.string.killed_reactivate) { _, _ ->
+                        config.trackingEnabled = true
+                        TrackingService.start(this)
+                    }
+                    .setNegativeButton(R.string.dialog_close, null)
+                    .show()
+            }
         }
     }
 

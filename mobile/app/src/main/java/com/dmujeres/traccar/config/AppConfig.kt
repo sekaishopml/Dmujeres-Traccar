@@ -63,10 +63,15 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_INTERVAL, 10L)
         set(value) = prefs.edit().putLong(KEY_INTERVAL, value.coerceIn(3, 300)).apply()
 
-    /** Tamaño máximo de la cola offline (buffer). Si se llena, se descarta lo más antiguo. */
+    /** Tamaño máximo de la cola offline (buffer). Default 5000 ≈ 14 h a 10 s. */
     var bufferMax: Int
-        get() = prefs.getInt(KEY_BUFFER, 500)
+        get() = prefs.getInt(KEY_BUFFER, 5000)
         set(value) = prefs.edit().putInt(KEY_BUFFER, value.coerceIn(10, 5000)).apply()
+
+    /** Política al llenarse el buffer: descartar lo más antiguo o detener la captura. */
+    var bufferPolicy: String
+        get() = prefs.getString(KEY_BUFFER_POLICY, POLICY_DROP_OLDEST) ?: POLICY_DROP_OLDEST
+        set(value) = prefs.edit().putString(KEY_BUFFER_POLICY, value).apply()
 
     /** Segundos que se espera el ACK del servidor antes de reintentar. */
     var ackTimeoutSeconds: Int
@@ -121,6 +126,15 @@ class AppConfig(context: Context) {
     }
 
     companion object {
+        const val POLICY_DROP_OLDEST = "drop_oldest"
+        const val POLICY_STOP_CAPTURE = "stop_capture"
+
+        /** Clave compartida del fallback HTTP (misma que el server; se reforzará en Fase 5). */
+        const val HTTP_API_KEY = "dmj-dev-fallback-key"
+
+        /** Puerto web del servidor para el fallback HTTP. */
+        const val WEB_PORT = 8082
+
         /** Servidor por defecto: IP pública del entorno + puerto MQTT. */
         const val DEFAULT_SERVER = "tcp://64.176.219.221:1883"
 
@@ -133,6 +147,7 @@ class AppConfig(context: Context) {
         private const val KEY_BUFFER = "buffer_max"
         private const val KEY_ACK_TIMEOUT = "ack_timeout"
         private const val KEY_MAX_RETRIES = "max_retries"
+        private const val KEY_BUFFER_POLICY = "buffer_policy"
         private const val KEY_LAST_FIX = "last_fix_at"
         private const val KEY_LAST_ENQUEUED = "last_enqueued_at"
         private const val KEY_LAST_PUBLISHED = "last_published_at"
