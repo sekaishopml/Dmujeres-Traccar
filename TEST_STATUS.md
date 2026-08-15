@@ -145,3 +145,5 @@ Detalle en `infrastructure/database/measurement-results.md`.
 
 Causa: ráfagas atrasadas antes de persistencia, consistente con app/OS dispatcher/reposo;
 no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba física.
+
+| PT-705 | Heartbeat presence mantiene ONLINE sin posición | ✔ PASÓ | ACK accepted; status online; lastUpdate actualizado; 0 filas tc_positions nuevas |

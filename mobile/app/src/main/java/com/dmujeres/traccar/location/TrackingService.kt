@@ -196,6 +196,32 @@ class TrackingService : Service() {
         }
     }
 
+    /** Si no hay fix de GPS reciente (parking interior/plaza), envía 'presence' para seguir online. */
+    private fun sendPresenceHeartbeat() {
+        val deviceId = config.deviceId
+        if (deviceId.isBlank()) return
+        val fixStaleAfter = maxOf(60_000L, config.intervalSeconds * 3_000L)
+        val lastFixAt = config.lastFixAt
+        val hasRecentFix = lastFixAt > 0 && System.currentTimeMillis() - lastFixAt <= fixStaleAfter
+        if (hasRecentFix) return
+        val sequence = config.nextSequence()
+        val messageId = Envelope.newMessageId(deviceId, sequence)
+        val payload = Envelope.buildPresence(messageId, deviceId, sequence)
+        val pending = PendingPosition(
+            messageId = messageId,
+            deviceId = deviceId,
+            sequence = sequence,
+            payload = payload,
+            observedAt = Envelope.nowIso(),
+        )
+        serviceScope.launch {
+            withContext(Dispatchers.IO) {
+                dao.insert(pending)
+            }
+            refreshStateAndNotify()
+        }
+    }
+
     private fun onNewLocation(location: Location) {
         if (!location.isValidLocation()) return
         config.lastFixAt = System.currentTimeMillis()
@@ -259,6 +285,7 @@ class TrackingService : Service() {
 
     private suspend fun watchdogLoop() {
         var lastWakeAlertAt = 0L
+        var lastHeartbeatAt = 0L
         while (serviceScope.isActive) {
             delay(30_000)
             if (!config.trackingEnabled) {
@@ -266,6 +293,10 @@ class TrackingService : Service() {
                 continue
             }
             val now = System.currentTimeMillis()
+            if (now - lastHeartbeatAt > 60_000) {
+                lastHeartbeatAt = now
+                sendPresenceHeartbeat()
+            }
             val pendingInfo = try {
                 withContext(Dispatchers.IO) {
                     dao.count() to dao.oldestEnqueuedAt()
