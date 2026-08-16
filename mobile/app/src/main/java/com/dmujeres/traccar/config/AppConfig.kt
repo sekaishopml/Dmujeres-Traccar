@@ -111,6 +111,11 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_JOURNEY_POINTS, 0L)
         set(value) = prefs.edit().putLong(KEY_JOURNEY_POINTS, value).apply()
 
+    /** Último error al intentar auto-iniciar (para diagnóstico en pantalla). */
+    var lastStartError: String
+        get() = prefs.getString(KEY_LAST_START_ERROR, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_LAST_START_ERROR, value).apply()
+
     var lastSummaryNotified: String
         get() = prefs.getString(KEY_SUMMARY_NOTIFIED, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_SUMMARY_NOTIFIED, value).apply()
@@ -179,5 +184,6 @@ class AppConfig(context: Context) {
         private const val KEY_JOURNEY_POINTS = "journey_points"
         private const val KEY_SUMMARY_NOTIFIED = "summary_notified"
         private const val KEY_LAST_SUMMARY = "last_journey_summary"
+        private const val KEY_LAST_START_ERROR = "last_start_error"
     }
 }

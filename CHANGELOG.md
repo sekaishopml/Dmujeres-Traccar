@@ -312,3 +312,18 @@
   descarga el APK y lanza la instalación sobre la actual (misma firma, sin desinstalar).
 - Notificación de resumen diario con detalle de la jornada anterior.
 - Interfaz totalmente en español.
+
+## 2026-08-16 — App 1.0.18: batería real, auto-inicio robusto y datos limpios
+
+- Batería y red incluidas en CADA posición (no solo en heartbeats): el panel muestra la
+  batería casi en tiempo real (antes quedaba fija en el último valor de 'sin GPS').
+- Auto-inicio al encender corregido (raíz del 'continúa fallando' y del offline):
+  - Permiso ACCESS_BACKGROUND_LOCATION solicitado (ubica en segundo plano desde boot).
+  - BootReceiver blindado (try/catch + ACTION_USER_UNLOCKED + error guardado en pantalla).
+  - El fallo de arranque ya NO desactiva la jornada (antes quedaba apagada para siempre).
+  - Room con red de seguridad de migración y apertura protegida; corutinas con handler.
+  - Red de seguridad (WorkManager) registra el error real en vez de tragarlo.
+  - WorkManager 2.10.0.
+- Diagnóstico muestra el último error de arranque (⚠) para resolver en campo.
+- Datos: eliminadas 2 posiciones y 4 mensajes de PRUEBA que causaban saltos de 3.601 km
+  en la ruta de Santiago (sus +10.600 puntos reales quedan intactos).

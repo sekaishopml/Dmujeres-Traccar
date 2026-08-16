@@ -84,9 +84,11 @@ class DiagnosticsActivity : AppCompatActivity() {
             val battery = (getSystemService(BATTERY_SERVICE) as BatteryManager)
                 .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
             binding.diagBattery.text = "🔋 " + getString(R.string.diag_battery, battery)
+            val startError = config.lastStartError
             binding.diagDevice.text = Build.MANUFACTURER + " " + Build.MODEL +
                 " · Android " + Build.VERSION.RELEASE +
-                " · " + getString(R.string.app_version, BuildConfig.VERSION_NAME)
+                " · " + getString(R.string.app_version, BuildConfig.VERSION_NAME) +
+                if (startError.isBlank()) "" else "\n⚠ " + startError
         }
 
         binding.diagServer.text = binding.diagServer.text.toString() +

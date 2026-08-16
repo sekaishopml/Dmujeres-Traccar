@@ -60,10 +60,11 @@ class TrackingService : Service() {
         var isRunning: Boolean = false
             private set
 
-        fun start(context: Context) {
-            val intent = Intent(context, TrackingService::class.java).setAction(ACTION_START)
-            ContextCompat.startForegroundService(context, intent)
-        }
+        fun start(context: Context): Boolean =
+            runCatching {
+                val intent = Intent(context, TrackingService::class.java).setAction(ACTION_START)
+                ContextCompat.startForegroundService(context, intent)
+            }.isSuccess
 
         fun stop(context: Context) {
             val intent = Intent(context, TrackingService::class.java).setAction(ACTION_STOP)
@@ -71,7 +72,9 @@ class TrackingService : Service() {
         }
     }
 
-    private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        Log.e(TAG, "Error en corutina del servicio", e)
+    })
     private lateinit var config: AppConfig
     private lateinit var dao: com.dmujeres.traccar.db.PositionDao
     private var fused: FusedLocationProviderClient? = null
@@ -93,7 +96,14 @@ class TrackingService : Service() {
         isRunning = true
         Notifications.ensureChannel(this)
         config = AppConfig(this)
-        dao = (application as DmujeresApp).database.positionDao()
+        try {
+            dao = (application as DmujeresApp).database.positionDao()
+        } catch (e: Exception) {
+            Log.e(TAG, "No se pudo abrir la base de datos", e)
+            config.lastStartError = "Error de base de datos: " + (e.message ?: e.javaClass.simpleName)
+            stopSelf()
+            return
+        }
         fused = LocationServices.getFusedLocationProviderClient(this)
     }
 
@@ -118,7 +128,8 @@ class TrackingService : Service() {
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                     )
                 } catch (e: SecurityException) {
-                    config.trackingEnabled = false
+                    // No desactivar la jornada: es un fallo transitorio del sistema.
+                    config.lastStartError = "Sin permiso de ubicación en segundo plano"
                     stopSelf()
                     return START_NOT_STICKY
                 }
@@ -130,7 +141,9 @@ class TrackingService : Service() {
 
     private fun startTracking() {
         if (started.getAndSet(true)) return
-        serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            Log.e(TAG, "Error en corutina del servicio", e)
+        })
         startedTrackingAt = System.currentTimeMillis()
         config.journeyStartAt = startedTrackingAt
         config.journeyDistanceM = 0.0
@@ -370,6 +383,11 @@ class TrackingService : Service() {
                     val sequence = config.nextSequence()
                     val messageId = Envelope.newMessageId(deviceId, sequence)
                     val observedAt = Envelope.nowIso()
+                    val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
+                    val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+                    val network = if (connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+                            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) "online" else "none"
                     val payload = Envelope.buildPosition(
                         messageId = messageId,
                         deviceId = deviceId,
@@ -382,6 +400,8 @@ class TrackingService : Service() {
                         altitude = location.altitude.toDouble(),
                         observedAt = observedAt,
                         pending = currentCount,
+                        battery = battery,
+                        network = network,
                     )
                     val enqueuedAt = System.currentTimeMillis()
                     val pending = PendingPosition(
