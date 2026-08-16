@@ -164,3 +164,7 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 
 | PT-713 | /latest.json servido y descarga del release funciona | ✔ PASÓ | GET 200 con version/url; asset descarga 200 |
 | PT-714 | App 1.0.17 (diagnóstico/resumen/update) | ✔ PASÓ | assembleRelease OK; versionCode 18 |
+
+| PT-715 | Batería en cada posición | ✔ PASÓ compilación | buildPosition incluye battery/network; applyTelemetry los persiste |
+| PT-716 | Auto-inicio robusto (permiso bg + guardas) | ✔ PASÓ compilación | ACCESS_BACKGROUND_LOCATION en APK; BootReceiver try/catch + USER_UNLOCKED |
+| PT-717 | Datos limpios sin saltos de prueba | ✔ PASÓ | 2 posiciones/4 mensajes de prueba eliminados; 0 saltos >100 m de prueba |

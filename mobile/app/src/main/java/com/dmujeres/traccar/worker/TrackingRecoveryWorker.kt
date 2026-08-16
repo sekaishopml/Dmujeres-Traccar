@@ -1,6 +1,7 @@
 package com.dmujeres.traccar.worker
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.dmujeres.traccar.config.AppConfig
@@ -20,7 +21,11 @@ class TrackingRecoveryWorker(
     override suspend fun doWork(): Result {
         val config = AppConfig(applicationContext)
         if (config.trackingEnabled && !TrackingService.isRunning) {
-            runCatching { TrackingService.start(applicationContext) }
+            val started = runCatching { TrackingService.start(applicationContext) }.getOrDefault(false)
+            if (!started) {
+                Log.e("TrackingRecoveryWorker", "No se pudo reactivar el servicio")
+                config.lastStartError = "La red de seguridad no pudo reactivar el servicio"
+            }
         }
         maybeNotifyDailySummary(config)
         return Result.success()
