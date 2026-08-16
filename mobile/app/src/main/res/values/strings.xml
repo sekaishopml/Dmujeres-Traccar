@@ -79,4 +79,6 @@
     <string name="killed_title">La app fue detenida por el sistema</string>
     <string name="killed_body">Tu teléfono detuvo la app en segundo plano. Completa los permisos de batería y la protección del fabricante para que no vuelva a pasar. ¿Quieres reactivar la jornada ahora?</string>
     <string name="killed_reactivate">Reactivar jornada</string>
+    <string name="ack_timeout_label">Tiempo de espera de confirmación (segundos, 5–60)</string>
+    <string name="max_retries_label">Máximos reintentos por mensaje (3–200)</string>
 </resources>

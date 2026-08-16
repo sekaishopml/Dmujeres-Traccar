@@ -47,6 +47,8 @@ class MainActivity : AppCompatActivity() {
         binding.serverInput.setText(config.serverUrl)
         binding.intervalInput.setText(config.intervalSeconds.toString())
         binding.bufferInput.setText(config.bufferMax.toString())
+        binding.ackTimeoutInput.setText(config.ackTimeoutSeconds.toString())
+        binding.maxRetriesInput.setText(config.maxRetries.toString())
 
         val policies = listOf(
             AppConfig.POLICY_DROP_OLDEST to getString(R.string.policy_drop_oldest),
@@ -200,6 +202,8 @@ class MainActivity : AppCompatActivity() {
         binding.serverInput.setText(config.serverUrl)
         binding.intervalInput.setText(config.intervalSeconds.toString())
         binding.bufferInput.setText(config.bufferMax.toString())
+        binding.ackTimeoutInput.setText(config.ackTimeoutSeconds.toString())
+        binding.maxRetriesInput.setText(config.maxRetries.toString())
         val enabled = config.trackingEnabled
         binding.stateText.text = if (enabled) getString(R.string.tracking_on) else getString(R.string.tracking_off)
         binding.toggleButton.setText(if (enabled) R.string.stop else R.string.start)

@@ -289,3 +289,17 @@
 
 - Rutas directas del dashboard (/replay, /settings/device, ...) ya sirven index.html:
   se pueden abrir por URL, recargar y compartir sin 404.
+
+## 2026-08-15 — App 1.0.16: fin del bucle conectado/desconectado
+
+- CAUSA: varias conexiones MQTT simultáneas con el MISMO clientId (Paho auto-reconectando
+  + reconexión manual al volver la red) → el broker expulsaba una y aceptaba la otra en
+  bucle, disparando notificaciones conectado/desconectado sin parar.
+- ARREGLOS: clientId ÚNICO por intento de conexión; guardas connecting/connected (una sola
+  conexión a la vez); se desconecta el cliente anterior antes de crear uno nuevo;
+  reintento automático cada 30 s si el PRIMER intento falla (Paho no lo cubre).
+- Alertas con límite: máximo 1 aviso de conexión/desconexión cada 5 minutos.
+- Opciones completas estilo Traccar en pantalla: servidor, usuario/contraseña, frecuencia,
+  buffer, política de buffer, tiempo de espera de confirmación y máximos reintentos.
+- Verificado en broker: 2 conexiones con mismo usuario y distinto clientId coexisten sin
+  expulsarse (el escenario que causaba el bucle).

@@ -55,6 +55,8 @@ class MqttManager(
     private var dispatchJob: Job? = null
     private var subscriptionRetryJob: Job? = null
     @Volatile private var subscribed = false
+    @Volatile private var connecting = false
+    private val connectRetryScheduled = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /** Despierta el dispatcher después de insertar una posición en Room. */
     fun wakeDispatch() {
@@ -71,6 +73,19 @@ class MqttManager(
             ?: error?.toString()?.takeIf { it.isNotBlank() }
             ?: fallback
 
+    /** Reintenta la conexión inicial cada 30 s (Paho no auto-reconecta si el primer intento falla). */
+    private fun scheduleConnectRetry() {
+        if (!connectRetryScheduled.compareAndSet(false, true)) return
+        scope.launch {
+            while (scope.isActive && !connected && client != null) {
+                delay(30_000)
+                connecting = false
+                connect()
+            }
+            connectRetryScheduled.set(false)
+        }
+    }
+
     private fun notifyDisconnected(error: String, message: String) {
         lastError = error
         MqttStatus.lastError = error
@@ -80,9 +95,13 @@ class MqttManager(
     }
 
     fun connect() {
+        if (connecting) return
+        if (client != null && connected) return
+        connecting = true
         val server = config.serverUrl
         val deviceId = config.deviceId
         if (server.isBlank() || deviceId.isBlank()) {
+            connecting = false
             connected = false
             ready = false
             subscribed = false
@@ -100,16 +119,19 @@ class MqttManager(
             notifyDisconnected(error, error)
             return
         }
-        val clientId = "dmj-" + deviceId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+        val suffix = Integer.toHexString((System.nanoTime() % 0xFFFF).toInt()).padStart(4, '0')
+        val clientId = "dmj-" + deviceId.filter { it.isLetterOrDigit() || it == '-' || it == '_' } + "-" + suffix
         connected = false
         ready = false
         subscribed = false
         MqttStatus.status = MqttStatus.CONNECTING
         notifyState("Conectando al servidor...")
 
+        runCatching { client?.disconnect() }
         val newClient = try {
             MqttAsyncClient(normalizedServer, clientId, MemoryPersistence())
         } catch (e: Exception) {
+            connecting = false
             val error = errorText(e, "No se pudo crear el cliente MQTT")
             notifyDisconnected(error, "Error MQTT: $error")
             return
@@ -117,6 +139,7 @@ class MqttManager(
 
         newClient.setCallback(object : MqttCallbackExtended {
             override fun connectComplete(reconnect: Boolean, serverURI: String) {
+                connecting = false
                 if (client !== newClient) return
                 connected = true
                 ready = false
@@ -132,6 +155,7 @@ class MqttManager(
             }
 
             override fun connectionLost(cause: Throwable?) {
+                connecting = false
                 if (client !== newClient) return
                 connected = false
                 ready = false
@@ -167,6 +191,7 @@ class MqttManager(
                 override fun onSuccess(asyncActionToken: IMqttToken?) = Unit
 
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                    connecting = false
                     if (client !== newClient) return
                     connected = false
                     ready = false
@@ -174,9 +199,11 @@ class MqttManager(
                     val error = errorText(exception, "Fallo de conexión")
                     completeInFlightWithoutAck()
                     notifyDisconnected(error, "Sin conexión: $error")
+                    scheduleConnectRetry()
                 }
             })
         } catch (e: Exception) {
+            connecting = false
             if (client === newClient) {
                 connected = false
                 ready = false
