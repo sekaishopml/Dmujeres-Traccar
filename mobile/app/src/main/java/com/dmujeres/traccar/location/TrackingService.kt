@@ -161,6 +161,7 @@ class TrackingService : Service() {
         )
         mqtt = manager
         manager.connect()
+        enqueuePresence("started")
 
         requestLocationUpdates()
         registerNetworkCallback()
@@ -261,14 +262,10 @@ class TrackingService : Service() {
         }
     }
 
-    /** Si no hay fix de GPS reciente (parking interior/plaza), envía 'presence' con telemetría. */
-    private fun sendPresenceHeartbeat() {
+    /** Encola una señal de presencia (heartbeat o inicio/fin de jornada). */
+    private fun enqueuePresence(journeyStatus: String? = null) {
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
-        val fixStaleAfter = maxOf(60_000L, config.intervalSeconds * 3_000L)
-        val lastFixAt = config.lastFixAt
-        val hasRecentFix = lastFixAt > 0 && System.currentTimeMillis() - lastFixAt <= fixStaleAfter
-        if (hasRecentFix) return
         val sequence = config.nextSequence()
         val messageId = Envelope.newMessageId(deviceId, sequence)
         val telemetry = telemetry()
@@ -283,6 +280,7 @@ class TrackingService : Service() {
             model = telemetry.model,
             appVersion = telemetry.appVersion,
             gps = telemetry.gps,
+            journeyStatus = journeyStatus,
         )
         val pending = PendingPosition(
             messageId = messageId,
@@ -292,11 +290,21 @@ class TrackingService : Service() {
             observedAt = Envelope.nowIso(),
         )
         serviceScope.launch {
-            withContext(Dispatchers.IO) {
-                dao.insert(pending)
-            }
+            withContext(Dispatchers.IO) { dao.insert(pending) }
+            mqtt?.wakeDispatch()
             refreshStateAndNotify()
         }
+    }
+
+    /** Si no hay fix de GPS reciente (parking interior/plaza), envía 'presence' con telemetría. */
+    private fun sendPresenceHeartbeat() {
+        val deviceId = config.deviceId
+        if (deviceId.isBlank()) return
+        val fixStaleAfter = maxOf(60_000L, config.intervalSeconds * 3_000L)
+        val lastFixAt = config.lastFixAt
+        val hasRecentFix = lastFixAt > 0 && System.currentTimeMillis() - lastFixAt <= fixStaleAfter
+        if (hasRecentFix) return
+        enqueuePresence()
     }
 
     private data class Telemetry(
@@ -618,13 +626,17 @@ class TrackingService : Service() {
         } catch (e: Exception) {
             // ignorar
         }
-        mqtt?.disconnect()
-        mqtt = null
         currentState = TrackingState.TRACKING_DISABLED_BY_USER
-        Notifications.update(this, "DMujeres Tracking", "Tracking desactivado")
-        serviceScope.cancel()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        Notifications.update(this, "DMujeres Tracking", "Jornada finalizada")
+        // Envía la señal de fin de jornada y espera 3 s antes de cerrar para que llegue.
+        enqueuePresence("ended")
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            mqtt?.disconnect()
+            mqtt = null
+            serviceScope.cancel()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }, 3000)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
