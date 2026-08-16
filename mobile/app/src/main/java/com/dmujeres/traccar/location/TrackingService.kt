@@ -155,8 +155,10 @@ class TrackingService : Service() {
         val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: android.net.Network) {
-                if (mqtt?.connected != true) {
-                    serviceScope.launch { mqtt?.connect() }
+                mqtt?.let { manager ->
+                    if (!manager.connected) {
+                        serviceScope.launch { manager.connect() }
+                    }
                 }
                 if (config.trackingEnabled) {
                     serviceScope.launch {
@@ -181,14 +183,22 @@ class TrackingService : Service() {
     @Volatile private var lastMqttStatus: String = ""
     @Volatile private var lastBufferFullAlertAt = 0L
 
+    @Volatile private var lastDisconnectAlertAt = 0L
+    @Volatile private var lastConnectAlertAt = 0L
+
     private fun onMqttStateChanged() {
         val status = MqttStatus.status
         if (status != lastMqttStatus) {
+            val now = System.currentTimeMillis()
             when (status) {
-                MqttStatus.CONNECTED ->
+                MqttStatus.CONNECTED -> if (now - lastConnectAlertAt > 5 * 60_000) {
+                    lastConnectAlertAt = now
                     Notifications.alert(this, getString(R.string.connected_title), getString(R.string.connected_body))
-                MqttStatus.DISCONNECTED ->
+                }
+                MqttStatus.DISCONNECTED -> if (now - lastDisconnectAlertAt > 5 * 60_000) {
+                    lastDisconnectAlertAt = now
                     Notifications.alert(this, getString(R.string.disconnected_title), getString(R.string.disconnected_body))
+                }
             }
             lastMqttStatus = status
         }

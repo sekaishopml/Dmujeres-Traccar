@@ -158,3 +158,6 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-709 | Dashboard indicador sin señal/pendientes/batería | ✔ PASÓ | DeviceRow actualizado; lint+build OK |
 
 | PT-710 | Replay: decimación por zoom y slider sin marks | ✔ PASÓ | benchmark 3000 pts: z10→24 pts, z14→109, z16→3000 (cap flechas 1500); cálculo <7 ms; lint+build OK |
+
+| PT-711 | Anti-bucle MQTT (clientId único + guardas) | ✔ PASÓ | 2 clientes mismo usuario coexisten sin expulsión; build OK |
+| PT-712 | Alertas conexión con límite 5 min | ✔ PASÓ compilación | onMqttStateChanged con throttle |

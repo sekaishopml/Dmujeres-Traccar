@@ -112,6 +112,34 @@
             android:id="@+id/policySpinner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/ack_timeout_label"
+            android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
+
+        <EditText
+            android:id="@+id/ackTimeoutInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:hint="15"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/max_retries_label"
+            android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
+
+        <EditText
+            android:id="@+id/maxRetriesInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:hint="30"
             android:layout_marginBottom="16dp" />
 
         <Button
