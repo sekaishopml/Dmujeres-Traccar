@@ -303,3 +303,12 @@
   buffer, política de buffer, tiempo de espera de confirmación y máximos reintentos.
 - Verificado en broker: 2 conexiones con mismo usuario y distinto clientId coexisten sin
   expulsarse (el escenario que causaba el bucle).
+
+## 2026-08-16 — App 1.0.17: diagnóstico, resumen de jornada y actualización in-app
+
+- Pantalla de Diagnóstico (GPS, internet, servidor, pendientes, batería, modelo, versión).
+- Resumen al finalizar jornada: tiempo activo, km recorridos y puntos enviados.
+- Actualización in-app: consulta /latest.json del servidor, avisa si hay versión nueva,
+  descarga el APK y lanza la instalación sobre la actual (misma firma, sin desinstalar).
+- Notificación de resumen diario con detalle de la jornada anterior.
+- Interfaz totalmente en español.

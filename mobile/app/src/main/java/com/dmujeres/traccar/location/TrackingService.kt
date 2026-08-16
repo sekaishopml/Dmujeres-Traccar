@@ -132,6 +132,11 @@ class TrackingService : Service() {
         if (started.getAndSet(true)) return
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         startedTrackingAt = System.currentTimeMillis()
+        config.journeyStartAt = startedTrackingAt
+        config.journeyDistanceM = 0.0
+        config.journeyPoints = 0
+        lastJourneyLat = 0.0
+        lastJourneyLon = 0.0
 
         Notifications.alert(this, getString(R.string.jornada_iniciada), getString(R.string.jornada_iniciada_body))
         val manager = MqttManager(
@@ -182,6 +187,8 @@ class TrackingService : Service() {
 
     @Volatile private var lastMqttStatus: String = ""
     @Volatile private var lastBufferFullAlertAt = 0L
+    @Volatile private var lastJourneyLat = 0.0
+    @Volatile private var lastJourneyLon = 0.0
 
     @Volatile private var lastDisconnectAlertAt = 0L
     @Volatile private var lastConnectAlertAt = 0L
@@ -321,11 +328,27 @@ class TrackingService : Service() {
         runCatching { kotlinx.coroutines.runBlocking { withContext(Dispatchers.IO) { block() } } }
             .getOrDefault(0)
 
+    private fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val earth = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    }
+
     private fun onNewLocation(location: Location) {
         if (!location.isValidLocation()) return
         config.lastFixAt = System.currentTimeMillis()
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
+        if (lastJourneyLat != 0.0) {
+            config.journeyDistanceM += distanceMeters(lastJourneyLat, lastJourneyLon, location.latitude, location.longitude)
+        }
+        lastJourneyLat = location.latitude
+        lastJourneyLon = location.longitude
+        config.journeyPoints = config.journeyPoints + 1
         serviceScope.launch {
             try {
                 enqueueMutex.withLock {
