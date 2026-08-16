@@ -275,3 +275,12 @@
 - Detección de 'app detenida por el sistema' al reabrir, con reactivación en un toque.
 - targetSdk 35 (Android 15) y versión visible en pantalla.
 - Dashboard: dispositivos sin señal muestran 'Sin señal hace X • N pendientes • batería Y%'.
+
+## 2026-08-15 — Replay optimizado (sin tocar los datos)
+
+- Decimación por zoom: simplificación Douglas-Peucker de los trazos y diezmado de flechas
+  según el zoom del mapa (lejos: pocos puntos; cerca: todos). SOLO renderizado: los +3000
+  puntos de Santiago quedan intactos en BD y en exportaciones.
+- Slider de repetición sin 3000 marcas DOM (causa principal del lag) y con hora en la etiqueta.
+- Tope de ~1500 flechas visibles al máximo zoom.
+- Benchmark: 3000 puntos → zoom 10 dibuja 24 (99% menos); cálculo <7 ms.
