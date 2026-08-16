@@ -27,7 +27,7 @@ object HttpFallbackDispatcher {
         }
         if (pending.isEmpty()) return 0
 
-        val baseUrl = webUrl(config)
+        val baseUrl = webBase(config.serverUrl)
         val requestBody = JSONArray()
         pending.forEach { requestBody.put(JSONObject(it.payload)) }
 
@@ -78,12 +78,12 @@ object HttpFallbackDispatcher {
         }
     }
 
-    /** Deriva la URL web del servidor MQTT (mismo host, puerto web 8082). */
-    private fun webUrl(config: AppConfig): String {
-        val server = config.serverUrl.removePrefix("tcp://").removePrefix("mqtt://")
+    /** Deriva la base web del servidor MQTT (mismo host, puerto web 8082). */
+    fun webBase(serverUrl: String): String {
+        val server = serverUrl.removePrefix("tcp://").removePrefix("mqtt://")
             .removePrefix("ssl://").removePrefix("mqtts://").substringBefore('/')
         val host = server.substringBefore(':')
-        val uriHost = runCatching { URI(config.serverUrl).host }.getOrNull()
+        val uriHost = runCatching { URI(serverUrl).host }.getOrNull()
         val finalHost = if (!uriHost.isNullOrBlank()) uriHost else host
         return "http://$finalHost:${AppConfig.WEB_PORT}"
     }
