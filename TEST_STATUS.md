@@ -156,3 +156,5 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-707 | Fallback HTTP batch | ✔ PASÓ | POST /api/mobile/v1/positions con X-Api-Key → accepted |
 | PT-708 | targetSdk 35 build | ✔ PASÓ | assembleRelease OK con compileSdk/targetSdk 35 |
 | PT-709 | Dashboard indicador sin señal/pendientes/batería | ✔ PASÓ | DeviceRow actualizado; lint+build OK |
+
+| PT-710 | Replay: decimación por zoom y slider sin marks | ✔ PASÓ | benchmark 3000 pts: z10→24 pts, z14→109, z16→3000 (cap flechas 1500); cálculo <7 ms; lint+build OK |
