@@ -327,3 +327,15 @@
 - Diagnóstico muestra el último error de arranque (⚠) para resolver en campo.
 - Datos: eliminadas 2 posiciones y 4 mensajes de PRUEBA que causaban saltos de 3.601 km
   en la ruta de Santiago (sus +10.600 puntos reales quedan intactos).
+
+## 2026-08-16 — App 1.0.19: jornada y batería en tiempo real
+
+- Inicio/fin de jornada INMEDIATO: la app envía una señal al iniciar y al finalizar; el
+  server cambia online/offline al instante (antes esperaba hasta 10 min sin datos). El
+  servicio retiene 3 s al finalizar para asegurar el envío.
+- Batería en tiempo real: cada posición/presencia actualiza el valor y el server lo empuja
+  al dashboard por WebSocket. El panel muestra '🔋 %' SIEMPRE (online u offline).
+- Historial de batería: el server guarda hasta 100 muestras (1/min) por dispositivo y el
+  panel dibuja un mini-gráfico de batería junto al estado.
+- Verificado: presencia fin → offline inmediato; presencia inicio → online; batería e
+  historial actualizados.

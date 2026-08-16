@@ -168,3 +168,7 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-715 | Batería en cada posición | ✔ PASÓ compilación | buildPosition incluye battery/network; applyTelemetry los persiste |
 | PT-716 | Auto-inicio robusto (permiso bg + guardas) | ✔ PASÓ compilación | ACCESS_BACKGROUND_LOCATION en APK; BootReceiver try/catch + USER_UNLOCKED |
 | PT-717 | Datos limpios sin saltos de prueba | ✔ PASÓ | 2 posiciones/4 mensajes de prueba eliminados; 0 saltos >100 m de prueba |
+
+| PT-718 | Fin de jornada inmediato | ✔ PASÓ | presence journeyEnded → estado offline al instante |
+| PT-719 | Inicio de jornada inmediato | ✔ PASÓ | presence journeyStarted → online al instante |
+| PT-720 | Batería + historial en panel | ✔ PASÓ | atributo mobile.battery/mobile.batteryHistory; sparkline render |
