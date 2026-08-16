@@ -13,11 +13,17 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.databinding.ActivityMainBinding
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
+import com.dmujeres.traccar.mqtt.UpdateManager
 import com.dmujeres.traccar.util.Notifications
 import com.dmujeres.traccar.util.VendorSettings
 import com.dmujeres.traccar.BuildConfig
@@ -69,12 +75,21 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, OnboardingActivity::class.java))
         }
 
+        binding.diagButton.setOnClickListener {
+            startActivity(Intent(this, DiagnosticsActivity::class.java))
+        }
+
+        binding.updateButton.setOnClickListener {
+            checkForUpdate(auto = false)
+        }
+
         ensureBatteryExemption()
 
         binding.toggleButton.setOnClickListener {
             if (config.trackingEnabled) {
                 config.trackingEnabled = false
                 TrackingService.stop(this)
+                showJourneySummary()
                 updateUi()
             } else {
                 if (config.username.isBlank() || config.password.isBlank()) {
@@ -91,6 +106,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateUi()
+        checkForUpdate(auto = true)
         if (config.trackingEnabled) {
             ensureBatteryExemption()
             if (!TrackingService.isRunning) {
@@ -193,6 +209,62 @@ class MainActivity : AppCompatActivity() {
             return false
         }
         return true
+    }
+
+    /** Resumen de la jornada recién finalizada. */
+    private fun showJourneySummary() {
+        val startedAt = config.journeyStartAt
+        if (startedAt <= 0) return
+        val durationMs = (System.currentTimeMillis() - startedAt).coerceAtLeast(0)
+        val hours = durationMs / 3_600_000
+        val minutes = (durationMs % 3_600_000) / 60_000
+        val duration = getString(R.string.journey_duration, hours, minutes)
+        val km = String.format(Locale.US, "%.1f", config.journeyDistanceM / 1000.0)
+        val points = config.journeyPoints
+        val summary = "$duration|$km|$points"
+        config.lastJourneySummary = summary
+        config.lastSummaryNotified = ""
+        AlertDialog.Builder(this)
+            .setTitle(R.string.journey_summary_title)
+            .setMessage(getString(R.string.journey_summary_body, duration, km, points))
+            .setPositiveButton(R.string.dialog_close, null)
+            .show()
+    }
+
+    /** Comprueba si hay actualización en el servidor (auto al abrir, o al pulsar el botón). */
+    private fun checkForUpdate(auto: Boolean) {
+        lifecycleScope.launch {
+            val latest = withContext(Dispatchers.IO) { UpdateManager.check(config.serverUrl) }
+            if (latest == null || !UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
+                if (!auto) {
+                    Toast.makeText(this@MainActivity, R.string.update_no_new, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle(getString(R.string.update_found, latest.version))
+                .setMessage(getString(R.string.update_notes, latest.notes ?: ""))
+                .setPositiveButton(R.string.update_now) { _, _ ->
+                    lifecycleScope.launch {
+                        val notification = Notifications.foregroundNotification(
+                            this@MainActivity,
+                            getString(R.string.app_name),
+                            getString(R.string.update_downloading),
+                        )
+                        val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+                        manager.notify(9, notification)
+                        val file = withContext(Dispatchers.IO) { UpdateManager.download(this@MainActivity, latest.url) }
+                        manager.cancel(9)
+                        if (file != null) {
+                            UpdateManager.install(this@MainActivity, file)
+                        } else {
+                            Toast.makeText(this@MainActivity, R.string.update_error, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+                .setNegativeButton(R.string.update_later, null)
+                .show()
+        }
     }
 
     private fun updateUi() {

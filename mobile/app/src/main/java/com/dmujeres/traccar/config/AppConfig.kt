@@ -98,6 +98,28 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_LAST_ACK, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_ACK, value).apply()
 
+    /** Métricas de la jornada actual. */
+    var journeyStartAt: Long
+        get() = prefs.getLong(KEY_JOURNEY_START, 0L)
+        set(value) = prefs.edit().putLong(KEY_JOURNEY_START, value).apply()
+
+    var journeyDistanceM: Double
+        get() = prefs.getString(KEY_JOURNEY_DISTANCE, "0")?.toDoubleOrNull() ?: 0.0
+        set(value) = prefs.edit().putString(KEY_JOURNEY_DISTANCE, value.toString()).apply()
+
+    var journeyPoints: Long
+        get() = prefs.getLong(KEY_JOURNEY_POINTS, 0L)
+        set(value) = prefs.edit().putLong(KEY_JOURNEY_POINTS, value).apply()
+
+    var lastSummaryNotified: String
+        get() = prefs.getString(KEY_SUMMARY_NOTIFIED, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_SUMMARY_NOTIFIED, value).apply()
+
+    /** Resumen de la última jornada finalizada (para notificación diaria). */
+    var lastJourneySummary: String
+        get() = prefs.getString(KEY_LAST_SUMMARY, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_LAST_SUMMARY, value).apply()
+
     /** Máximo de reintentos de un mensaje antes de descartarlo. */
     var maxRetries: Int
         get() = prefs.getInt(KEY_MAX_RETRIES, 30)
@@ -152,5 +174,10 @@ class AppConfig(context: Context) {
         private const val KEY_LAST_ENQUEUED = "last_enqueued_at"
         private const val KEY_LAST_PUBLISHED = "last_published_at"
         private const val KEY_LAST_ACK = "last_ack_at"
+        private const val KEY_JOURNEY_START = "journey_start_at"
+        private const val KEY_JOURNEY_DISTANCE = "journey_distance_m"
+        private const val KEY_JOURNEY_POINTS = "journey_points"
+        private const val KEY_SUMMARY_NOTIFIED = "summary_notified"
+        private const val KEY_LAST_SUMMARY = "last_journey_summary"
     }
 }

@@ -161,3 +161,6 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 
 | PT-711 | Anti-bucle MQTT (clientId único + guardas) | ✔ PASÓ | 2 clientes mismo usuario coexisten sin expulsión; build OK |
 | PT-712 | Alertas conexión con límite 5 min | ✔ PASÓ compilación | onMqttStateChanged con throttle |
+
+| PT-713 | /latest.json servido y descarga del release funciona | ✔ PASÓ | GET 200 con version/url; asset descarga 200 |
+| PT-714 | App 1.0.17 (diagnóstico/resumen/update) | ✔ PASÓ | assembleRelease OK; versionCode 18 |
