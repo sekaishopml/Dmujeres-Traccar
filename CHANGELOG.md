@@ -339,3 +339,11 @@
   panel dibuja un mini-gráfico de batería junto al estado.
 - Verificado: presencia fin → offline inmediato; presencia inicio → online; batería e
   historial actualizados.
+
+## 2026-08-16 — Replay: batería por instante en el popup de cada flecha
+
+- El popup de /replay ya no muestra 'distancia total': muestra la BATERÍA (%) que tenía el
+  dispositivo en ese instante exacto (batteryLevel por posición).
+- El server guarda batteryLevel y network en CADA posición; las nuevas flechas del replay
+  llevan su porcentaje real (verificado: posición con batería persistida).
+- Default del popup: hora, dirección, velocidad y batería.
