@@ -13,13 +13,22 @@ import com.dmujeres.traccar.location.TrackingService
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_MY_PACKAGE_REPLACED -> {
-                if (AppConfig(context).trackingEnabled) {
-                    TrackingService.start(context)
+        try {
+            when (intent.action) {
+                Intent.ACTION_BOOT_COMPLETED,
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+                Intent.ACTION_USER_UNLOCKED -> {
+                    if (AppConfig(context).trackingEnabled) {
+                        val started = TrackingService.start(context)
+                        if (!started) {
+                            AppConfig(context).lastStartError =
+                                "No se pudo arrancar el servicio al encender (revisa permisos)"
+                        }
+                    }
                 }
             }
+        } catch (e: Exception) {
+            AppConfig(context).lastStartError = "Error al auto-iniciar: " + (e.message ?: e.javaClass.simpleName)
         }
     }
 }

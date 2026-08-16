@@ -23,7 +23,9 @@ object Envelope {
         bearing: Double,
         altitude: Double,
         observedAt: String,
-        pending: Int
+        pending: Int,
+        battery: Int,
+        network: String
     ): String {
         val payload = JSONObject()
         payload.put("latitude", latitude)
@@ -33,6 +35,8 @@ object Envelope {
         payload.put("bearing", bearing)
         payload.put("altitude", altitude)
         payload.put("pending", pending)
+        payload.put("battery", battery)
+        payload.put("network", network)
 
         val body = JSONObject()
         body.put("schema", 1)

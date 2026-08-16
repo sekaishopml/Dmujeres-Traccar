@@ -22,7 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "dmj_tracking.db"
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2).fallbackToDestructiveMigration().build().also { instance = it }
             }
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
