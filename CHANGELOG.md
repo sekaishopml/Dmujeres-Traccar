@@ -284,3 +284,8 @@
 - Slider de repetición sin 3000 marcas DOM (causa principal del lag) y con hora en la etiqueta.
 - Tope de ~1500 flechas visibles al máximo zoom.
 - Benchmark: 3000 puntos → zoom 10 dibuja 24 (99% menos); cálculo <7 ms.
+
+## 2026-08-15 — Fallback SPA en el server
+
+- Rutas directas del dashboard (/replay, /settings/device, ...) ya sirven index.html:
+  se pueden abrir por URL, recargar y compartir sin 404.
