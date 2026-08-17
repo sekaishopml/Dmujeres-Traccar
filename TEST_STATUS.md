@@ -198,3 +198,6 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-737 | Animaciones | ✔ PASÓ | splash fade, crossfade login/jornada, slide/fade en transiciones |
 | PT-738 | Flecha de retroceso en diagnóstico | ✔ PASÓ | MaterialToolbar + ic_back; vuelve con fade/slide |
 | PT-739 | Banner rojo navbar de actualización | ✔ PASÓ | auto-check muestra banner deslizante; toque abre diálogo de actualizar |
+
+| PT-740 | Notificación fija 'Jornada finalizada' al terminar | ✔ PASÓ | stopTracking resetea jornada y publica notificación final cerrable con resumen |
+| PT-741 | Desconexión: solo 'Desconectado del servidor' | ✔ PASÓ | disconnected_body, MqttStatus.DISCONNECTED y log sin texto de reconexión ni ⚠ |

@@ -52,7 +52,7 @@
     <string name="connected_title">Conectado al servidor</string>
     <string name="connected_body">La comunicación con el servidor está activa.</string>
     <string name="disconnected_title">Desconectado del servidor</string>
-    <string name="disconnected_body">Se intentará reconectar automáticamente. Las posiciones pendientes no se pierden.</string>
+    <string name="disconnected_body">Desconectado del servidor</string>
     <string name="warning_title">Aviso de la jornada</string>
     <string name="ok_title">Todo en orden</string>
     <string name="ok_body">El servicio está funcionando correctamente.</string>
@@ -120,7 +120,7 @@
     <string name="log_journey_on">Jornada activa · %1$d h %2$d min</string>
     <string name="log_journey_off">Jornada no iniciada</string>
     <string name="log_server_on">Conectado al servidor</string>
-    <string name="log_server_off">Sin conexión al servidor · se reintenta automáticamente</string>
+    <string name="log_server_off">Desconectado del servidor</string>
     <string name="log_battery">Batería · %1$d%%</string>
     <string name="log_pending">%1$d ubicaciones pendientes por enviar</string>
     <string name="log_pending_none">Sin ubicaciones pendientes</string>
@@ -133,4 +133,7 @@
     <string name="splash_loading">Preparando tu app…</string>
     <string name="update_banner">Nueva versión disponible · toca para actualizar</string>
     <string name="back">Volver</string>
+    <string name="notif_journey_finished">Jornada finalizada</string>
+    <string name="notif_journey_finished_duration">Jornada finalizada · %1$s de actividad</string>
+    <string name="notif_journey_finished_body">Jornada finalizada · %1$s · %2$s km · %3$d puntos</string>
 </resources>
