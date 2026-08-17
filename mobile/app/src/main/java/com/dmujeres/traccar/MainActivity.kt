@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var config: AppConfig
     private var testing = false
+    private var latestUpdate: UpdateManager.Latest? = null
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private val uiTicker = object : Runnable {
@@ -70,8 +71,12 @@ class MainActivity : AppCompatActivity() {
 
         binding.loginButton.setOnClickListener { login() }
         binding.updateButton.setOnClickListener { checkForUpdate(auto = false) }
+        binding.updateBanner.setOnClickListener {
+            latestUpdate?.let { showUpdateDialog(it) }
+        }
         binding.diagButton.setOnClickListener {
             startActivity(Intent(this, DiagnosticsActivity::class.java))
+            overridePendingTransition(R.anim.slide_in_right, R.anim.fade_out)
         }
 
         binding.toggleButton.setOnClickListener {
@@ -207,12 +212,25 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    /** Muestra login o pantalla principal según haya credenciales guardadas. */
+    /** Muestra login o pantalla principal según haya credenciales guardadas (con fundido). */
     private fun updateView() {
         val logged = config.username.isNotBlank() && config.password.isNotBlank()
-        binding.loginSection.visibility = if (logged) android.view.View.GONE else android.view.View.VISIBLE
-        binding.mainSection.visibility = if (logged) android.view.View.VISIBLE else android.view.View.GONE
+        crossfade(binding.loginSection, !logged)
+        crossfade(binding.mainSection, logged)
         refreshState()
+    }
+
+    private fun crossfade(view: android.view.View, visible: Boolean) {
+        view.animate().cancel()
+        if (visible) {
+            view.alpha = 0f
+            view.visibility = android.view.View.VISIBLE
+            view.animate().alpha(1f).setDuration(300).start()
+        } else {
+            view.animate().alpha(0f).setDuration(200).withEndAction {
+                view.visibility = android.view.View.GONE
+            }.start()
+        }
     }
 
     /** Registro de estado en lenguaje simple para el colaborador. */
@@ -308,34 +326,71 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val latest = withContext(Dispatchers.IO) { UpdateManager.check(config.serverUrl) }
             if (latest == null || !UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
+                hideUpdateBanner()
                 if (!auto) {
                     Toast.makeText(this@MainActivity, R.string.update_no_new, Toast.LENGTH_SHORT).show()
                 }
                 return@launch
             }
-            AlertDialog.Builder(this@MainActivity)
-                .setTitle(getString(R.string.update_found, latest.version))
-                .setMessage(getString(R.string.update_notes, latest.notes ?: ""))
-                .setPositiveButton(R.string.update_now) { _, _ ->
-                    lifecycleScope.launch {
-                        val notification = Notifications.foregroundNotification(
-                            this@MainActivity,
-                            getString(R.string.app_name),
-                            getString(R.string.update_downloading),
-                        )
-                        val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-                        manager.notify(9, notification)
-                        val file = withContext(Dispatchers.IO) { UpdateManager.download(this@MainActivity, latest.url) }
-                        manager.cancel(9)
-                        if (file != null) {
-                            UpdateManager.install(this@MainActivity, file)
-                        } else {
-                            Toast.makeText(this@MainActivity, R.string.update_error, Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }
-                .setNegativeButton(R.string.update_later, null)
-                .show()
+            latestUpdate = latest
+            if (auto) {
+                showUpdateBanner()
+            } else {
+                showUpdateDialog(latest)
+            }
+        }
+    }
+
+    /** Banner rojo superior (navbar) avisando de la nueva versión. */
+    private fun showUpdateBanner() {
+        if (binding.updateBanner.visibility == android.view.View.VISIBLE) return
+        binding.updateBanner.visibility = android.view.View.VISIBLE
+        binding.updateBanner.animate()
+            .translationY(0f)
+            .alpha(1f)
+            .setDuration(300)
+            .start()
+    }
+
+    private fun hideUpdateBanner() {
+        if (binding.updateBanner.visibility != android.view.View.VISIBLE) return
+        binding.updateBanner.animate()
+            .translationY(-120f)
+            .alpha(0f)
+            .setDuration(250)
+            .withEndAction {
+                binding.updateBanner.visibility = android.view.View.GONE
+            }
+            .start()
+    }
+
+    private fun showUpdateDialog(latest: UpdateManager.Latest) {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.update_found, latest.version))
+            .setMessage(getString(R.string.update_notes, latest.notes ?: ""))
+            .setPositiveButton(R.string.update_now) { _, _ ->
+                downloadAndInstall(latest)
+            }
+            .setNegativeButton(R.string.update_later, null)
+            .show()
+    }
+
+    private fun downloadAndInstall(latest: UpdateManager.Latest) {
+        lifecycleScope.launch {
+            val notification = Notifications.foregroundNotification(
+                this@MainActivity,
+                getString(R.string.app_name),
+                getString(R.string.update_downloading),
+            )
+            val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            manager.notify(9, notification)
+            val file = withContext(Dispatchers.IO) { UpdateManager.download(this@MainActivity, latest.url) }
+            manager.cancel(9)
+            if (file != null) {
+                UpdateManager.install(this@MainActivity, file)
+            } else {
+                Toast.makeText(this@MainActivity, R.string.update_error, Toast.LENGTH_LONG).show()
+            }
         }
     }
 }

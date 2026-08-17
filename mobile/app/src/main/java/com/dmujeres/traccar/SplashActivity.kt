@@ -22,12 +22,16 @@ class SplashActivity : AppCompatActivity() {
         binding = ActivitySplashBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.logoImage.alpha = 0f
+        binding.logoImage.animate().alpha(1f).setDuration(700).start()
+
         Handler(Looper.getMainLooper()).postDelayed({
             val onboardingDone = AppConfig(this).onboardingDone
             val target = if (onboardingDone) MainActivity::class.java
             else OnboardingActivity::class.java
             startActivity(Intent(this, target))
+            overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
             finish()
-        }, 1600)
+        }, 1700)
     }
 }
