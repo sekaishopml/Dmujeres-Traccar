@@ -491,3 +491,15 @@
   `tcp://68.168.20.219:1883` (IP pública del entorno actual, puerto MQTT 1883 ya abierto
   en el firewall).
 - APK 1.0.31 (versionCode 32) compilado y release publicado; latest.json → 1.0.31.
+
+## 2026-08-17 — Fix endpoint /api/mobile/provision
+
+- Bug: al crear un usuario desde el panel, el server rechazaba el JSON con
+  `Unrecognized field "bufferPolicy" (MobileProvisionResource$ProvisionRequest)`.
+- Causa: el dashboard enviaba 8 campos (`bufferPolicy`, `ackTimeoutSeconds`,
+  `maxRetries` incluidos) pero el `ProvisionRequest` del server solo aceptaba 5.
+- Fix: `ProvisionRequest` y `ProvisionResponse` ahora aceptan/devuelven los 8 campos,
+  se persisten en los atributos del dispositivo (`mobile.bufferPolicy`,
+  `mobile.ackTimeoutSeconds`, `mobile.maxRetries`) y se validan con los mismos rangos
+  que la app (bufferPolicy drop_oldest|stop_capture, ackTimeout 5-60, maxRetries 3-200).
+- Verificado: POST /api/mobile/provision con el payload completo responde HTTP 201.
