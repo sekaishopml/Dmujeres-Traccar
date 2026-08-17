@@ -11,6 +11,7 @@ import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.databinding.ActivityOnboardingBinding
 import com.dmujeres.traccar.util.VendorSettings
 
@@ -60,6 +61,9 @@ class OnboardingActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
         }
         binding.finishButton.setOnClickListener {
+            if (binding.finishButton.isEnabled) {
+                AppConfig(this).onboardingDone = true
+            }
             startActivity(Intent(this, MainActivity::class.java))
             finish()
         }

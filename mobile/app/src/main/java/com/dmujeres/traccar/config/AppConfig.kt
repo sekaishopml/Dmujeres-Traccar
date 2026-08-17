@@ -130,6 +130,33 @@ class AppConfig(context: Context) {
         get() = prefs.getInt(KEY_MAX_RETRIES, 30)
         set(value) = prefs.edit().putInt(KEY_MAX_RETRIES, value.coerceIn(3, 200)).apply()
 
+    /** Onboarding completado: permisos de ubicación, notificaciones, batería y GPS aceptados. */
+    var onboardingDone: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_DONE, value).apply()
+
+    /**
+     * Aplica la configuración remota que el administrador definió en el panel
+     * (/settings/device). Solo se aplican los valores presentes y válidos.
+     */
+    fun applyRemote(
+        interval: Long?,
+        bufferMax: Int?,
+        bufferPolicy: String?,
+        ackTimeout: Int?,
+        maxRetries: Int?,
+    ) {
+        if (interval != null) this.intervalSeconds = interval
+        if (bufferMax != null) this.bufferMax = bufferMax
+        if (bufferPolicy != null &&
+            (bufferPolicy == POLICY_DROP_OLDEST || bufferPolicy == POLICY_STOP_CAPTURE)
+        ) {
+            this.bufferPolicy = bufferPolicy
+        }
+        if (ackTimeout != null) this.ackTimeoutSeconds = ackTimeout
+        if (maxRetries != null) this.maxRetries = maxRetries
+    }
+
     /** Topic de subida: dmj/v1/devices/{deviceId}/telemetry */
     fun telemetryTopic(): String = "dmj/v1/devices/$deviceId/telemetry"
 
@@ -185,5 +212,6 @@ class AppConfig(context: Context) {
         private const val KEY_SUMMARY_NOTIFIED = "summary_notified"
         private const val KEY_LAST_SUMMARY = "last_journey_summary"
         private const val KEY_LAST_START_ERROR = "last_start_error"
+        private const val KEY_ONBOARDING_DONE = "onboarding_done"
     }
 }

@@ -177,3 +177,10 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 
 | PT-722 | Notificación FGS humana | ✔ PASÓ compilación | texto: jornada/duración, conexión, batería, avisos; sin métricas técnicas |
 | PT-723 | Dirección con skeleton+debounce+caché | ✔ PASÓ | lint+build dashboard OK |
+
+| PT-724 | Splash con logo SVG + círculo de carga | ✔ PASÓ | logo renderizado desde dmujeres-tracking-logo-v3.svg; PNG 2x/3x |
+| PT-725 | Permisos (ubicación/notifs/batería/GPS) antes del login | ✔ PASÓ | SplashActivity → OnboardingActivity con flag onboarding_done |
+| PT-726 | Login limpio (banner, usuario/contraseña, versión abajo-der., icono updates) | ✔ PASÓ | sin campos técnicos; MQTT testConnection al ingresar |
+| PT-727 | Un solo botón iniciar/detener jornada + logs comprensibles | ✔ PASÓ | logText con jornada/servidor/batería/pendientes/avisos (ticker 3 s) |
+| PT-728 | Config remota desde /settings/device (política, espera, reintentos) | ✔ PASÓ | MobileProvisionResource + GET mobile/v1/config; app la aplica al entrar |
+| PT-729 | Paleta dmujeres.ec (#EB0045/#FF1464/#F6F6F6) | ✔ PASÓ | colors/themes/state_background actualizados |

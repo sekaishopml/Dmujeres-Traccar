@@ -4,35 +4,51 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
-import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.util.Locale
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.databinding.ActivityMainBinding
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
+import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.UpdateManager
 import com.dmujeres.traccar.util.Notifications
-import com.dmujeres.traccar.util.VendorSettings
-import com.dmujeres.traccar.BuildConfig
+import com.dmujeres.traccar.util.RemoteConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+/**
+ * Pantalla principal, limpia para el colaborador:
+ * - Antes de iniciar sesión: formulario de usuario y contraseña (más icono de
+ *   actualizaciones arriba a la derecha y versión abajo a la derecha).
+ * - Después de iniciar sesión: UN solo botón (iniciar/finalizar jornada) y un
+ *   registro de estado fácil de entender, con acceso al diagnóstico.
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var config: AppConfig
     private var testing = false
+
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val uiTicker = object : Runnable {
+        override fun run() {
+            refreshState()
+            uiHandler.postDelayed(this, 3_000)
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -47,66 +63,45 @@ class MainActivity : AppCompatActivity() {
         config = AppConfig(this)
         Notifications.ensureChannel(this)
 
+        binding.bannerLogo.setImageResource(R.drawable.logo_banner)
         binding.versionText.text = getString(R.string.app_version, BuildConfig.VERSION_NAME)
         binding.usernameInput.setText(config.username)
         binding.passwordInput.setText(config.password)
-        binding.serverInput.setText(config.serverUrl)
-        binding.intervalInput.setText(config.intervalSeconds.toString())
-        binding.bufferInput.setText(config.bufferMax.toString())
-        binding.ackTimeoutInput.setText(config.ackTimeoutSeconds.toString())
-        binding.maxRetriesInput.setText(config.maxRetries.toString())
 
-        val policies = listOf(
-            AppConfig.POLICY_DROP_OLDEST to getString(R.string.policy_drop_oldest),
-            AppConfig.POLICY_STOP_CAPTURE to getString(R.string.policy_stop_capture),
-        )
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, policies.map { it.second })
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.policySpinner.adapter = adapter
-        binding.policySpinner.setSelection(
-            policies.indexOfFirst { it.first == config.bufferPolicy }.coerceAtLeast(0)
-        )
-
-        binding.saveButton.setOnClickListener {
-            saveAndTest()
-        }
-
-        binding.permissionsButton.setOnClickListener {
-            startActivity(Intent(this, OnboardingActivity::class.java))
-        }
-
+        binding.loginButton.setOnClickListener { login() }
+        binding.updateButton.setOnClickListener { checkForUpdate(auto = false) }
         binding.diagButton.setOnClickListener {
             startActivity(Intent(this, DiagnosticsActivity::class.java))
         }
-
-        binding.updateButton.setOnClickListener {
-            checkForUpdate(auto = false)
-        }
-
-        ensureBatteryExemption()
 
         binding.toggleButton.setOnClickListener {
             if (config.trackingEnabled) {
                 config.trackingEnabled = false
                 TrackingService.stop(this)
                 showJourneySummary()
-                updateUi()
+                refreshState()
             } else {
                 if (config.username.isBlank() || config.password.isBlank()) {
                     Toast.makeText(this, R.string.credentials_required, Toast.LENGTH_LONG).show()
                 } else {
-                    saveAndTest { success ->
-                        if (success) startIfReady()
+                    MqttManager.testConnection(config.serverUrl, config.username, config.password) { success, message ->
+                        runOnUiThread {
+                            if (success) startIfReady() else showDialog(message, false)
+                        }
                     }
                 }
             }
         }
+
+        ensureBatteryExemption()
+        updateView()
     }
 
     override fun onResume() {
         super.onResume()
-        updateUi()
+        updateView()
         checkForUpdate(auto = true)
+        uiHandler.post(uiTicker)
         if (config.trackingEnabled) {
             ensureBatteryExemption()
             if (!TrackingService.isRunning) {
@@ -121,6 +116,11 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        uiHandler.removeCallbacks(uiTicker)
     }
 
     /** Exige la exención de batería: sin ella Android congela el GPS en reposo. */
@@ -142,38 +142,34 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun saveAndTest(onDone: ((Boolean) -> Unit)? = null) {
+    private fun login() {
         val username = binding.usernameInput.text.toString().trim()
         val password = binding.passwordInput.text.toString()
-        val server = binding.serverInput.text.toString().trim()
         if (username.isBlank() || password.isBlank()) {
             showDialog(getString(R.string.credentials_required), false)
             return
         }
         if (testing) return
         testing = true
-        binding.saveButton.isEnabled = false
-        binding.saveButton.text = getString(R.string.checking)
-        binding.stateText.text = getString(R.string.checking_connection)
+        binding.loginButton.isEnabled = false
+        binding.loginButton.text = getString(R.string.checking)
 
-        MqttManager.testConnection(server, username, password) { success, message ->
+        MqttManager.testConnection(config.serverUrl, username, password) { success, message ->
             runOnUiThread {
                 testing = false
-                binding.saveButton.isEnabled = true
-                binding.saveButton.text = getString(R.string.save)
+                binding.loginButton.isEnabled = true
+                binding.loginButton.text = getString(R.string.login_button)
                 if (success) {
                     config.username = username
                     config.password = password
-                    config.serverUrl = server
-                    config.intervalSeconds = binding.intervalInput.text.toString().toLongOrNull() ?: 10L
-                    config.bufferMax = binding.bufferInput.text.toString().toIntOrNull() ?: 500
-                    binding.stateText.text = getString(R.string.connect_success)
-                    showDialog(getString(R.string.connect_success), true)
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) { RemoteConfig.fetch(this@MainActivity) }
+                        updateView()
+                        showDialog(getString(R.string.login_welcome), true)
+                    }
                 } else {
-                    binding.stateText.text = message
                     showDialog(message, false)
                 }
-                onDone?.invoke(success)
             }
         }
     }
@@ -193,7 +189,7 @@ class MainActivity : AppCompatActivity() {
         }
         config.trackingEnabled = true
         TrackingService.start(this)
-        updateUi()
+        refreshState()
     }
 
     private fun allPermissionsGranted(): Boolean {
@@ -211,6 +207,76 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    /** Muestra login o pantalla principal según haya credenciales guardadas. */
+    private fun updateView() {
+        val logged = config.username.isNotBlank() && config.password.isNotBlank()
+        binding.loginSection.visibility = if (logged) android.view.View.GONE else android.view.View.VISIBLE
+        binding.mainSection.visibility = if (logged) android.view.View.VISIBLE else android.view.View.GONE
+        refreshState()
+    }
+
+    /** Registro de estado en lenguaje simple para el colaborador. */
+    private fun refreshState() {
+        binding.stateText.text = getString(
+            if (config.trackingEnabled) R.string.tracking_on else R.string.tracking_off
+        )
+
+        val lines = mutableListOf<String>()
+        val now = System.currentTimeMillis()
+
+        val journey = config.journeyStartAt
+        if (journey > 0) {
+            val elapsed = (now - journey).coerceAtLeast(0)
+            val hours = elapsed / 3_600_000
+            val minutes = (elapsed % 3_600_000) / 60_000
+            lines += getString(R.string.log_journey_on, hours, minutes)
+        } else {
+            lines += getString(R.string.log_journey_off)
+        }
+
+        lines += if (MqttStatus.status == MqttStatus.CONNECTED) {
+            getString(R.string.log_server_on)
+        } else {
+            getString(R.string.log_server_off)
+        }
+
+        val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
+        val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        if (battery in 0..100) {
+            lines += getString(R.string.log_battery, battery)
+        }
+
+        val lastAck = config.lastAckAt
+        if (lastAck > 0) {
+            lines += getString(R.string.log_last_ack, agoText(lastAck))
+        }
+
+        lifecycleScope.launch {
+            val pending = withContext(Dispatchers.IO) {
+                runCatching { (application as DmujeresApp).database.positionDao().count() }.getOrDefault(0)
+            }
+            lines += if (pending > 0) getString(R.string.log_pending, pending)
+            else getString(R.string.log_pending_none)
+            if (battery in 1..20) {
+                lines += getString(R.string.log_warn_battery)
+            }
+            val lastFix = config.lastFixAt
+            if (lastFix > 0 && now - lastFix > 5 * 60_000) {
+                lines += getString(R.string.log_warn_gps)
+            }
+            binding.logText.text = lines.joinToString("\n")
+        }
+    }
+
+    private fun agoText(timestamp: Long): String {
+        val minutes = ((System.currentTimeMillis() - timestamp).coerceAtLeast(0)) / 60_000
+        return when {
+            minutes < 1 -> getString(R.string.ago_now)
+            minutes < 60 -> getString(R.string.ago_minutes, minutes)
+            else -> getString(R.string.ago_hours, minutes / 60)
+        }
+    }
+
     /** Resumen de la jornada recién finalizada. */
     private fun showJourneySummary() {
         val startedAt = config.journeyStartAt
@@ -219,7 +285,7 @@ class MainActivity : AppCompatActivity() {
         val hours = durationMs / 3_600_000
         val minutes = (durationMs % 3_600_000) / 60_000
         val duration = getString(R.string.journey_duration, hours, minutes)
-        val km = String.format(Locale.US, "%.1f", config.journeyDistanceM / 1000.0)
+        val km = String.format(java.util.Locale.US, "%.1f", config.journeyDistanceM / 1000.0)
         val points = config.journeyPoints
         val summary = "$duration|$km|$points"
         config.lastJourneySummary = summary
@@ -231,7 +297,7 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Comprueba si hay actualización en el servidor (auto al abrir, o al pulsar el botón). */
+    /** Comprueba si hay actualización en el servidor (auto al abrir, o al pulsar el icono). */
     private fun checkForUpdate(auto: Boolean) {
         lifecycleScope.launch {
             val latest = withContext(Dispatchers.IO) { UpdateManager.check(config.serverUrl) }
@@ -265,19 +331,5 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton(R.string.update_later, null)
                 .show()
         }
-    }
-
-    private fun updateUi() {
-        binding.versionText.text = getString(R.string.app_version, BuildConfig.VERSION_NAME)
-        binding.usernameInput.setText(config.username)
-        binding.passwordInput.setText(config.password)
-        binding.serverInput.setText(config.serverUrl)
-        binding.intervalInput.setText(config.intervalSeconds.toString())
-        binding.bufferInput.setText(config.bufferMax.toString())
-        binding.ackTimeoutInput.setText(config.ackTimeoutSeconds.toString())
-        binding.maxRetriesInput.setText(config.maxRetries.toString())
-        val enabled = config.trackingEnabled
-        binding.stateText.text = if (enabled) getString(R.string.tracking_on) else getString(R.string.tracking_off)
-        binding.toggleButton.setText(if (enabled) R.string.stop else R.string.start)
     }
 }
