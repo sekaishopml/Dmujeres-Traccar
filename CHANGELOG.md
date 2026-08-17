@@ -391,3 +391,14 @@
 
 - El logo del launcher se veía desplazado abajo y a la derecha (translate Y erróneo: 430 en vez de 362).
 - Corregido y verificado píxel a píxel con un agente (bounding box del alpha): centro exacto (512,512), desviación 0 px, holgado dentro del círculo seguro.
+
+## 2026-08-17 — App 1.0.25: branding corporativo, animaciones, flecha atrás y banner de actualización
+
+- Sin iconos de juguete: se eliminaron todos los emojis del registro de estado, la
+  notificación y el diagnóstico; ahora son textos sobrios ('Conectado al servidor',
+  'Batería · 72%', 'Aviso · batería baja').
+- Animaciones: fundido del logo en el splash, crossfade entre login y jornada,
+  transiciones de pantallas (slide/fade) al entrar y salir del diagnóstico.
+- Diagnóstico con barra superior y flecha de retroceso (toolbar con vuelta animada).
+- Banner superior rojo tipo navbar cuando hay una versión nueva: se desliza desde
+  arriba, dice 'Nueva versión disponible' y al tocarlo abre el diálogo de actualizar.

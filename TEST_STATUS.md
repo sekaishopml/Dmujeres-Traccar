@@ -193,3 +193,8 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-734 | Icono de app más grande | ✔ PASÓ | escala 1.45 dentro del círculo seguro; splash/login banners ampliados |
 
 | PT-735 | Icono de app centrado (píxel exacto) | ✔ PASÓ | translate(134.2 362) scale(1.45); bbox L288 T431 R736 B593; centro (512,512) dx=0 dy=0 |
+
+| PT-736 | Branding corporativo sin emojis | ✔ PASÓ | log/notif/diag sin emojis; avisos con prefijo 'Aviso ·' |
+| PT-737 | Animaciones | ✔ PASÓ | splash fade, crossfade login/jornada, slide/fade en transiciones |
+| PT-738 | Flecha de retroceso en diagnóstico | ✔ PASÓ | MaterialToolbar + ic_back; vuelve con fade/slide |
+| PT-739 | Banner rojo navbar de actualización | ✔ PASÓ | auto-check muestra banner deslizante; toque abre diálogo de actualizar |
