@@ -584,7 +584,7 @@ class TrackingService : Service() {
             val statusLine = if (MqttStatus.status == MqttStatus.CONNECTED) {
                 MqttStatus.CONNECTED
             } else {
-                "⚠ " + MqttStatus.status
+                MqttStatus.status
             }
 
             val details = mutableListOf<String>()
@@ -640,7 +640,7 @@ class TrackingService : Service() {
             // ignorar
         }
         currentState = TrackingState.TRACKING_DISABLED_BY_USER
-        Notifications.update(this, "DMujeres Tracking", "Jornada finalizada")
+        Notifications.update(this, getString(R.string.app_name), getString(R.string.notif_journey_finished))
         // Envía la señal de fin de jornada y espera 3 s antes de cerrar para que llegue.
         enqueuePresence("ended")
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -648,8 +648,31 @@ class TrackingService : Service() {
             mqtt = null
             serviceScope.cancel()
             stopForeground(STOP_FOREGROUND_REMOVE)
+            // Deja la notificación visible con el estado final (cerrable).
+            Notifications.finished(this, finishedJourneyText())
             stopSelf()
         }, 3000)
+    }
+
+    /** Texto de la notificación final: jornada finalizada con duración y resumen. */
+    private fun finishedJourneyText(): String {
+        val start = config.journeyStartAt
+        val distanceM = config.journeyDistanceM
+        val points = config.journeyPoints
+        config.journeyStartAt = 0
+        config.journeyDistanceM = 0.0
+        config.journeyPoints = 0
+        if (start <= 0) return getString(R.string.notif_journey_finished)
+        val elapsed = (System.currentTimeMillis() - start).coerceAtLeast(0)
+        val hours = elapsed / 3_600_000
+        val minutes = (elapsed % 3_600_000) / 60_000
+        val duration = getString(R.string.journey_duration, hours, minutes)
+        val km = String.format(java.util.Locale.US, "%.1f", distanceM / 1000.0)
+        return if (points > 0) {
+            getString(R.string.notif_journey_finished_body, duration, km, points)
+        } else {
+            getString(R.string.notif_journey_finished_duration, duration)
+        }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

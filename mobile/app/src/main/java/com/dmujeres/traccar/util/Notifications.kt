@@ -98,4 +98,19 @@ object Notifications {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIFICATION_ID, foregroundNotification(context, title, text))
     }
+
+    /** Notificación de "jornada finalizada": sustituye a la fija cuando el servicio para. */
+    fun finished(context: Context, text: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setContentTitle(context.getString(R.string.app_name))
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_stat_pin)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent(context))
+            .setOnlyAlertOnce(true)
+            .build()
+        manager.notify(NOTIFICATION_ID, notification)
+    }
 }
