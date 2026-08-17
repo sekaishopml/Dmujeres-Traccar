@@ -209,3 +209,7 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-746 | Skeleton de detalles + confirmación de cierre | ✔ PASÓ | detailsLoading con pulso (650 ms), diálogo de confirmación y resumen guardados/confirmados |
 | PT-747 | Badge numerado de actualización en el icono | ✔ PASÓ | CHANNEL_UPDATES con setShowBadge(true) + setNumber(1); worker cada 15 min lo repone sin abrir la app |
 | PT-748 | Banner de actualización se dispara con latest.json | ✔ PASÓ | latest.json → 1.0.27/28; check distingue 'última versión' de 'servidor inalcanzable' |
+
+| PT-749 | Icono DMujeres al máximo tamaño sin recortar letras | ✔ PASÓ | fg/mono 1024px, bbox (184,392)-(841,633); contenido dentro del círculo seguro 72dp (sin píxeles significativos fuera); build+lint OK |
+| PT-750 | Detección de versión en tiempo real | ✔ PASÓ | re-check cada 2 min con la app abierta (ticker), al volver la conexión (CONNECTIVITY_ACTION) y cada 15 min en worker; guard anti-solapamiento |
+| PT-751 | Notificación de actualización con botón 'Actualizar' | ✔ PASÓ | BigTextStyle + acción que abre el diálogo de descarga vía EXTRA_OPEN_UPDATE; build OK |

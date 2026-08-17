@@ -49,14 +49,29 @@ object Notifications {
     /** Badge persistente en el icono de la app cuando hay una versión nueva disponible. */
     fun updateAvailable(context: Context, version: String) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val title = context.getString(R.string.update_badge_title)
+        val text = context.getString(R.string.update_badge_text, version)
+        val open = pendingIntent(context)
+
+        val updateIntent = Intent(context, MainActivity::class.java).apply {
+            putExtra(MainActivity.EXTRA_OPEN_UPDATE, true)
+        }
+        val updatePending = PendingIntent.getActivity(
+            context, 7, updateIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
-            .setContentTitle(context.getString(R.string.update_badge_title))
-            .setContentText(context.getString(R.string.update_badge_text, version))
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(R.drawable.ic_stat_pin)
-            .setContentIntent(pendingIntent(context))
+            .setContentIntent(open)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setNumber(1)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .addAction(R.drawable.ic_stat_pin, context.getString(R.string.update_now), updatePending)
             .build()
         manager.notify(UPDATE_BADGE_ID, notification)
     }

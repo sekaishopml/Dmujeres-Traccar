@@ -430,3 +430,17 @@
 - Banner 'Nueva versión disponible' (ya existía) ahora se dispara de verdad al publicar
   la versión, y el icono de la app muestra un badge numerado mientras hay actualización.
 - Se distingue 'ya tienes la última versión' de 'no se pudo comprobar' (servidor caído).
+
+## 2026-08-17 — App 1.0.28: icono más grande y detección de actualización en tiempo real
+
+- Icono del launcher con la figura DMujeres al máximo tamaño posible: el conjunto
+  completo (incluidas las letras) queda dentro del área segura de la máscara del
+  icono, sin recortes ni desbordes, tanto en el icono normal como en el monocromo.
+- La app ya no demora en enterarse de una versión nueva:
+  - Mientras está abierta, re-comprueba `latest.json` cada 2 minutos (antes solo al
+    entrar en la pantalla).
+  - Cuando vuelve la conexión de datos/Wi-Fi, comprueba al instante.
+  - El worker de fondo mantiene la revisión periódica cada 15 min aunque la app
+    no esté abierta.
+- La notificación de nueva versión es más útil: texto expandible y botón
+  'Actualizar' que abre directamente el diálogo de descarga e instalación.
