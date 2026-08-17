@@ -13,6 +13,14 @@
 - `latest.json` actualizado → 1.0.29. Release v1.0.29 publicado en GitHub con el APK.
 - Detalle completo: CHANGELOG.md (2026-08-17).
 
+## 2026-08-17 — App 1.0.30: fix permiso de ubicación "siempre"
+
+- Corregido el onboarding: el botón "Permitir ubicación (siempre)" no hacía nada en
+  Android 10+ porque `ACCESS_BACKGROUND_LOCATION` no puede pedirse junto con los
+  permisos de primer plano. Ahora se pide en dos fases (primero plano → fondo) y si ya
+  se rechazó antes se abre directamente los ajustes de la app.
+- APK 1.0.30 (versionCode 31) compilado; latest.json → 1.0.30; release v1.0.30 publicado.
+
 ## Fase 0 completada — 2026-08-12
 
 ### Log de cierre

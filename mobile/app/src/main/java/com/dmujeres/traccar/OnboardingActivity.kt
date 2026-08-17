@@ -25,6 +25,17 @@ class OnboardingActivity : AppCompatActivity() {
 
     private val locationLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+            || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        ) {
+            requestBackgroundLocation()
+        }
+        refresh()
+    }
+
+    private val backgroundLocationLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) { refresh() }
 
     private val batteryLauncher = registerForActivityResult(
@@ -39,13 +50,26 @@ class OnboardingActivity : AppCompatActivity() {
         setupVendorStep()
 
         binding.stepLocationButton.setOnClickListener {
-            locationLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            val fineGranted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            val coarseGranted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (fineGranted && coarseGranted) {
+                requestBackgroundLocation()
+            } else {
+                // Android 10+ NO permite pedir el permiso de fondo junto con los de
+                // primer plano en la misma llamada: el sistema lo descarta y el diálogo
+                // no aparece. Se piden primero los de primer plano y después, por
+                // separado, el de "Permitir todo el tiempo".
+                locationLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    )
                 )
-            )
+            }
         }
         binding.stepNotificationsButton.setOnClickListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -95,9 +119,14 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
-        val locationOk = ContextCompat.checkSelfPermission(
+        val fineGranted = ContextCompat.checkSelfPermission(
             this, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
+        val backgroundGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        val locationOk = fineGranted && backgroundGranted
         val notificationsOk = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(
                 this, Manifest.permission.POST_NOTIFICATIONS
@@ -136,6 +165,37 @@ class OnboardingActivity : AppCompatActivity() {
         )
         runCatching { batteryLauncher.launch(intent) }
             .onFailure { refresh() }
+    }
+
+    private fun requestBackgroundLocation() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            refresh()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            refresh()
+            return
+        }
+        val previouslyRequested = AppConfig(this).backgroundLocationAsked
+        if (previouslyRequested) {
+            openAppSettings()
+        } else {
+            AppConfig(this).backgroundLocationAsked = true
+            backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
+
+    private fun openAppSettings() {
+        runCatching {
+            startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:$packageName")
+                )
+            )
+        }.onFailure { refresh() }
     }
 
     private fun isLocationEnabled(): Boolean {
