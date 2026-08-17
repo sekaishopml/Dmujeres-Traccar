@@ -106,4 +106,10 @@
     <string name="daily_summary_title">Resumen de tu jornada de ayer</string>
     <string name="daily_summary_body">%1$s activo · %2$s km · %3$d puntos enviados</string>
     <string name="journey_duration">%1$d h %2$d min</string>
+    <string name="notif_journey_active">Jornada de trabajo en curso</string>
+    <string name="notif_journey_duration">Jornada activa: %1$d h %2$d min</string>
+    <string name="notif_battery">Batería %1$d%%</string>
+    <string name="notif_pending">%1$d pendientes por enviar</string>
+    <string name="notif_warn_battery">⚠ Batería baja</string>
+    <string name="notif_warn_gps">⚠ Sin señal de GPS</string>
 </resources>
