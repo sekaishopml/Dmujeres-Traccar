@@ -35,6 +35,11 @@ class DiagnosticsActivity : AppCompatActivity() {
         setContentView(binding.root)
         config = AppConfig(this)
 
+        binding.toolbar.setNavigationOnClickListener {
+            finish()
+            overridePendingTransition(R.anim.fade_in, R.anim.slide_out_right)
+        }
+
         binding.diagTestButton.setOnClickListener {
             MqttManager.testConnection(
                 config.serverUrl, config.username, config.password
@@ -64,26 +69,26 @@ class DiagnosticsActivity : AppCompatActivity() {
                 getString(R.string.diag_gps_ok)
             else -> getString(R.string.diag_gps_waiting)
         }
-        binding.diagGps.text = "📍 " + gpsText
+        binding.diagGps.text = gpsText
 
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val online = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
             ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-        binding.diagNetwork.text = "🌐 " + getString(
+        binding.diagNetwork.text = getString(
             if (online) R.string.diag_network_ok else R.string.diag_network_off
         )
 
-        binding.diagServer.text = "🖥 " + MqttStatus.status +
+        binding.diagServer.text = MqttStatus.status +
             if (config.trackingEnabled) "" else " · " + getString(R.string.diag_service_off)
 
         lifecycleScope.launch {
             val pending = withContext(Dispatchers.IO) {
                 runCatching { (application as DmujeresApp).database.positionDao().count() }.getOrDefault(0)
             }
-            binding.diagPending.text = "⏳ " + getString(R.string.diag_pending, pending)
+            binding.diagPending.text = getString(R.string.diag_pending, pending)
             val battery = (getSystemService(BATTERY_SERVICE) as BatteryManager)
                 .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-            binding.diagBattery.text = "🔋 " + getString(R.string.diag_battery, battery)
+            binding.diagBattery.text = getString(R.string.diag_battery, battery)
             val startError = config.lastStartError
             binding.diagDevice.text = Build.MANUFACTURER + " " + Build.MODEL +
                 " · Android " + Build.VERSION.RELEASE +
