@@ -381,3 +381,8 @@
   'Finalizar jornada' (icono █) y vuelve a 'Iniciar jornada' (▶) al terminar.
 - Iconos en blanco y negro: actualizaciones, usuario, candado y pin de
   notificaciones monochrome (ya no ámbar/azul).
+
+## 2026-08-17 — App 1.0.23: icono de la app más grande
+
+- Logo del icono del launcher ampliado (escala 1.45, dentro de la zona segura del recorte circular).
+- Banner del splash 300→360 dp y del login 260→300 dp.

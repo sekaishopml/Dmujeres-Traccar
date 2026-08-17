@@ -189,3 +189,5 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-731 | Botón cambia a 'Finalizar jornada' al iniciar | ✔ PASÓ | refreshState() actualiza texto+icono del toggle (▶→█) |
 | PT-732 | Iconos en blanco y negro | ✔ PASÓ | ic_update/ic_person/ic_lock #181818; notificaciones con pin blanco monochrome |
 | PT-733 | Diseño en tarjetas blancas redondeadas | ✔ PASÓ | MaterialCardView 20dp, botón 64dp con icono, campos con iconos |
+
+| PT-734 | Icono de app más grande | ✔ PASÓ | escala 1.45 dentro del círculo seguro; splash/login banners ampliados |

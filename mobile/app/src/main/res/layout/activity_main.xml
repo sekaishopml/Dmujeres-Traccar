@@ -23,7 +23,7 @@
 
                 <ImageView
                     android:id="@+id/bannerLogo"
-                    android:layout_width="260dp"
+                    android:layout_width="300dp"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_horizontal"
                     android:adjustViewBounds="true"
