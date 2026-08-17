@@ -565,35 +565,48 @@ class TrackingService : Service() {
 
     private fun refreshStateAndNotify() {
         serviceScope.launch {
-            val pending = withContext(Dispatchers.IO) { dao.countFlow().first() }
-            val now = System.currentTimeMillis()
-            val metrics = listOf(
-                "fix=" + metricAge(config.lastFixAt, now),
-                "enc=" + metricAge(config.lastEnqueuedAt, now),
-                "pub=" + metricAge(config.lastPublishedAt, now),
-                "ACK=" + metricAge(config.lastAckAt, now),
-            ).joinToString(" ")
-            val error = mqtt?.lastError?.takeIf { it.isNotBlank() }
-            val text = buildString {
-                append(currentState.label)
-                append(" · ")
-                append(MqttStatus.status)
-                append(" · ")
-                append(pending)
-                append(" pendientes · ")
-                append(metrics)
-                if (error != null) {
-                    append(" · ")
-                    append(error)
-                }
+            val pending = withContext(Dispatchers.IO) {
+                runCatching { dao.countFlow().first() }.getOrDefault(0)
             }
-            Notifications.update(this@TrackingService, "DMujeres Tracking", text)
-        }
-    }
+            val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
+            val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
 
-    private fun metricAge(timestamp: Long, now: Long): String {
-        if (timestamp <= 0L) return "nunca"
-        return "${((now - timestamp).coerceAtLeast(0L)) / 1_000}s"
+            val journeyStart = config.journeyStartAt
+            val journeyLine = if (journeyStart > 0) {
+                val elapsed = (System.currentTimeMillis() - journeyStart).coerceAtLeast(0)
+                val hours = elapsed / 3_600_000
+                val minutes = (elapsed % 3_600_000) / 60_000
+                getString(R.string.notif_journey_duration, hours, minutes)
+            } else {
+                getString(R.string.notif_journey_active)
+            }
+
+            val statusLine = if (MqttStatus.status == MqttStatus.CONNECTED) {
+                MqttStatus.CONNECTED
+            } else {
+                "⚠ " + MqttStatus.status
+            }
+
+            val details = mutableListOf<String>()
+            details += statusLine
+            if (battery in 0..100) {
+                details += getString(R.string.notif_battery, battery)
+            }
+            if (pending > 0) {
+                details += getString(R.string.notif_pending, pending)
+            }
+
+            val lines = mutableListOf<String>(journeyLine)
+            lines += details.joinToString(" · ")
+            if (battery in 1..20) {
+                lines += getString(R.string.notif_warn_battery)
+            }
+            val lastFix = config.lastFixAt
+            if (lastFix > 0 && System.currentTimeMillis() - lastFix > 5 * 60_000) {
+                lines += getString(R.string.notif_warn_gps)
+            }
+            Notifications.update(this@TrackingService, getString(R.string.app_name), lines.joinToString("\n"))
+        }
     }
 
     private fun isNetworkAvailable(): Boolean {

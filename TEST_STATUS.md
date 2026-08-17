@@ -174,3 +174,6 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-720 | Batería + historial en panel | ✔ PASÓ | atributo mobile.battery/mobile.batteryHistory; sparkline render |
 
 | PT-721 | Batería por posición en replay | ✔ PASÓ | attributes batteryLevel persistido en tc_positions; popup usa batteryLevel con % |
+
+| PT-722 | Notificación FGS humana | ✔ PASÓ compilación | texto: jornada/duración, conexión, batería, avisos; sin métricas técnicas |
+| PT-723 | Dirección con skeleton+debounce+caché | ✔ PASÓ | lint+build dashboard OK |
