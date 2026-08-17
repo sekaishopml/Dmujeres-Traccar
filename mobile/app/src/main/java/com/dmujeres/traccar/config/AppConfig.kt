@@ -225,7 +225,7 @@ class AppConfig(context: Context) {
         const val WEB_PORT = 8082
 
         /** Servidor por defecto: IP pública del entorno + puerto MQTT. */
-        const val DEFAULT_SERVER = "tcp://64.176.219.221:1883"
+        const val DEFAULT_SERVER = "tcp://68.168.20.219:1883"
 
         private const val KEY_SERVER = "server_url"
         private const val KEY_USERNAME = "username"

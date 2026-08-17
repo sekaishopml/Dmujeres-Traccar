@@ -21,6 +21,11 @@
   se rechazó antes se abre directamente los ajustes de la app.
 - APK 1.0.30 (versionCode 31) compilado; latest.json → 1.0.30; release v1.0.30 publicado.
 
+## 2026-08-17 — App 1.0.31: servidor por defecto al entorno actual
+
+- `AppConfig.DEFAULT_SERVER` → `tcp://68.168.20.219:1883` (IP pública actual).
+- APK 1.0.31 (versionCode 32) compilado; latest.json → 1.0.31; release v1.0.31 publicado.
+
 ## Fase 0 completada — 2026-08-12
 
 ### Log de cierre
