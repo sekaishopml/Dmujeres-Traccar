@@ -460,3 +460,16 @@
 - App Android 1.0.29 (versionCode 30) compilada con SDK 35 / AGP 8.7.3:
   `app-debug.apk` (6.9 MB). `latest.json` actualizado para que la app detecte la
   nueva versión en tiempo real.
+
+## 2026-08-17 — App 1.0.30: arreglo del permiso de ubicación "siempre"
+
+- Bug: el botón "Permitir ubicación (siempre)" del onboarding no hacía nada.
+- Causa: en Android 10+ no se puede pedir `ACCESS_BACKGROUND_LOCATION` junto con
+  los permisos de primer plano en la misma llamada; el sistema descartaba la
+  petición de fondo y el diálogo ni siquiera aparecía.
+- Fix: ahora se piden primero `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION` y,
+  una vez concedidos, se solicita por separado `ACCESS_BACKGROUND_LOCATION`
+  (diálogo "Permitir todo el tiempo"). Si el usuario ya rechazó antes el permiso de
+  fondo, se le lleva directo a los ajustes de la app en lugar de re-mostrar el diálogo.
+- El paso 1 del onboarding solo se marca como completado cuando el permiso de fondo
+  está concedido.

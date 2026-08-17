@@ -171,6 +171,12 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
         set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_DONE, value).apply()
 
+    /** Indica si ya se pidió el permiso de ubicación en segundo plano (para no re-pedir
+     *  un diálogo que el usuario ya rechazó y llevarlo a los ajustes directamente). */
+    var backgroundLocationAsked: Boolean
+        get() = prefs.getBoolean(KEY_BACKGROUND_LOCATION_ASKED, false)
+        set(value) = prefs.edit().putBoolean(KEY_BACKGROUND_LOCATION_ASKED, value).apply()
+
     /**
      * Aplica la configuración remota que el administrador definió en el panel
      * (/settings/device). Solo se aplican los valores presentes y válidos.
@@ -248,5 +254,6 @@ class AppConfig(context: Context) {
         private const val KEY_LAST_START_ERROR = "last_start_error"
         private const val KEY_TRACKING_STATE = "tracking_state"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
+        private const val KEY_BACKGROUND_LOCATION_ASKED = "background_location_asked"
     }
 }
