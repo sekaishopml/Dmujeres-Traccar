@@ -184,3 +184,8 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-727 | Un solo botón iniciar/detener jornada + logs comprensibles | ✔ PASÓ | logText con jornada/servidor/batería/pendientes/avisos (ticker 3 s) |
 | PT-728 | Config remota desde /settings/device (política, espera, reintentos) | ✔ PASÓ | MobileProvisionResource + GET mobile/v1/config; app la aplica al entrar |
 | PT-729 | Paleta dmujeres.ec (#EB0045/#FF1464/#F6F6F6) | ✔ PASÓ | colors/themes/state_background actualizados |
+
+| PT-730 | Icono de app = SVG DMujeres Tracking | ✔ PASÓ | adaptive-icon blanco + foreground PNG del SVG + monochrome; verificado en aapt2 |
+| PT-731 | Botón cambia a 'Finalizar jornada' al iniciar | ✔ PASÓ | refreshState() actualiza texto+icono del toggle (▶→█) |
+| PT-732 | Iconos en blanco y negro | ✔ PASÓ | ic_update/ic_person/ic_lock #181818; notificaciones con pin blanco monochrome |
+| PT-733 | Diseño en tarjetas blancas redondeadas | ✔ PASÓ | MaterialCardView 20dp, botón 64dp con icono, campos con iconos |
