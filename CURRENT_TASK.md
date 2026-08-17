@@ -1,7 +1,17 @@
 # CURRENT_TASK — DMujeres Traccar Platform
 
-> Archivo de continuidad. Última actualización: FASE 0, build infraestructura.
+> Archivo de continuidad. Última actualización: 2026-08-17 — build 1.0.29 en entorno limpio.
 > Leer junto a PROJECT_CONTEXT.md, ROADMAP.md, TEST_STATUS.md.
+
+## 2026-08-17 — Build 1.0.29 desde entorno limpio
+
+- Servidor Traccar 6.14.5 compilado (Gradle 9.5.1 / JDK 21) y arrancado:
+  health `/api/health` HTTP 200, dashboard servido en `:8082`, consumer MQTT conectado.
+- Infraestructura Docker Compose up: TimescaleDB (pg17), Redis, EMQX 5.8.5 — health OK.
+- Dashboard compilado con Vite 8; fix de build rolldown (binding nativo linux-x64-gnu).
+- App Android 1.0.29 (versionCode 30) compilada con SDK 35: `app-debug.apk` (6.9 MB).
+- `latest.json` actualizado → 1.0.29. Release v1.0.29 publicado en GitHub con el APK.
+- Detalle completo: CHANGELOG.md (2026-08-17).
 
 ## Fase 0 completada — 2026-08-12
 
