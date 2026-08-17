@@ -40,18 +40,27 @@ import kotlinx.coroutines.withContext
  */
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        const val EXTRA_OPEN_UPDATE = "open_update"
+    }
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var config: AppConfig
     private var testing = false
     private var latestUpdate: UpdateManager.Latest? = null
+    private var updateCheckInFlight = false
     private var detailsTransition = false
     private var skeletonAnimator: ObjectAnimator? = null
     private var recoveryDialogShown = false
 
     private val uiHandler = Handler(Looper.getMainLooper())
+    private var tickCount = 0
     private val uiTicker = object : Runnable {
         override fun run() {
             refreshState()
+            tickCount++
+            // Mientras la app está abierta, revisa versiones cada 2 minutos (40 ticks × 3 s).
+            if (tickCount % 40 == 0) checkForUpdate(auto = true)
             uiHandler.postDelayed(this, 3_000)
         }
     }
@@ -106,6 +115,17 @@ class MainActivity : AppCompatActivity() {
 
         ensureBatteryExemption()
         updateView()
+        if (intent?.getBooleanExtra(EXTRA_OPEN_UPDATE, false) == true) {
+            checkForUpdate(auto = false)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_UPDATE, false)) {
+            checkForUpdate(auto = false)
+        }
     }
 
     override fun onResume() {
@@ -429,32 +449,38 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Comprueba si hay actualización en el servidor (auto al abrir, o al pulsar el icono). */
+    /** Comprueba si hay actualización en el servidor (auto al abrir o al pulsar el icono). */
     private fun checkForUpdate(auto: Boolean) {
+        if (updateCheckInFlight) return
+        updateCheckInFlight = true
         lifecycleScope.launch {
-            val latest = withContext(Dispatchers.IO) { UpdateManager.check(config.serverUrl) }
-            if (latest == null) {
-                hideUpdateBanner()
-                Notifications.clearUpdateAvailable(this@MainActivity)
-                if (!auto) {
-                    Toast.makeText(this@MainActivity, R.string.update_unreachable, Toast.LENGTH_LONG).show()
+            try {
+                val latest = withContext(Dispatchers.IO) { UpdateManager.check(config.serverUrl) }
+                if (latest == null) {
+                    hideUpdateBanner()
+                    Notifications.clearUpdateAvailable(this@MainActivity)
+                    if (!auto) {
+                        Toast.makeText(this@MainActivity, R.string.update_unreachable, Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
                 }
-                return@launch
-            }
-            if (!UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
-                hideUpdateBanner()
-                Notifications.clearUpdateAvailable(this@MainActivity)
-                if (!auto) {
-                    Toast.makeText(this@MainActivity, R.string.update_no_new, Toast.LENGTH_SHORT).show()
+                if (!UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
+                    hideUpdateBanner()
+                    Notifications.clearUpdateAvailable(this@MainActivity)
+                    if (!auto) {
+                        Toast.makeText(this@MainActivity, R.string.update_no_new, Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
                 }
-                return@launch
-            }
-            latestUpdate = latest
-            Notifications.updateAvailable(this@MainActivity, latest.version)
-            if (auto) {
-                showUpdateBanner()
-            } else {
-                showUpdateDialog(latest)
+                latestUpdate = latest
+                Notifications.updateAvailable(this@MainActivity, latest.version)
+                if (auto) {
+                    showUpdateBanner()
+                } else {
+                    showUpdateDialog(latest)
+                }
+            } finally {
+                updateCheckInFlight = false
             }
         }
     }

@@ -5,13 +5,12 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.dmujeres.traccar.config.AppConfig
-import com.dmujeres.traccar.BuildConfig
-import com.dmujeres.traccar.R
 import com.dmujeres.traccar.DmujeresApp
+import com.dmujeres.traccar.R
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.HttpFallbackDispatcher
-import com.dmujeres.traccar.mqtt.UpdateManager
 import com.dmujeres.traccar.util.Notifications
+import com.dmujeres.traccar.util.UpdateChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -48,22 +47,8 @@ class TrackingRecoveryWorker(
             }
         }
         maybeNotifyDailySummary(config)
-        maybeUpdateBadge(config)
+        UpdateChecker.checkAndRefreshBadge(applicationContext)
         return Result.success()
-    }
-
-    /** Mantiene el badge de actualización en el icono aunque la app no se abra. */
-    private suspend fun maybeUpdateBadge(config: AppConfig) {
-        val latest = try {
-            UpdateManager.check(config.serverUrl)
-        } catch (e: Exception) {
-            null
-        } ?: return
-        if (UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
-            Notifications.updateAvailable(applicationContext, latest.version)
-        } else {
-            Notifications.clearUpdateAvailable(applicationContext)
-        }
     }
 
     /** Notifica el resumen de la última jornada finalizada (una sola vez por jornada). */
