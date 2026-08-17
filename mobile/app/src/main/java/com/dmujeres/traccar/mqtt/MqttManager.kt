@@ -50,6 +50,7 @@ class MqttManager(
         private set
 
     private val ackFutures = ConcurrentHashMap<String, CompletableFuture<String>>()
+    private val inFlightSequences = ConcurrentHashMap<String, Long>()
     private val retryAt = ConcurrentHashMap<String, Long>()
     private val dispatchWake = Channel<Unit>(Channel.CONFLATED)
     private var dispatchJob: Job? = null
@@ -234,6 +235,7 @@ class MqttManager(
                     MqttStatus.status = MqttStatus.CONNECTED
                     subscriptionRetryJob?.cancel()
                     subscriptionRetryJob = null
+                    notifyState("Conexión lista para enviar")
                     startDispatch()
                     dispatchWake.trySend(Unit)
                 }
@@ -302,8 +304,11 @@ class MqttManager(
             val status = publishWithAck(next)
             when (status) {
                 "accepted", "duplicate", "rejected", "invalid", "expired" -> {
-                    withContext(Dispatchers.IO) { dao.delete(next.messageId) }
+                    val deleted = withContext(Dispatchers.IO) { dao.delete(next.messageId) }
                     retryAt.remove(next.messageId)
+                    if (deleted > 0 && (status == "accepted" || status == "duplicate")) {
+                        recordConfirmedPosition(next)
+                    }
                     if (status != "accepted" && status != "duplicate") {
                         notifyState("Mensaje rechazado por el servidor ($status): ${next.messageId}")
                     }
@@ -330,6 +335,7 @@ class MqttManager(
         if (!ready) return null
         val future = CompletableFuture<String>()
         ackFutures[position.messageId] = future
+        inFlightSequences[position.messageId] = position.sequence
         try {
             val current = client ?: return null
             if (!current.isConnected) return null
@@ -364,6 +370,14 @@ class MqttManager(
             return null
         } finally {
             ackFutures.remove(position.messageId)
+            inFlightSequences.remove(position.messageId)
+        }
+    }
+
+    private fun recordConfirmedPosition(position: PendingPosition) {
+        val type = runCatching { JSONObject(position.payload).optString("type") }.getOrDefault("")
+        if (type == "position" && position.journeyId > 0L && position.journeyId == config.journeyStartAt) {
+            config.recordJourneyConfirmed(position.journeyId)
         }
     }
 
@@ -374,9 +388,16 @@ class MqttManager(
     private fun handleAck(message: MqttMessage) {
         try {
             val json = JSONObject(String(message.payload, Charsets.UTF_8))
+            if (json.optInt("schema", -1) != 1 || json.optString("type") != "ack") return
             val messageId = json.optString("messageId")
+            val deviceId = json.optString("deviceId")
+            val sequence = json.optLong("sequence", -1L)
             val status = json.optString("status")
-            if (messageId.isBlank() || status.isBlank()) return
+            val expectedSequence = inFlightSequences[messageId]
+            if (messageId.isBlank() || deviceId != config.deviceId || expectedSequence == null
+                || expectedSequence != sequence
+                || status !in setOf("accepted", "duplicate", "rejected", "invalid", "expired")
+            ) return
             config.lastAckAt = System.currentTimeMillis()
             ackFutures[messageId]?.complete(status)
         } catch (e: Exception) {
@@ -389,6 +410,7 @@ class MqttManager(
         subscriptionRetryJob?.cancel()
         subscriptionRetryJob = null
         completeInFlightWithoutAck()
+        inFlightSequences.clear()
         val oldClient = client
         client = null
         connected = false

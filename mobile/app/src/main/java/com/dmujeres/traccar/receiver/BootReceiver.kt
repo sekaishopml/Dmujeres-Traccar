@@ -18,7 +18,10 @@ class BootReceiver : BroadcastReceiver() {
                 Intent.ACTION_BOOT_COMPLETED,
                 Intent.ACTION_MY_PACKAGE_REPLACED,
                 Intent.ACTION_USER_UNLOCKED -> {
-                    if (AppConfig(context).trackingEnabled) {
+                    val config = AppConfig(context)
+                    if (config.journeyStopRequested && config.journeyStartAt > 0L) {
+                        TrackingService.stop(context)
+                    } else if (config.trackingEnabled) {
                         val started = TrackingService.start(context)
                         if (!started) {
                             AppConfig(context).lastStartError =

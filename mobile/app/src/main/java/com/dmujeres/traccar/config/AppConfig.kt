@@ -54,6 +54,7 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean(KEY_TRACKING, false)
         set(value) = prefs.edit().putBoolean(KEY_TRACKING, value).apply()
 
+    /** Valor heredado usado para inicializar la secuencia durable de Room. */
     var sequence: Long
         get() = prefs.getLong(KEY_SEQUENCE, 0L)
         set(value) = prefs.edit().putLong(KEY_SEQUENCE, value).apply()
@@ -111,10 +112,45 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_JOURNEY_POINTS, 0L)
         set(value) = prefs.edit().putLong(KEY_JOURNEY_POINTS, value).apply()
 
+    /** Posiciones de la jornada confirmadas por el servidor. */
+    var journeyConfirmedPoints: Long
+        get() = prefs.getLong(KEY_JOURNEY_CONFIRMED_POINTS, 0L)
+        set(value) = prefs.edit().putLong(KEY_JOURNEY_CONFIRMED_POINTS, value).apply()
+
+    @Synchronized
+    fun recordJourneyConfirmed(journeyId: Long) {
+        if (journeyId > 0L && journeyId == journeyStartAt) {
+            journeyConfirmedPoints = journeyConfirmedPoints + 1
+        }
+    }
+
+    /** Último punto guardado, para continuar la distancia tras una recuperación del servicio. */
+    var journeyLastLat: Double
+        get() = prefs.getString(KEY_JOURNEY_LAST_LAT, "0")?.toDoubleOrNull() ?: 0.0
+        set(value) = prefs.edit().putString(KEY_JOURNEY_LAST_LAT, value.toString()).apply()
+
+    var journeyLastLon: Double
+        get() = prefs.getString(KEY_JOURNEY_LAST_LON, "0")?.toDoubleOrNull() ?: 0.0
+        set(value) = prefs.edit().putString(KEY_JOURNEY_LAST_LON, value.toString()).apply()
+
+    var journeyHasLastLocation: Boolean
+        get() = prefs.getBoolean(KEY_JOURNEY_HAS_LAST_LOCATION, false)
+        set(value) = prefs.edit().putBoolean(KEY_JOURNEY_HAS_LAST_LOCATION, value).apply()
+
+    /** Permite completar el cierre aunque la app muera justo después de pulsar finalizar. */
+    var journeyStopRequested: Boolean
+        get() = prefs.getBoolean(KEY_JOURNEY_STOP_REQUESTED, false)
+        set(value) = prefs.edit().putBoolean(KEY_JOURNEY_STOP_REQUESTED, value).apply()
+
     /** Último error al intentar auto-iniciar (para diagnóstico en pantalla). */
     var lastStartError: String
         get() = prefs.getString(KEY_LAST_START_ERROR, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_LAST_START_ERROR, value).apply()
+
+    /** Último estado real publicado por el servicio para que la UI no dependa solo del booleano. */
+    var trackingState: String
+        get() = prefs.getString(KEY_TRACKING_STATE, "TRACKING_DISABLED_BY_USER").orEmpty()
+        set(value) = prefs.edit().putString(KEY_TRACKING_STATE, value).apply()
 
     var lastSummaryNotified: String
         get() = prefs.getString(KEY_SUMMARY_NOTIFIED, "").orEmpty()
@@ -163,13 +199,6 @@ class AppConfig(context: Context) {
     /** Topic de ACK: dmj/v1/devices/{deviceId}/ack */
     fun ackTopic(): String = "dmj/v1/devices/$deviceId/ack"
 
-    /** Incrementa y devuelve el siguiente número de secuencia (monotónico, persistido). */
-    @Synchronized
-    fun nextSequence(): Long {
-        sequence = sequence + 1
-        return sequence
-    }
-
     /**
      * Genera un ID estable para el messageId basado en el usuario (no expone el ID completo).
      * El messageId real se compone en Envelope con este valor.
@@ -209,9 +238,15 @@ class AppConfig(context: Context) {
         private const val KEY_JOURNEY_START = "journey_start_at"
         private const val KEY_JOURNEY_DISTANCE = "journey_distance_m"
         private const val KEY_JOURNEY_POINTS = "journey_points"
+        private const val KEY_JOURNEY_CONFIRMED_POINTS = "journey_confirmed_points"
+        private const val KEY_JOURNEY_LAST_LAT = "journey_last_lat"
+        private const val KEY_JOURNEY_LAST_LON = "journey_last_lon"
+        private const val KEY_JOURNEY_HAS_LAST_LOCATION = "journey_has_last_location"
+        private const val KEY_JOURNEY_STOP_REQUESTED = "journey_stop_requested"
         private const val KEY_SUMMARY_NOTIFIED = "summary_notified"
         private const val KEY_LAST_SUMMARY = "last_journey_summary"
         private const val KEY_LAST_START_ERROR = "last_start_error"
+        private const val KEY_TRACKING_STATE = "tracking_state"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
     }
 }

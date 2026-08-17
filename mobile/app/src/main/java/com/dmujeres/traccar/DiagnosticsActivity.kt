@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.databinding.ActivityDiagnosticsBinding
+import com.dmujeres.traccar.location.TrackingState
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.MqttStatus
@@ -53,6 +54,18 @@ class DiagnosticsActivity : AppCompatActivity() {
         binding.diagPermissionsButton.setOnClickListener {
             startActivity(Intent(this, OnboardingActivity::class.java))
         }
+        binding.diagRecoverButton.setOnClickListener {
+            if (config.trackingEnabled) {
+                config.trackingState = TrackingState.SERVICE_RECOVERY.name
+                val started = TrackingService.start(this)
+                Toast.makeText(
+                    this,
+                    if (started) R.string.service_recovery_title else R.string.start_error,
+                    Toast.LENGTH_LONG,
+                ).show()
+                refresh()
+            }
+        }
     }
 
     override fun onResume() {
@@ -61,6 +74,13 @@ class DiagnosticsActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
+        val storedState = TrackingState.fromName(config.trackingState)
+        val state = if (config.trackingEnabled && !TrackingService.isRunning) {
+            TrackingState.SERVICE_RECOVERY
+        } else storedState
+        binding.diagState.text = state.label +
+            if (TrackingService.isRunning) "" else " · " + getString(R.string.diag_service_stopped)
+
         val gpsMode = Settings.Secure.getInt(contentResolver, Settings.Secure.LOCATION_MODE, 0)
         val lastFix = config.lastFixAt
         val gpsText = when {
@@ -73,22 +93,37 @@ class DiagnosticsActivity : AppCompatActivity() {
 
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val online = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
-            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
         binding.diagNetwork.text = getString(
             if (online) R.string.diag_network_ok else R.string.diag_network_off
         )
 
         binding.diagServer.text = MqttStatus.status +
-            if (config.trackingEnabled) "" else " · " + getString(R.string.diag_service_off)
+            if (MqttStatus.lastError.isNullOrBlank()) "" else "\n${MqttStatus.lastError}"
 
         lifecycleScope.launch {
             val pending = withContext(Dispatchers.IO) {
                 runCatching { (application as DmujeresApp).database.positionDao().count() }.getOrDefault(0)
             }
-            binding.diagPending.text = getString(R.string.diag_pending, pending)
+            val oldest = runCatching {
+                (application as DmujeresApp).database.positionDao().oldestEnqueuedAt()
+            }.getOrNull()
+            binding.diagPending.text = if (pending > 0 && oldest != null && oldest > 0L) {
+                getString(R.string.diag_pending_age, pending, agoText(oldest))
+            } else {
+                getString(R.string.diag_pending, pending)
+            }
             val battery = (getSystemService(BATTERY_SERVICE) as BatteryManager)
                 .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
             binding.diagBattery.text = getString(R.string.diag_battery, battery)
+            binding.diagLastFix.text = getString(
+                R.string.diag_last_fix,
+                config.lastFixAt.takeIf { it > 0L }?.let(::agoText) ?: getString(R.string.diag_never),
+            )
+            binding.diagLastAck.text = getString(
+                R.string.diag_last_ack,
+                config.lastAckAt.takeIf { it > 0L }?.let(::agoText) ?: getString(R.string.diag_never),
+            )
             val startError = config.lastStartError
             binding.diagDevice.text = Build.MANUFACTURER + " " + Build.MODEL +
                 " · Android " + Build.VERSION.RELEASE +
@@ -96,7 +131,19 @@ class DiagnosticsActivity : AppCompatActivity() {
                 if (startError.isBlank()) "" else "\n⚠ " + startError
         }
 
-        binding.diagServer.text = binding.diagServer.text.toString() +
-            if (TrackingService.isRunning) "" else " · " + getString(R.string.diag_service_stopped)
+        if (!config.trackingEnabled) {
+            binding.diagServer.text = binding.diagServer.text.toString() +
+                " · " + getString(R.string.diag_service_off)
+        }
+        binding.diagRecoverButton.isEnabled = config.trackingEnabled && !TrackingService.isRunning
+    }
+
+    private fun agoText(timestamp: Long): String {
+        val minutes = ((System.currentTimeMillis() - timestamp).coerceAtLeast(0)) / 60_000
+        return when {
+            minutes < 1 -> getString(R.string.ago_now)
+            minutes < 60 -> getString(R.string.ago_minutes, minutes)
+            else -> getString(R.string.ago_hours, minutes / 60)
+        }
     }
 }
