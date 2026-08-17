@@ -1,5 +1,6 @@
 package com.dmujeres.traccar
 
+import android.animation.ObjectAnimator
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -19,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.databinding.ActivityMainBinding
+import com.dmujeres.traccar.location.TrackingState
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.MqttStatus
@@ -42,6 +44,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var config: AppConfig
     private var testing = false
     private var latestUpdate: UpdateManager.Latest? = null
+    private var detailsTransition = false
+    private var skeletonAnimator: ObjectAnimator? = null
+    private var recoveryDialogShown = false
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private val uiTicker = object : Runnable {
@@ -49,6 +54,10 @@ class MainActivity : AppCompatActivity() {
             refreshState()
             uiHandler.postDelayed(this, 3_000)
         }
+    }
+
+    private val detailsTransitionTimeout = Runnable {
+        endDetailsLoading()
     }
 
     private val permissionLauncher = registerForActivityResult(
@@ -81,10 +90,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.toggleButton.setOnClickListener {
             if (config.trackingEnabled) {
-                config.trackingEnabled = false
-                TrackingService.stop(this)
-                showJourneySummary()
-                refreshState()
+                confirmFinishJourney()
             } else {
                 if (config.username.isBlank() || config.password.isBlank()) {
                     Toast.makeText(this, R.string.credentials_required, Toast.LENGTH_LONG).show()
@@ -109,12 +115,16 @@ class MainActivity : AppCompatActivity() {
         uiHandler.post(uiTicker)
         if (config.trackingEnabled) {
             ensureBatteryExemption()
-            if (!TrackingService.isRunning) {
+            if (TrackingService.isRunning) recoveryDialogShown = false
+            if (!TrackingService.isRunning && config.lastStartError.isNotBlank() && !recoveryDialogShown) {
+                recoveryDialogShown = true
                 AlertDialog.Builder(this)
                     .setTitle(R.string.killed_title)
-                    .setMessage(R.string.killed_body)
+                    .setMessage(config.lastStartError + "\n\n" + getString(R.string.killed_body))
                     .setPositiveButton(R.string.killed_reactivate) { _, _ ->
+                        beginDetailsLoading()
                         config.trackingEnabled = true
+                        config.trackingState = TrackingState.SERVICE_RECOVERY.name
                         TrackingService.start(this)
                     }
                     .setNegativeButton(R.string.dialog_close, null)
@@ -126,6 +136,12 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         uiHandler.removeCallbacks(uiTicker)
+    }
+
+    override fun onDestroy() {
+        uiHandler.removeCallbacks(detailsTransitionTimeout)
+        skeletonAnimator?.cancel()
+        super.onDestroy()
     }
 
     /** Exige la exención de batería: sin ella Android congela el GPS en reposo. */
@@ -192,8 +208,17 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, OnboardingActivity::class.java))
             return
         }
+        beginDetailsLoading()
         config.trackingEnabled = true
-        TrackingService.start(this)
+        config.trackingState = TrackingState.SERVICE_RECOVERY.name
+        val requested = TrackingService.start(this)
+        if (!requested) {
+            config.trackingEnabled = false
+            config.lastStartError = getString(R.string.start_error)
+            config.trackingState = TrackingState.TRACKING_DISABLED_BY_USER.name
+            endDetailsLoading()
+            showDialog(config.lastStartError, false)
+        }
         refreshState()
     }
 
@@ -236,20 +261,26 @@ class MainActivity : AppCompatActivity() {
     /** Registro de estado en lenguaje simple para el colaborador. */
     private fun refreshState() {
         val enabled = config.trackingEnabled
-        binding.stateText.text = getString(
-            if (enabled) R.string.tracking_on else R.string.tracking_off
-        )
+        val storedState = TrackingState.fromName(config.trackingState)
+        val state = if (enabled && !TrackingService.isRunning) {
+            TrackingState.SERVICE_RECOVERY
+        } else {
+            storedState
+        }
+        binding.stateText.text = stateText(state)
         val toggle = binding.toggleButton
         toggle.setText(if (enabled) R.string.stop else R.string.start)
         toggle.icon = ContextCompat.getDrawable(
             this, if (enabled) R.drawable.ic_stop else R.drawable.ic_play
         )
+        toggle.isEnabled = !detailsTransition
 
         val lines = mutableListOf<String>()
         val now = System.currentTimeMillis()
+        lines += getString(R.string.log_state, stateText(state))
 
         val journey = config.journeyStartAt
-        if (journey > 0) {
+        if (enabled && journey > 0) {
             val elapsed = (now - journey).coerceAtLeast(0)
             val hours = elapsed / 3_600_000
             val minutes = (elapsed % 3_600_000) / 60_000
@@ -258,10 +289,10 @@ class MainActivity : AppCompatActivity() {
             lines += getString(R.string.log_journey_off)
         }
 
-        lines += if (MqttStatus.status == MqttStatus.CONNECTED) {
-            getString(R.string.log_server_on)
-        } else {
-            getString(R.string.log_server_off)
+        lines += when (MqttStatus.status) {
+            MqttStatus.CONNECTED -> getString(R.string.log_server_on)
+            MqttStatus.CONNECTING -> getString(R.string.log_server_connecting)
+            else -> getString(R.string.log_server_off)
         }
 
         val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
@@ -274,22 +305,98 @@ class MainActivity : AppCompatActivity() {
         if (lastAck > 0) {
             lines += getString(R.string.log_last_ack, agoText(lastAck))
         }
+        val lastFix = config.lastFixAt
+        if (lastFix > 0) {
+            lines += getString(R.string.log_last_fix, agoText(lastFix))
+        }
 
         lifecycleScope.launch {
-            val pending = withContext(Dispatchers.IO) {
-                runCatching { (application as DmujeresApp).database.positionDao().count() }.getOrDefault(0)
+            val pendingInfo = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dao = (application as DmujeresApp).database.positionDao()
+                    dao.count() to dao.oldestEnqueuedAt()
+                }.getOrDefault(0 to null)
             }
+            val pending = pendingInfo.first
             lines += if (pending > 0) getString(R.string.log_pending, pending)
             else getString(R.string.log_pending_none)
+            if (pending > 0 && pendingInfo.second != null) {
+                lines += getString(R.string.log_oldest_pending, agoText(pendingInfo.second!!))
+            }
             if (battery in 1..20) {
                 lines += getString(R.string.log_warn_battery)
             }
-            val lastFix = config.lastFixAt
             if (lastFix > 0 && now - lastFix > 5 * 60_000) {
                 lines += getString(R.string.log_warn_gps)
             }
             binding.logText.text = lines.joinToString("\n")
+            if (!detailsTransition
+                || (enabled && TrackingService.isRunning && state != TrackingState.SERVICE_RECOVERY)
+                || (!enabled && !TrackingService.isRunning)
+            ) {
+                endDetailsLoading()
+            }
         }
+    }
+
+    private fun stateText(state: TrackingState): String = when (state) {
+        TrackingState.TRACKING_ACTIVE -> getString(R.string.state_active)
+        TrackingState.GPS_DISABLED -> getString(R.string.state_gps)
+        TrackingState.NETWORK_OFFLINE -> getString(R.string.state_network)
+        TrackingState.MQTT_DISCONNECTED -> getString(R.string.state_server)
+        TrackingState.SERVER_UNAVAILABLE -> getString(R.string.state_server)
+        TrackingState.PENDING_ACK_TIMEOUT -> getString(R.string.state_pending)
+        TrackingState.BATTERY_LOW -> getString(R.string.state_battery)
+        TrackingState.BUFFER_FULL -> getString(R.string.state_buffer)
+        TrackingState.PERMISSION_MISSING -> getString(R.string.state_permission)
+        TrackingState.SERVICE_RECOVERY -> getString(R.string.state_recovery)
+        TrackingState.TRACKING_DISABLED_BY_USER -> getString(R.string.tracking_off)
+    }
+
+    private fun beginDetailsLoading() {
+        detailsTransition = true
+        binding.detailsLoading.visibility = android.view.View.VISIBLE
+        binding.logText.visibility = android.view.View.GONE
+        skeletonAnimator?.cancel()
+        skeletonAnimator = ObjectAnimator.ofFloat(binding.detailsLoading, "alpha", 0.45f, 1f).apply {
+            duration = 650
+            repeatMode = ObjectAnimator.REVERSE
+            repeatCount = ObjectAnimator.INFINITE
+            start()
+        }
+        uiHandler.removeCallbacks(detailsTransitionTimeout)
+        uiHandler.postDelayed(detailsTransitionTimeout, 15_000)
+    }
+
+    private fun endDetailsLoading() {
+        detailsTransition = false
+        uiHandler.removeCallbacks(detailsTransitionTimeout)
+        skeletonAnimator?.cancel()
+        skeletonAnimator = null
+        binding.detailsLoading.visibility = android.view.View.GONE
+        binding.detailsLoading.alpha = 1f
+        binding.logText.visibility = android.view.View.VISIBLE
+        binding.toggleButton.isEnabled = true
+    }
+
+    private fun confirmFinishJourney() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.finish_confirm_title)
+            .setMessage(R.string.finish_confirm_body)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.finish_confirm_button) { _, _ -> finishJourney() }
+            .show()
+    }
+
+    private fun finishJourney() {
+        // Captura el resumen antes de que el servicio resetee las métricas al cerrar.
+        beginDetailsLoading()
+        showJourneySummary()
+        config.journeyStopRequested = true
+        config.trackingEnabled = false
+        config.trackingState = TrackingState.TRACKING_DISABLED_BY_USER.name
+        TrackingService.stop(this)
+        refreshState()
     }
 
     private fun agoText(timestamp: Long): String {
@@ -311,12 +418,13 @@ class MainActivity : AppCompatActivity() {
         val duration = getString(R.string.journey_duration, hours, minutes)
         val km = String.format(java.util.Locale.US, "%.1f", config.journeyDistanceM / 1000.0)
         val points = config.journeyPoints
-        val summary = "$duration|$km|$points"
+        val confirmedPoints = config.journeyConfirmedPoints
+        val summary = "$duration|$km|$points|$confirmedPoints"
         config.lastJourneySummary = summary
         config.lastSummaryNotified = ""
         AlertDialog.Builder(this)
             .setTitle(R.string.journey_summary_title)
-            .setMessage(getString(R.string.journey_summary_body, duration, km, points))
+            .setMessage(getString(R.string.journey_summary_body, duration, km, points, confirmedPoints))
             .setPositiveButton(R.string.dialog_close, null)
             .show()
     }
@@ -325,14 +433,24 @@ class MainActivity : AppCompatActivity() {
     private fun checkForUpdate(auto: Boolean) {
         lifecycleScope.launch {
             val latest = withContext(Dispatchers.IO) { UpdateManager.check(config.serverUrl) }
-            if (latest == null || !UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
+            if (latest == null) {
                 hideUpdateBanner()
+                Notifications.clearUpdateAvailable(this@MainActivity)
+                if (!auto) {
+                    Toast.makeText(this@MainActivity, R.string.update_unreachable, Toast.LENGTH_LONG).show()
+                }
+                return@launch
+            }
+            if (!UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
+                hideUpdateBanner()
+                Notifications.clearUpdateAvailable(this@MainActivity)
                 if (!auto) {
                     Toast.makeText(this@MainActivity, R.string.update_no_new, Toast.LENGTH_SHORT).show()
                 }
                 return@launch
             }
             latestUpdate = latest
+            Notifications.updateAvailable(this@MainActivity, latest.version)
             if (auto) {
                 showUpdateBanner()
             } else {

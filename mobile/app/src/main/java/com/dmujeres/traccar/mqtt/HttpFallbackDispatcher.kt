@@ -21,7 +21,7 @@ object HttpFallbackDispatcher {
     /** Intenta vaciar la cola por HTTP. Devuelve cuántos mensajes se confirmaron. */
     suspend fun flush(dao: PositionDao, config: AppConfig): Int {
         val pending = try {
-            dao.allOrdered().take(BATCH_SIZE)
+            dao.allOrdered(BATCH_SIZE)
         } catch (e: Exception) {
             return 0
         }
@@ -57,6 +57,7 @@ object HttpFallbackDispatcher {
             }
             val results = JSONObject(body).optJSONArray("results") ?: return 0
             var confirmed = 0
+            val pendingById = pending.associateBy { it.messageId }
             for (i in 0 until results.length()) {
                 val item = results.getJSONObject(i)
                 val messageId = item.optString("messageId")
@@ -65,7 +66,20 @@ object HttpFallbackDispatcher {
                 if (status == "accepted" || status == "duplicate" || status == "rejected"
                     || status == "invalid" || status == "expired"
                 ) {
-                    dao.delete(messageId)
+                    val deleted = dao.delete(messageId)
+                    if (deleted == 0) continue
+                    val pendingItem = pendingById[messageId]
+                    val isCurrentPosition = pendingItem?.let {
+                        it.journeyId == config.journeyStartAt &&
+                            runCatching { JSONObject(it.payload).optString("type") == "position" }
+                                .getOrDefault(false)
+                    } == true
+                    if ((status == "accepted" || status == "duplicate")
+                        && config.journeyStartAt > 0L
+                        && isCurrentPosition
+                    ) {
+                        config.recordJourneyConfirmed(pendingItem?.journeyId ?: 0L)
+                    }
                     confirmed += 1
                 }
             }

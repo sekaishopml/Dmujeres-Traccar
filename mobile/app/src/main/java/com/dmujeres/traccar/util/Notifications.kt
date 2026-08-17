@@ -14,9 +14,13 @@ object Notifications {
 
     const val CHANNEL_ID = "dmj_tracking"
     const val CHANNEL_ALERTS = "dmj_alerts"
+    const val CHANNEL_UPDATES = "dmj_updates"
     const val NOTIFICATION_ID = 1
     const val ALERT_ID = 2
     const val WAKE_ID = 3
+    const val CONNECTION_ALERT_ID = 4
+    const val BATTERY_ALERT_ID = 5
+    const val UPDATE_BADGE_ID = 6
 
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -31,8 +35,35 @@ object Notifications {
         ).apply {
             description = context.getString(R.string.channel_alerts)
         }
+        val updates = NotificationChannel(
+            CHANNEL_UPDATES, context.getString(R.string.channel_updates), NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = context.getString(R.string.channel_updates)
+            setShowBadge(true)
+        }
         manager.createNotificationChannel(ongoing)
         manager.createNotificationChannel(alerts)
+        manager.createNotificationChannel(updates)
+    }
+
+    /** Badge persistente en el icono de la app cuando hay una versión nueva disponible. */
+    fun updateAvailable(context: Context, version: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
+            .setContentTitle(context.getString(R.string.update_badge_title))
+            .setContentText(context.getString(R.string.update_badge_text, version))
+            .setSmallIcon(R.drawable.ic_stat_pin)
+            .setContentIntent(pendingIntent(context))
+            .setNumber(1)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        manager.notify(UPDATE_BADGE_ID, notification)
+    }
+
+    fun clearUpdateAvailable(context: Context) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(UPDATE_BADGE_ID)
     }
 
     fun foregroundNotification(context: Context, title: String, text: String): Notification {
@@ -48,7 +79,7 @@ object Notifications {
     }
 
     /** Alerta puntual con sonido (conectado/desconectado, inicio/fin de jornada, avisos). */
-    fun alert(context: Context, title: String, text: String) {
+    fun alert(context: Context, title: String, text: String, notificationId: Int = ALERT_ID) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
             .setContentTitle(title)
@@ -58,7 +89,7 @@ object Notifications {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
-        manager.notify(ALERT_ID, notification)
+        manager.notify(notificationId, notification)
     }
 
     /** Notificación de máxima prioridad que ENCIENDE la pantalla (con permiso). */
@@ -68,7 +99,7 @@ object Notifications {
         val pending = PendingIntent.getActivity(
             context, 3, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+        if (android.os.Build.VERSION.SDK_INT >= 34
             && !manager.canUseFullScreenIntent()
         ) {
             alert(context, title, text)

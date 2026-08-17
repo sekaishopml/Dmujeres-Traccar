@@ -39,10 +39,12 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -68,13 +70,13 @@ class TrackingService : Service() {
 
         fun stop(context: Context) {
             val intent = Intent(context, TrackingService::class.java).setAction(ACTION_STOP)
-            context.startService(intent)
+            runCatching { context.startService(intent) }
+                .onFailure { ContextCompat.startForegroundService(context, intent) }
         }
     }
 
-    private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
-        Log.e(TAG, "Error en corutina del servicio", e)
-    })
+    private var serviceScope = newServiceScope()
+    private val stopControllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var config: AppConfig
     private lateinit var dao: com.dmujeres.traccar.db.PositionDao
     private var fused: FusedLocationProviderClient? = null
@@ -83,6 +85,10 @@ class TrackingService : Service() {
     @Volatile private var currentState = TrackingState.TRACKING_DISABLED_BY_USER
     @Volatile private var startedTrackingAt = 0L
     private val enqueueMutex = Mutex()
+    @Volatile private var stopping = false
+    @Volatile private var pendingStart = false
+    private var stopJob: Job? = null
+    @Volatile private var capturePausedForBuffer = false
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -93,28 +99,49 @@ class TrackingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        isRunning = true
         Notifications.ensureChannel(this)
         config = AppConfig(this)
         try {
             dao = (application as DmujeresApp).database.positionDao()
         } catch (e: Exception) {
             Log.e(TAG, "No se pudo abrir la base de datos", e)
+            config.trackingEnabled = false
             config.lastStartError = "Error de base de datos: " + (e.message ?: e.javaClass.simpleName)
+            publishState(TrackingState.SERVER_UNAVAILABLE)
             stopSelf()
             return
         }
         fused = LocationServices.getFusedLocationProviderClient(this)
+        isRunning = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
                 config.trackingEnabled = false
-                stopTracking()
+                pendingStart = false
+                if (started.get() || stopping || config.journeyStartAt > 0L) {
+                    stopTracking()
+                } else {
+                    publishState(TrackingState.TRACKING_DISABLED_BY_USER)
+                    config.journeyStopRequested = false
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
                 return START_NOT_STICKY
             }
             else -> {
+                if (stopping) {
+                    pendingStart = true
+                    config.trackingEnabled = true
+                    return START_STICKY
+                }
+                if (config.journeyStopRequested && config.journeyStartAt > 0L && !started.get()) {
+                    pendingStart = true
+                    config.trackingEnabled = true
+                    stopTracking()
+                    return START_STICKY
+                }
                 if (!config.trackingEnabled) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
@@ -124,15 +151,30 @@ class TrackingService : Service() {
                     ServiceCompat.startForeground(
                         this,
                         Notifications.NOTIFICATION_ID,
-                        Notifications.foregroundNotification(this, "Tracking", "Arrancando…"),
+                        Notifications.foregroundNotification(
+                            this,
+                            getString(R.string.app_name),
+                            getString(R.string.tracking_starting),
+                        ),
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                     )
-                } catch (e: SecurityException) {
-                    // No desactivar la jornada: es un fallo transitorio del sistema.
-                    config.lastStartError = "Sin permiso de ubicación en segundo plano"
+                } catch (e: Exception) {
+                    val permissionFailure = e is SecurityException
+                    config.trackingEnabled = !permissionFailure
+                    config.lastStartError = if (permissionFailure) {
+                        "Sin permiso de ubicación en segundo plano"
+                    } else {
+                        "No se pudo iniciar el servicio de seguimiento"
+                    }
+                    publishState(
+                        if (permissionFailure) TrackingState.PERMISSION_MISSING
+                        else TrackingState.SERVER_UNAVAILABLE,
+                    )
+                    Notifications.alert(this, getString(R.string.warning_title), config.lastStartError)
                     stopSelf()
                     return START_NOT_STICKY
                 }
+                config.lastStartError = ""
                 startTracking()
             }
         }
@@ -141,17 +183,30 @@ class TrackingService : Service() {
 
     private fun startTracking() {
         if (started.getAndSet(true)) return
-        serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
-            Log.e(TAG, "Error en corutina del servicio", e)
-        })
-        startedTrackingAt = System.currentTimeMillis()
-        config.journeyStartAt = startedTrackingAt
-        config.journeyDistanceM = 0.0
-        config.journeyPoints = 0
-        lastJourneyLat = 0.0
-        lastJourneyLon = 0.0
-
-        Notifications.alert(this, getString(R.string.jornada_iniciada), getString(R.string.jornada_iniciada_body))
+        serviceScope = newServiceScope()
+        stopping = false
+        val recoveringJourney = config.journeyStartAt > 0L
+        startedTrackingAt = if (recoveringJourney) config.journeyStartAt else System.currentTimeMillis()
+        lastJourneyLat = if (recoveringJourney) config.journeyLastLat else 0.0
+        lastJourneyLon = if (recoveringJourney) config.journeyLastLon else 0.0
+        capturePausedForBuffer = false
+        if (!recoveringJourney) {
+            config.journeyStartAt = startedTrackingAt
+            config.journeyDistanceM = 0.0
+            config.journeyPoints = 0
+            config.journeyConfirmedPoints = 0
+            config.journeyLastLat = 0.0
+            config.journeyLastLon = 0.0
+            config.journeyHasLastLocation = false
+            config.journeyStopRequested = false
+            Notifications.alert(this, getString(R.string.jornada_iniciada), getString(R.string.jornada_iniciada_body))
+            enqueuePresence("started")
+        } else {
+            Notifications.alert(this, getString(R.string.service_recovery_title), getString(R.string.service_recovery_body))
+            // Reafirma el inicio después de una muerte del proceso; el estado online es idempotente.
+            enqueuePresence("started")
+        }
+        publishState(TrackingState.SERVICE_RECOVERY)
         val manager = MqttManager(
             context = this,
             config = config,
@@ -161,12 +216,17 @@ class TrackingService : Service() {
         )
         mqtt = manager
         manager.connect()
-        enqueuePresence("started")
 
         requestLocationUpdates()
         registerNetworkCallback()
         serviceScope.launch { watchdogLoop() }
+        refreshStateAndNotify()
     }
+
+    private fun newServiceScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            Log.e(TAG, "Error en corutina del servicio", e)
+        })
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
@@ -204,21 +264,30 @@ class TrackingService : Service() {
     @Volatile private var lastJourneyLat = 0.0
     @Volatile private var lastJourneyLon = 0.0
 
-    @Volatile private var lastDisconnectAlertAt = 0L
     @Volatile private var lastConnectAlertAt = 0L
+    @Volatile private var connectionUnavailableSince = 0L
+    @Volatile private var lastConnectionAlertAt = 0L
+    @Volatile private var lastBatteryAlertAt = 0L
 
     private fun onMqttStateChanged() {
         val status = MqttStatus.status
+        if (started.get()) {
+            when (status) {
+                MqttStatus.CONNECTING -> publishState(TrackingState.SERVICE_RECOVERY)
+                MqttStatus.DISCONNECTED -> publishState(TrackingState.MQTT_DISCONNECTED)
+                MqttStatus.CONNECTED -> if (mqtt?.ready == true && config.lastFixAt >= startedTrackingAt) {
+                    publishState(TrackingState.TRACKING_ACTIVE)
+                } else {
+                    publishState(TrackingState.SERVICE_RECOVERY)
+                }
+            }
+        }
         if (status != lastMqttStatus) {
             val now = System.currentTimeMillis()
             when (status) {
                 MqttStatus.CONNECTED -> if (now - lastConnectAlertAt > 5 * 60_000) {
                     lastConnectAlertAt = now
                     Notifications.alert(this, getString(R.string.connected_title), getString(R.string.connected_body))
-                }
-                MqttStatus.DISCONNECTED -> if (now - lastDisconnectAlertAt > 5 * 60_000) {
-                    lastDisconnectAlertAt = now
-                    Notifications.alert(this, getString(R.string.disconnected_title), getString(R.string.disconnected_body))
                 }
             }
             lastMqttStatus = status
@@ -244,7 +313,16 @@ class TrackingService : Service() {
                 return
             }
             task.addOnSuccessListener {
-                if (started.get()) setState(TrackingState.TRACKING_ACTIVE)
+                if (started.get()) {
+                    if (mqtt?.ready == true) {
+                        setState(TrackingState.TRACKING_ACTIVE)
+                    } else if (MqttStatus.status == MqttStatus.DISCONNECTED) {
+                        setState(TrackingState.MQTT_DISCONNECTED)
+                    } else {
+                        publishState(TrackingState.SERVICE_RECOVERY)
+                        refreshStateAndNotify()
+                    }
+                }
             }
             task.addOnFailureListener { error ->
                 Log.e(TAG, "No se pudieron solicitar actualizaciones de ubicación", error)
@@ -262,42 +340,68 @@ class TrackingService : Service() {
         }
     }
 
-    /** Encola una señal de presencia (heartbeat o inicio/fin de jornada). */
-    private fun enqueuePresence(journeyStatus: String? = null) {
-        val deviceId = config.deviceId
-        if (deviceId.isBlank()) return
-        val sequence = config.nextSequence()
-        val messageId = Envelope.newMessageId(deviceId, sequence)
-        val telemetry = telemetry()
-        val payload = Envelope.buildPresence(
-            messageId = messageId,
-            deviceId = deviceId,
-            sequence = sequence,
-            pending = telemetry.pending,
-            battery = telemetry.battery,
-            network = telemetry.network,
-            vendor = telemetry.vendor,
-            model = telemetry.model,
-            appVersion = telemetry.appVersion,
-            gps = telemetry.gps,
-            journeyStatus = journeyStatus,
-        )
-        val pending = PendingPosition(
-            messageId = messageId,
-            deviceId = deviceId,
-            sequence = sequence,
-            payload = payload,
-            observedAt = Envelope.nowIso(),
-        )
-        serviceScope.launch {
-            withContext(Dispatchers.IO) { dao.insert(pending) }
-            mqtt?.wakeDispatch()
+    /** Encola una señal de presencia con la misma política y secuencia que una posición. */
+    private fun enqueuePresence(
+        journeyStatus: String? = null,
+        targetScope: CoroutineScope = serviceScope,
+        targetMqtt: MqttManager? = null,
+    ): Job = targetScope.launch {
+        try {
+            enqueueMutex.withLock {
+                val deviceId = config.deviceId
+                if (deviceId.isBlank()) return@withLock
+                if (journeyStatus == null && (!started.get() || stopping)) return@withLock
+                if (journeyStatus == "started" && stopping) return@withLock
+                val sequence = withContext(Dispatchers.IO) {
+                    dao.nextSequence(config.sequence)
+                }
+                config.sequence = sequence
+                val messageId = Envelope.newMessageId(deviceId, sequence)
+                val telemetry = telemetry()
+                val observedAt = Envelope.nowIso()
+                val payload = Envelope.buildPresence(
+                    messageId = messageId,
+                    deviceId = deviceId,
+                    sequence = sequence,
+                    pending = telemetry.pending,
+                    battery = telemetry.battery,
+                    network = telemetry.network,
+                    vendor = telemetry.vendor,
+                    model = telemetry.model,
+                    appVersion = telemetry.appVersion,
+                    gps = telemetry.gps,
+                    journeyStatus = journeyStatus,
+                )
+                val pending = PendingPosition(
+                    messageId = messageId,
+                    deviceId = deviceId,
+                    sequence = sequence,
+                    payload = payload,
+                    observedAt = observedAt,
+                    isControl = journeyStatus != null,
+                    journeyId = config.journeyStartAt,
+                )
+                val inserted = withContext(Dispatchers.IO) {
+                    dao.insertWithinLimit(pending, config.bufferMax)
+                }
+                if (inserted < 0) {
+                    Log.w(TAG, "No hay espacio para encolar presencia $journeyStatus")
+                    return@withLock
+                }
+                config.lastEnqueuedAt = maxOf(config.lastEnqueuedAt, System.currentTimeMillis())
+                (targetMqtt ?: mqtt)?.wakeDispatch()
+            }
             refreshStateAndNotify()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "No se pudo guardar la presencia en Room", e)
         }
     }
 
     /** Si no hay fix de GPS reciente (parking interior/plaza), envía 'presence' con telemetría. */
     private fun sendPresenceHeartbeat() {
+        if (!started.get() || stopping) return
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
         val fixStaleAfter = maxOf(60_000L, config.intervalSeconds * 3_000L)
@@ -327,10 +431,12 @@ class TrackingService : Service() {
         val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = when {
+            connectivity.getNetworkCapabilities(connectivity.activeNetwork)?.let {
+                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    && it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+            } == true -> "wifi"
             connectivity.getNetworkCapabilities(connectivity.activeNetwork)
-                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "wifi"
-            connectivity.getNetworkCapabilities(connectivity.activeNetwork)
-                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true -> "mobile"
+                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true -> "mobile"
             else -> "none"
         }
         val gpsMode = Settings.Secure.getInt(contentResolver, Settings.Secure.LOCATION_MODE, 0)
@@ -359,20 +465,30 @@ class TrackingService : Service() {
         return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
     }
 
+    private fun observedAt(location: Location): String =
+        if (location.time > 0L) Instant.ofEpochMilli(location.time).toString() else Envelope.nowIso()
+
+    private fun pauseCaptureForBuffer() {
+        if (capturePausedForBuffer) return
+        capturePausedForBuffer = true
+        runCatching { fused?.removeLocationUpdates(locationCallback) }
+    }
+
+    private fun resumeCaptureAfterBuffer() {
+        if (!capturePausedForBuffer) return
+        capturePausedForBuffer = false
+        requestLocationUpdates()
+    }
+
     private fun onNewLocation(location: Location) {
-        if (!location.isValidLocation()) return
+        if (!started.get() || stopping || !location.isValidLocation()) return
         config.lastFixAt = System.currentTimeMillis()
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
-        if (lastJourneyLat != 0.0) {
-            config.journeyDistanceM += distanceMeters(lastJourneyLat, lastJourneyLon, location.latitude, location.longitude)
-        }
-        lastJourneyLat = location.latitude
-        lastJourneyLon = location.longitude
-        config.journeyPoints = config.journeyPoints + 1
         serviceScope.launch {
             try {
                 enqueueMutex.withLock {
+                    if (!started.get() || stopping) return@withLock
                     val currentCount = withContext(Dispatchers.IO) { dao.count() }
                     if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE
                         && currentCount >= config.bufferMax
@@ -386,16 +502,21 @@ class TrackingService : Service() {
                                 getString(R.string.buffer_full_stop_body),
                             )
                         }
+                        pauseCaptureForBuffer()
+                        setState(TrackingState.BUFFER_FULL)
                         return@withLock
                     }
-                    val sequence = config.nextSequence()
+                    val sequence = withContext(Dispatchers.IO) {
+                        dao.nextSequence(config.sequence)
+                    }
+                    config.sequence = sequence
                     val messageId = Envelope.newMessageId(deviceId, sequence)
-                    val observedAt = Envelope.nowIso()
+                    val observedAt = observedAt(location)
                     val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
                     val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                     val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
                     val network = if (connectivity.getNetworkCapabilities(connectivity.activeNetwork)
-                            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) "online" else "none"
+                            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) "online" else "none"
                     val payload = Envelope.buildPosition(
                         messageId = messageId,
                         deviceId = deviceId,
@@ -403,9 +524,11 @@ class TrackingService : Service() {
                         latitude = location.latitude,
                         longitude = location.longitude,
                         accuracy = location.accuracy.toDouble(),
-                        speed = location.speed.toDouble().coerceAtLeast(0.0),
-                        bearing = location.bearing.toDouble(),
-                        altitude = location.altitude.toDouble(),
+                        speed = if (location.hasSpeed()) {
+                            (location.speed.toDouble() * 3.6).coerceAtLeast(0.0)
+                        } else 0.0,
+                        bearing = if (location.hasBearing()) location.bearing.toDouble() else 0.0,
+                        altitude = if (location.hasAltitude()) location.altitude else 0.0,
                         observedAt = observedAt,
                         pending = currentCount,
                         battery = battery,
@@ -419,10 +542,29 @@ class TrackingService : Service() {
                         payload = payload,
                         observedAt = observedAt,
                         enqueuedAt = enqueuedAt,
+                        journeyId = config.journeyStartAt,
                     )
                     val discarded = withContext(Dispatchers.IO) {
                         dao.insertWithinLimit(pending, config.bufferMax)
                     }
+                    if (discarded < 0) {
+                        setState(TrackingState.BUFFER_FULL)
+                        return@withLock
+                    }
+                    if (config.journeyHasLastLocation) {
+                        config.journeyDistanceM += distanceMeters(
+                            lastJourneyLat,
+                            lastJourneyLon,
+                            location.latitude,
+                            location.longitude,
+                        )
+                    }
+                    config.journeyPoints = config.journeyPoints + 1
+                    lastJourneyLat = location.latitude
+                    lastJourneyLon = location.longitude
+                    config.journeyLastLat = location.latitude
+                    config.journeyLastLon = location.longitude
+                    config.journeyHasLastLocation = true
                     config.lastEnqueuedAt = maxOf(config.lastEnqueuedAt, System.currentTimeMillis())
                     mqtt?.wakeDispatch()
                     if (discarded > 0) {
@@ -432,6 +574,13 @@ class TrackingService : Service() {
                             getString(R.string.buffer_warning_title),
                             getString(R.string.buffer_warning_body, discarded),
                         )
+                    }
+                }
+                if (started.get()) {
+                    if (mqtt?.ready == true) {
+                        setState(TrackingState.TRACKING_ACTIVE)
+                    } else if (MqttStatus.status == MqttStatus.DISCONNECTED) {
+                        setState(TrackingState.MQTT_DISCONNECTED)
                     }
                 }
                 refreshStateAndNotify()
@@ -486,6 +635,22 @@ class TrackingService : Service() {
                 oldestPendingAt = oldestPendingAt,
             )
             val mqttUnavailable = mqtt?.ready != true
+            val networkAvailable = isNetworkAvailable()
+            val connectionUnavailable = !networkAvailable || mqttUnavailable
+
+            if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE && pendingCount >= config.bufferMax) {
+                pauseCaptureForBuffer()
+            } else if (capturePausedForBuffer && pendingCount < (config.bufferMax * 0.8).toInt()) {
+                resumeCaptureAfterBuffer()
+            }
+
+            if (connectionUnavailable) {
+                if (connectionUnavailableSince == 0L) connectionUnavailableSince = now
+            } else {
+                connectionUnavailableSince = 0L
+            }
+            maybeNotifyOperationalAlerts(now, connectionUnavailable, batteryLevel())
+
             if (mqttUnavailable && pendingCount > 0) {
                 try {
                     val flushed = HttpFallbackDispatcher.flush(dao, config)
@@ -499,7 +664,7 @@ class TrackingService : Service() {
                 }
             }
 
-            if ((gpsWithoutFix || mqttUnavailable || pendingWithoutAck)
+            if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
                 && now - lastWakeAlertAt > 20 * 60_000) {
                 lastWakeAlertAt = now
                 Notifications.wakeScreen(
@@ -516,9 +681,11 @@ class TrackingService : Service() {
                 != PackageManager.PERMISSION_GRANTED
             ) {
                 setState(TrackingState.PERMISSION_MISSING)
+            } else if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE && pendingCount >= config.bufferMax) {
+                setState(TrackingState.BUFFER_FULL)
             } else if (gpsWithoutFix) {
                 setState(TrackingState.GPS_DISABLED)
-            } else if (!isNetworkAvailable()) {
+            } else if (!networkAvailable) {
                 setState(TrackingState.NETWORK_OFFLINE)
             } else if (mqttUnavailable) {
                 setState(TrackingState.MQTT_DISCONNECTED)
@@ -532,6 +699,32 @@ class TrackingService : Service() {
         }
     }
 
+    private fun maybeNotifyOperationalAlerts(now: Long, connectionUnavailable: Boolean, battery: Int) {
+        if (connectionUnavailable) {
+            val since = connectionUnavailableSince
+            if (since > 0L && now - since >= 5 * 60_000L
+                && (lastConnectionAlertAt == 0L || now - lastConnectionAlertAt >= 30 * 60_000L)
+            ) {
+                lastConnectionAlertAt = now
+                Notifications.alert(
+                    this,
+                    getString(R.string.connection_lost_title),
+                    getString(R.string.connection_lost_body),
+                    Notifications.CONNECTION_ALERT_ID,
+                )
+            }
+        }
+        if (battery in 1..20 && (lastBatteryAlertAt == 0L || now - lastBatteryAlertAt >= 60 * 60_000L)) {
+            lastBatteryAlertAt = now
+            Notifications.alert(
+                this,
+                getString(R.string.battery_low_title),
+                getString(R.string.battery_low_body, battery),
+                Notifications.BATTERY_ALERT_ID,
+            )
+        }
+    }
+
     private fun pendingAgeExceedsLimit(now: Long, oldestPendingAt: Long?): Boolean {
         val tenMinutes = 10 * 60_000L
         val knownOldest = oldestPendingAt?.takeIf { it > 0L }
@@ -539,22 +732,29 @@ class TrackingService : Service() {
 
         // Rows created before the Room migration have no per-row timestamp. Do not use
         // the latest metric here: a newer position must not hide an older stuck row.
-        val fallback = startedTrackingAt.takeIf { it > 0L }
-            ?: listOf(
-                config.lastEnqueuedAt,
-                config.lastPublishedAt,
-                config.lastAckAt,
-            ).filter { it > 0L }.minOrNull()
-            ?: 0L
-        return fallback > 0L && now - fallback > tenMinutes
+        // Filas legacy con enqueuedAt=0 son anteriores a la migración y no deben
+        // ocultarse detrás de una métrica reciente de la jornada.
+        return true
+    }
+
+    private fun publishState(state: TrackingState) {
+        currentState = state
+        config.trackingState = state.name
     }
 
     private fun setState(state: TrackingState) {
-        if (currentState == state) return
+        if (currentState == state) {
+            config.trackingState = state.name
+            return
+        }
         val previous = currentState
-        currentState = state
+        publishState(state)
+        val delayedAlertState = state == TrackingState.NETWORK_OFFLINE
+            || state == TrackingState.MQTT_DISCONNECTED
+            || state == TrackingState.SERVER_UNAVAILABLE
+            || state == TrackingState.BATTERY_LOW
         if (state != TrackingState.TRACKING_ACTIVE && state != TrackingState.TRACKING_DISABLED_BY_USER
-            && state != TrackingState.SERVICE_RECOVERY) {
+            && state != TrackingState.SERVICE_RECOVERY && !delayedAlertState) {
             Notifications.alert(this, getString(R.string.warning_title), state.label)
         }
         if (state == TrackingState.TRACKING_ACTIVE && previous != TrackingState.TRACKING_ACTIVE) {
@@ -568,27 +768,22 @@ class TrackingService : Service() {
             val pending = withContext(Dispatchers.IO) {
                 runCatching { dao.countFlow().first() }.getOrDefault(0)
             }
-            val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
-            val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            val battery = batteryLevel()
+            val state = TrackingState.fromName(config.trackingState)
 
             val journeyStart = config.journeyStartAt
-            val journeyLine = if (journeyStart > 0) {
+            val journeyLine = if (config.trackingEnabled && journeyStart > 0) {
                 val elapsed = (System.currentTimeMillis() - journeyStart).coerceAtLeast(0)
                 val hours = elapsed / 3_600_000
                 val minutes = (elapsed % 3_600_000) / 60_000
                 getString(R.string.notif_journey_duration, hours, minutes)
             } else {
-                getString(R.string.notif_journey_active)
-            }
-
-            val statusLine = if (MqttStatus.status == MqttStatus.CONNECTED) {
-                MqttStatus.CONNECTED
-            } else {
-                MqttStatus.status
+                getString(R.string.notif_journey_finished)
             }
 
             val details = mutableListOf<String>()
-            details += statusLine
+            details += getString(R.string.notif_state, state.label)
+            details += MqttStatus.status
             if (battery in 0..100) {
                 details += getString(R.string.notif_battery, battery)
             }
@@ -612,19 +807,26 @@ class TrackingService : Service() {
     private fun isNetworkAvailable(): Boolean {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val capabilities = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
+    private fun batteryLevel(): Int =
+        (getSystemService(BATTERY_SERVICE) as BatteryManager)
+            .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+
     private fun isBatteryLow(): Boolean {
-        val manager = getSystemService(BATTERY_SERVICE) as BatteryManager
-        val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-        return level in 1..15
+        return batteryLevel() in 1..20
     }
 
     private fun Location.isValidLocation(): Boolean =
-        latitude in -90.0..90.0 && longitude in -180.0..180.0 && accuracy < 500f
+        latitude.isFinite() && longitude.isFinite()
+            && latitude in -90.0..90.0
+            && longitude in -180.0..180.0
+            && accuracy.isFinite() && accuracy >= 0f && accuracy < 500f
 
     private fun stopTracking() {
+        if (stopping) return
+        stopping = true
         started.set(false)
         networkCallback?.let {
             runCatching {
@@ -639,19 +841,59 @@ class TrackingService : Service() {
         } catch (e: Exception) {
             // ignorar
         }
-        currentState = TrackingState.TRACKING_DISABLED_BY_USER
+        publishState(TrackingState.TRACKING_DISABLED_BY_USER)
         Notifications.update(this, getString(R.string.app_name), getString(R.string.notif_journey_finished))
-        // Envía la señal de fin de jornada y espera 3 s antes de cerrar para que llegue.
-        enqueuePresence("ended")
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            mqtt?.disconnect()
-            mqtt = null
-            serviceScope.cancel()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            // Deja la notificación visible con el estado final (cerrable).
-            Notifications.finished(this, finishedJourneyText())
+        // Persiste la señal de fin antes de cerrar. Si no hay red, quedará en el outbox.
+        val closingScope = serviceScope
+        val closingMqtt = mqtt
+        val endedJob = enqueuePresence("ended", closingScope, closingMqtt)
+        stopJob = stopControllerScope.launch {
+            runCatching { endedJob.join() }
+            delay(3000)
+            withContext(Dispatchers.Main) {
+                finishStopping(closingScope, closingMqtt)
+            }
+        }
+    }
+
+    private fun finishStopping(closingScope: CoroutineScope, closingMqtt: MqttManager?) {
+        if (!stopping) return
+        closingMqtt?.disconnect()
+        if (mqtt === closingMqtt) mqtt = null
+        closingScope.cancel()
+        val finalText = finishedJourneyText()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        Notifications.finished(this, finalText)
+        stopJob = null
+
+        if (pendingStart && config.trackingEnabled) {
+            pendingStart = false
+            stopping = false
+            serviceScope = newServiceScope()
+            started.set(false)
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    Notifications.NOTIFICATION_ID,
+                    Notifications.foregroundNotification(
+                        this,
+                        getString(R.string.app_name),
+                        getString(R.string.tracking_starting),
+                    ),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+                )
+                startTracking()
+            } catch (e: Exception) {
+                config.trackingEnabled = false
+                config.lastStartError = "No se pudo reiniciar la jornada"
+                publishState(TrackingState.TRACKING_DISABLED_BY_USER)
+                stopSelf()
+            }
+        } else {
+            pendingStart = false
+            stopping = false
             stopSelf()
-        }, 3000)
+        }
     }
 
     /** Texto de la notificación final: jornada finalizada con duración y resumen. */
@@ -659,17 +901,26 @@ class TrackingService : Service() {
         val start = config.journeyStartAt
         val distanceM = config.journeyDistanceM
         val points = config.journeyPoints
+        val confirmedPoints = config.journeyConfirmedPoints
         config.journeyStartAt = 0
         config.journeyDistanceM = 0.0
         config.journeyPoints = 0
-        if (start <= 0) return getString(R.string.notif_journey_finished)
+        config.journeyConfirmedPoints = 0
+        config.journeyLastLat = 0.0
+        config.journeyLastLon = 0.0
+        config.journeyHasLastLocation = false
+        if (start <= 0) {
+            config.journeyStopRequested = false
+            return getString(R.string.notif_journey_finished)
+        }
         val elapsed = (System.currentTimeMillis() - start).coerceAtLeast(0)
         val hours = elapsed / 3_600_000
         val minutes = (elapsed % 3_600_000) / 60_000
         val duration = getString(R.string.journey_duration, hours, minutes)
         val km = String.format(java.util.Locale.US, "%.1f", distanceM / 1000.0)
+        config.lastJourneySummary = "$duration|$km|$points|$confirmedPoints"
         return if (points > 0) {
-            getString(R.string.notif_journey_finished_body, duration, km, points)
+            getString(R.string.notif_journey_finished_body, duration, km, points, confirmedPoints)
         } else {
             getString(R.string.notif_journey_finished_duration, duration)
         }
@@ -687,6 +938,11 @@ class TrackingService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        if (this::config.isInitialized && config.trackingEnabled && !stopping) {
+            publishState(TrackingState.SERVICE_RECOVERY)
+        }
+        stopJob?.cancel()
+        stopControllerScope.cancel()
         serviceScope.cancel()
         try {
             fused?.removeLocationUpdates(locationCallback)

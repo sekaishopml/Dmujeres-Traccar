@@ -17,5 +17,9 @@ data class PendingPosition(
     val observedAt: String,
     @ColumnInfo(defaultValue = "0")
     val enqueuedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0")
+    val isControl: Boolean = false,
+    @ColumnInfo(defaultValue = "0")
+    val journeyId: Long = 0L,
     val attempts: Int = 0
 )
