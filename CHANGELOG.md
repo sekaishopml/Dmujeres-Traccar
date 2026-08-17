@@ -412,3 +412,21 @@
 - Las notificaciones de desconexión solo dicen 'Desconectado del servidor' (se
   eliminó el texto 'Se intentará reconectar automáticamente…') y el estado en la
   notificación fija ya no lleva el símbolo de advertencia.
+
+## 2026-08-17 — App 1.0.27: tracking fiable, estado real y actualizaciones visibles
+
+- Cola durable en Room (versión 4, con migraciones): las posiciones ya no se pierden
+  aunque la app se cierre o haya picos de buffer; la cola se revive por HTTP si el
+  broker no responde, y los messageId son únicos y estables en cada reintento.
+- Inicio y finalización de jornada fiables: si el sistema mata el servicio, la jornada
+  se recupera sola (worker + boot) sin reiniciar el contador, y el cierre escribe el
+  resumen solo después de vaciar los pendientes.
+- Estado real en pantalla y diagnóstico: GPS, servidor (MQTT), batería, buffer, ACK
+  del último mensaje, antigüedad de pendientes y acción de 'Reintentar servicio'.
+- Alertas operativas: notificación si se pierde la conexión durante más de 5 minutos
+  y aviso por hora de batería baja (20 % o menos).
+- Ficha de detalles con skeleton de carga al iniciar o finalizar jornada, y diálogo de
+  confirmación antes de cerrar (resumen con tiempo, km, guardados y confirmados).
+- Banner 'Nueva versión disponible' (ya existía) ahora se dispara de verdad al publicar
+  la versión, y el icono de la app muestra un badge numerado mientras hay actualización.
+- Se distingue 'ya tienes la última versión' de 'no se pudo comprobar' (servidor caído).

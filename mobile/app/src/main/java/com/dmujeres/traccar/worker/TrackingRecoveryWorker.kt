@@ -5,13 +5,19 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.dmujeres.traccar.config.AppConfig
+import com.dmujeres.traccar.BuildConfig
 import com.dmujeres.traccar.R
+import com.dmujeres.traccar.DmujeresApp
 import com.dmujeres.traccar.location.TrackingService
+import com.dmujeres.traccar.mqtt.HttpFallbackDispatcher
+import com.dmujeres.traccar.mqtt.UpdateManager
 import com.dmujeres.traccar.util.Notifications
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
- * Red de seguridad: si Android o el sistema detuvieron el servicio de tracking, este worker
- * periódico lo vuelve a arrancar (solo si el usuario dejó el tracking activado).
+ * Red de seguridad: recupera el servicio activo y drena posiciones pendientes después de cerrar
+ * una jornada, sin perder el outbox si la app ya no está abierta.
  */
 class TrackingRecoveryWorker(
     context: Context,
@@ -26,9 +32,38 @@ class TrackingRecoveryWorker(
                 Log.e("TrackingRecoveryWorker", "No se pudo reactivar el servicio")
                 config.lastStartError = "La red de seguridad no pudo reactivar el servicio"
             }
+        } else if (config.journeyStopRequested && config.journeyStartAt > 0L) {
+            runCatching { TrackingService.stop(applicationContext) }
+        }
+        if (!config.trackingEnabled && !(config.journeyStopRequested && config.journeyStartAt > 0L)) {
+            val dao = (applicationContext as DmujeresApp).database.positionDao()
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    HttpFallbackDispatcher.flush(dao, config)
+                }
+            }
+            val remaining = withContext(Dispatchers.IO) { dao.count() }
+            if (remaining == 0) {
+                config.journeyStopRequested = false
+            }
         }
         maybeNotifyDailySummary(config)
+        maybeUpdateBadge(config)
         return Result.success()
+    }
+
+    /** Mantiene el badge de actualización en el icono aunque la app no se abra. */
+    private suspend fun maybeUpdateBadge(config: AppConfig) {
+        val latest = try {
+            UpdateManager.check(config.serverUrl)
+        } catch (e: Exception) {
+            null
+        } ?: return
+        if (UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
+            Notifications.updateAvailable(applicationContext, latest.version)
+        } else {
+            Notifications.clearUpdateAvailable(applicationContext)
+        }
     }
 
     /** Notifica el resumen de la última jornada finalizada (una sola vez por jornada). */
@@ -42,7 +77,13 @@ class TrackingRecoveryWorker(
         Notifications.alert(
             applicationContext,
             applicationContext.getString(R.string.daily_summary_title),
-            applicationContext.getString(R.string.daily_summary_body, parts[0], parts[1], parts[2].toLongOrNull() ?: 0),
+            applicationContext.getString(
+                R.string.daily_summary_body,
+                parts[0],
+                parts[1],
+                parts[2].toLongOrNull() ?: 0,
+                parts.getOrNull(3)?.toLongOrNull() ?: 0,
+            ),
         )
         config.lastSummaryNotified = today
     }

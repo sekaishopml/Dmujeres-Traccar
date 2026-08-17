@@ -2,7 +2,7 @@ package com.dmujeres.traccar.mqtt
 
 import org.json.JSONObject
 import java.time.Instant
-import java.util.Locale
+import java.util.UUID
 
 /**
  * Envelope v1 del contrato (docs/mqtt/protocol-v1.md). El orden de campos es fijo porque
@@ -50,7 +50,6 @@ object Envelope {
         return body.toString()
     }
 
-    /** Genera un messageId único por posición (no cambia en reintentos: se guarda en Room). */
     /** Heartbeat de presencia con telemetría (parking interior / sin fix de GPS). */
     fun buildPresence(
         messageId: String,
@@ -87,10 +86,11 @@ object Envelope {
         return body.toString()
     }
 
+    /** ID estable en Room; la parte aleatoria evita colisiones entre dispositivos con el mismo hash. */
     fun newMessageId(deviceId: String, sequence: Long): String {
         val devicePart = Integer.toUnsignedString(deviceId.hashCode(), 16).padStart(8, '0')
-        val timePart = java.lang.Long.toHexString(System.currentTimeMillis()).padStart(12, '0')
-        val sequencePart = java.lang.Long.toHexString(sequence).padStart(4, '0')
-        return ("01JAND" + devicePart + timePart + sequencePart).take(26)
+        val sequencePart = java.lang.Long.toHexString(sequence).padStart(12, '0')
+        val randomPart = UUID.randomUUID().toString().replace("-", "")
+        return "dmj-$devicePart-$sequencePart-$randomPart"
     }
 }

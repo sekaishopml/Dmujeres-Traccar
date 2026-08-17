@@ -201,3 +201,11 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 
 | PT-740 | Notificación fija 'Jornada finalizada' al terminar | ✔ PASÓ | stopTracking resetea jornada y publica notificación final cerrable con resumen |
 | PT-741 | Desconexión: solo 'Desconectado del servidor' | ✔ PASÓ | disconnected_body, MqttStatus.DISCONNECTED y log sin texto de reconexión ni ⚠ |
+
+| PT-742 | Cola durable Room v4 sin pérdidas | ✔ PASÓ | DB 2→4 con migraciones; nextSequence transaccional; messageId único estable (≤64); control events no se descartan por buffer |
+| PT-743 | Recuperación de jornada tras muerte del servicio | ✔ PASÓ | serviceScope/stopping/pendingStart; journeyStartAt persistido y restaurado; worker+boot reactivan y drenan outbox |
+| PT-744 | Estado real + diagnóstico con acción | ✔ PASÓ | estado GPS/servidor/batería/buffer/ACK/pendientes; 'Reintentar servicio de seguimiento' en diagnóstico |
+| PT-745 | Alertas batería baja y pérdida de conexión ≥5 min | ✔ PASÓ | CONNECTION_ALERT_ID/BATTERY_ALERT_ID con umbrales 5 min y 20 % |
+| PT-746 | Skeleton de detalles + confirmación de cierre | ✔ PASÓ | detailsLoading con pulso (650 ms), diálogo de confirmación y resumen guardados/confirmados |
+| PT-747 | Badge numerado de actualización en el icono | ✔ PASÓ | CHANNEL_UPDATES con setShowBadge(true) + setNumber(1); worker cada 15 min lo repone sin abrir la app |
+| PT-748 | Banner de actualización se dispara con latest.json | ✔ PASÓ | latest.json → 1.0.27/28; check distingue 'última versión' de 'servidor inalcanzable' |
