@@ -484,3 +484,10 @@
 - NOTA: la app Android sigue apuntando al servidor por defecto `tcp://64.176.219.221:1883`
   (IP antigua); habría que actualizar `AppConfig.DEFAULT_SERVER` a `tcp://68.168.20.219:1883`
   y publicar un release nuevo para que los colaboradores conecten a este entorno.
+
+## 2026-08-17 — App 1.0.31: servidor por defecto actualizado al entorno actual
+
+- `AppConfig.DEFAULT_SERVER` actualizado de `tcp://64.176.219.221:1883` a
+  `tcp://68.168.20.219:1883` (IP pública del entorno actual, puerto MQTT 1883 ya abierto
+  en el firewall).
+- APK 1.0.31 (versionCode 32) compilado y release publicado; latest.json → 1.0.31.
