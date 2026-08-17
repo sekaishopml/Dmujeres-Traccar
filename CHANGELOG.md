@@ -473,3 +473,14 @@
   fondo, se le lleva directo a los ajustes de la app en lugar de re-mostrar el diálogo.
 - El paso 1 del onboarding solo se marca como completado cuando el permiso de fondo
   está concedido.
+
+## 2026-08-17 — Acceso externo al dashboard habilitado
+
+- `web.address` del server pasa de `127.0.0.1` a `0.0.0.0` (config dev y template
+  `traccar-dev.xml.example`): el dashboard queda servido en el puerto 8082 para toda
+  la red.
+- Firewall (ufw): abiertos los puertos `8082/tcp` (dashboard) y `1883/tcp` (MQTT móvil).
+- Verificado: `http://68.168.20.219:8082/` y `/api/health` responden HTTP 200.
+- NOTA: la app Android sigue apuntando al servidor por defecto `tcp://64.176.219.221:1883`
+  (IP antigua); habría que actualizar `AppConfig.DEFAULT_SERVER` a `tcp://68.168.20.219:1883`
+  y publicar un release nuevo para que los colaboradores conecten a este entorno.
