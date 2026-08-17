@@ -370,3 +370,14 @@
 - /settings/device: el administrador configura ahora también la política del
   buffer, el tiempo de espera y los reintentos máximos; la app la descarga sola
   al iniciar sesión (GET /api/mobile/v1/config).
+
+## 2026-08-17 — App 1.0.22: diseño renovado, icono de app con el logo e iconos B/N
+
+- Icono de la app = logo DMujeres Tracking (SVG renderizado) sobre fondo blanco,
+  con variante monochrome para los iconos temáticos de Android 13+.
+- Rediseño: tarjetas blancas redondeadas para el login y la jornada; botón grande
+  de 64 dp con icono play/stop; iconos de usuario y candado (negros) en los campos.
+- Corrección clave: al pulsar 'Iniciar jornada' el botón cambia al instante a
+  'Finalizar jornada' (icono █) y vuelve a 'Iniciar jornada' (▶) al terminar.
+- Iconos en blanco y negro: actualizaciones, usuario, candado y pin de
+  notificaciones monochrome (ya no ámbar/azul).

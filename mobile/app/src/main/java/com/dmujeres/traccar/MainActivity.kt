@@ -217,8 +217,14 @@ class MainActivity : AppCompatActivity() {
 
     /** Registro de estado en lenguaje simple para el colaborador. */
     private fun refreshState() {
+        val enabled = config.trackingEnabled
         binding.stateText.text = getString(
-            if (config.trackingEnabled) R.string.tracking_on else R.string.tracking_off
+            if (enabled) R.string.tracking_on else R.string.tracking_off
+        )
+        val toggle = binding.toggleButton
+        toggle.setText(if (enabled) R.string.stop else R.string.start)
+        toggle.icon = ContextCompat.getDrawable(
+            this, if (enabled) R.drawable.ic_stop else R.drawable.ic_play
         )
 
         val lines = mutableListOf<String>()
