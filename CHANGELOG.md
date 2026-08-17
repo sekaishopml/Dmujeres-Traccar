@@ -347,3 +347,12 @@
 - El server guarda batteryLevel y network en CADA posición; las nuevas flechas del replay
   llevan su porcentaje real (verificado: posición con batería persistida).
 - Default del popup: hora, dirección, velocidad y batería.
+
+## 2026-08-16 — App 1.0.20: notificación clara y 'mostrar calle' inteligente
+
+- Notificación fija (FGS) con texto simple: 'Jornada activa: 3 h 4 min · Conectado al
+  servidor · Batería 65%', con avisos: ⚠ Sin conexión, ⚠ Batería baja, ⚠ Sin señal de GPS,
+  y pendientes por enviar. Se eliminaron las métricas técnicas (fix/enc/pub/ACK).
+- 'Mostrar calle' en /replay: skeleton de carga mientras se busca, debounce 700 ms (se
+  geocodifica una sola vez al parar de moverse) y caché por coordenadas (al volver atrás,
+  se muestra al instante).
