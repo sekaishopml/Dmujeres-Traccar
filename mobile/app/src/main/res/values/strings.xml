@@ -112,4 +112,23 @@
     <string name="notif_pending">%1$d pendientes por enviar</string>
     <string name="notif_warn_battery">⚠ Batería baja</string>
     <string name="notif_warn_gps">⚠ Sin señal de GPS</string>
+    <string name="login_title">¡Bienvenida!</string>
+    <string name="login_subtitle">Ingresa tu usuario y contraseña para iniciar tu jornada.</string>
+    <string name="login_button">Ingresar</string>
+    <string name="login_welcome">¡Hola! Ya puedes iniciar tu jornada con un toque.</string>
+    <string name="check_updates">Buscar actualizaciones</string>
+    <string name="log_journey_on">⏱️ Jornada activa: %1$d h %2$d min</string>
+    <string name="log_journey_off">⏱️ Jornada no iniciada</string>
+    <string name="log_server_on">📡 Conectado al servidor</string>
+    <string name="log_server_off">📡 Sin conexión al servidor (reintentando…)</string>
+    <string name="log_battery">🔋 Batería: %1$d%%</string>
+    <string name="log_pending">💾 %1$d ubicaciones guardadas para enviar</string>
+    <string name="log_pending_none">💾 Sin ubicaciones pendientes</string>
+    <string name="log_warn_battery">⚠ Batería baja, conecta la tablet</string>
+    <string name="log_warn_gps">⚠ Sin señal de GPS hace más de 5 minutos</string>
+    <string name="log_last_ack">📤 Confirmado por el servidor: %1$s</string>
+    <string name="ago_now">recién</string>
+    <string name="ago_minutes">hace %1$d min</string>
+    <string name="ago_hours">hace %1$d h</string>
+    <string name="splash_loading">Preparando tu app…</string>
 </resources>

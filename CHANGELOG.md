@@ -356,3 +356,17 @@
 - 'Mostrar calle' en /replay: skeleton de carga mientras se busca, debounce 700 ms (se
   geocodifica una sola vez al parar de moverse) y caché por coordenadas (al volver atrás,
   se muestra al instante).
+
+## 2026-08-17 — App 1.0.21: pantallas limpias con la marca DMujeres
+
+- Nueva pantalla de carga con el logo DMujeres Tracking y círculo de progreso.
+- Antes de iniciar sesión el colaborador completa TODOS los permisos (ubicación,
+  notificaciones, batería y GPS) en el asistente.
+- Login limpio: banner con el logo, formulario usuario/contraseña, icono de
+  actualizaciones arriba a la derecha y versión abajo a la derecha.
+- Tras iniciar sesión: UN único botón (iniciar/finalizar jornada) + registro de
+  estado en lenguaje simple (jornada, servidor, batería, pendientes, avisos).
+- Paleta adaptada de dmujeres.ec: rojo #EB0045, acento #FF1464, fondo #F6F6F6.
+- /settings/device: el administrador configura ahora también la política del
+  buffer, el tiempo de espera y los reintentos máximos; la app la descarga sola
+  al iniciar sesión (GET /api/mobile/v1/config).
