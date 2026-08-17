@@ -402,3 +402,13 @@
 - Diagnóstico con barra superior y flecha de retroceso (toolbar con vuelta animada).
 - Banner superior rojo tipo navbar cuando hay una versión nueva: se desliza desde
   arriba, dice 'Nueva versión disponible' y al tocarlo abre el diálogo de actualizar.
+
+## 2026-08-17 — App 1.0.26: estado final de jornada y notificaciones de desconexión claras
+
+- Al finalizar la jornada, la notificación fija se actualiza y queda visible con
+  'Jornada finalizada' + resumen (duración, km, puntos) y se puede cerrar.
+- La jornada se resetea al terminar: la app y las notificaciones ya no muestran
+  'Jornada activa' tras finalizar.
+- Las notificaciones de desconexión solo dicen 'Desconectado del servidor' (se
+  eliminó el texto 'Se intentará reconectar automáticamente…') y el estado en la
+  notificación fija ya no lleva el símbolo de advertencia.
