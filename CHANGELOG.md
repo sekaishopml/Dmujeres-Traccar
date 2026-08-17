@@ -444,3 +444,19 @@
     no esté abierta.
 - La notificación de nueva versión es más útil: texto expandible y botón
   'Actualizar' que abre directamente el diálogo de descarga e instalación.
+
+## 2026-08-17 — App 1.0.29: build 1.0.29 desde entorno limpio
+
+- Servidor y dashboard reconstruidos desde cero en un entorno nuevo:
+  - Infraestructura levantada con Docker Compose: TimescaleDB (pg17, :5433),
+    Redis (:6379) y EMQX 5.8.5 (MQTT :1883), los tres con healthcheck OK.
+  - Server Traccar 6.14.5 compilado con Gradle 9.5.1 / JDK 21 (migraciones
+    Liquibase aplicadas sobre TimescaleDB, 36 changesets previos + 0 nuevos).
+  - Dashboard (traccar-web 6.14.5) compilado con Vite 8 (rolldown); fix de
+    build: se añade `@rolldown/binding-linux-x64-gnu` a package.json para que
+    `npm ci` + build funcionen en Linux x64 (el optional nativo no se instalaba).
+  - Server arrancado y verificado: health `/api/health` HTTP 200, Jetty 12.1.8
+    sirviendo el dashboard en `:8082`, consumer MQTT móvil conectado al broker.
+- App Android 1.0.29 (versionCode 30) compilada con SDK 35 / AGP 8.7.3:
+  `app-debug.apk` (6.9 MB). `latest.json` actualizado para que la app detecte la
+  nueva versión en tiempo real.
