@@ -386,3 +386,8 @@
 
 - Logo del icono del launcher ampliado (escala 1.45, dentro de la zona segura del recorte circular).
 - Banner del splash 300→360 dp y del login 260→300 dp.
+
+## 2026-08-17 — App 1.0.24: icono de la app perfectamente centrado
+
+- El logo del launcher se veía desplazado abajo y a la derecha (translate Y erróneo: 430 en vez de 362).
+- Corregido y verificado píxel a píxel con un agente (bounding box del alpha): centro exacto (512,512), desviación 0 px, holgado dentro del círculo seguro.

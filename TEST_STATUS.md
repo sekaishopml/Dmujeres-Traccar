@@ -191,3 +191,5 @@ no lentitud de PostgreSQL ni pérdida del server. La app 1.0.13 requiere prueba 
 | PT-733 | Diseño en tarjetas blancas redondeadas | ✔ PASÓ | MaterialCardView 20dp, botón 64dp con icono, campos con iconos |
 
 | PT-734 | Icono de app más grande | ✔ PASÓ | escala 1.45 dentro del círculo seguro; splash/login banners ampliados |
+
+| PT-735 | Icono de app centrado (píxel exacto) | ✔ PASÓ | translate(134.2 362) scale(1.45); bbox L288 T431 R736 B593; centro (512,512) dx=0 dy=0 |
