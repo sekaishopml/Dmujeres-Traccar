@@ -1,38 +1,50 @@
-# DMujeres Traccar Platform
+# DMujeres Traccar
 
-Plataforma privada de tracking GPS (una sola empresa) basada en **Traccar v6.14.5**
-(hard fork), con canal móvil confiable, dashboard optimizado y app Android propia.
+Sistema de tracking GPS para una sola empresa. Fork de Traccar v6.14.5.
 
-> Entorno privado y confidencial — sin multi-tenancy (decisión D-012).
+## Qué tiene
 
-## Componentes
+- Server en Java con MQTT para que la app reporte ubicación
+- Dashboard web (React) para ver los dispositivos en el mapa
+- App Android que manda GPS aunque la pantalla esté apagada
+- Docker Compose para levantar todo (TimescaleDB, Redis, EMQX)
 
-| Carpeta | Qué es |
-|---|---|
-| `server/` | Fork del server Traccar (Java 21, Jetty 12, PostgreSQL/TimescaleDB) con canal MQTT QoS1 + ACK + deduplicación atómica y HTTP fallback |
-| `dashboard/` | Fork de traccar-web (React 19, MapLibre) optimizado sin rediseño; Google Maps por defecto |
-| `mobile/` | App Android (Kotlin): foreground service, GPS, cola offline, watchdog |
-| `infrastructure/` | Docker Compose dev/prod, scripts (backup/restore/compresión), tests de integración y carga |
-| `docs/` | Arquitectura, ADRs, decisiones, seguridad, despliegue y mediciones |
-
-## Requisitos
-
-- Docker + Docker Compose (TimescaleDB, Redis, EMQX)
-- JDK 21 (server) · Node 20 (dashboard) · Android SDK 34 (app)
-
-## Puesta en marcha rápida
+## Para levantar el entorno de desarrollo
 
 ```bash
-cp .env.example .env                 # y ajustar secretos
-./infrastructure/scripts/dev.sh up   # TimescaleDB + Redis + EMQX
-# Server:
+cp .env.example .env
+./infrastructure/scripts/dev.sh up
 cd server && ./gradlew build
 cd .. && ./infrastructure/scripts/run-server-dev.sh start
-# Dashboard (ya servido por el server en :8082)
 ```
 
-Documentación completa en `docs/` (empezar por `PROJECT_CONTEXT.md` y `ROADMAP.md`).
+El dashboard queda en http://localhost:8082
 
-## Releases
+## Para compilar la app Android
 
-La app Android se publica como release descargable: ver tags `v1.x.x` (APK en los assets).
+Necesitás Android SDK 34/35 y JDK 21.
+
+```bash
+cd mobile
+./gradlew assembleDebug
+```
+
+El APK queda en `mobile/app/build/outputs/apk/debug/app-debug.apk`
+
+## Estructura
+
+```
+server/          server Traccar (Java 21, Gradle)
+dashboard/       panel web (React 19, Vite)
+mobile/          app Android (Kotlin)
+infrastructure/  Docker Compose y scripts
+docs/            documentación del proyecto
+```
+
+## Cómo funciona
+
+La app manda posiciones por MQTT al server. El server las guarda en PostgreSQL y las manda al dashboard por WebSocket. Si no hay internet, la app guarda las posiciones en una cola local y las manda cuando se reconecta.
+
+## Licencia
+
+Apache 2.0 (mismo que Traccar upstream).
