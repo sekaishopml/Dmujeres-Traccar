@@ -662,24 +662,17 @@ class TrackingService : Service() {
             }
             maybeNotifyOperationalAlerts(now, connectionUnavailable, batteryLevel())
 
-            if (mqttUnavailable && pendingCount > 0) {
+            // El plan B HTTP drena la cola cuando MQTT no entrega: desconectado, o conectado
+            // pero sin ACK reciente (broker/servidor mudo, caso del bug de 3906). No depende de
+            // la antigüedad de la cola para no congelar posiciones frescas que MQTT no confirma.
+            val mqttStuck = mqttUnavailable
+                || config.lastAckAt == 0L
+                || (now - config.lastAckAt > 2 * 60_000L)
+            if (pendingCount > 0 && mqttStuck) {
                 try {
                     val flushed = HttpFallbackDispatcher.flush(dao, config)
                     if (flushed > 0) {
                         Log.i(TAG, "Fallback HTTP confirmó $flushed mensajes")
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "Fallback HTTP falló", e)
-                }
-            } else if (pendingWithoutAck && pendingCount > 0) {
-                // MQTT puede estar "listo" pero sin ACK (broker o servidor atascado).
-                // El plan B HTTP corre aunque MQTT esté conectado para que la cola no se congele.
-                try {
-                    val flushed = HttpFallbackDispatcher.flush(dao, config)
-                    if (flushed > 0) {
-                        Log.i(TAG, "Fallback HTTP confirmó $flushed mensajes (MQTT sin ACK)")
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -870,16 +863,33 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
         }
         publishState(TrackingState.TRACKING_DISABLED_BY_USER)
         Notifications.update(this, getString(R.string.app_name), getString(R.string.notif_journey_finished))
-        // Persiste la señal de fin antes de cerrar. Si no hay red, quedará en el outbox.
+        // Drena primero las posiciones ya capturadas. Si MQTT está conectado pero no entrega
+        // ACK, el cierre no puede dejar la cola abandonada al cancelar el servicio.
         val closingScope = serviceScope
         val closingMqtt = mqtt
-        val endedJob = enqueuePresence("ended", closingScope, closingMqtt)
         stopJob = stopControllerScope.launch {
+            runCatching { flushPendingOnStop() }
+
+            // Se encola después del primer drenaje para que la señal ended informe pending=0
+            // cuando la cola pudo vaciarse. El segundo drenaje entrega la señal por HTTP si
+            // MQTT sigue sin confirmar.
+            val endedJob = enqueuePresence("ended", closingScope, closingMqtt)
             runCatching { endedJob.join() }
+            runCatching { flushPendingOnStop() }
             delay(3000)
             withContext(Dispatchers.Main) {
                 finishStopping(closingScope, closingMqtt)
             }
+        }
+    }
+
+    private suspend fun flushPendingOnStop() {
+        val deadline = System.currentTimeMillis() + 90_000L
+        while (System.currentTimeMillis() < deadline) {
+            val pending = withContext(Dispatchers.IO) { dao.count() }
+            if (pending == 0) return
+            val flushed = HttpFallbackDispatcher.flush(dao, config)
+            if (flushed <= 0) return
         }
     }
 
