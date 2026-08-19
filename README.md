@@ -1,6 +1,8 @@
 # DMujeres Traccar
 
-Sistema de tracking GPS para una sola empresa. Fork de Traccar v6.14.5.
+![Logo](logo.png)
+
+Sistema de tracking GPS para la empresa Dmujeres. Fork de Traccar v6.14.5.
 
 ## Qué tiene
 
