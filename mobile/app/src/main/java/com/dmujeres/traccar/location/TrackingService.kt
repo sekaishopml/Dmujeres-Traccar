@@ -373,6 +373,7 @@ class TrackingService : Service() {
                     appVersion = telemetry.appVersion,
                     gps = telemetry.gps,
                     journeyStatus = journeyStatus,
+                    journeyId = config.journeyStartAt,
                 )
                 val pending = PendingPosition(
                     messageId = messageId,

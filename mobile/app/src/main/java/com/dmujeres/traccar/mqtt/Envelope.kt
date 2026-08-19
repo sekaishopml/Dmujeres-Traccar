@@ -62,7 +62,8 @@ object Envelope {
         model: String,
         appVersion: String,
         gps: String,
-        journeyStatus: String? = null
+        journeyStatus: String? = null,
+        journeyId: Long = 0L,
     ): String {
         val payload = JSONObject()
         payload.put("pending", pending)
@@ -74,6 +75,7 @@ object Envelope {
         payload.put("gps", gps)
         if (journeyStatus == "started") payload.put("journeyStarted", true)
         if (journeyStatus == "ended") payload.put("journeyEnded", true)
+        if (journeyId > 0L) payload.put("journeyId", journeyId)
         val body = JSONObject()
         body.put("schema", 1)
         body.put("type", "presence")
