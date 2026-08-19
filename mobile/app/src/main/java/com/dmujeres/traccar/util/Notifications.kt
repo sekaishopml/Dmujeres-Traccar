@@ -93,7 +93,7 @@ object Notifications {
             .build()
     }
 
-    /** Alerta puntual con sonido (conectado/desconectado, inicio/fin de jornada, avisos). */
+/** Alerta puntual con sonido (conectado/desconectado, inicio/fin de jornada, avisos). */
     fun alert(context: Context, title: String, text: String, notificationId: Int = ALERT_ID) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
@@ -102,6 +102,7 @@ object Notifications {
             .setSmallIcon(R.drawable.ic_stat_pin)
             .setContentIntent(pendingIntent(context))
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         manager.notify(notificationId, notification)

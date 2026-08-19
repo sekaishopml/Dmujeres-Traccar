@@ -268,6 +268,8 @@ class TrackingService : Service() {
     @Volatile private var connectionUnavailableSince = 0L
     @Volatile private var lastConnectionAlertAt = 0L
     @Volatile private var lastBatteryAlertAt = 0L
+    @Volatile private var wakeAlertActive = false
+    @Volatile private var connectionAlertActive = false
 
     private fun onMqttStateChanged() {
         val status = MqttStatus.status
@@ -638,6 +640,15 @@ class TrackingService : Service() {
             val networkAvailable = isNetworkAvailable()
             val connectionUnavailable = !networkAvailable || mqttUnavailable
 
+            if (mqttUnavailable && networkAvailable) {
+                // Reintenta conectar MQTT periódicamente aunque no haya evento de red.
+                try {
+                    mqtt?.connect()
+                } catch (e: Exception) {
+                    Log.w(TAG, "No se pudo reconectar MQTT", e)
+                }
+            }
+
             if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE && pendingCount >= config.bufferMax) {
                 pauseCaptureForBuffer()
             } else if (capturePausedForBuffer && pendingCount < (config.bufferMax * 0.8).toInt()) {
@@ -662,11 +673,25 @@ class TrackingService : Service() {
                 } catch (e: Exception) {
                     Log.w(TAG, "Fallback HTTP falló", e)
                 }
+            } else if (pendingWithoutAck && pendingCount > 0) {
+                // MQTT puede estar "listo" pero sin ACK (broker o servidor atascado).
+                // El plan B HTTP corre aunque MQTT esté conectado para que la cola no se congele.
+                try {
+                    val flushed = HttpFallbackDispatcher.flush(dao, config)
+                    if (flushed > 0) {
+                        Log.i(TAG, "Fallback HTTP confirmó $flushed mensajes (MQTT sin ACK)")
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Fallback HTTP falló", e)
+                }
             }
 
-            if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
-                && now - lastWakeAlertAt > 20 * 60_000) {
-                lastWakeAlertAt = now
+if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
+                && !wakeAlertActive) {
+                // Alerta de pantalla una sola vez por episodio, no cada 20 minutos.
+                wakeAlertActive = true
                 Notifications.wakeScreen(
                     this,
                     getString(R.string.wake_title),
@@ -676,6 +701,8 @@ class TrackingService : Service() {
                         else -> getString(R.string.wake_mqtt_body)
                     },
                 )
+            } else if (!gpsWithoutFix && !connectionUnavailable && !pendingWithoutAck) {
+                wakeAlertActive = false
             }
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED
@@ -702,9 +729,9 @@ class TrackingService : Service() {
     private fun maybeNotifyOperationalAlerts(now: Long, connectionUnavailable: Boolean, battery: Int) {
         if (connectionUnavailable) {
             val since = connectionUnavailableSince
-            if (since > 0L && now - since >= 5 * 60_000L
-                && (lastConnectionAlertAt == 0L || now - lastConnectionAlertAt >= 30 * 60_000L)
-            ) {
+            if (since > 0L && now - since >= 5 * 60_000L && !connectionAlertActive) {
+                // Una sola alerta por episodio de desconexión, no cada 30 minutos.
+                connectionAlertActive = true
                 lastConnectionAlertAt = now
                 Notifications.alert(
                     this,
@@ -713,6 +740,8 @@ class TrackingService : Service() {
                     Notifications.CONNECTION_ALERT_ID,
                 )
             }
+        } else {
+            connectionAlertActive = false
         }
         if (battery in 1..20 && (lastBatteryAlertAt == 0L || now - lastBatteryAlertAt >= 60 * 60_000L)) {
             lastBatteryAlertAt = now

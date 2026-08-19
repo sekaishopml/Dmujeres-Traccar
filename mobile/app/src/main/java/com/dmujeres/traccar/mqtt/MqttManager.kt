@@ -164,6 +164,7 @@ class MqttManager(
                 val error = errorText(cause, "Conexión perdida")
                 completeInFlightWithoutAck()
                 notifyDisconnected(error, "Sin conexión: $error")
+                scheduleConnectRetry()
             }
 
             override fun deliveryComplete(token: IMqttDeliveryToken) {
