@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "mqtt:baseline": "node mqtt-baseline.mjs",
-    "mqtt:e2e": "node mqtt-e2e.mjs",
-    "mqtt:e2e:load": "node mqtt-e2e-load.mjs",
-    "http:e2e": "node http-e2e.mjs"
+    "mqtt:smoke": "node mqtt-smoke.mjs",
+    "mqtt:test": "node mqtt-app.mjs",
+    "mqtt:load": "node mqtt-load.mjs",
+    "http:fallback": "node http-fallback.mjs"
   },
   "dependencies": {
     "mqtt": "^5.14.1"

@@ -1,8 +1,7 @@
 # DMujeres Traccar Platform — entorno de desarrollo
 # Uso: ./infrastructure/scripts/dev.sh up  (requiere .env)
-# SEGURIDAD DEV: todos los puertos bindean 127.0.0.1 (solo alcanzables localmente).
-# Para accesos externos (tests con teléfono físico en Fase 3): abrir puertos con
-# firewall explícito (ufw) y NUNCA exponer el dashboard EMQX (18083) fuera.
+# En dev los puertos bindean a 127.0.0.1. Para accesos externos abrir puertos con
+# ufw y no exponer el dashboard EMQX (18083) fuera.
 
 services:
 

@@ -48,8 +48,8 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Servicio en primer plano que captura la ubicación y la envía de forma confiable al
- * servidor (MQTT QoS1 + ACK + cola offline + watchdog).
+ * Servicio en primer plano que captura la ubicación y la envía al servidor por
+ * MQTT QoS1 con cola offline para cuando no hay conexión.
  */
 class TrackingService : Service() {
 
@@ -730,10 +730,8 @@ class TrackingService : Service() {
         val knownOldest = oldestPendingAt?.takeIf { it > 0L }
         if (knownOldest != null) return now - knownOldest > tenMinutes
 
-        // Rows created before the Room migration have no per-row timestamp. Do not use
-        // the latest metric here: a newer position must not hide an older stuck row.
-        // Filas legacy con enqueuedAt=0 son anteriores a la migración y no deben
-        // ocultarse detrás de una métrica reciente de la jornada.
+        // Las filas previas a la migración de Room tienen enqueuedAt=0; no usar la
+        // métrica más reciente porque una posición nueva ocultaría una vieja atascada.
         return true
     }
 

@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# backup.sh — snapshot de recuperación de la plataforma.
-# Respalda: (1) BD PostgreSQL/TimescaleDB (pg_dump custom), (2) .env con secretos,
-# (3) config del server (conf/), (4) inventario de versiones (server/dashboard git HEAD).
+# backup.sh — snapshot de recuperación: BD, .env, config del server y versiones.
 # Uso: scripts/backup.sh [tag]
-# Restaurar en VPS nuevo: copiar backup -> scripts/restore.sh <dump> (ver docs/deployment/).
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

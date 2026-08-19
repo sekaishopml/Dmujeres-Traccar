@@ -1,10 +1,6 @@
--- =============================================================================
 -- TimescaleDB: compresión y retención para tc_positions
--- Decisión D-014: conservar TODO (mes a mes, año a año) con 100 GB para ~5 años.
--- La compresión reduce drásticamente el espacio SIN borrar datos.
--- NO se configura borrado automático; la retención queda como opción comentada.
--- Idempotente: se puede ejecutar varias veces.
--- =============================================================================
+-- Conserva todo el histórico; la compresión reduce el espacio sin borrar datos.
+-- Se puede ejecutar varias veces sin problema.
 
 -- 1) Chunk mensual (los chunks nuevos se crean de 1 mes; mejor compresión y menos overhead)
 SELECT set_chunk_time_interval('tc_positions', INTERVAL '1 month');

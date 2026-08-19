@@ -7,8 +7,8 @@ import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.location.TrackingService
 
 /**
- * Reinicia el tracking tras el arranque del teléfono (y tras una actualización de la app),
- * solo si el usuario lo había dejado activado. La decisión de tracking la toma el usuario.
+ * Reinicia el tracking tras el arranque del teléfono o una actualización de la app,
+ * solo si el usuario lo había dejado activado.
  */
 class BootReceiver : BroadcastReceiver() {
 

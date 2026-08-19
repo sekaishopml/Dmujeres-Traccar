@@ -1,5 +1,5 @@
-// mqtt-e2e-load.mjs — carga end-to-end por MQTT contra el consumidor real
-// Publica `--messages N` en `--devices D` dispositivos y cuenta ACKs de aplicación.
+// mqtt-load.mjs — carga por MQTT contra el consumidor real
+// Publica --messages N en --devices D dispositivos y cuenta ACKs de aplicación.
 import mqtt from 'mqtt';
 
 const args = new Map();

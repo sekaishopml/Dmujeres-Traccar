@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 # restore.sh — restaura un backup de la plataforma sobre el servicio 'database'.
 # Uso: scripts/restore.sh /ruta/a/traccar-YYYYMMDD-HHMMSS.dump
-# Flujo robusto (VPS nuevo o existente):
-#   1. Detener el server Traccar (para que no escriba durante el restore).
-#   2. docker compose up -d database  (crea el volumen si no existe).
-#   3. DROP/CREATE de la BD (limpia de verdad; evita --clean sobre hipertables).
-#   4. pg_restore del dump.
-# AVISO: destruye los datos actuales de la BD.
+# Detiene el server, recrea la BD y carga el dump. Destruye los datos actuales.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then

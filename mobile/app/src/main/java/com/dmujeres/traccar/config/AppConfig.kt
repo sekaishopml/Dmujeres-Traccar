@@ -35,8 +35,8 @@ class AppConfig(context: Context) {
     }
 
     /**
-     * Usuario del colaborador (lo crea el administrador). El usuario ES el identificador
-     * del dispositivo: el topic y el envelope usan este nombre.
+     * Usuario del colaborador (lo crea el administrador). Se usa como identificador
+     * del dispositivo en el topic y el envelope.
      */
     var username: String
         get() = prefs.getString(KEY_USERNAME, "").orEmpty()

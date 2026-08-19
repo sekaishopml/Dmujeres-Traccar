@@ -40,7 +40,6 @@ server/          server Traccar (Java 21, Gradle)
 dashboard/       panel web (React 19, Vite)
 mobile/          app Android (Kotlin)
 infrastructure/  Docker Compose y scripts
-docs/            documentación del proyecto
 ```
 
 ## Cómo funciona

@@ -7,7 +7,6 @@ import com.dmujeres.traccar.mqtt.UpdateManager
 
 /**
  * Chequea la última versión publicada y deja al día la notificación/badge del icono.
- * Todos los puntos de entrada usan este único camino para no duplicar lógica.
  */
 object UpdateChecker {
 

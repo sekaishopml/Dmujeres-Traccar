@@ -16,8 +16,8 @@ import com.dmujeres.traccar.databinding.ActivityOnboardingBinding
 import com.dmujeres.traccar.util.VendorSettings
 
 /**
- * Asistente de primeros pasos: guía al colaborador por TODOS los permisos necesarios
- * (ubicación, notificaciones, batería y GPS) para que la app quede ultra activa.
+ * Asistente de primeros pasos que guía al colaborador por los permisos de
+ * ubicación, notificaciones, batería y GPS.
  */
 class OnboardingActivity : AppCompatActivity() {
 

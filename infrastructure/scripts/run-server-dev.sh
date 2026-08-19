@@ -25,10 +25,9 @@ export MOBILE_MQTT_ENABLE="${MOBILE_MQTT_ENABLE:-true}"
 export MOBILE_MQTT_URL="${MOBILE_MQTT_URL:-mqtt://127.0.0.1:1883}"
 export MOBILE_HTTP_ENABLE="${MOBILE_HTTP_ENABLE:-true}"
 export MOBILE_HTTP_API_KEY="${MOBILE_HTTP_API_KEY:-dmj-dev-fallback-key}"
-# Cliente MQTT del server en el broker EMQX (auth obligatoria en dev).
-# Usuario: dmj-consumer (ACL: subscribe +/telemetry, publish +/ack).
-# Password: default SOLO dev (auth-file.csv); definir MOBILE_MQTT_PASSWORD en .env
-# si auth-file.csv se regenera con otro password (p. ej. mqtt-users.sh).
+# Cliente MQTT del server en EMQX. Usuario dmj-consumer (ACL subscribe +/telemetry,
+# publish +/ack). El password default es solo dev; definir MOBILE_MQTT_PASSWORD en .env
+# si auth-file.csv se regenera con otro password.
 export MOBILE_MQTT_USERNAME="${MOBILE_MQTT_USERNAME:-dmj-consumer}"
 export MOBILE_MQTT_PASSWORD="${MOBILE_MQTT_PASSWORD:-dmj-consumer-dev-pass}"
 if [[ "${MOBILE_MQTT_PASSWORD}" == "dmj-consumer-dev-pass" ]]; then

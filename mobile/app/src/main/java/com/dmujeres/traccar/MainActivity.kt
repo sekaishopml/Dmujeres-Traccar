@@ -32,11 +32,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Pantalla principal, limpia para el colaborador:
- * - Antes de iniciar sesión: formulario de usuario y contraseña (más icono de
- *   actualizaciones arriba a la derecha y versión abajo a la derecha).
- * - Después de iniciar sesión: UN solo botón (iniciar/finalizar jornada) y un
- *   registro de estado fácil de entender, con acceso al diagnóstico.
+ * Pantalla principal: login con usuario y contraseña, botón de iniciar/finalizar
+ * jornada y un registro de estado, con acceso al diagnóstico.
  */
 class MainActivity : AppCompatActivity() {
 

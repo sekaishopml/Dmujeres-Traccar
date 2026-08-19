@@ -1,8 +1,8 @@
 package com.dmujeres.traccar.location
 
 /**
- * Estados diferenciados del watchdog (requisito del proyecto). El usuario puede desactivar
- * el tracking voluntariamente; TRACKING_DISABLED_BY_USER es un estado persistente.
+ * Estados del servicio de tracking. El usuario puede desactivarlo voluntariamente;
+ * TRACKING_DISABLED_BY_USER es un estado persistente.
  */
 enum class TrackingState(val label: String) {
     TRACKING_ACTIVE("Jornada activa y enviando ubicación"),

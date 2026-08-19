@@ -9,9 +9,8 @@ import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.databinding.ActivitySplashBinding
 
 /**
- * Pantalla de carga con el logo de DMujeres Tracking. Antes de entrar pide al
- * colaborador TODOS los permisos (ubicación, notificaciones, batería y GPS),
- * para que la jornada funcione aunque se cierre la pantalla.
+ * Pantalla de carga con el logo de DMujeres Tracking. Al terminar entra al
+ * onboarding o directo a la pantalla principal según si ya se configuró.
  */
 class SplashActivity : AppCompatActivity() {
 

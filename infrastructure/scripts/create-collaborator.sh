@@ -1,20 +1,9 @@
 #!/usr/bin/env bash
-# =============================================================================
-# create-collaborator.sh — crea el acceso completo de un colaborador:
-#   1) Dispositivo en Traccar (uniqueId = usuario)   → el panel lo muestra "online"
-#   2) Usuario MQTT en EMQX (usuario/contraseña)     → la app conecta con esos datos
-# El colaborador solo escribe usuario y contraseña en la app; nada más.
-#
-# Uso:
-#   scripts/create-collaborator.sh <usuario> <contraseña>
-#   scripts/create-collaborator.sh juan-001 'Clave2026!'
-#
-# Requiere en .env (ver .env.example):
-#   DASH_URL=http://localhost:8082
-#   DASH_ADMIN_EMAIL=admin@dmj.local
-#   DASH_ADMIN_PASSWORD=...
-#   EMQX_API_URL / EMQX_API_KEY / EMQX_API_SECRET (opcional; fallback admin/public dev)
-# =============================================================================
+# create-collaborator.sh — crea el acceso de un colaborador:
+# 1) Dispositivo en Traccar (uniqueId = usuario) para que el panel lo muestre online
+# 2) Usuario MQTT en EMQX (usuario/contraseña) para que la app conecte
+# Uso: scripts/create-collaborator.sh <usuario> <contraseña>
+# Requiere en .env: DASH_URL, DASH_ADMIN_EMAIL, DASH_ADMIN_PASSWORD.
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then

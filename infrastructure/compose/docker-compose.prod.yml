@@ -71,11 +71,10 @@ services:
       # Atención: los certs NO se versionan; solo su ruta.
     ports:
       - "8883:8883" # MQTT+TLS (dominio estable; cert vía certbot/reverse proxy)
-      # Dashboard admin EMQX NO se publica en producción. Para acceso de admin:
-      #   1) sin exponerlo: abrir túnel SSH:  ssh -L 18083:127.0.0.1:18083 user@host
-      #   2) o exponerlo SOLO al IP del admin con firewall y luego descomentar:
+      # Dashboard admin EMQX no se publica en producción. Para acceso de admin:
+      #   1) túnel SSH: ssh -L 18083:127.0.0.1:18083 user@host
+      #   2) o exponerlo solo a tu IP con firewall y luego descomentar:
       #      - "18083:18083"   # ufw allow from <TU_IP> to any port 18083 proto tcp
-      # NUNCA exponer 18083 a 0.0.0.0.
     volumes:
       - dmj-prod-mqttdata:/opt/emqx/data
       # Templates por defecto (infrastructure/emqx/). En PRODUCCIÓN sobreescribir con

@@ -1,4 +1,4 @@
-// http-e2e.mjs — HTTP fallback batch con el mismo envelope/idempotencia
+// http-fallback.mjs — HTTP fallback batch con el mismo envelope y deduplicación
 import crypto from 'node:crypto';
 
 const BASE = process.env.TEST_SERVER_URL || 'http://localhost:8082';

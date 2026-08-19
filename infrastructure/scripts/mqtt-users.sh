@@ -1,30 +1,15 @@
 #!/usr/bin/env bash
-# =============================================================================
-# mqtt-users.sh — gestión de usuarios MQTT (authN built_in_database) en EMQX 5.8
-# =============================================================================
-# EMQX 5.8 NO expone un comando `emqx ctl` para usuarios MQTT (solo dashboard
-# admins). La vía oficial es la API HTTP (/api/v5) o la UI. Este script la usa y
-# además genera líneas de bootstrap para auth-file.csv.
-#
-# Autenticador esperado: password_based / built_in_database (ver compose).
+# mqtt-users.sh — gestión de usuarios MQTT en EMQX 5.8 (built_in_database)
+# EMQX 5.8 no tiene comando ctl para usuarios; se usa la API HTTP o el dashboard.
 #
 # Uso:
-#   scripts/mqtt-users.sh hash <password>              # línea CSV bootstrap (sha256+sal prefix)
-#   scripts/mqtt-users.sh add <user_id> <password>     # alta en caliente vía API (también en runtime)
-#   scripts/mqtt-users.sh list                         # listar usuarios
-#   scripts/mqtt-users.sh del <user_id>                # borrar usuario
+#   scripts/mqtt-users.sh hash <password>   # genera línea CSV bootstrap
+#   scripts/mqtt-users.sh add <user> <pass> # alta vía API
+#   scripts/mqtt-users.sh list              # listar usuarios
+#   scripts/mqtt-users.sh del <user>        # borrar usuario
 #
-# Credenciales de la API EMQX (o .env):
-#   EMQX_API_URL      (default http://127.0.0.1:18083) — URL base del dashboard API
-#   EMQX_API_KEY      + EMQX_API_SECRET                 — API key de EMQX (recomendado)
-#   Si no se definen, fallback dev: login admin del dashboard con
-#   EMQX_DASHBOARD_PASSWORD (default public) — emite AVISO; NO usar en producción.
-#   Compat legacy: EMQX_API_HOST/EMQX_API_PORT (default 127.0.0.1:18083).
-#   EMQX_AUTH_ID      (default password_based:built_in_database)
-#
-# Ejemplo:
-#   ./infrastructure/scripts/mqtt-users.sh hash 'misecreto'
-#   ./infrastructure/scripts/mqtt-users.sh add juan-001 'misecreto'
+# Credenciales de la API: EMQX_API_URL, EMQX_API_KEY+EMQX_API_SECRET, o fallback
+# admin/public del dashboard en dev.
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
