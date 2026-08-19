@@ -9,6 +9,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.core.content.ContextCompat
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.dmujeres.traccar.db.AppDatabase
@@ -46,6 +48,11 @@ class DmujeresApp : Application() {
             TrackingRecoveryWorker.UNIQUE_NAME,
             ExistingPeriodicWorkPolicy.UPDATE,
             request,
+        )
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            TrackingRecoveryWorker.STARTUP_NAME,
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<TrackingRecoveryWorker>().build(),
         )
         val filter = IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION)
         ContextCompat.registerReceiver(

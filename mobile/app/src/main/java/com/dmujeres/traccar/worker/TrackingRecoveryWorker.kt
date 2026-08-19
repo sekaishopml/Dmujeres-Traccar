@@ -31,16 +31,14 @@ class TrackingRecoveryWorker(
                 Log.e("TrackingRecoveryWorker", "No se pudo reactivar el servicio")
                 config.lastStartError = "La red de seguridad no pudo reactivar el servicio"
             }
-        } else if (config.journeyStopRequested && config.journeyStartAt > 0L) {
+        } else if (config.journeyStopRequested && config.journeyStartAt > 0L
+            && TrackingService.isRunning
+        ) {
             runCatching { TrackingService.stop(applicationContext) }
         }
-        if (!config.trackingEnabled && !(config.journeyStopRequested && config.journeyStartAt > 0L)) {
+        if (!config.trackingEnabled && !TrackingService.isRunning) {
             val dao = (applicationContext as DmujeresApp).database.positionDao()
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    HttpFallbackDispatcher.flush(dao, config)
-                }
-            }
+            drainPending(dao, config)
             val remaining = withContext(Dispatchers.IO) { dao.count() }
             if (remaining == 0) {
                 config.journeyStopRequested = false
@@ -49,6 +47,23 @@ class TrackingRecoveryWorker(
         maybeNotifyDailySummary(config)
         UpdateChecker.checkAndRefreshBadge(applicationContext)
         return Result.success()
+    }
+
+    private suspend fun drainPending(dao: com.dmujeres.traccar.db.PositionDao, config: AppConfig) {
+        val deadline = System.currentTimeMillis() + 90_000L
+        while (System.currentTimeMillis() < deadline) {
+            val remaining = withContext(Dispatchers.IO) { dao.count() }
+            if (remaining == 0) return
+            val flushed = runCatching {
+                withContext(Dispatchers.IO) {
+                    HttpFallbackDispatcher.flush(dao, config)
+                }
+            }.getOrElse { error ->
+                Log.w("TrackingRecoveryWorker", "No se pudo drenar el outbox", error)
+                0
+            }
+            if (flushed <= 0) return
+        }
     }
 
     /** Notifica el resumen de la última jornada finalizada (una sola vez por jornada). */
@@ -75,5 +90,6 @@ class TrackingRecoveryWorker(
 
     companion object {
         const val UNIQUE_NAME = "tracking-recovery"
+        const val STARTUP_NAME = "tracking-recovery-startup"
     }
 }
