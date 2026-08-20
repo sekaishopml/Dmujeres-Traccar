@@ -320,6 +320,8 @@ class TrackingService : Service() {
     @Volatile private var lastBatteryAlertAt = 0L
     @Volatile private var wakeAlertActive = false
     @Volatile private var connectionAlertActive = false
+    @Volatile private var lastBatteryAdaptationAt = 0L
+    @Volatile private var lastGpsReregisterAt = 0L
 
     private fun onMqttStateChanged() {
         val status = MqttStatus.status
@@ -356,8 +358,8 @@ class TrackingService : Service() {
         }
         val request = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            config.intervalSeconds * 1000L
-        ).setMinUpdateIntervalMillis(config.intervalSeconds * 500L).build()
+            effectiveIntervalSeconds() * 1000L
+        ).setMinUpdateIntervalMillis(effectiveIntervalSeconds() * 500L).build()
         try {
             val task = fused?.requestLocationUpdates(request, locationCallback, null)
             if (task == null) {
@@ -458,7 +460,7 @@ class TrackingService : Service() {
         if (!started.get() || stopping) return
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
-        val fixStaleAfter = maxOf(60_000L, config.intervalSeconds * 3_000L)
+        val fixStaleAfter = maxOf(60_000L, effectiveIntervalSeconds() * 3_000L)
         val lastFixAt = config.lastFixAt
         val hasRecentFix = lastFixAt > 0 && System.currentTimeMillis() - lastFixAt <= fixStaleAfter
         if (hasRecentFix) return
@@ -680,10 +682,36 @@ class TrackingService : Service() {
             val oldestPendingAt = pendingInfo.second
             val lastFixAt = config.lastFixAt
             val fixForCurrentRun = lastFixAt >= startedTrackingAt && lastFixAt > 0L
-            val fixStaleAfter = maxOf(60_000L, config.intervalSeconds * 3_000L)
+            val fixStaleAfter = maxOf(60_000L, effectiveIntervalSeconds() * 3_000L)
             val gpsWithoutFix =
                 (!fixForCurrentRun && now - startedTrackingAt > 60_000L) ||
                     (fixForCurrentRun && now - lastFixAt > fixStaleAfter)
+
+            // Adaptación por batería: al cruzar el 15% se re-solicita el FLP con el nuevo intervalo.
+            val batteryNow = batteryLevel()
+            val lowBatteryNow = batteryNow in 0..100 && batteryNow < 15
+            val wasLowBattery = lastBatteryAdaptationAt != 0L
+            if (lowBatteryNow != wasLowBattery) {
+                lastBatteryAdaptationAt = if (lowBatteryNow) now else 0L
+                if (started.get() && !capturePausedForBuffer) {
+                    Log.i(TAG, if (lowBatteryNow) "Batería baja: intervalo duplicado" else "Batería normal: intervalo restaurado")
+                    runCatching { fused?.removeLocationUpdates(locationCallback) }
+                    requestLocationUpdates()
+                }
+            }
+
+            // Re-registro de GPS: si FLP dejó de entregar fixes, se re-solicita cada 2 minutos.
+            if (gpsWithoutFix && !capturePausedForBuffer && started.get()) {
+                if (now - lastGpsReregisterAt > 2 * 60_000L) {
+                    lastGpsReregisterAt = now
+                    Log.i(TAG, "GPS sin fix: re-solicitando actualizaciones de ubicación")
+                    runCatching { fused?.removeLocationUpdates(locationCallback) }
+                    requestLocationUpdates()
+                }
+            } else if (!gpsWithoutFix) {
+                lastGpsReregisterAt = 0L
+            }
+
             val pendingWithoutAck = pendingCount > 0 && pendingAgeExceedsLimit(
                 now = now,
                 oldestPendingAt = oldestPendingAt,
@@ -888,6 +916,12 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
 
     private fun isBatteryLow(): Boolean {
         return batteryLevel() in 1..20
+    }
+
+    /** Intervalo efectivo: se duplica si la batería está por debajo del 15 % para ahorrar energía. */
+    private fun effectiveIntervalSeconds(): Long {
+        val battery = batteryLevel()
+        return if (battery in 0..100 && battery < 15) config.intervalSeconds * 2 else config.intervalSeconds
     }
 
     private fun Location.isValidLocation(): Boolean =

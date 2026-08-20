@@ -285,6 +285,8 @@ class MainActivity : AppCompatActivity() {
             storedState
         }
         binding.stateText.text = stateText(state)
+        binding.statusDot.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(statusColor(state))
         val toggle = binding.toggleButton
         toggle.setText(if (enabled) R.string.stop else R.string.start)
         toggle.icon = ContextCompat.getDrawable(
@@ -315,7 +317,22 @@ class MainActivity : AppCompatActivity() {
         val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
         val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         if (battery in 0..100) {
+            binding.batteryBar.progress = battery
+            binding.batteryBar.setIndicatorColor(
+                ContextCompat.getColor(
+                    this,
+                    when {
+                        battery in 1..20 -> R.color.status_error
+                        battery <= 50 -> R.color.status_warn
+                        else -> R.color.status_ok
+                    }
+                )
+            )
+            binding.batteryText.text = getString(R.string.log_battery, battery)
             lines += getString(R.string.log_battery, battery)
+        } else {
+            binding.batteryBar.visibility = android.view.View.GONE
+            binding.batteryText.visibility = android.view.View.GONE
         }
 
         val lastAck = config.lastAckAt
@@ -368,6 +385,20 @@ class MainActivity : AppCompatActivity() {
         TrackingState.PERMISSION_MISSING -> getString(R.string.state_permission)
         TrackingState.SERVICE_RECOVERY -> getString(R.string.state_recovery)
         TrackingState.TRACKING_DISABLED_BY_USER -> getString(R.string.tracking_off)
+    }
+
+    private fun statusColor(state: TrackingState): Int = when (state) {
+        TrackingState.TRACKING_ACTIVE -> ContextCompat.getColor(this, R.color.status_ok)
+        TrackingState.SERVICE_RECOVERY,
+        TrackingState.TRACKING_DISABLED_BY_USER -> ContextCompat.getColor(this, R.color.status_idle)
+        TrackingState.PENDING_ACK_TIMEOUT,
+        TrackingState.BATTERY_LOW,
+        TrackingState.BUFFER_FULL -> ContextCompat.getColor(this, R.color.status_warn)
+        TrackingState.GPS_DISABLED -> ContextCompat.getColor(this, R.color.status_offline)
+        TrackingState.NETWORK_OFFLINE,
+        TrackingState.MQTT_DISCONNECTED,
+        TrackingState.SERVER_UNAVAILABLE,
+        TrackingState.PERMISSION_MISSING -> ContextCompat.getColor(this, R.color.status_error)
     }
 
     private fun beginDetailsLoading() {

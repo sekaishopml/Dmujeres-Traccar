@@ -7,4 +7,9 @@
     <color name="background">#F6F6F6</color>
     <color name="ink">#181818</color>
     <color name="ic_launcher_background">#EB0045</color>
+    <color name="status_ok">#2E7D32</color>
+    <color name="status_warn">#F9A825</color>
+    <color name="status_error">#D32F2F</color>
+    <color name="status_idle">#9E9E9E</color>
+    <color name="status_offline">#EF6C00</color>
 </resources>
