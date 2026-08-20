@@ -177,12 +177,32 @@ class MqttManager(
         })
         client = newClient
 
+        // LWT (Last Will and Testament): si el TCP se corta inesperadamente, el broker
+        // publica automáticamente este mensaje. El servidor recibe network="lost" y crea
+        // el evento mobileNetworkLost en segundos (no hay que esperar el timeout de silencio).
+        val willPayload = org.json.JSONObject().apply {
+            put("schema", 1)
+            put("type", "presence")
+            put("messageId", "lwt-" + System.currentTimeMillis())
+            put("deviceId", deviceId)
+            put("sequence", 0)
+            put("sentAt", java.time.Instant.now().toString())
+            put("observedAt", java.time.Instant.now().toString())
+            put("payload", org.json.JSONObject().apply {
+                put("network", "none")
+                put("gps", "unknown")
+                put("battery", -1)
+                put("pending", 0)
+            })
+        }.toString().toByteArray(Charsets.UTF_8)
+
         val options = MqttConnectOptions().apply {
             isAutomaticReconnect = true
             maxReconnectDelay = 10_000
             connectionTimeout = 10
             keepAliveInterval = 45
             isCleanSession = true
+            setWill(config.telemetryTopic(), willPayload, 1, false)
             if (config.username.isNotBlank()) {
                 userName = config.username
                 password = config.password.toCharArray()
