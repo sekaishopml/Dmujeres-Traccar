@@ -230,6 +230,8 @@ class TrackingService : Service() {
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
+    @Volatile private var lastReportedNetwork: String = ""
+
     private fun registerNetworkCallback() {
         val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -250,6 +252,54 @@ class TrackingService : Service() {
                         }
                     }
                 }
+                // Notificar al servidor que la red se recuperó
+                if (started.get() && !stopping) {
+                    serviceScope.launch {
+                        try {
+                            enqueuePresence()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "No se pudo enviar presencia al recuperar red", e)
+                        }
+                    }
+                }
+            }
+
+            override fun onLost(network: android.net.Network) {
+                // Red perdida: enviar presencia inmediata con network=none
+                if (started.get() && !stopping) {
+                    serviceScope.launch {
+                        try {
+                            enqueuePresence()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "No se pudo enviar presencia al perder red", e)
+                        }
+                    }
+                }
+            }
+
+            override fun onCapabilitiesChanged(
+                network: android.net.Network,
+                capabilities: android.net.NetworkCapabilities
+            ) {
+                // Detectar cambio de tipo de red (wifi ↔ mobile)
+                if (!started.get() || stopping) return
+                val hasWifi = capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+                val hasMobile = capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+                val currentNetwork = when {
+                    hasWifi -> "wifi"
+                    hasMobile -> "mobile"
+                    else -> "other"
+                }
+                if (lastReportedNetwork.isNotEmpty() && currentNetwork != lastReportedNetwork) {
+                    serviceScope.launch {
+                        try {
+                            enqueuePresence()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "No se pudo enviar presencia al cambiar tipo de red", e)
+                        }
+                    }
+                }
+                lastReportedNetwork = currentNetwork
             }
         }
         try {
@@ -360,6 +410,7 @@ class TrackingService : Service() {
                 config.sequence = sequence
                 val messageId = Envelope.newMessageId(deviceId, sequence)
                 val telemetry = telemetry()
+                lastReportedNetwork = telemetry.network
                 val observedAt = Envelope.nowIso()
                 val payload = Envelope.buildPresence(
                     messageId = messageId,
