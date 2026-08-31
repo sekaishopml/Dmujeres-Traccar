@@ -1,6 +1,5 @@
 package com.dmujeres.traccar
 
-import android.animation.ObjectAnimator
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13,18 +12,88 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.dmujeres.traccar.config.AppConfig
-import com.dmujeres.traccar.databinding.ActivityMainBinding
 import com.dmujeres.traccar.location.TrackingState
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.UpdateManager
+import com.dmujeres.traccar.ui.theme.Background
+import com.dmujeres.traccar.ui.theme.DmujeresTheme
+import com.dmujeres.traccar.ui.theme.Ink
+import com.dmujeres.traccar.ui.theme.StatusError
+import com.dmujeres.traccar.ui.theme.StatusIdle
+import com.dmujeres.traccar.ui.theme.StatusOffline
+import com.dmujeres.traccar.ui.theme.StatusOk
+import com.dmujeres.traccar.ui.theme.StatusWarn
 import com.dmujeres.traccar.util.Notifications
 import com.dmujeres.traccar.util.RemoteConfig
 import kotlinx.coroutines.Dispatchers
@@ -35,20 +104,37 @@ import kotlinx.coroutines.withContext
  * Pantalla principal: login con usuario y contraseña, botón de iniciar/finalizar
  * jornada y un registro de estado, con acceso al diagnóstico.
  */
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_UPDATE = "open_update"
     }
 
-    private lateinit var binding: ActivityMainBinding
     private lateinit var config: AppConfig
     private var testing = false
     private var latestUpdate: UpdateManager.Latest? = null
     private var updateCheckInFlight = false
     private var detailsTransition = false
-    private var skeletonAnimator: ObjectAnimator? = null
     private var recoveryDialogShown = false
+
+    // Estado de la UI (Compose) actualizado desde los métodos imperativos.
+    private var usernameInput by mutableStateOf("")
+    private var passwordInput by mutableStateOf("")
+    private var passwordVisible by mutableStateOf(false)
+    private var loginTesting by mutableStateOf(false)
+    private var logged by mutableStateOf(false)
+
+    private var stateText by mutableStateOf("")
+    private var statusColor by mutableStateOf(StatusIdle)
+    private var batteryText by mutableStateOf("")
+    private var batteryLevel by mutableIntStateOf(-1)
+    private var batteryColor by mutableStateOf(StatusOk)
+    private var logText by mutableStateOf("")
+    private var detailsLoading by mutableStateOf(false)
+    private var toggleLabel by mutableIntStateOf(R.string.start)
+    private var toggleIcon by mutableIntStateOf(R.drawable.ic_play)
+    private var toggleEnabled by mutableStateOf(true)
+    private var updateBannerVisible by mutableStateOf(false)
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private var tickCount = 0
@@ -74,39 +160,43 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
         config = AppConfig(this)
         Notifications.ensureChannel(this)
 
-        binding.bannerLogo.setImageResource(R.drawable.logo_banner)
-        binding.versionText.text = getString(R.string.app_version, BuildConfig.VERSION_NAME)
-        binding.usernameInput.setText(config.username)
-        binding.passwordInput.setText(config.password)
+        usernameInput = config.username
+        passwordInput = config.password
 
-        binding.loginButton.setOnClickListener { login() }
-        binding.updateButton.setOnClickListener { checkForUpdate(auto = false) }
-        binding.updateBanner.setOnClickListener {
-            latestUpdate?.let { showUpdateDialog(it) }
-        }
-        binding.diagButton.setOnClickListener {
-            startActivity(Intent(this, DiagnosticsActivity::class.java))
-            overridePendingTransition(R.anim.slide_in_right, R.anim.fade_out)
-        }
-
-        binding.toggleButton.setOnClickListener {
-            if (config.trackingEnabled) {
-                confirmFinishJourney()
-            } else {
-                if (config.username.isBlank() || config.password.isBlank()) {
-                    Toast.makeText(this, R.string.credentials_required, Toast.LENGTH_LONG).show()
-                } else {
-                    MqttManager.testConnection(config.serverUrl, config.username, config.password) { success, message ->
-                        runOnUiThread {
-                            if (success) startIfReady() else showDialog(message, false)
-                        }
-                    }
-                }
+        setContent {
+            DmujeresTheme {
+                MainScreen(
+                    username = usernameInput,
+                    onUsernameChange = { usernameInput = it },
+                    password = passwordInput,
+                    onPasswordChange = { passwordInput = it },
+                    passwordVisible = passwordVisible,
+                    onTogglePasswordVisible = { passwordVisible = !passwordVisible },
+                    loginTesting = loginTesting,
+                    onLogin = ::login,
+                    logged = logged,
+                    stateText = stateText,
+                    statusColor = statusColor,
+                    batteryText = batteryText,
+                    batteryLevel = batteryLevel,
+                    batteryColor = batteryColor,
+                    detailsLoading = detailsLoading,
+                    logText = logText,
+                    toggleLabel = toggleLabel,
+                    toggleIcon = toggleIcon,
+                    toggleEnabled = toggleEnabled,
+                    onToggle = ::onTogglePressed,
+                    onDiag = ::openDiagnostics,
+                    updateBannerVisible = updateBannerVisible,
+                    onUpdateBanner = {
+                        latestUpdate?.let { showUpdateDialog(it) }
+                    },
+                    onUpdateIcon = { checkForUpdate(auto = false) },
+                    versionText = getString(R.string.app_version, BuildConfig.VERSION_NAME),
+                )
             }
         }
 
@@ -157,7 +247,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         uiHandler.removeCallbacks(detailsTransitionTimeout)
-        skeletonAnimator?.cancel()
         super.onDestroy()
     }
 
@@ -181,22 +270,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun login() {
-        val username = binding.usernameInput.text.toString().trim()
-        val password = binding.passwordInput.text.toString()
+        val username = usernameInput.trim()
+        val password = passwordInput
         if (username.isBlank() || password.isBlank()) {
             showDialog(getString(R.string.credentials_required), false)
             return
         }
         if (testing) return
         testing = true
-        binding.loginButton.isEnabled = false
-        binding.loginButton.text = getString(R.string.checking)
+        loginTesting = true
 
         MqttManager.testConnection(config.serverUrl, username, password) { success, message ->
             runOnUiThread {
                 testing = false
-                binding.loginButton.isEnabled = true
-                binding.loginButton.text = getString(R.string.login_button)
+                loginTesting = false
                 if (success) {
                     config.username = username
                     config.password = password
@@ -218,6 +305,22 @@ class MainActivity : AppCompatActivity() {
             .setMessage(message)
             .setPositiveButton(getString(R.string.dialog_close), null)
             .show()
+    }
+
+    private fun onTogglePressed() {
+        if (config.trackingEnabled) {
+            confirmFinishJourney()
+        } else {
+            if (config.username.isBlank() || config.password.isBlank()) {
+                Toast.makeText(this, R.string.credentials_required, Toast.LENGTH_LONG).show()
+            } else {
+                MqttManager.testConnection(config.serverUrl, config.username, config.password) { success, message ->
+                    runOnUiThread {
+                        if (success) startIfReady() else showDialog(message, false)
+                    }
+                }
+            }
+        }
     }
 
     private fun startIfReady() {
@@ -256,23 +359,8 @@ class MainActivity : AppCompatActivity() {
 
     /** Muestra login o pantalla principal según haya credenciales guardadas (con fundido). */
     private fun updateView() {
-        val logged = config.username.isNotBlank() && config.password.isNotBlank()
-        crossfade(binding.loginSection, !logged)
-        crossfade(binding.mainSection, logged)
+        logged = config.username.isNotBlank() && config.password.isNotBlank()
         refreshState()
-    }
-
-    private fun crossfade(view: android.view.View, visible: Boolean) {
-        view.animate().cancel()
-        if (visible) {
-            view.alpha = 0f
-            view.visibility = android.view.View.VISIBLE
-            view.animate().alpha(1f).setDuration(300).start()
-        } else {
-            view.animate().alpha(0f).setDuration(200).withEndAction {
-                view.visibility = android.view.View.GONE
-            }.start()
-        }
     }
 
     /** Registro de estado en lenguaje simple para el colaborador. */
@@ -284,15 +372,11 @@ class MainActivity : AppCompatActivity() {
         } else {
             storedState
         }
-        binding.stateText.text = stateText(state)
-        binding.statusDot.backgroundTintList =
-            android.content.res.ColorStateList.valueOf(statusColor(state))
-        val toggle = binding.toggleButton
-        toggle.setText(if (enabled) R.string.stop else R.string.start)
-        toggle.icon = ContextCompat.getDrawable(
-            this, if (enabled) R.drawable.ic_stop else R.drawable.ic_play
-        )
-        toggle.isEnabled = !detailsTransition
+        stateText = stateText(state)
+        statusColor = statusColor(state)
+        toggleLabel = if (enabled) R.string.stop else R.string.start
+        toggleIcon = if (enabled) R.drawable.ic_stop else R.drawable.ic_play
+        toggleEnabled = !detailsTransition
 
         val lines = mutableListOf<String>()
         val now = System.currentTimeMillis()
@@ -317,22 +401,17 @@ class MainActivity : AppCompatActivity() {
         val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
         val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         if (battery in 0..100) {
-            binding.batteryBar.progress = battery
-            binding.batteryBar.setIndicatorColor(
-                ContextCompat.getColor(
-                    this,
-                    when {
-                        battery in 1..20 -> R.color.status_error
-                        battery <= 50 -> R.color.status_warn
-                        else -> R.color.status_ok
-                    }
-                )
-            )
-            binding.batteryText.text = getString(R.string.log_battery, battery)
+            batteryLevel = battery
+            batteryColor = when {
+                battery in 1..20 -> StatusError
+                battery <= 50 -> StatusWarn
+                else -> StatusOk
+            }
+            batteryText = getString(R.string.log_battery, battery)
             lines += getString(R.string.log_battery, battery)
         } else {
-            binding.batteryBar.visibility = android.view.View.GONE
-            binding.batteryText.visibility = android.view.View.GONE
+            batteryLevel = -1
+            batteryText = ""
         }
 
         val lastAck = config.lastAckAt
@@ -363,7 +442,7 @@ class MainActivity : AppCompatActivity() {
             if (lastFix > 0 && now - lastFix > 5 * 60_000) {
                 lines += getString(R.string.log_warn_gps)
             }
-            binding.logText.text = lines.joinToString("\n")
+            logText = lines.joinToString("\n")
             if (!detailsTransition
                 || (enabled && TrackingService.isRunning && state != TrackingState.SERVICE_RECOVERY)
                 || (!enabled && !TrackingService.isRunning)
@@ -387,31 +466,23 @@ class MainActivity : AppCompatActivity() {
         TrackingState.TRACKING_DISABLED_BY_USER -> getString(R.string.tracking_off)
     }
 
-    private fun statusColor(state: TrackingState): Int = when (state) {
-        TrackingState.TRACKING_ACTIVE -> ContextCompat.getColor(this, R.color.status_ok)
+    private fun statusColor(state: TrackingState): Color = when (state) {
+        TrackingState.TRACKING_ACTIVE -> StatusOk
         TrackingState.SERVICE_RECOVERY,
-        TrackingState.TRACKING_DISABLED_BY_USER -> ContextCompat.getColor(this, R.color.status_idle)
+        TrackingState.TRACKING_DISABLED_BY_USER -> StatusIdle
         TrackingState.PENDING_ACK_TIMEOUT,
         TrackingState.BATTERY_LOW,
-        TrackingState.BUFFER_FULL -> ContextCompat.getColor(this, R.color.status_warn)
-        TrackingState.GPS_DISABLED -> ContextCompat.getColor(this, R.color.status_offline)
+        TrackingState.BUFFER_FULL -> StatusWarn
+        TrackingState.GPS_DISABLED -> StatusOffline
         TrackingState.NETWORK_OFFLINE,
         TrackingState.MQTT_DISCONNECTED,
         TrackingState.SERVER_UNAVAILABLE,
-        TrackingState.PERMISSION_MISSING -> ContextCompat.getColor(this, R.color.status_error)
+        TrackingState.PERMISSION_MISSING -> StatusError
     }
 
     private fun beginDetailsLoading() {
         detailsTransition = true
-        binding.detailsLoading.visibility = android.view.View.VISIBLE
-        binding.logText.visibility = android.view.View.GONE
-        skeletonAnimator?.cancel()
-        skeletonAnimator = ObjectAnimator.ofFloat(binding.detailsLoading, "alpha", 0.45f, 1f).apply {
-            duration = 650
-            repeatMode = ObjectAnimator.REVERSE
-            repeatCount = ObjectAnimator.INFINITE
-            start()
-        }
+        detailsLoading = true
         uiHandler.removeCallbacks(detailsTransitionTimeout)
         uiHandler.postDelayed(detailsTransitionTimeout, 15_000)
     }
@@ -419,12 +490,8 @@ class MainActivity : AppCompatActivity() {
     private fun endDetailsLoading() {
         detailsTransition = false
         uiHandler.removeCallbacks(detailsTransitionTimeout)
-        skeletonAnimator?.cancel()
-        skeletonAnimator = null
-        binding.detailsLoading.visibility = android.view.View.GONE
-        binding.detailsLoading.alpha = 1f
-        binding.logText.visibility = android.view.View.VISIBLE
-        binding.toggleButton.isEnabled = true
+        detailsLoading = false
+        toggleEnabled = true
     }
 
     private fun confirmFinishJourney() {
@@ -515,25 +582,13 @@ class MainActivity : AppCompatActivity() {
 
     /** Banner rojo superior (navbar) avisando de la nueva versión. */
     private fun showUpdateBanner() {
-        if (binding.updateBanner.visibility == android.view.View.VISIBLE) return
-        binding.updateBanner.visibility = android.view.View.VISIBLE
-        binding.updateBanner.animate()
-            .translationY(0f)
-            .alpha(1f)
-            .setDuration(300)
-            .start()
+        if (updateBannerVisible) return
+        updateBannerVisible = true
     }
 
     private fun hideUpdateBanner() {
-        if (binding.updateBanner.visibility != android.view.View.VISIBLE) return
-        binding.updateBanner.animate()
-            .translationY(-120f)
-            .alpha(0f)
-            .setDuration(250)
-            .withEndAction {
-                binding.updateBanner.visibility = android.view.View.GONE
-            }
-            .start()
+        if (!updateBannerVisible) return
+        updateBannerVisible = false
     }
 
     private fun showUpdateDialog(latest: UpdateManager.Latest) {
@@ -563,6 +618,444 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(this@MainActivity, R.string.update_error, Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    private fun openDiagnostics() {
+        startActivity(Intent(this, DiagnosticsActivity::class.java))
+        overridePendingTransition(R.anim.slide_in_right, R.anim.fade_out)
+    }
+
+    @Composable
+    private fun MainScreen(
+        username: String,
+        onUsernameChange: (String) -> Unit,
+        password: String,
+        onPasswordChange: (String) -> Unit,
+        passwordVisible: Boolean,
+        onTogglePasswordVisible: () -> Unit,
+        loginTesting: Boolean,
+        onLogin: () -> Unit,
+        logged: Boolean,
+        stateText: String,
+        statusColor: Color,
+        batteryText: String,
+        batteryLevel: Int,
+        batteryColor: Color,
+        detailsLoading: Boolean,
+        logText: String,
+        toggleLabel: Int,
+        toggleIcon: Int,
+        toggleEnabled: Boolean,
+        onToggle: () -> Unit,
+        onDiag: () -> Unit,
+        updateBannerVisible: Boolean,
+        onUpdateBanner: () -> Unit,
+        onUpdateIcon: () -> Unit,
+        versionText: String,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Background),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+            ) {
+                TopBanner(onUpdateIcon = onUpdateIcon)
+
+                Crossfade(targetState = logged) { isLogged ->
+                    if (!isLogged) {
+                        LoginCard(
+                            username = username,
+                            onUsernameChange = onUsernameChange,
+                            password = password,
+                            onPasswordChange = onPasswordChange,
+                            passwordVisible = passwordVisible,
+                            onTogglePasswordVisible = onTogglePasswordVisible,
+                            loginTesting = loginTesting,
+                            onLogin = onLogin,
+                        )
+                    } else {
+                        MainCard(
+                            stateText = stateText,
+                            statusColor = statusColor,
+                            batteryText = batteryText,
+                            batteryLevel = batteryLevel,
+                            batteryColor = batteryColor,
+                            detailsLoading = detailsLoading,
+                            logText = logText,
+                            toggleLabel = toggleLabel,
+                            toggleIcon = toggleIcon,
+                            toggleEnabled = toggleEnabled,
+                            onToggle = onToggle,
+                            onDiag = onDiag,
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = updateBannerVisible,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                UpdateBanner(onClick = onUpdateBanner)
+            }
+
+            Text(
+                text = versionText,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF8A8A8A),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp),
+            )
+        }
+    }
+
+    @Composable
+    private fun TopBanner(onUpdateIcon: () -> Unit) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 20.dp),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.logo_banner),
+                contentDescription = stringResource(R.string.app_name),
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 320.dp)
+                    .align(Alignment.Center),
+            )
+            IconButton(
+                onClick = onUpdateIcon,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(48.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_update),
+                    contentDescription = stringResource(R.string.check_updates),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun LoginCard(
+        username: String,
+        onUsernameChange: (String) -> Unit,
+        password: String,
+        onPasswordChange: (String) -> Unit,
+        passwordVisible: Boolean,
+        onTogglePasswordVisible: () -> Unit,
+        loginTesting: Boolean,
+        onLogin: () -> Unit,
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = stringResource(R.string.login_title),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                Text(
+                    text = stringResource(R.string.login_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(bottom = 20.dp),
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = onUsernameChange,
+                    label = { Text(stringResource(R.string.username_hint)) },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_person),
+                            contentDescription = null,
+                            tint = Ink,
+                        )
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = onPasswordChange,
+                    label = { Text(stringResource(R.string.password_hint)) },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_lock),
+                            contentDescription = null,
+                            tint = Ink,
+                        )
+                    },
+                    visualTransformation = if (passwordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = onTogglePasswordVisible) {
+                            Icon(
+                                imageVector = if (passwordVisible) {
+                                    Icons.Filled.VisibilityOff
+                                } else {
+                                    Icons.Filled.Visibility
+                                },
+                                contentDescription = null,
+                                tint = Ink,
+                            )
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp),
+                )
+                Button(
+                    onClick = onLogin,
+                    enabled = !loginTesting,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                ) {
+                    Text(
+                        text = stringResource(if (loginTesting) R.string.checking else R.string.login_button),
+                        fontSize = 16.sp,
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun MainCard(
+        stateText: String,
+        statusColor: Color,
+        batteryText: String,
+        batteryLevel: Int,
+        batteryColor: Color,
+        detailsLoading: Boolean,
+        logText: String,
+        toggleLabel: Int,
+        toggleIcon: Int,
+        toggleEnabled: Boolean,
+        onToggle: () -> Unit,
+        onDiag: () -> Unit,
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                StateBannerPanel(stateText = stateText, statusColor = statusColor)
+
+                if (batteryLevel in 0..100) {
+                    BatteryPanel(
+                        batteryText = batteryText,
+                        batteryLevel = batteryLevel,
+                        batteryColor = batteryColor,
+                    )
+                }
+
+                if (detailsLoading) {
+                    DetailsLoadingPanel()
+                } else {
+                    LogPanel(logText = logText)
+                }
+
+                Button(
+                    onClick = onToggle,
+                    enabled = toggleEnabled,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp)
+                        .padding(top = 8.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(toggleIcon),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.padding(end = 10.dp),
+                    )
+                    Text(
+                        text = stringResource(toggleLabel),
+                        fontSize = 18.sp,
+                    )
+                }
+
+                TextButton(
+                    onClick = onDiag,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(text = stringResource(R.string.diag_button))
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun StateBannerPanel(stateText: String, statusColor: Color) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
+                .padding(14.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .background(statusColor, CircleShape),
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = stateText,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+
+    @Composable
+    private fun BatteryPanel(
+        batteryText: String,
+        batteryLevel: Int,
+        batteryColor: Color,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
+                .padding(14.dp),
+        ) {
+            Text(
+                text = batteryText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+            LinearProgressIndicator(
+                progress = { batteryLevel / 100f },
+                color = batteryColor,
+                trackColor = Color(0xFFE0E0E0),
+                strokeCap = StrokeCap.Round,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
+            )
+        }
+    }
+
+    @Composable
+    private fun DetailsLoadingPanel() {
+        val transition = rememberInfiniteTransition(label = "skeleton")
+        val alpha by transition.animateFloat(
+            initialValue = 0.45f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 650),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "skeletonAlpha",
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
+                .padding(14.dp),
+        ) {
+            SkeletonBar(widthFraction = 0.8f, alpha = alpha)
+            Spacer(modifier = Modifier.height(12.dp))
+            SkeletonBar(widthFraction = 0.95f, alpha = alpha)
+            Spacer(modifier = Modifier.height(12.dp))
+            SkeletonBar(widthFraction = 0.65f, alpha = alpha)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+
+    @Composable
+    private fun SkeletonBar(widthFraction: Float, alpha: Float) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(widthFraction)
+                .height(16.dp)
+                .background(Color(0xFFE4E4E4), RoundedCornerShape(6.dp))
+                .graphicsLayer { this.alpha = alpha },
+        )
+    }
+
+    @Composable
+    private fun LogPanel(logText: String) {
+        Text(
+            text = logText,
+            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
+                .padding(14.dp),
+        )
+    }
+
+    @Composable
+    private fun UpdateBanner(onClick: () -> Unit) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.primary)
+                .clickable(onClick = onClick)
+                .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_update),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = stringResource(R.string.update_banner),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onPrimary,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 10.dp),
+            )
+            Image(
+                painter = painterResource(R.drawable.ic_back),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = 180f },
+            )
         }
     }
 }
