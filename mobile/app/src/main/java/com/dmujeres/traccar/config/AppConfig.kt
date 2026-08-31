@@ -166,6 +166,26 @@ class AppConfig(context: Context) {
         get() = prefs.getInt(KEY_MAX_RETRIES, 30)
         set(value) = prefs.edit().putInt(KEY_MAX_RETRIES, value.coerceIn(3, 200)).apply()
 
+    /** Velocidad implicita maxima aceptable entre fixes consecutivos (m/s; 34 ≈ 120 km/h). */
+    var maxImpliedSpeedMps: Float
+        get() = prefs.getFloat(KEY_MAX_IMPLIED_SPEED, DEFAULT_MAX_IMPLIED_SPEED_MPS)
+        set(value) = prefs.edit().putFloat(KEY_MAX_IMPLIED_SPEED, value).apply()
+
+    /** Accuracy (m) sobre la que un fix se considera degradado si hay un fix bueno reciente. */
+    var accuracyBadM: Float
+        get() = prefs.getFloat(KEY_ACCURACY_BAD, DEFAULT_ACCURACY_BAD_M)
+        set(value) = prefs.edit().putFloat(KEY_ACCURACY_BAD, value).apply()
+
+    /** Accuracy (m) bajo la que un fix reciente se considera fiable. */
+    var accuracyGoodM: Float
+        get() = prefs.getFloat(KEY_ACCURACY_GOOD, DEFAULT_ACCURACY_GOOD_M)
+        set(value) = prefs.edit().putFloat(KEY_ACCURACY_GOOD, value).apply()
+
+    /** Velocidad sostenida (m/s) a partir de la cual se toleran picos rapidos legitimos. */
+    var consistentSpeedMps: Float
+        get() = prefs.getFloat(KEY_CONSISTENT_SPEED, DEFAULT_CONSISTENT_SPEED_MPS)
+        set(value) = prefs.edit().putFloat(KEY_CONSISTENT_SPEED, value).apply()
+
     /** Onboarding completado: permisos de ubicación, notificaciones, batería y GPS aceptados. */
     var onboardingDone: Boolean
         get() = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
@@ -218,6 +238,15 @@ class AppConfig(context: Context) {
         const val POLICY_DROP_OLDEST = "drop_oldest"
         const val POLICY_STOP_CAPTURE = "stop_capture"
 
+        /** Anti "GPS loco": se descartan saltos con velocidad implicita mayor (≈120 km/h). */
+        const val DEFAULT_MAX_IMPLIED_SPEED_MPS = 34f
+        /** Fix peor que esto y con un fix bueno reciente se descarta por degradado. */
+        const val DEFAULT_ACCURACY_BAD_M = 80f
+        /** Accuracy que hace a un fix reciente "bueno". */
+        const val DEFAULT_ACCURACY_GOOD_M = 20f
+        /** Velocidad sostenida para tolerar picos rapidos legitimos (≈90 km/h). */
+        const val DEFAULT_CONSISTENT_SPEED_MPS = 25f
+
         /** Clave compartida del fallback HTTP (misma que el server; se reforzará en Fase 5). */
         const val HTTP_API_KEY = "dmj-dev-fallback-key"
 
@@ -255,5 +284,9 @@ class AppConfig(context: Context) {
         private const val KEY_TRACKING_STATE = "tracking_state"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_BACKGROUND_LOCATION_ASKED = "background_location_asked"
+        private const val KEY_MAX_IMPLIED_SPEED = "filter_max_speed_mps"
+        private const val KEY_ACCURACY_BAD = "filter_accuracy_bad_m"
+        private const val KEY_ACCURACY_GOOD = "filter_accuracy_good_m"
+        private const val KEY_CONSISTENT_SPEED = "filter_consistent_speed_mps"
     }
 }

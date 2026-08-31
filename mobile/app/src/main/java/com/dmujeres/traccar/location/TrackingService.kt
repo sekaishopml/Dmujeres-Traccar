@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.collections.ArrayDeque
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -536,8 +537,46 @@ class TrackingService : Service() {
         requestLocationUpdates()
     }
 
+    private data class RecentFix(val lat: Double, val lon: Double, val accuracyM: Float, val timeMs: Long)
+
+    private val recentFixes = ArrayDeque<RecentFix>()
+    private val fixWindowSize = 6
+
+    private fun recordRecentFix(location: Location) {
+        recentFixes.addLast(RecentFix(location.latitude, location.longitude, location.accuracy, location.time))
+        if (recentFixes.size > fixWindowSize) recentFixes.removeFirst()
+    }
+
+    private fun recentMovingConsistently(): Boolean {
+        if (recentFixes.size < 2) return false
+        val a = recentFixes[recentFixes.size - 2]
+        val b = recentFixes[recentFixes.size - 1]
+        val dt = (b.timeMs - a.timeMs) / 1000.0
+        if (dt <= 0) return false
+        return distanceMeters(a.lat, a.lon, b.lat, b.lon) / dt > config.consistentSpeedMps
+    }
+
+    private fun Location.isPlausibleFix(): Boolean {
+        val previous = recentFixes.lastOrNull()
+        if (previous == null) return true
+        val dt = (time - previous.timeMs) / 1000.0
+        if (dt <= 0) return true
+        val implied = distanceMeters(previous.lat, previous.lon, latitude, longitude) / dt
+        if (implied > config.maxImpliedSpeedMps && !recentMovingConsistently()) {
+            Log.w(TAG, "Fix descartado por GPS loco (implícita %.1f m/s)".format(implied))
+            return false
+        }
+        if (accuracy > config.accuracyBadM && recentFixes.any { it.accuracyM <= config.accuracyGoodM }) {
+            Log.w(TAG, "Fix degradado descartado (accuracy %.0f m)".format(accuracy))
+            return false
+        }
+        return true
+    }
+
     private fun onNewLocation(location: Location) {
         if (!started.get() || stopping || !location.isValidLocation()) return
+        if (!location.isPlausibleFix()) return
+        recordRecentFix(location)
         config.lastFixAt = System.currentTimeMillis()
         val deviceId = config.deviceId
         if (deviceId.isBlank()) return
