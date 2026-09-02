@@ -21,5 +21,7 @@ data class PendingPosition(
     val isControl: Boolean = false,
     @ColumnInfo(defaultValue = "0")
     val journeyId: Long = 0L,
-    val attempts: Int = 0
+    val attempts: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    val retryAt: Long = 0L
 )

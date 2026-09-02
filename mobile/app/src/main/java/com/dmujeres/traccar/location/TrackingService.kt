@@ -736,18 +736,10 @@ class TrackingService : Service() {
                 (!fixForCurrentRun && now - startedTrackingAt > 60_000L) ||
                     (fixForCurrentRun && now - lastFixAt > fixStaleAfter)
 
-            // Adaptación por batería: al cruzar el 15% se re-solicita el FLP con el nuevo intervalo.
-            val batteryNow = batteryLevel()
-            val lowBatteryNow = batteryNow in 0..100 && batteryNow < 15
-            val wasLowBattery = lastBatteryAdaptationAt != 0L
-            if (lowBatteryNow != wasLowBattery) {
-                lastBatteryAdaptationAt = if (lowBatteryNow) now else 0L
-                if (started.get() && !capturePausedForBuffer) {
-                    Log.i(TAG, if (lowBatteryNow) "Batería baja: intervalo duplicado" else "Batería normal: intervalo restaurado")
-                    runCatching { fused?.removeLocationUpdates(locationCallback) }
-                    requestLocationUpdates()
-                }
-            }
+            // Fase A: densidad constante — adaptación por batería deshabilitada.
+            // Se mantiene telemetría de batería pero no se altera frecuencia de captura.
+            // Código anterior que duplicaba intervalo eliminado; lastBatteryAdaptationAt se conserva
+            // solo para no romper estado persistido, pero no se usa.
 
             // Re-registro de GPS: si FLP dejó de entregar fixes, se re-solicita cada 2 minutos.
             if (gpsWithoutFix && !capturePausedForBuffer && started.get()) {
@@ -967,10 +959,9 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
         return batteryLevel() in 1..20
     }
 
-    /** Intervalo efectivo: se duplica si la batería está por debajo del 15 % para ahorrar energía. */
+    /** Intervalo efectivo: Fase A densidad constante — NO se altera por batería baja. */
     private fun effectiveIntervalSeconds(): Long {
-        val battery = batteryLevel()
-        return if (battery in 0..100 && battery < 15) config.intervalSeconds * 2 else config.intervalSeconds
+        return config.intervalSeconds
     }
 
     private fun Location.isValidLocation(): Boolean =

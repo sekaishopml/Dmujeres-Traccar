@@ -46,6 +46,15 @@ abstract class PositionDao {
     @Query("UPDATE pending_positions SET attempts = :attempts WHERE messageId = :messageId")
     abstract suspend fun updateAttempts(messageId: String, attempts: Int)
 
+    @Query("UPDATE pending_positions SET retryAt = :retryAt WHERE messageId = :messageId")
+    abstract suspend fun updateRetryAt(messageId: String, retryAt: Long)
+
+    @Query("SELECT * FROM pending_positions WHERE retryAt <= :now OR retryAt = 0 ORDER BY sequence ASC LIMIT 1")
+    abstract suspend fun nextDue(now: Long): PendingPosition?
+
+    @Query("SELECT * FROM pending_positions WHERE retryAt <= :now OR retryAt = 0 ORDER BY sequence ASC")
+    abstract suspend fun allDue(now: Long): List<PendingPosition>
+
     @Query("DELETE FROM pending_positions WHERE messageId IN (SELECT messageId FROM pending_positions WHERE isControl = 0 AND payload NOT LIKE '%\"journeyStarted\":true%' AND payload NOT LIKE '%\"journeyEnded\":true%' ORDER BY sequence ASC LIMIT :count)")
     abstract suspend fun deleteOldestNonControl(count: Int): Int
 

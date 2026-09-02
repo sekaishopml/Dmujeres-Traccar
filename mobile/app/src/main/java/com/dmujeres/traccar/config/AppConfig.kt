@@ -64,10 +64,10 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_INTERVAL, 10L)
         set(value) = prefs.edit().putLong(KEY_INTERVAL, value.coerceIn(3, 300)).apply()
 
-    /** Tamaño máximo de la cola offline (buffer). Default 5000 ≈ 14 h a 10 s. */
+    /** Tamaño máximo de la cola offline (buffer). Default 5000 ≈ 14 h a 10 s; techo 10000 ≈ 28h @10s. */
     var bufferMax: Int
         get() = prefs.getInt(KEY_BUFFER, 5000)
-        set(value) = prefs.edit().putInt(KEY_BUFFER, value.coerceIn(10, 5000)).apply()
+        set(value) = prefs.edit().putInt(KEY_BUFFER, value.coerceIn(10, 10000)).apply()
 
     /** Política al llenarse el buffer: descartar lo más antiguo o detener la captura. */
     var bufferPolicy: String
@@ -166,7 +166,7 @@ class AppConfig(context: Context) {
         get() = prefs.getInt(KEY_MAX_RETRIES, 30)
         set(value) = prefs.edit().putInt(KEY_MAX_RETRIES, value.coerceIn(3, 200)).apply()
 
-    /** Velocidad implicita maxima aceptable entre fixes consecutivos (m/s; 34 ≈ 120 km/h). */
+    /** Velocidad implicita maxima aceptable entre fixes consecutivos (m/s; 45 ≈ 162 km/h). */
     var maxImpliedSpeedMps: Float
         get() = prefs.getFloat(KEY_MAX_IMPLIED_SPEED, DEFAULT_MAX_IMPLIED_SPEED_MPS)
         set(value) = prefs.edit().putFloat(KEY_MAX_IMPLIED_SPEED, value).apply()
@@ -200,6 +200,7 @@ class AppConfig(context: Context) {
     /**
      * Aplica la configuración remota que el administrador definió en el panel
      * (/settings/device). Solo se aplican los valores presentes y válidos.
+     * Incluye thresholds del filtro GPS (Fase A: menos agresivo y tunable).
      */
     fun applyRemote(
         interval: Long?,
@@ -207,6 +208,10 @@ class AppConfig(context: Context) {
         bufferPolicy: String?,
         ackTimeout: Int?,
         maxRetries: Int?,
+        maxImpliedSpeedMps: Float? = null,
+        consistentSpeedMps: Float? = null,
+        accuracyBadM: Float? = null,
+        accuracyGoodM: Float? = null,
     ) {
         if (interval != null) this.intervalSeconds = interval
         if (bufferMax != null) this.bufferMax = bufferMax
@@ -217,6 +222,10 @@ class AppConfig(context: Context) {
         }
         if (ackTimeout != null) this.ackTimeoutSeconds = ackTimeout
         if (maxRetries != null) this.maxRetries = maxRetries
+        if (maxImpliedSpeedMps != null && maxImpliedSpeedMps > 0f) this.maxImpliedSpeedMps = maxImpliedSpeedMps
+        if (consistentSpeedMps != null && consistentSpeedMps > 0f) this.consistentSpeedMps = consistentSpeedMps
+        if (accuracyBadM != null && accuracyBadM > 0f) this.accuracyBadM = accuracyBadM
+        if (accuracyGoodM != null && accuracyGoodM > 0f) this.accuracyGoodM = accuracyGoodM
     }
 
     /** Topic de subida: dmj/v1/devices/{deviceId}/telemetry */
@@ -238,14 +247,14 @@ class AppConfig(context: Context) {
         const val POLICY_DROP_OLDEST = "drop_oldest"
         const val POLICY_STOP_CAPTURE = "stop_capture"
 
-        /** Anti "GPS loco": se descartan saltos con velocidad implicita mayor (≈120 km/h). */
-        const val DEFAULT_MAX_IMPLIED_SPEED_MPS = 34f
+        /** Anti "GPS loco": se descartan saltos con velocidad implicita mayor (≈162 km/h). Fase A: 45 m/s. */
+        const val DEFAULT_MAX_IMPLIED_SPEED_MPS = 45f
         /** Fix peor que esto y con un fix bueno reciente se descarta por degradado. */
         const val DEFAULT_ACCURACY_BAD_M = 80f
         /** Accuracy que hace a un fix reciente "bueno". */
         const val DEFAULT_ACCURACY_GOOD_M = 20f
-        /** Velocidad sostenida para tolerar picos rapidos legitimos (≈90 km/h). */
-        const val DEFAULT_CONSISTENT_SPEED_MPS = 25f
+        /** Velocidad sostenida para tolerar picos rapidos legitimos (≈108 km/h). Fase A: 30 m/s. */
+        const val DEFAULT_CONSISTENT_SPEED_MPS = 30f
 
         /** Clave compartida del fallback HTTP (misma que el server; se reforzará en Fase 5). */
         const val HTTP_API_KEY = "dmj-dev-fallback-key"

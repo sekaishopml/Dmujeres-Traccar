@@ -46,6 +46,18 @@ object RemoteConfig {
                 bufferPolicy = json.optString("bufferPolicy").takeIf { it.isNotBlank() },
                 ackTimeout = json.optInt("ackTimeoutSeconds", -1).takeIf { it > 0 },
                 maxRetries = json.optInt("maxRetries", -1).takeIf { it > 0 },
+                maxImpliedSpeedMps = json.optDouble("filter_max_speed_mps", -1.0).takeIf { it > 0 }?.toFloat()
+                    ?: json.optDouble("filterMaxSpeedMps", -1.0).takeIf { it > 0 }?.toFloat()
+                    ?: json.optDouble("maxImpliedSpeedMps", -1.0).takeIf { it > 0 }?.toFloat(),
+                consistentSpeedMps = json.optDouble("filter_consistent_speed_mps", -1.0).takeIf { it > 0 }?.toFloat()
+                    ?: json.optDouble("filterConsistentSpeedMps", -1.0).takeIf { it > 0 }?.toFloat()
+                    ?: json.optDouble("consistentSpeedMps", -1.0).takeIf { it > 0 }?.toFloat(),
+                accuracyBadM = json.optDouble("filter_accuracy_bad_m", -1.0).takeIf { it > 0 }?.toFloat()
+                    ?: json.optDouble("filterAccuracyBadM", -1.0).takeIf { it > 0 }?.toFloat()
+                    ?: json.optDouble("accuracyBadM", -1.0).takeIf { it > 0 }?.toFloat(),
+                accuracyGoodM = json.optDouble("filter_accuracy_good_m", -1.0).takeIf { it > 0 }?.toFloat()
+                    ?: json.optDouble("filterAccuracyGoodM", -1.0).takeIf { it > 0 }?.toFloat()
+                    ?: json.optDouble("accuracyGoodM", -1.0).takeIf { it > 0 }?.toFloat(),
             )
             Log.i(TAG, "Config remota aplicada para ${config.username}")
             true

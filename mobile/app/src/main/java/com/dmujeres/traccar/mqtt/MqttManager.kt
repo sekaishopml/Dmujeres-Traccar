@@ -307,12 +307,33 @@ class MqttManager(
             if (!ready) continue
 
             val now = System.currentTimeMillis()
+            // Fase A: restaura map desde DB al iniciar (persistencia de backoff)
+            pending.forEach { p ->
+                if (p.retryAt > 0L && p.retryAt > now) {
+                    retryAt[p.messageId] = p.retryAt
+                }
+            }
             val next = pending.firstOrNull {
-                val retry = retryAt[it.messageId]
-                retry == null || retry <= now
+                // Usa campo persistido retryAt como fuente principal; map como fallback compat
+                val dbRetry = it.retryAt
+                val memRetry = retryAt[it.messageId]
+                val effective = when {
+                    dbRetry > 0L && memRetry != null -> maxOf(dbRetry, memRetry)
+                    dbRetry > 0L -> dbRetry
+                    else -> memRetry
+                }
+                effective == null || effective <= now
             }
             if (next == null) {
-                val nextRetryAt = pending.mapNotNull { retryAt[it.messageId] }.minOrNull()
+                val nextRetryAt = pending.mapNotNull {
+                    val dbRetry = it.retryAt.takeIf { r -> r > now }
+                    val memRetry = retryAt[it.messageId]?.takeIf { r -> r > now }
+                    when {
+                        dbRetry != null && memRetry != null -> minOf(dbRetry, memRetry)
+                        dbRetry != null -> dbRetry
+                        else -> memRetry
+                    }
+                }.minOrNull()
                 if (nextRetryAt == null) {
                     dispatchWake.receive()
                 } else {
@@ -336,15 +357,26 @@ class MqttManager(
                 }
 
                 else -> {
-                    // Sin ACK: backoff exponencial y continuar con el resto de la cola.
+                    // Sin ACK: backoff exponencial; Fase A: ruta sin pérdida — posiciones no se borran al agotar maxRetries
                     val attempts = next.attempts + 1
-                    withContext(Dispatchers.IO) { dao.updateAttempts(next.messageId, attempts) }
                     val backoffMs = 5_000L * (1L shl minOf(attempts, 8))
-                    retryAt[next.messageId] = System.currentTimeMillis() + backoffMs
-                    if (attempts > config.maxRetries) {
+                    val nextRetryAt = System.currentTimeMillis() + backoffMs
+                    withContext(Dispatchers.IO) {
+                        dao.updateAttempts(next.messageId, attempts)
+                        dao.updateRetryAt(next.messageId, nextRetryAt)
+                    }
+                    retryAt[next.messageId] = nextRetryAt
+                    // Solo borra si es control o tras el doble de reintentos; posiciones quedan para watchdog HTTP
+                    val shouldDelete = next.isControl || attempts > config.maxRetries * 2
+                    if (shouldDelete) {
                         withContext(Dispatchers.IO) { dao.delete(next.messageId) }
                         retryAt.remove(next.messageId)
-                        notifyState("Mensaje descartado tras ${config.maxRetries} reintentos: ${next.messageId}")
+                        if (next.isControl) {
+                            // Aviso genérico; no expone detalles técnicos MQTT/ACK al usuario (ver strings.xml)
+                            notifyState("Mensaje descartado tras ${config.maxRetries * 2} reintentos: ${next.messageId}")
+                        }
+                        // Posiciones normales tras 2x: se descartan silenciosamente tras persistir lo máximo posible;
+                        // el watchdog HTTP ya tuvo oportunidad de drenarlas.
                     }
                 }
             }
