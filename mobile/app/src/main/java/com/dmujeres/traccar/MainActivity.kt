@@ -883,165 +883,210 @@ class MainActivity : ComponentActivity() {
         isCompactHeight: Boolean,
     ) {
         val isStarted = toggleLabel == R.string.stop
-        val btnPulse = rememberInfiniteTransition(label = "btnPulse")
-        val btnAlpha by btnPulse.animateFloat(
-            initialValue = 1f,
-            targetValue = 0.6f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1800),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "btnAlpha",
-        )
-        val effectiveAlpha = if (!detailsLoading && toggleEnabled) btnAlpha else 1f
 
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        Column(
             modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 10.dp else 14.dp),
         ) {
-            Column(
-                modifier = Modifier.padding(if (isCompactHeight) 16.dp else 20.dp),
-                verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 10.dp),
-            ) {
-                // Estado grande — reemplaza StateBannerPanel
-                JourneyHero(
-                    isStarted = isStarted,
-                    stateText = stateText,
-                    statusColor = statusColor,
+            // Estado — banner limpio con color de fondo
+            StatusBanner(isStarted = isStarted, stateText = stateText, isCompactHeight = isCompactHeight)
+
+            // Métricas — grid de 3 items
+            if (!detailsLoading) {
+                MetricsRow(
+                    batteryText = batteryText,
+                    batteryLevel = batteryLevel,
+                    batteryColor = batteryColor,
+                    logText = logText,
                     isCompactHeight = isCompactHeight,
                 )
-
-                if (batteryLevel in 0..100) {
-                    BatteryPanel(
-                        batteryText = batteryText,
-                        batteryLevel = batteryLevel,
-                        batteryColor = batteryColor,
-                    )
-                }
-
-                if (detailsLoading) {
-                    DetailsLoadingPanel()
-                } else {
-                    LogPanel(logText = logText)
-                }
-
-                Button(
-                    onClick = onToggle,
-                    enabled = toggleEnabled,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(if (isCompactHeight) 52.dp else 60.dp)
-                        .graphicsLayer { alpha = effectiveAlpha },
-                ) {
-                    Icon(
-                        painter = painterResource(toggleIcon),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.padding(end = 10.dp),
-                    )
-                    Text(
-                        text = stringResource(toggleLabel),
-                        fontSize = if (isCompactHeight) 15.sp else 17.sp,
-                    )
-                }
-
-                TextButton(
-                    onClick = onDiag,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(text = stringResource(R.string.diag_button))
-                }
+            } else {
+                DetailsLoadingPanel()
             }
-        }
-    }
 
-    @Composable
-    private fun JourneyHero(
-        isStarted: Boolean,
-        stateText: String,
-        statusColor: Color,
-        isCompactHeight: Boolean,
-    ) {
-        val bgColor = when {
-            isStarted -> Color(0xFFE8F5E9) // verde suave
-            else -> Color(0xFFFFF3E0) // naranja suave
-        }
-        val iconBg = when {
-            isStarted -> StatusOk
-            else -> StatusIdle
-        }
-        val title = if (isStarted) stringResource(R.string.journey_started_title) else stringResource(R.string.journey_finished_title)
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(bgColor, RoundedCornerShape(12.dp))
-                .padding(horizontal = 16.dp, vertical = if (isCompactHeight) 12.dp else 14.dp),
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
+            // Botón principal — grande y prominente
+            Button(
+                onClick = onToggle,
+                enabled = toggleEnabled,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                ),
                 modifier = Modifier
-                    .size(if (isCompactHeight) 40.dp else 48.dp)
-                    .background(iconBg, CircleShape),
+                    .fillMaxWidth()
+                    .height(if (isCompactHeight) 56.dp else 64.dp),
             ) {
                 Icon(
-                    painter = painterResource(if (isStarted) R.drawable.ic_play else R.drawable.ic_stop),
+                    painter = painterResource(toggleIcon),
                     contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(if (isCompactHeight) 20.dp else 24.dp),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(if (isCompactHeight) 22.dp else 26.dp),
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = stringResource(toggleLabel),
+                    fontSize = if (isCompactHeight) 16.sp else 18.sp,
+                    fontWeight = FontWeight.Bold,
                 )
             }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
+
+            // Diagnóstico — sutil
+            TextButton(
+                onClick = onDiag,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(
-                    text = title,
-                    style = if (isCompactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = iconBg,
-                )
-                Text(
-                    text = stateText,
+                    text = stringResource(R.string.diag_button),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                 )
             }
         }
     }
 
     @Composable
-    private fun BatteryPanel(
+    private fun StatusBanner(isStarted: Boolean, stateText: String, isCompactHeight: Boolean) {
+        val bgColor = if (isStarted) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
+        val dotColor = if (isStarted) StatusOk else StatusIdle
+        val title = if (isStarted) stringResource(R.string.journey_started_title) else stringResource(R.string.journey_finished_title)
+
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = bgColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = if (isCompactHeight) 14.dp else 18.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(if (isCompactHeight) 44.dp else 52.dp)
+                        .background(dotColor, CircleShape),
+                ) {
+                    Icon(
+                        painter = painterResource(if (isStarted) R.drawable.ic_play else R.drawable.ic_stop),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(if (isCompactHeight) 22.dp else 26.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = if (isCompactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stateText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun MetricsRow(
         batteryText: String,
         batteryLevel: Int,
         batteryColor: Color,
+        logText: String,
+        isCompactHeight: Boolean,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
-                .padding(14.dp),
+        // Extraer pending del logText
+        val pendingMatch = Regex("(\\d+) ubicaciones pendientes").find(logText)
+        val pending = pendingMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
+
+        // Extraer estado del servidor del logText
+        val serverText = when {
+            "Conectado al servidor" in logText -> stringResource(R.string.log_server_on)
+            "Conectando al servidor" in logText -> stringResource(R.string.log_server_connecting)
+            else -> stringResource(R.string.log_server_off)
+        }
+        val serverOk = "Conectado al servidor" in logText
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 10.dp),
         ) {
-            Text(
-                text = batteryText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(bottom = 6.dp),
+            // Batería
+            MetricCard(
+                label = stringResource(R.string.log_battery, batteryLevel),
+                sublabel = if (batteryLevel in 0..100) batteryText else "",
+                accentColor = batteryColor,
+                modifier = Modifier.weight(1f),
+                isCompactHeight = isCompactHeight,
             )
-            LinearProgressIndicator(
-                progress = { batteryLevel / 100f },
-                color = batteryColor,
-                trackColor = Color(0xFFE0E0E0),
-                strokeCap = StrokeCap.Round,
+            // Pendientes
+            MetricCard(
+                label = if (pending > 0) "$pending" else "0",
+                sublabel = stringResource(R.string.pending),
+                accentColor = if (pending > 0) StatusWarn else StatusOk,
+                modifier = Modifier.weight(1f),
+                isCompactHeight = isCompactHeight,
+            )
+            // Servidor
+            MetricCard(
+                label = if (serverOk) "✓" else "✕",
+                sublabel = serverText,
+                accentColor = if (serverOk) StatusOk else StatusError,
+                modifier = Modifier.weight(1f),
+                isCompactHeight = isCompactHeight,
+            )
+        }
+    }
+
+    @Composable
+    private fun MetricCard(
+        label: String,
+        sublabel: String,
+        accentColor: Color,
+        modifier: Modifier = Modifier,
+        isCompactHeight: Boolean,
+    ) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            modifier = modifier,
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp),
-            )
+                    .padding(if (isCompactHeight) 10.dp else 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(accentColor, CircleShape),
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = label,
+                    style = if (isCompactHeight) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (sublabel.isNotEmpty()) {
+                    Text(
+                        text = sublabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                        modifier = Modifier.padding(top = 2.dp),
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 
