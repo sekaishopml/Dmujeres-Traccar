@@ -1,37 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand core — preserve DMujeres identity -->
     <color name="primary">#EB0045</color>
     <color name="primary_dark">#C4003B</color>
     <color name="accent">#FF1464</color>
     <color name="white">#FFFFFF</color>
     <color name="background">#F6F6F6</color>
     <color name="ink">#181818</color>
-    <color name="ic_launcher_background">#0A0B14</color>
-
-    <!-- Premium dark foundation -->
-    <color name="bg_dark">#0A0B14</color>
-    <color name="surface_glass">#1A1B26</color>
-    <color name="surface_glass_light">#252636</color>
-    <color name="border_glass">#2A2D45</color>
-
-    <!-- Neon accents — Discord/X/EA inspired -->
-    <color name="neon_pink">#FF2D8A</color>
-    <color name="neon_violet">#7C3AED</color>
-    <color name="neon_cyan">#3BB2D0</color>
-
-    <!-- Text on dark -->
-    <color name="text_primary">#F5F5F7</color>
-    <color name="text_secondary">#9BA1B6</color>
-
-    <!-- Glass overlays -->
-    <color name="glass_white_06">#1AFFFFFF</color>
-    <color name="glass_white_03">#0DFFFFFF</color>
-
-    <!-- Status — neon tuned for dark bg -->
-    <color name="status_ok">#00E676</color>
-    <color name="status_warn">#FFB300</color>
-    <color name="status_error">#FF3B5C</color>
-    <color name="status_idle">#6B7280</color>
-    <color name="status_offline">#FF6D00</color>
+    <color name="ic_launcher_background">#EB0045</color>
+    <color name="status_ok">#2E7D32</color>
+    <color name="status_warn">#F9A825</color>
+    <color name="status_error">#D32F2F</color>
+    <color name="status_idle">#9E9E9E</color>
+    <color name="status_offline">#EF6C00</color>
 </resources>

@@ -12,13 +12,10 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +23,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,8 +39,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -55,18 +49,8 @@ import com.dmujeres.traccar.location.TrackingState
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.MqttStatus
-import com.dmujeres.traccar.ui.theme.BgDark
-import com.dmujeres.traccar.ui.theme.BorderGlass
 import com.dmujeres.traccar.ui.theme.DmujeresTheme
-import com.dmujeres.traccar.ui.theme.NeonCyan
-import com.dmujeres.traccar.ui.theme.NeonPink
-import com.dmujeres.traccar.ui.theme.NeonViolet
-import com.dmujeres.traccar.ui.theme.Primary
-import com.dmujeres.traccar.ui.theme.SurfaceGlass
-import com.dmujeres.traccar.ui.theme.SurfaceGlassLight
-import com.dmujeres.traccar.ui.theme.TextPrimary
-import com.dmujeres.traccar.ui.theme.TextSecondary
-import com.dmujeres.traccar.ui.theme.White
+import com.dmujeres.traccar.ui.theme.Ink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -137,124 +121,82 @@ class DiagnosticsActivity : ComponentActivity() {
         val context = LocalContext.current
         val rows = rememberDiagRows(context, refreshKey)
 
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(BgDark)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            // top glow
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                NeonViolet.copy(alpha = 0.10f),
-                                NeonPink.copy(alpha = 0.08f),
-                                Color.Transparent
-                            ),
-                            center = Offset(540f, 0f),
-                            radius = 700f
-                        )
+            TopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.diag_title),
+                        color = Ink,
+                        fontWeight = FontWeight.Medium,
                     )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back),
+                            tint = Ink,
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
 
             Column(
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = stringResource(R.string.diag_title),
-                            color = TextPrimary,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back),
-                                tint = TextPrimary,
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = SurfaceGlass.copy(alpha = 0.92f),
-                        titleContentColor = TextPrimary,
-                        navigationIconContentColor = TextPrimary,
-                    ),
+                DiagRow(text = rows.state)
+                DiagRow(text = rows.gps)
+                DiagRow(text = rows.network)
+                DiagRow(text = rows.server)
+                DiagRow(text = rows.pending)
+                DiagRow(text = rows.battery)
+                DiagRow(text = rows.lastFix)
+                DiagRow(text = rows.lastAck)
+
+                Text(
+                    text = rows.device,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF666666),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
                 )
 
-                Column(
+                Button(
+                    onClick = onTestConnection,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
                 ) {
-                    DiagRow(text = rows.state)
-                    DiagRow(text = rows.gps)
-                    DiagRow(text = rows.network)
-                    DiagRow(text = rows.server)
-                    DiagRow(text = rows.pending)
-                    DiagRow(text = rows.battery)
-                    DiagRow(text = rows.lastFix)
-                    DiagRow(text = rows.lastAck)
+                    Text(stringResource(R.string.diag_test))
+                }
 
-                    Text(
-                        text = rows.device,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(SurfaceGlassLight.copy(alpha = 0.6f))
-                            .border(1.dp, BorderGlass, RoundedCornerShape(12.dp))
-                            .padding(12.dp),
-                    )
+                Button(
+                    onClick = onRecoverService,
+                    enabled = rows.recoverEnabled,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                ) {
+                    Text(stringResource(R.string.diag_retry_service))
+                }
 
-                    Button(
-                        onClick = onTestConnection,
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = White),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp),
-                    ) {
-                        Text(stringResource(R.string.diag_test), fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Button(
-                        onClick = onRecoverService,
-                        enabled = rows.recoverEnabled,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Primary,
-                            contentColor = White,
-                            disabledContainerColor = SurfaceGlassLight,
-                            disabledContentColor = TextSecondary
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                    ) {
-                        Text(stringResource(R.string.diag_retry_service), fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Button(
-                        onClick = onPermissions,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = SurfaceGlassLight,
-                            contentColor = TextPrimary
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, BorderGlass, RoundedCornerShape(14.dp)),
-                    ) {
-                        Text(stringResource(R.string.permissions_button), fontWeight = FontWeight.SemiBold)
-                    }
+                Button(
+                    onClick = onPermissions,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.permissions_button))
                 }
             }
         }
@@ -264,18 +206,17 @@ class DiagnosticsActivity : ComponentActivity() {
     private fun DiagRow(text: String) {
         Text(
             text = text,
-            style = MaterialTheme.typography.titleMedium.copy(color = TextPrimary),
+            style = MaterialTheme.typography.titleMedium,
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    Brush.linearGradient(listOf(SurfaceGlassLight, SurfaceGlass))
-                )
-                .border(1.dp, BorderGlass, RoundedCornerShape(12.dp))
-                .padding(14.dp),
+                .clip(RoundedCornerShape(8.dp))
+                .background(PanelColor)
+                .padding(12.dp),
         )
     }
 }
+
+private val PanelColor = Color(0xFFFFE9F0)
 
 private data class DiagRows(
     val state: String = "",
