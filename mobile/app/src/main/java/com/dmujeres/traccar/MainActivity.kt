@@ -20,6 +20,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -29,7 +30,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +42,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,15 +63,22 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -86,14 +98,25 @@ import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.UpdateManager
-import com.dmujeres.traccar.ui.theme.Background
+import com.dmujeres.traccar.ui.theme.BgDark
+import com.dmujeres.traccar.ui.theme.BorderGlass
 import com.dmujeres.traccar.ui.theme.DmujeresTheme
-import com.dmujeres.traccar.ui.theme.Ink
+import com.dmujeres.traccar.ui.theme.GlassWhite03
+import com.dmujeres.traccar.ui.theme.GlassWhite06
+import com.dmujeres.traccar.ui.theme.NeonCyan
+import com.dmujeres.traccar.ui.theme.NeonPink
+import com.dmujeres.traccar.ui.theme.NeonViolet
+import com.dmujeres.traccar.ui.theme.Primary
 import com.dmujeres.traccar.ui.theme.StatusError
 import com.dmujeres.traccar.ui.theme.StatusIdle
 import com.dmujeres.traccar.ui.theme.StatusOffline
 import com.dmujeres.traccar.ui.theme.StatusOk
 import com.dmujeres.traccar.ui.theme.StatusWarn
+import com.dmujeres.traccar.ui.theme.SurfaceGlass
+import com.dmujeres.traccar.ui.theme.SurfaceGlassLight
+import com.dmujeres.traccar.ui.theme.TextPrimary
+import com.dmujeres.traccar.ui.theme.TextSecondary
+import com.dmujeres.traccar.ui.theme.White
 import com.dmujeres.traccar.util.Notifications
 import com.dmujeres.traccar.util.RemoteConfig
 import kotlinx.coroutines.Dispatchers
@@ -657,8 +680,42 @@ class MainActivity : ComponentActivity() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background),
+                .background(BgDark),
         ) {
+            // Subtle radial glow top — neon premium depth
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                NeonPink.copy(alpha = 0.12f),
+                                NeonViolet.copy(alpha = 0.08f),
+                                Color.Transparent
+                            ),
+                            center = Offset(0.5f * 1080f, 0f),
+                            radius = 900f
+                        )
+                    )
+            )
+            // Vertical fade overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                BgDark.copy(alpha = 0.6f),
+                                BgDark
+                            ),
+                            startY = 0f,
+                            endY = 1200f
+                        )
+                    )
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -667,7 +724,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 TopBanner(onUpdateIcon = onUpdateIcon)
 
-                Crossfade(targetState = logged) { isLogged ->
+                Crossfade(targetState = logged, label = "authCrossfade") { isLogged ->
                     if (!isLogged) {
                         LoginCard(
                             username = username,
@@ -710,7 +767,7 @@ class MainActivity : ComponentActivity() {
             Text(
                 text = versionText,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8A8A8A),
+                color = TextSecondary.copy(alpha = 0.7f),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(10.dp),
@@ -723,29 +780,79 @@ class MainActivity : ComponentActivity() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 20.dp),
+                .padding(bottom = 20.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            BgDark,
+                            SurfaceGlass,
+                            SurfaceGlassLight.copy(alpha = 0.9f)
+                        )
+                    )
+                )
+                .border(1.dp, BorderGlass, RoundedCornerShape(20.dp))
+                .padding(16.dp),
         ) {
+            // blur glow behind logo
+            Box(
+                modifier = Modifier
+                    .size(180.dp)
+                    .align(Alignment.Center)
+                    .blur(32.dp)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                NeonPink.copy(alpha = 0.22f),
+                                Color.Transparent
+                            )
+                        ),
+                        CircleShape
+                    )
+            )
             Image(
                 painter = painterResource(R.drawable.logo_banner),
                 contentDescription = stringResource(R.string.app_name),
                 contentScale = ContentScale.FillWidth,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 320.dp)
-                    .align(Alignment.Center),
+                    .widthIn(max = 260.dp)
+                    .align(Alignment.Center)
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = RoundedCornerShape(12.dp),
+                        ambientColor = NeonPink.copy(alpha = 0.35f),
+                        spotColor = NeonViolet.copy(alpha = 0.35f)
+                    ),
             )
             IconButton(
                 onClick = onUpdateIcon,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .size(48.dp),
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(SurfaceGlassLight.copy(alpha = 0.9f))
+                    .border(1.dp, BorderGlass, CircleShape),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_update),
                     contentDescription = stringResource(R.string.check_updates),
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = NeonPink,
+                    modifier = Modifier.size(20.dp),
                 )
             }
+            // subtle bottom gradient line
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color.Transparent, NeonPink.copy(alpha = 0.35f), Color.Transparent)
+                        )
+                    )
+            )
         }
     }
 
@@ -760,35 +867,63 @@ class MainActivity : ComponentActivity() {
         loginTesting: Boolean,
         onLogin: () -> Unit,
     ) {
+        val interactionSource = remember { MutableInteractionSource() }
         Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, BorderGlass, RoundedCornerShape(24.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            SurfaceGlass,
+                            SurfaceGlassLight.copy(alpha = 0.95f),
+                            SurfaceGlass
+                        )
+                    ),
+                    RoundedCornerShape(24.dp)
+                ),
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text(
                     text = stringResource(R.string.login_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                    color = TextPrimary,
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
                 Text(
                     text = stringResource(R.string.login_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = TextSecondary,
                     modifier = Modifier.padding(bottom = 20.dp),
                 )
                 OutlinedTextField(
                     value = username,
                     onValueChange = onUsernameChange,
-                    label = { Text(stringResource(R.string.username_hint)) },
+                    label = { Text(stringResource(R.string.username_hint), color = TextSecondary) },
                     leadingIcon = {
                         Icon(
                             painter = painterResource(R.drawable.ic_person),
                             contentDescription = null,
-                            tint = Ink,
+                            tint = NeonPink,
+                            modifier = Modifier.size(20.dp),
                         )
                     },
                     singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = SurfaceGlassLight,
+                        unfocusedContainerColor = SurfaceGlassLight,
+                        disabledContainerColor = SurfaceGlassLight,
+                        focusedBorderColor = NeonPink,
+                        unfocusedBorderColor = BorderGlass,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        cursorColor = NeonPink,
+                        focusedLabelColor = NeonPink,
+                    ),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
@@ -796,12 +931,13 @@ class MainActivity : ComponentActivity() {
                 OutlinedTextField(
                     value = password,
                     onValueChange = onPasswordChange,
-                    label = { Text(stringResource(R.string.password_hint)) },
+                    label = { Text(stringResource(R.string.password_hint), color = TextSecondary) },
                     leadingIcon = {
                         Icon(
                             painter = painterResource(R.drawable.ic_lock),
                             contentDescription = null,
-                            tint = Ink,
+                            tint = NeonPink,
+                            modifier = Modifier.size(20.dp),
                         )
                     },
                     visualTransformation = if (passwordVisible) {
@@ -818,29 +954,48 @@ class MainActivity : ComponentActivity() {
                                     Icons.Filled.Visibility
                                 },
                                 contentDescription = null,
-                                tint = Ink,
+                                tint = TextSecondary,
                             )
                         }
                     },
                     singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = SurfaceGlassLight,
+                        unfocusedContainerColor = SurfaceGlassLight,
+                        disabledContainerColor = SurfaceGlassLight,
+                        focusedBorderColor = NeonPink,
+                        unfocusedBorderColor = BorderGlass,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        cursorColor = NeonPink,
+                        focusedLabelColor = NeonPink,
+                    ),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 20.dp),
                 )
+                val buttonGradient = Brush.horizontalGradient(listOf(Primary, NeonViolet, NeonCyan.copy(alpha = 0.9f)))
                 Button(
                     onClick = onLogin,
                     enabled = !loginTesting,
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, disabledContainerColor = Color.Transparent),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(56.dp)
+                        .shadow(12.dp, RoundedCornerShape(16.dp), ambientColor = Primary.copy(alpha = 0.4f), spotColor = NeonViolet.copy(alpha = 0.4f))
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(buttonGradient, RoundedCornerShape(16.dp))
+                        .border(1.dp, GlassWhite06, RoundedCornerShape(16.dp)),
+                    interactionSource = interactionSource,
                 ) {
                     Text(
                         text = stringResource(if (loginTesting) R.string.checking else R.string.login_button),
                         fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = White,
                     )
                 }
             }
@@ -863,12 +1018,28 @@ class MainActivity : ComponentActivity() {
         onDiag: () -> Unit,
     ) {
         Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, BorderGlass, RoundedCornerShape(24.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            SurfaceGlass,
+                            SurfaceGlassLight.copy(alpha = 0.85f),
+                            SurfaceGlass
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(1000f, 800f)
+                    ),
+                    RoundedCornerShape(24.dp)
+                ),
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 StateBannerPanel(stateText = stateText, statusColor = statusColor)
 
@@ -886,35 +1057,85 @@ class MainActivity : ComponentActivity() {
                     LogPanel(logText = logText)
                 }
 
+                val isStop = toggleLabel == R.string.stop
+                val interactionSource = remember { MutableInteractionSource() }
+                val isPressed by interactionSource.collectIsPressedAsState()
+                val scale by animateFloatAsState(
+                    targetValue = if (isPressed) 0.98f else 1f,
+                    animationSpec = tween(120),
+                    label = "pressScale"
+                )
+                val rotation by animateFloatAsState(
+                    targetValue = if (isStop) 0f else 0f,
+                    animationSpec = tween(300),
+                    label = "iconRotation"
+                )
+                val gradient = if (isStop) {
+                    Brush.horizontalGradient(listOf(Color(0xFF2A2D45), SurfaceGlassLight))
+                } else {
+                    Brush.horizontalGradient(listOf(Primary, NeonViolet, NeonPink))
+                }
                 Button(
                     onClick = onToggle,
                     enabled = toggleEnabled,
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        containerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        disabledContentColor = TextSecondary
                     ),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    interactionSource = interactionSource,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(64.dp)
-                        .padding(top = 8.dp),
+                        .padding(top = 4.dp)
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        .shadow(
+                            elevation = if (isStop) 4.dp else 16.dp,
+                            shape = RoundedCornerShape(16.dp),
+                            ambientColor = if (isStop) Color.Transparent else Primary.copy(alpha = 0.4f),
+                            spotColor = if (isStop) Color.Transparent else NeonViolet.copy(alpha = 0.4f)
+                        )
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(gradient, RoundedCornerShape(16.dp))
+                        .border(
+                            width = 1.dp,
+                            color = if (isStop) BorderGlass else GlassWhite06,
+                            shape = RoundedCornerShape(16.dp)
+                        ),
                 ) {
                     Icon(
                         painter = painterResource(toggleIcon),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.padding(end = 10.dp),
+                        tint = if (isStop) TextPrimary else White,
+                        modifier = Modifier
+                            .padding(end = 10.dp)
+                            .size(22.dp)
+                            .graphicsLayer { rotationZ = rotation },
                     )
                     Text(
                         text = stringResource(toggleLabel),
-                        fontSize = 18.sp,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.3.sp,
+                        color = if (isStop) TextPrimary else White,
                     )
                 }
 
                 TextButton(
                     onClick = onDiag,
                     modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = NeonCyan)
                 ) {
-                    Text(text = stringResource(R.string.diag_button))
+                    Text(
+                        text = stringResource(R.string.diag_button),
+                        color = NeonCyan,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
@@ -922,23 +1143,82 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun StateBannerPanel(stateText: String, statusColor: Color) {
+        // Derive presence mode: idle = paused, warn = battery/pending, ok = active, error/offline otherwise
+        val isIdle = statusColor == StatusIdle
+        val isWarn = statusColor == StatusWarn
+        val pulseDuration = when {
+            isIdle -> 1800
+            isWarn -> 1200
+            else -> 900
+        }
+        val infiniteTransition = rememberInfiniteTransition(label = "presenceDot")
+        val scale by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.35f,
+            animationSpec = infiniteRepeatable(tween(pulseDuration), RepeatMode.Reverse),
+            label = "dotScale"
+        )
+        val alpha by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.45f,
+            animationSpec = infiniteRepeatable(tween(pulseDuration), RepeatMode.Reverse),
+            label = "dotAlpha"
+        )
+        // glow color
+        val glowColor = statusColor.copy(alpha = 0.45f)
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            SurfaceGlassLight,
+                            SurfaceGlass
+                        )
+                    )
+                )
+                .border(1.dp, BorderGlass, RoundedCornerShape(14.dp))
                 .padding(14.dp),
         ) {
             Box(
-                modifier = Modifier
-                    .size(14.dp)
-                    .background(statusColor, CircleShape),
-            )
-            Spacer(modifier = Modifier.width(10.dp))
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(18.dp)
+            ) {
+                // outer glow
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            this.alpha = (1f - alpha) * 0.7f
+                        }
+                        .background(glowColor, CircleShape)
+                )
+                // solid dot
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .shadow(8.dp, CircleShape, ambientColor = statusColor, spotColor = statusColor)
+                        .background(statusColor, CircleShape)
+                        .graphicsLayer { this.alpha = alpha.coerceIn(0.6f, 1f) }
+                )
+                // inner highlight
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .offset(x = (-1).dp, y = (-1).dp)
+                        .background(White.copy(alpha = 0.9f), CircleShape)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = stateText,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = TextPrimary,
             )
         }
     }
@@ -949,79 +1229,170 @@ class MainActivity : ComponentActivity() {
         batteryLevel: Int,
         batteryColor: Color,
     ) {
+        val infiniteTransition = rememberInfiniteTransition(label = "batteryShimmer")
+        val shimmerOffset by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(1400), RepeatMode.Restart),
+            label = "shimmerOffset"
+        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(SurfaceGlassLight, SurfaceGlass)
+                    )
+                )
+                .border(1.dp, BorderGlass, RoundedCornerShape(14.dp))
                 .padding(14.dp),
         ) {
-            Text(
-                text = batteryText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(bottom = 6.dp),
-            )
-            LinearProgressIndicator(
-                progress = { batteryLevel / 100f },
-                color = batteryColor,
-                trackColor = Color(0xFFE0E0E0),
-                strokeCap = StrokeCap.Round,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(batteryColor, CircleShape)
+                        .shadow(6.dp, CircleShape, ambientColor = batteryColor, spotColor = batteryColor)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = batteryText,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = TextPrimary,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "$batteryLevel%",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = batteryColor,
+                )
+            }
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp),
-            )
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1E2030))
+                    .border(1.dp, BorderGlass, RoundedCornerShape(10.dp))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(batteryLevel / 100f)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(NeonPink, NeonViolet)
+                            )
+                        )
+                ) {
+                    // shimmer highlight sweeping
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        White.copy(alpha = 0.28f),
+                                        Color.Transparent
+                                    ),
+                                    start = Offset(shimmerOffset * 400f - 200f, 0f),
+                                    end = Offset(shimmerOffset * 400f + 80f, 20f)
+                                )
+                            )
+                    )
+                }
+                // thumb glow at progress tip
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 0.dp)
+                        .size(10.dp)
+                        .background(batteryColor, CircleShape)
+                        .shadow(8.dp, CircleShape, ambientColor = batteryColor, spotColor = batteryColor)
+                )
+            }
         }
     }
 
     @Composable
     private fun DetailsLoadingPanel() {
-        val transition = rememberInfiniteTransition(label = "skeleton")
-        val alpha by transition.animateFloat(
-            initialValue = 0.45f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 650),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "skeletonAlpha",
-        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(14.dp))
+                .background(SurfaceGlassLight.copy(alpha = 0.8f))
+                .border(1.dp, BorderGlass, RoundedCornerShape(14.dp))
                 .padding(14.dp),
         ) {
-            SkeletonBar(widthFraction = 0.8f, alpha = alpha)
+            SkeletonBar(widthFraction = 0.78f)
             Spacer(modifier = Modifier.height(12.dp))
-            SkeletonBar(widthFraction = 0.95f, alpha = alpha)
+            SkeletonBar(widthFraction = 0.95f)
             Spacer(modifier = Modifier.height(12.dp))
-            SkeletonBar(widthFraction = 0.65f, alpha = alpha)
-            Spacer(modifier = Modifier.height(8.dp))
+            SkeletonBar(widthFraction = 0.62f)
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 
     @Composable
-    private fun SkeletonBar(widthFraction: Float, alpha: Float) {
+    private fun SkeletonBar(widthFraction: Float) {
+        val transition = rememberInfiniteTransition(label = "skeletonShimmer")
+        val offset by transition.animateFloat(
+            initialValue = -1f,
+            targetValue = 2f,
+            animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Restart),
+            label = "shimmer"
+        )
         Box(
             modifier = Modifier
                 .fillMaxWidth(widthFraction)
-                .height(16.dp)
-                .background(Color(0xFFE4E4E4), RoundedCornerShape(6.dp))
-                .graphicsLayer { this.alpha = alpha },
-        )
+                .height(14.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF2A2D45))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                White.copy(alpha = 0.22f),
+                                Color.Transparent
+                            ),
+                            start = Offset(offset * 300f - 200f, 0f),
+                            end = Offset(offset * 300f + 50f, 0f)
+                        )
+                    )
+            )
+        }
     }
 
     @Composable
     private fun LogPanel(logText: String) {
-        Text(
-            text = logText,
-            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
-            color = MaterialTheme.colorScheme.onBackground,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(SurfaceGlassLight, SurfaceGlass)
+                    )
+                )
+                .border(1.dp, BorderGlass, RoundedCornerShape(14.dp))
                 .padding(14.dp),
-        )
+        ) {
+            Text(
+                text = logText,
+                style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp, color = TextPrimary),
+                color = TextPrimary,
+            )
+        }
     }
 
     @Composable
@@ -1030,20 +1401,24 @@ class MainActivity : ComponentActivity() {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.primary)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(Primary, NeonPink, NeonViolet)
+                    )
+                )
                 .clickable(onClick = onClick)
-                .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_update),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
+                tint = White,
                 modifier = Modifier.size(20.dp),
             )
             Text(
                 text = stringResource(R.string.update_banner),
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onPrimary,
+                color = White,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .weight(1f)
