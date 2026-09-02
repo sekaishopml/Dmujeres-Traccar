@@ -21,6 +21,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -32,20 +33,22 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -654,48 +657,74 @@ class MainActivity : ComponentActivity() {
         onUpdateIcon: () -> Unit,
         versionText: String,
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Background),
+                .background(Background)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding(),
         ) {
+            val isCompactHeight = maxHeight < 640.dp
+            val horizontalPad = if (maxWidth > 600.dp) 32.dp else 20.dp
+            val verticalPad = if (isCompactHeight) 12.dp else 16.dp
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp),
+                    .fillMaxSize()
+                    .padding(horizontal = horizontalPad, vertical = verticalPad),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 TopBanner(onUpdateIcon = onUpdateIcon)
 
-                Crossfade(targetState = logged) { isLogged ->
-                    if (!isLogged) {
-                        LoginCard(
-                            username = username,
-                            onUsernameChange = onUsernameChange,
-                            password = password,
-                            onPasswordChange = onPasswordChange,
-                            passwordVisible = passwordVisible,
-                            onTogglePasswordVisible = onTogglePasswordVisible,
-                            loginTesting = loginTesting,
-                            onLogin = onLogin,
-                        )
-                    } else {
-                        MainCard(
-                            stateText = stateText,
-                            statusColor = statusColor,
-                            batteryText = batteryText,
-                            batteryLevel = batteryLevel,
-                            batteryColor = batteryColor,
-                            detailsLoading = detailsLoading,
-                            logText = logText,
-                            toggleLabel = toggleLabel,
-                            toggleIcon = toggleIcon,
-                            toggleEnabled = toggleEnabled,
-                            onToggle = onToggle,
-                            onDiag = onDiag,
-                        )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Crossfade(
+                        targetState = logged,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 480.dp),
+                    ) { isLogged ->
+                        if (!isLogged) {
+                            LoginCard(
+                                username = username,
+                                onUsernameChange = onUsernameChange,
+                                password = password,
+                                onPasswordChange = onPasswordChange,
+                                passwordVisible = passwordVisible,
+                                onTogglePasswordVisible = onTogglePasswordVisible,
+                                loginTesting = loginTesting,
+                                onLogin = onLogin,
+                            )
+                        } else {
+                            MainCard(
+                                stateText = stateText,
+                                statusColor = statusColor,
+                                batteryText = batteryText,
+                                batteryLevel = batteryLevel,
+                                batteryColor = batteryColor,
+                                detailsLoading = detailsLoading,
+                                logText = logText,
+                                toggleLabel = toggleLabel,
+                                toggleIcon = toggleIcon,
+                                toggleEnabled = toggleEnabled,
+                                onToggle = onToggle,
+                                onDiag = onDiag,
+                                isCompactHeight = isCompactHeight,
+                            )
+                        }
                     }
                 }
+
+                Text(
+                    text = versionText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF8A8A8A),
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
 
             AnimatedVisibility(
@@ -706,15 +735,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 UpdateBanner(onClick = onUpdateBanner)
             }
-
-            Text(
-                text = versionText,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8A8A8A),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(10.dp),
-            )
         }
     }
 
@@ -861,15 +881,47 @@ class MainActivity : ComponentActivity() {
         toggleEnabled: Boolean,
         onToggle: () -> Unit,
         onDiag: () -> Unit,
+        isCompactHeight: Boolean,
     ) {
+        // Botón con pausa al terminar de cargar: pulso suave con pausa larga
+        val isStarted = toggleLabel == R.string.stop
+        val btnPulse = rememberInfiniteTransition(label = "btnPulse")
+        val btnScale by btnPulse.animateFloat(
+            initialValue = 1f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes {
+                    durationMillis = 2600
+                    1f at 0
+                    1f at 800 // pausa inicial
+                    1.03f at 1050
+                    1f at 1300
+                    1f at 2600 // pausa larga
+                },
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "btnScale",
+        )
+        val effectiveScale = if (!detailsLoading && toggleEnabled) btnScale else 1f
+
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(if (isCompactHeight) 18.dp else 24.dp),
+                verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 10.dp else 12.dp),
             ) {
+                // Estado grande centrado — jornada iniciada / finalizada
+                JourneyHero(
+                    isStarted = isStarted,
+                    stateText = stateText,
+                    statusColor = statusColor,
+                    isCompactHeight = isCompactHeight,
+                )
+
                 StateBannerPanel(stateText = stateText, statusColor = statusColor)
 
                 if (batteryLevel in 0..100) {
@@ -895,8 +947,12 @@ class MainActivity : ComponentActivity() {
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(64.dp)
-                        .padding(top = 8.dp),
+                        .height(if (isCompactHeight) 56.dp else 64.dp)
+                        .padding(top = if (isCompactHeight) 4.dp else 8.dp)
+                        .graphicsLayer {
+                            scaleX = effectiveScale
+                            scaleY = effectiveScale
+                        },
                 ) {
                     Icon(
                         painter = painterResource(toggleIcon),
@@ -906,7 +962,7 @@ class MainActivity : ComponentActivity() {
                     )
                     Text(
                         text = stringResource(toggleLabel),
-                        fontSize = 18.sp,
+                        fontSize = if (isCompactHeight) 16.sp else 18.sp,
                     )
                 }
 
@@ -917,6 +973,69 @@ class MainActivity : ComponentActivity() {
                     Text(text = stringResource(R.string.diag_button))
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun JourneyHero(
+        isStarted: Boolean,
+        stateText: String,
+        statusColor: Color,
+        isCompactHeight: Boolean,
+    ) {
+        val pulse = rememberInfiniteTransition(label = "heroPulse")
+        val alpha by pulse.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.52f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1100),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "heroAlpha",
+        )
+        val title = if (isStarted) stringResource(R.string.journey_started_title) else stringResource(R.string.journey_finished_title)
+        val subtitle = stateText
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(statusColor.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
+                .padding(vertical = if (isCompactHeight) 14.dp else 18.dp, horizontal = 16.dp),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(if (isCompactHeight) 56.dp else 68.dp)
+                    .background(statusColor, CircleShape),
+            ) {
+                // pulso exterior
+                Box(
+                    modifier = Modifier
+                        .size(if (isCompactHeight) 56.dp else 68.dp)
+                        .background(statusColor.copy(alpha = 0.18f * alpha), CircleShape),
+                )
+                Icon(
+                    painter = painterResource(if (isStarted) R.drawable.ic_play else R.drawable.ic_stop),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(if (isCompactHeight) 28.dp else 32.dp),
+                )
+            }
+            Spacer(modifier = Modifier.height(if (isCompactHeight) 8.dp else 10.dp))
+            Text(
+                text = title,
+                style = if (isCompactHeight) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                color = statusColor,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 

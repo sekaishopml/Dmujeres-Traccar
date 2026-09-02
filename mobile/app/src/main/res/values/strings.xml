@@ -3,6 +3,8 @@
     <string name="app_name">DMujeres Tracking</string>
     <string name="tracking_on">Jornada de trabajo en curso</string>
     <string name="tracking_off">Jornada finalizada</string>
+    <string name="journey_started_title">Jornada iniciada</string>
+    <string name="journey_finished_title">Jornada finalizada</string>
     <string name="start">Iniciar jornada</string>
     <string name="stop">Finalizar jornada</string>
     <string name="server_hint">Servidor (mqtt://ip:puerto)</string>
