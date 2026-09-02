@@ -312,6 +312,8 @@ class TrackingService : Service() {
 
     @Volatile private var lastMqttStatus: String = ""
     @Volatile private var lastBufferFullAlertAt = 0L
+    @Volatile private var lastDiscardAlertAt = 0L
+    @Volatile private var lastStorageAlertAt = 0L
     @Volatile private var lastJourneyLat = 0.0
     @Volatile private var lastJourneyLon = 0.0
 
@@ -663,12 +665,16 @@ class TrackingService : Service() {
                     config.lastEnqueuedAt = maxOf(config.lastEnqueuedAt, System.currentTimeMillis())
                     mqtt?.wakeDispatch()
                     if (discarded > 0) {
-                        Log.w(TAG, "Buffer Room lleno; se descartaron $discarded posiciones")
-                        Notifications.alert(
-                            this@TrackingService,
-                            getString(R.string.buffer_warning_title),
-                            getString(R.string.buffer_warning_body, discarded),
-                        )
+                        val now = System.currentTimeMillis()
+                        if (now - lastDiscardAlertAt > 60_000) {
+                            lastDiscardAlertAt = now
+                            Log.w(TAG, "Buffer Room lleno; se descartaron $discarded posiciones")
+                            Notifications.alert(
+                                this@TrackingService,
+                                getString(R.string.buffer_warning_title),
+                                getString(R.string.buffer_warning_body, discarded),
+                            )
+                        }
                     }
                 }
                 if (started.get()) {
@@ -682,12 +688,16 @@ class TrackingService : Service() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "No se pudo guardar la posición en Room", e)
-                Notifications.alert(
-                    this@TrackingService,
-                    getString(R.string.storage_warning_title),
-                    getString(R.string.storage_warning_body),
-                )
+                val now = System.currentTimeMillis()
+                if (now - lastStorageAlertAt > 60_000) {
+                    lastStorageAlertAt = now
+                    Log.e(TAG, "No se pudo guardar la posición en Room", e)
+                    Notifications.alert(
+                        this@TrackingService,
+                        getString(R.string.storage_warning_title),
+                        getString(R.string.storage_warning_body),
+                    )
+                }
                 refreshStateAndNotify()
             }
         }
