@@ -55,6 +55,15 @@ abstract class PositionDao {
     @Query("SELECT * FROM pending_positions WHERE retryAt <= :now OR retryAt = 0 ORDER BY sequence ASC")
     abstract suspend fun allDue(now: Long): List<PendingPosition>
 
+    @Query("SELECT * FROM pending_positions WHERE retryAt <= :now OR retryAt = 0 ORDER BY sequence ASC LIMIT :limit")
+    abstract suspend fun allDue(now: Long, limit: Int): List<PendingPosition>
+
+    @Query("SELECT * FROM pending_positions WHERE isControl = 1 AND (retryAt <= :now OR retryAt = 0) ORDER BY sequence ASC LIMIT :limit")
+    abstract suspend fun dueControls(now: Long, limit: Int): List<PendingPosition>
+
+    @Query("SELECT MIN(retryAt) FROM pending_positions WHERE retryAt > :now")
+    abstract suspend fun minFutureRetryAt(now: Long): Long?
+
     @Query("DELETE FROM pending_positions WHERE messageId IN (SELECT messageId FROM pending_positions WHERE isControl = 0 AND payload NOT LIKE '%\"journeyStarted\":true%' AND payload NOT LIKE '%\"journeyEnded\":true%' ORDER BY sequence ASC LIMIT :count)")
     abstract suspend fun deleteOldestNonControl(count: Int): Int
 

@@ -25,7 +25,15 @@ object Envelope {
         observedAt: String,
         pending: Int,
         battery: Int,
-        network: String
+        network: String,
+        // Marca de calidad anti-drift: true cuando accuracy en [80, 500).
+        // Se omite si es false para no crecer el payload de fixes buenos.
+        lowQuality: Boolean = false,
+        // Origen del fix: "gps" | "network" | "fused" | "unknown". El server marca
+        // attributes.provider y el panel excluye "network" de la geometría de ruta.
+        provider: String? = null,
+        // Segundos desde que se generó el fix hasta el enqueue (0 = fresco).
+        fixAgeSec: Long? = null,
     ): String {
         val payload = JSONObject()
         payload.put("latitude", latitude)
@@ -37,6 +45,9 @@ object Envelope {
         payload.put("pending", pending)
         payload.put("battery", battery)
         payload.put("network", network)
+        if (lowQuality) payload.put("lowQuality", true)
+        if (!provider.isNullOrBlank()) payload.put("provider", provider)
+        if (fixAgeSec != null && fixAgeSec > 0L) payload.put("fixAgeSec", fixAgeSec)
 
         val body = JSONObject()
         body.put("schema", 1)
@@ -64,6 +75,34 @@ object Envelope {
         gps: String,
         journeyStatus: String? = null,
         journeyId: Long = 0L,
+        rttMs: Int = -1,
+        signal: Int = -1,
+        // Causa de pérdida de red (Fase 1): opcionales, solo se serializan si conocidos.
+        // schema:1 tolera extras; el campo `network` existente no cambia.
+        netCause: String? = null,
+        validated: Boolean? = null,
+        wifiEnabled: Boolean? = null,
+        airplane: Boolean? = null,
+        // Certeza anti-trampas con READ_PHONE_STATE (opcional): solo si conocidos.
+        dataEnabled: Boolean? = null,
+        simPresent: Boolean? = null,
+        service: String? = null,
+        netConf: String? = null,
+        // Observabilidad anti "cero capturas en silencio" + permisos/GPS para que
+        // el servidor distinga "GPS apagado" de "filtro mata todo". Opcionales
+        // (solo se serializan si conocidos) para no romper schema:1.
+        fixReceived: Long? = null,
+        fixRejected: Long? = null,
+        fixEnqueued: Long? = null,
+        permFine: Boolean? = null,
+        permBackground: Boolean? = null,
+        gpsEnabled: Boolean? = null,
+        // Adquisición GPS activa (opcionales, solo se serializan si conocidos):
+        // satélites GNSS en vista/usados en fix + si el polling one-shot está
+        // disparando. `pollActive` solo viaja en true para no engordar presence.
+        gnssUsed: Int? = null,
+        gnssTotal: Int? = null,
+        pollActive: Boolean? = null,
     ): String {
         val payload = JSONObject()
         payload.put("pending", pending)
@@ -73,6 +112,26 @@ object Envelope {
         payload.put("model", model)
         payload.put("appVersion", appVersion)
         payload.put("gps", gps)
+        // Calidad de conexión (opcionales; el server ignora campos extra en payload).
+        if (rttMs >= 0) payload.put("rttMs", rttMs)
+        if (signal >= 0) payload.put("signal", signal)
+        if (!netCause.isNullOrBlank()) payload.put("netCause", netCause)
+        if (validated != null) payload.put("validated", validated)
+        if (wifiEnabled != null) payload.put("wifiEnabled", wifiEnabled)
+        if (airplane != null) payload.put("airplane", airplane)
+        if (dataEnabled != null) payload.put("dataEnabled", dataEnabled)
+        if (simPresent != null) payload.put("simPresent", simPresent)
+        if (!service.isNullOrBlank()) payload.put("service", service)
+        if (!netConf.isNullOrBlank()) payload.put("netConf", netConf)
+        if (fixReceived != null) payload.put("fixReceived", fixReceived)
+        if (fixRejected != null) payload.put("fixRejected", fixRejected)
+        if (fixEnqueued != null) payload.put("fixEnqueued", fixEnqueued)
+        if (permFine != null) payload.put("permFine", permFine)
+        if (permBackground != null) payload.put("permBackground", permBackground)
+        if (gpsEnabled != null) payload.put("gpsEnabled", gpsEnabled)
+        if (gnssUsed != null) payload.put("gnssUsed", gnssUsed)
+        if (gnssTotal != null) payload.put("gnssTotal", gnssTotal)
+        if (pollActive == true) payload.put("pollActive", true)
         if (journeyStatus == "started") payload.put("journeyStarted", true)
         if (journeyStatus == "ended") payload.put("journeyEnded", true)
         if (journeyId > 0L) payload.put("journeyId", journeyId)

@@ -3,7 +3,7 @@ package com.dmujeres.traccar.util
 import android.content.Context
 import android.util.Log
 import com.dmujeres.traccar.config.AppConfig
-import com.dmujeres.traccar.mqtt.HttpFallbackDispatcher
+import com.dmujeres.traccar.mqtt.MqttServerNormalizer
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -22,7 +22,7 @@ object RemoteConfig {
     suspend fun fetch(context: Context): Boolean {
         val config = AppConfig(context)
         if (config.username.isBlank() || config.password.isBlank()) return false
-        val base = HttpFallbackDispatcher.webBase(config.serverUrl)
+        val base = MqttServerNormalizer.webBase(config.serverUrl, AppConfig.WEB_PORT)
 
         return try {
             val connection = URL("$base/api/mobile/v1/config").openConnection() as HttpURLConnection

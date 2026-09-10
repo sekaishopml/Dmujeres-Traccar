@@ -1,9 +1,12 @@
 package com.dmujeres.traccar.mqtt
 
 import android.content.Context
+import android.util.Log
 import com.dmujeres.traccar.config.AppConfig
+import com.dmujeres.traccar.db.DispatchLock
 import com.dmujeres.traccar.db.PendingPosition
 import com.dmujeres.traccar.db.PositionDao
+import com.dmujeres.traccar.util.RttMeter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +17,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.withLock
 import org.eclipse.paho.client.mqttv3.IMqttActionListener
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.IMqttToken
@@ -74,12 +78,12 @@ class MqttManager(
             ?: error?.toString()?.takeIf { it.isNotBlank() }
             ?: fallback
 
-    /** Reintenta la conexión inicial cada 30 s (Paho no auto-reconecta si el primer intento falla). */
+    /** Reintenta la conexión inicial con jitter ±25% (base 30 s, techo 5 min). */
     private fun scheduleConnectRetry() {
         if (!connectRetryScheduled.compareAndSet(false, true)) return
         scope.launch {
             while (scope.isActive && !connected && client != null) {
-                delay(30_000)
+                delay(DispatchPolicy.connectRetryDelayMs())
                 connecting = false
                 connect()
             }
@@ -111,7 +115,7 @@ class MqttManager(
         }
 
         val normalizedServer = try {
-            normalizeServer(server).also { URI(it) }
+            MqttServerNormalizer.normalizeServer(server).also { URI(it) }
         } catch (e: Exception) {
             val error = "Servidor inválido: $server"
             connected = false
@@ -120,7 +124,13 @@ class MqttManager(
             notifyDisconnected(error, error)
             return
         }
-        val suffix = Integer.toHexString((System.nanoTime() % 0xFFFF).toInt()).padStart(4, '0')
+        // Sufijo ESTABLE por instalación: con uno aleatorio cada reconexión creaba
+        // sesiones nuevas en EMQX que nadie cerraba (decenas de zombies del mismo
+        // teléfono acumulando colas QoS1 de acks). Mismo clientId => el broker hace
+        // takeover de la sesión anterior en vez de dejarla colgada.
+        val suffix = config.mqttClientSuffix.ifBlank {
+            randomSuffix().also { config.mqttClientSuffix = it }
+        }
         val clientId = "dmj-" + deviceId.filter { it.isLetterOrDigit() || it == '-' || it == '_' } + "-" + suffix
         connected = false
         ready = false
@@ -128,7 +138,12 @@ class MqttManager(
         MqttStatus.status = MqttStatus.CONNECTING
         notifyState("Conectando al servidor...")
 
-        runCatching { client?.disconnect() }
+        // disconnect() deja el objeto vivo con automaticReconnect; hay que cerrarlo
+        // forzosamente para que no siga reconectando instancias antiguas en paralelo.
+        client?.let { stale ->
+            runCatching { stale.disconnect() }
+            runCatching { stale.close(true) }
+        }
         val newClient = try {
             MqttAsyncClient(normalizedServer, clientId, MemoryPersistence())
         } catch (e: Exception) {
@@ -296,6 +311,16 @@ class MqttManager(
         dispatchJob = scope.launch { dispatchLoop() }
     }
 
+    // TODO(throughput, sin implementar por riesgo): el dispatch es estrictamente secuencial
+    //  (1 mensaje en vuelo, ackTimeout 15 s por mensaje + 200 ms entre envíos) mientras la
+    //  captura es cada 10 s. Con latencia normal del consumer (MQTT -> Java -> PG -> ACK) casi
+    //  siempre hay >= 1 pendiente y un solo timeout (15 s + backoff 10/20/40 s…) crea un backlog
+    //  de 2-3 que tarda en drenar: el throughput efectivo (~1 msg / latencia ACK) apenas da para
+    //  el intervalo de 10 s + reintentos. NO tocar protocolo/orden/dedupe sin análisis previo.
+    //  Opciones: (a) ventana de 2-3 en vuelo con orden preservado (el dedupe por
+    //  messageId/sequence del servidor lo permite; habría que reordenar por sequence antes de
+    //  confirmar métricas de jornada); o (b) ackTimeout adaptativo (EWMA de la latencia de ACK
+    //  con piso/techo 5-60 s, coherente con AppConfig.ackTimeoutSeconds). Ver informe.
     private suspend fun dispatchLoop() {
         while (scope.isActive) {
             if (!ready) {
@@ -303,37 +328,62 @@ class MqttManager(
                 continue
             }
 
-            val pending = withContext(Dispatchers.IO) { dao.allOrdered() }
+            val now = System.currentTimeMillis()
+            // Dispatch paginado: como máximo 2 lotes de 100 por vuelta (vencidos + controles
+            // vencidos). Nunca se carga toda la tabla (evita O(N²) y OOM con 10k).
+            val batch: List<PendingPosition> = try {
+                withContext(Dispatchers.IO) {
+                    val due = dao.allDue(now, DISPATCH_BATCH_SIZE)
+                    if (due.any { it.isControl }) {
+                        due
+                    } else {
+                        val controls = try {
+                            dao.dueControls(now, DISPATCH_BATCH_SIZE)
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                        if (controls.isEmpty()) due
+                        else (due + controls).distinctBy { it.messageId }
+                    }
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
             if (!ready) continue
 
-            val now = System.currentTimeMillis()
-            // Fase A: restaura map desde DB al iniciar (persistencia de backoff)
-            pending.forEach { p ->
+            // Fase A: restaura map desde el lote (persistencia de backoff) sin tabla completa.
+            batch.forEach { p ->
                 if (p.retryAt > 0L && p.retryAt > now) {
                     retryAt[p.messageId] = p.retryAt
                 }
             }
-            val next = pending.firstOrNull {
-                // Usa campo persistido retryAt como fuente principal; map como fallback compat
-                val dbRetry = it.retryAt
-                val memRetry = retryAt[it.messageId]
-                val effective = when {
-                    dbRetry > 0L && memRetry != null -> maxOf(dbRetry, memRetry)
-                    dbRetry > 0L -> dbRetry
-                    else -> memRetry
-                }
-                effective == null || effective <= now
+            // FIFO estricto por sequence entre vencidos (ver DispatchPolicy): el
+            // replay sale completo y en orden; `ended` tiene la sequence mayor y
+            // sale el último, tras drenar las posiciones.
+            val items = batch.map {
+                DispatchPolicy.QueueItem(
+                    messageId = it.messageId,
+                    sequence = it.sequence,
+                    retryAtDb = it.retryAt,
+                    retryAtMem = retryAt[it.messageId],
+                    isControl = it.isControl,
+                )
             }
+            val nextId = DispatchPolicy.selectNext(items, now)?.messageId
+            val next = nextId?.let { id -> batch.firstOrNull { it.messageId == id } }
             if (next == null) {
-                val nextRetryAt = pending.mapNotNull {
-                    val dbRetry = it.retryAt.takeIf { r -> r > now }
-                    val memRetry = retryAt[it.messageId]?.takeIf { r -> r > now }
-                    when {
-                        dbRetry != null && memRetry != null -> minOf(dbRetry, memRetry)
-                        dbRetry != null -> dbRetry
-                        else -> memRetry
-                    }
-                }.minOrNull()
+                // Semántica de espera: query ligera MIN(retryAt futuro) + mem + lote.
+                val waitNow = System.currentTimeMillis()
+                val nextRetryAt: Long? = try {
+                    val dbFuture = withContext(Dispatchers.IO) {
+                        dao.minFutureRetryAt(waitNow)
+                    }?.takeIf { it > waitNow }
+                    val memFuture = retryAt.values.filter { it > waitNow }.minOrNull()
+                    val batchFuture = DispatchPolicy.nextRetryAt(items, waitNow)
+                    listOfNotNull(dbFuture, memFuture, batchFuture).minOrNull()
+                } catch (_: Exception) {
+                    DispatchPolicy.nextRetryAt(items, waitNow)
+                }
                 if (nextRetryAt == null) {
                     dispatchWake.receive()
                 } else {
@@ -343,40 +393,41 @@ class MqttManager(
                 continue
             }
 
-            val status = publishWithAck(next)
-            when (status) {
-                "accepted", "duplicate", "rejected", "invalid", "expired" -> {
-                    val deleted = withContext(Dispatchers.IO) { dao.delete(next.messageId) }
-                    retryAt.remove(next.messageId)
-                    if (deleted > 0 && (status == "accepted" || status == "duplicate")) {
-                        recordConfirmedPosition(next)
-                    }
-                    if (status != "accepted" && status != "duplicate") {
-                        notifyState("Mensaje rechazado por el servidor ($status): ${next.messageId}")
-                    }
-                }
-
-                else -> {
-                    // Sin ACK: backoff exponencial; Fase A: ruta sin pérdida — posiciones no se borran al agotar maxRetries
-                    val attempts = next.attempts + 1
-                    val backoffMs = 5_000L * (1L shl minOf(attempts, 8))
-                    val nextRetryAt = System.currentTimeMillis() + backoffMs
-                    withContext(Dispatchers.IO) {
-                        dao.updateAttempts(next.messageId, attempts)
-                        dao.updateRetryAt(next.messageId, nextRetryAt)
-                    }
-                    retryAt[next.messageId] = nextRetryAt
-                    // Solo borra si es control o tras el doble de reintentos; posiciones quedan para watchdog HTTP
-                    val shouldDelete = next.isControl || attempts > config.maxRetries * 2
-                    if (shouldDelete) {
-                        withContext(Dispatchers.IO) { dao.delete(next.messageId) }
+            // Single-flight con el fallback HTTP: publish/delete/update bajo el mismo
+            // Mutex para no pisar el mismo messageId. withLock es suspend (sin deadlock).
+            DispatchLock.mutex.withLock {
+                val status = publishWithAck(next)
+                when (status) {
+                    "accepted", "duplicate", "rejected", "invalid", "expired" -> {
+                        val deleted = withContext(Dispatchers.IO) { dao.delete(next.messageId) }
                         retryAt.remove(next.messageId)
-                        if (next.isControl) {
-                            // Aviso genérico; no expone detalles técnicos MQTT/ACK al usuario (ver strings.xml)
-                            notifyState("Mensaje descartado tras ${config.maxRetries * 2} reintentos: ${next.messageId}")
+                        if (deleted > 0 && (status == "accepted" || status == "duplicate")) {
+                            recordConfirmedPosition(next)
                         }
-                        // Posiciones normales tras 2x: se descartan silenciosamente tras persistir lo máximo posible;
-                        // el watchdog HTTP ya tuvo oportunidad de drenarlas.
+                        if (status != "accepted" && status != "duplicate") {
+                            notifyState("Mensaje rechazado por el servidor ($status): ${next.messageId}")
+                        }
+                    }
+
+                    else -> {
+                        // Sin ACK: backoff exponencial con jitter y RETENCIÓN infinita.
+                        // Ruta sin pérdida: sin ACK no se sabe si el servidor lo vio,
+                        // así que el mensaje NO se borra por agotar reintentos (ver
+                        // DispatchPolicy.shouldDiscardUnacked); solo un NACK explícito
+                        // (rejected/invalid/expired) autoriza el borrado.
+                        val attempts = next.attempts + 1
+                        val backoffMs = DispatchPolicy.dispatchBackoffMs(attempts)
+                        val nextRetryAt = System.currentTimeMillis() + backoffMs
+                        withContext(Dispatchers.IO) {
+                            dao.updateAttempts(next.messageId, attempts)
+                            dao.updateRetryAt(next.messageId, nextRetryAt)
+                        }
+                        retryAt[next.messageId] = nextRetryAt
+                        if (DispatchPolicy.shouldDiscardUnacked(next.isControl, attempts, config.maxRetries)) {
+                            withContext(Dispatchers.IO) { dao.delete(next.messageId) }
+                            retryAt.remove(next.messageId)
+                            notifyState("Mensaje descartado tras ${config.maxRetries} reintentos: ${next.messageId}")
+                        }
                     }
                 }
             }
@@ -393,11 +444,18 @@ class MqttManager(
             val current = client ?: return null
             if (!current.isConnected) return null
             val message = MqttMessage(position.payload.toByteArray(Charsets.UTF_8)).apply { qos = 1 }
+            val publishStartedAt = System.currentTimeMillis()
             current.publish(config.telemetryTopic(), message)
             config.lastPublishedAt = System.currentTimeMillis()
             return withContext(Dispatchers.IO) {
                 try {
-                    future.get(config.ackTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+                    val status = future.get(config.ackTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+                    if (status.isNotEmpty()) {
+                        // RTT de aplicación: publish → ACK del servidor. Un "" es el complete()
+                        // de desconexión (sin ACK real) y no debe contaminar la media.
+                        config.mobileRttMs = RttMeter.update(System.currentTimeMillis() - publishStartedAt).toInt()
+                    }
+                    status.ifEmpty { null }
                 } catch (e: TimeoutException) {
                     null
                 }
@@ -446,6 +504,12 @@ class MqttManager(
             val deviceId = json.optString("deviceId")
             val sequence = json.optLong("sequence", -1L)
             val status = json.optString("status")
+            // serverReceivedAt (opcional, MobileMqttConsumer): solo depuración; el RTT de
+            // referencia es el medido localmente en publishWithAck.
+            val serverReceivedAt = json.optString("serverReceivedAt", "")
+            if (serverReceivedAt.isNotEmpty()) {
+                Log.d(TAG, "ACK messageId=$messageId status=$status serverReceivedAt=$serverReceivedAt")
+            }
             val expectedSequence = inFlightSequences[messageId]
             if (messageId.isBlank() || deviceId != config.deviceId || expectedSequence == null
                 || expectedSequence != sequence
@@ -474,11 +538,30 @@ class MqttManager(
         } catch (e: Exception) {
             // ignorar al detener voluntariamente el servicio
         }
+        // Cierre forzoso: sin esto el automaticReconnect revive la instancia tras
+        // el disconnect y deja conexiones/hilos huérfanos.
+        runCatching { oldClient?.close(true) }
         MqttStatus.status = MqttStatus.DISCONNECTED
         dispatchWake.trySend(Unit)
     }
 
     companion object {
+        private const val TAG = "MqttManager"
+
+        /** Timeout del login de prueba: sin esto un broker colgado deja el login colgado. */
+        const val TEST_CONNECTION_TIMEOUT_MS = 12_000L
+
+        /** Lote acotado del dispatch paginado (evita O(N²)/OOM con 10k). */
+        const val DISPATCH_BATCH_SIZE = 100
+
+        /** Sufijo aleatorio anti-colisión, igual que connect() (~línea 125 original). */
+        fun randomSuffix(): String =
+            Integer.toHexString((System.nanoTime() % 0xFFFF).toInt()).padStart(4, '0')
+
+        /** ClientId de prueba con sufijo aleatorio (testeable con sufijo fijo). */
+        fun buildTestClientId(username: String, suffix: String = randomSuffix()): String =
+            "dmj-test-" + username.filter { it.isLetterOrDigit() }.take(16) + "-" + suffix
+
         /** Prueba la conexión con las credenciales dadas y devuelve un mensaje claro. */
         fun testConnection(
             server: String,
@@ -490,9 +573,9 @@ class MqttManager(
                 onResult(false, "Falta la dirección del servidor o el usuario")
                 return
             }
-            val clientId = "dmj-test-" + username.filter { it.isLetterOrDigit() }.take(16)
+            val clientId = buildTestClientId(username)
             val testClient = try {
-                MqttAsyncClient(normalizeServer(server), clientId, MemoryPersistence())
+                MqttAsyncClient(MqttServerNormalizer.normalizeServer(server), clientId, MemoryPersistence())
             } catch (e: Exception) {
                 onResult(false, "La dirección del servidor no es válida")
                 return
@@ -506,41 +589,48 @@ class MqttManager(
                     this.password = password.toCharArray()
                 }
             }
+            val done = java.util.concurrent.atomic.AtomicBoolean(false)
+            fun finish(ok: Boolean, message: String) {
+                if (done.compareAndSet(false, true)) {
+                    // disconnect() es async en Paho; close() libera hilos en finally de cada rama.
+                    runCatching { testClient.disconnect() }
+                    runCatching { testClient.close() }
+                    runCatching { onResult(ok, message) }
+                }
+            }
+            // Watchdog 12 s: fuerza onFailure aunque Paho nunca responda (login colgado).
+            val watchdog = Thread({
+                try {
+                    Thread.sleep(TEST_CONNECTION_TIMEOUT_MS)
+                    finish(false, "No se pudo conectar al servidor. Revisa Internet o la dirección del servidor. (tiempo de espera agotado)")
+                } catch (_: InterruptedException) {
+                    // test ya terminado
+                }
+            }, "mqtt-test-timeout")
+            watchdog.isDaemon = true
+            watchdog.start()
             try {
                 testClient.connect(options, null, object : IMqttActionListener {
                     override fun onSuccess(asyncActionToken: IMqttToken?) {
-                        runCatching { testClient.disconnect() }
-                        onResult(true, "Conectado correctamente al servidor")
+                        finish(true, "Conectado correctamente al servidor")
                     }
 
                     override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                        runCatching { testClient.disconnect() }
-                        onResult(false, friendlyMqttError(exception?.message))
+                        finish(false, friendlyMqttError(exception?.message))
                     }
                 })
             } catch (e: Exception) {
-                onResult(false, "No se pudo conectar al servidor. Revisa Internet o la dirección.")
+                finish(false, "No se pudo conectar al servidor. Revisa Internet o la dirección.")
             }
         }
 
         /**
          * Convierte la dirección a un formato que Paho entiende (tcp:// o ssl://).
          * Paho NO acepta mqtt:// (por eso fallaba). Añade puerto por defecto si falta.
+         * @deprecated Usar [MqttServerNormalizer.normalizeServer] directamente.
          */
-        fun normalizeServer(server: String): String {
-            var value = server.trim().trimEnd('/')
-            var secure = false
-            if (value.startsWith("mqtts://")) { value = value.removePrefix("mqtts://"); secure = true }
-            if (value.startsWith("ssl://")) { value = value.removePrefix("ssl://"); secure = true }
-            if (value.startsWith("mqtt://")) value = value.removePrefix("mqtt://")
-            if (value.startsWith("http://")) value = value.removePrefix("http://")
-            if (value.startsWith("https://")) { value = value.removePrefix("https://"); secure = true }
-            if (value.contains("://")) return value
-            val hostPort = value.substringBefore('/')
-            val hasPort = hostPort.contains(':')
-            val defaultPort = if (secure) ":8883" else ":1883"
-            return (if (secure) "ssl://" else "tcp://") + hostPort + if (hasPort) "" else defaultPort
-        }
+        fun normalizeServer(server: String): String =
+            MqttServerNormalizer.normalizeServer(server)
 
         private fun friendlyMqttError(raw: String?): String {
             val message = raw.orEmpty().lowercase()

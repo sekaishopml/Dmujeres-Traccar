@@ -2,11 +2,12 @@ package com.dmujeres.traccar.mqtt
 
 import android.util.Log
 import com.dmujeres.traccar.config.AppConfig
+import com.dmujeres.traccar.db.DispatchLock
 import com.dmujeres.traccar.db.PositionDao
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
-import java.net.URI
 import java.net.URL
 
 /**
@@ -20,6 +21,15 @@ object HttpFallbackDispatcher {
 
     /** Intenta vaciar la cola por HTTP. Devuelve cuántos mensajes se confirmaron. */
     suspend fun flush(dao: PositionDao, config: AppConfig): Int {
+        // Single-flight con el dispatch MQTT: mismo Mutex para no pisar el mismo messageId
+        // (doble publish/delete). withLock es suspend, sin bloqueo de hilo ni deadlock
+        // (un solo Mutex global, sin orden de locks).
+        return DispatchLock.mutex.withLock {
+            flushLocked(dao, config)
+        }
+    }
+
+    private suspend fun flushLocked(dao: PositionDao, config: AppConfig): Int {
         val pending = try {
             dao.allOrdered(BATCH_SIZE)
         } catch (e: Exception) {
@@ -92,13 +102,10 @@ object HttpFallbackDispatcher {
         }
     }
 
-    /** Deriva la base web del servidor MQTT (mismo host, puerto web 8082). */
-    fun webBase(serverUrl: String): String {
-        val server = serverUrl.removePrefix("tcp://").removePrefix("mqtt://")
-            .removePrefix("ssl://").removePrefix("mqtts://").substringBefore('/')
-        val host = server.substringBefore(':')
-        val uriHost = runCatching { URI(serverUrl).host }.getOrNull()
-        val finalHost = if (!uriHost.isNullOrBlank()) uriHost else host
-        return "http://$finalHost:${AppConfig.WEB_PORT}"
-    }
+    /**
+     * Deriva la base web del servidor MQTT (mismo host, puerto web).
+     * @deprecated Usar [MqttServerNormalizer.webBase] directamente.
+     */
+    fun webBase(serverUrl: String): String =
+        MqttServerNormalizer.webBase(serverUrl, AppConfig.WEB_PORT)
 }

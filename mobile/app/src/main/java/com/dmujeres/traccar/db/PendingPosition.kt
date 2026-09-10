@@ -2,13 +2,21 @@ package com.dmujeres.traccar.db
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
  * Posición pendiente de envío (cola offline). `messageId` es la clave de idempotencia:
  * no cambia si el servidor ya la aceptó y se reintenta.
  */
-@Entity(tableName = "pending_positions")
+@Entity(
+    tableName = "pending_positions",
+    indices = [
+        Index(value = ["sequence"]),
+        Index(value = ["retryAt"]),
+        Index(value = ["isControl"])
+    ]
+)
 data class PendingPosition(
     @PrimaryKey val messageId: String,
     val deviceId: String,

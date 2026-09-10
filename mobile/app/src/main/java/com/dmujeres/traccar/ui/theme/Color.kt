@@ -10,7 +10,9 @@ val Background = Color(0xFFF6F6F6)
 val Ink = Color(0xFF181818)
 
 val StatusOk = Color(0xFF2E7D32)
-val StatusWarn = Color(0xFFF9A825)
-val StatusError = Color(0xFFD32F2F)
-val StatusIdle = Color(0xFF9E9E9E)
-val StatusOffline = Color(0xFFEF6C00)
+// NOTA (3 colores estricto): la UI de jornada debe usar JourneyColors
+// (rojo #EB0045 / blanco / verde #2E7D32). Los antiguos StatusWarn,
+// StatusIdle, StatusOffline y StatusError se eliminaron por no pertenecer
+// a la paleta. Excepción: ámbar solo en DiagnosticsActivity.kt con literal
+// local. StatusOk se mantiene (== JourneyColors.Verde) para UI fuera de
+// jornada como OnboardingActivity.

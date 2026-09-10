@@ -1,0 +1,52 @@
+name: ci-root
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: docker compose config (dev + prod)
+        run: |
+          docker compose -f infrastructure/compose/docker-compose.yml config
+          docker compose -f infrastructure/compose/docker-compose.prod.yml config
+      - name: shellcheck scripts
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: infrastructure/scripts
+
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: build server
+        working-directory: server
+        run: ./gradlew build -x test
+
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: build dashboard
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run build

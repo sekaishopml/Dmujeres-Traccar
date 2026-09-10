@@ -11,20 +11,36 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -33,17 +49,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.ui.theme.DmujeresTheme
 import com.dmujeres.traccar.ui.theme.Primary
 import com.dmujeres.traccar.ui.theme.StatusOk
+import com.dmujeres.traccar.util.LocationState
 import com.dmujeres.traccar.util.VendorSettings
 
 /**
@@ -51,6 +72,12 @@ import com.dmujeres.traccar.util.VendorSettings
  * ubicación, notificaciones, batería y GPS.
  */
 class OnboardingActivity : ComponentActivity() {
+
+    companion object {
+        // TEMPORAL debug de diseño: paso inicial + modo preview (no persiste nada).
+        const val EXTRA_DEBUG_STEP = "debug_step"
+        const val EXTRA_DEBUG_PREVIEW = "debug_preview"
+    }
 
     private val locationLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -68,10 +95,14 @@ class OnboardingActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // TEMPORAL debug de diseño: solo en builds debug.
+        val debugPreview = BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_DEBUG_PREVIEW, false)
+        val debugStep = intent.getIntExtra(EXTRA_DEBUG_STEP, 0).coerceIn(0, 3)
         setContent {
             DmujeresTheme {
                 OnboardingContent(
                     refreshKey = refreshKey,
+                    initialStep = if (debugPreview) debugStep else 0,
                     onLocation = { requestLocationPermissions() },
                     onNotifications = { requestNotifications() },
                     onBattery = { requestIgnoreBatteryOptimizations() },
@@ -107,21 +138,30 @@ class OnboardingActivity : ComponentActivity() {
     }
 
     private fun requestLocationPermissions() {
+        val needsFsl = OnboardingPolicy.needsForegroundLocationPermission(Build.VERSION.SDK_INT)
+        val fslGranted = !needsFsl || ContextCompat.checkSelfPermission(
+            this, Manifest.permission.FOREGROUND_SERVICE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
         val fineGranted = ContextCompat.checkSelfPermission(
             this, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
         val coarseGranted = ContextCompat.checkSelfPermission(
             this, Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
-        if (fineGranted && coarseGranted) {
+        if (fineGranted && coarseGranted && fslGranted) {
             requestBackgroundLocation()
         } else {
-            locationLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                )
+            val perms = mutableListOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
             )
+            // Android 14+: el foreground con tipo location exige
+            // FOREGROUND_SERVICE_LOCATION en runtime. Se pide junto a FINE
+            // (el BACKGROUND sigue yendo aparte por exigirlo el sistema).
+            if (needsFsl && !fslGranted) {
+                perms += Manifest.permission.FOREGROUND_SERVICE_LOCATION
+            }
+            locationLauncher.launch(perms.toTypedArray())
         }
     }
 
@@ -142,6 +182,13 @@ class OnboardingActivity : ComponentActivity() {
             == PackageManager.PERMISSION_GRANTED
         ) {
             refreshKey++
+            return
+        }
+        // Xiaomi/Redmi e Infinix/Tecno: el diálogo del sistema para fondo suele
+        // fallar en silencio; ir directo a Ajustes donde "Permitir siempre" sí sale.
+        if (VendorSettings.requiresSettingsForBackground()) {
+            AppConfig(this).backgroundLocationAsked = true
+            openAppSettings()
             return
         }
         val previouslyRequested = AppConfig(this).backgroundLocationAsked
@@ -174,6 +221,11 @@ class OnboardingActivity : ComponentActivity() {
     }
 
     private fun finishOnboarding() {
+        // TEMPORAL debug de diseño: en preview no se persiste nada ni se avanza.
+        if (BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_DEBUG_PREVIEW, false)) {
+            finish()
+            return
+        }
         AppConfig(this).onboardingDone = true
         startActivity(Intent(this, MainActivity::class.java))
         finish()
@@ -182,6 +234,7 @@ class OnboardingActivity : ComponentActivity() {
     @Composable
     private fun OnboardingContent(
         refreshKey: Int,
+        initialStep: Int = 0,
         onLocation: () -> Unit,
         onNotifications: () -> Unit,
         onBattery: () -> Unit,
@@ -191,98 +244,205 @@ class OnboardingActivity : ComponentActivity() {
     ) {
         val context = LocalContext.current
         val states = rememberStepStates(context, refreshKey)
+        var step by remember { mutableIntStateOf(initialStep) }
+        val vendor = VendorSettings.guideFor(VendorSettings.currentVendor())
+        val allOk = states.locationOk && states.notificationsOk && states.batteryOk && states.gpsOk
+        // Secuencia de activación: Siguiente NO alumbra hasta completar el paso
+        // actual (ubicación → avisos → batería). Así se detecta qué falta.
+        val stepOk = OnboardingPolicy.isStepComplete(
+            step = step,
+            locationOk = states.locationOk,
+            notificationsOk = states.notificationsOk,
+            batteryOk = states.batteryOk,
+        )
 
+        // Sin scroll: asistente de 4 pasos, cada paso cabe en pantalla.
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Image(
                 painter = painterResource(R.drawable.logo_banner),
                 contentDescription = stringResource(R.string.app_name),
                 contentScale = ContentScale.FillWidth,
                 modifier = Modifier
-                    .widthIn(max = 280.dp)
+                    .widthIn(max = 200.dp)
                     .fillMaxWidth(),
             )
 
             Text(
-                text = stringResource(R.string.welcome_title),
-                style = MaterialTheme.typography.headlineMedium,
+                text = "Paso ${step + 1} de 4",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.fillMaxWidth(),
+            )
+            // Barra de progreso animada: avanza suave entre pasos.
+            val animatedProgress by animateFloatAsState(
+                targetValue = (step + 1) / 4f,
+                animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                label = "onboardingProgress",
+            )
+            LinearProgressIndicator(
+                progress = { animatedProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
             )
 
-            Text(
-                text = stringResource(R.string.welcome_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            StepButton(
-                title = stringResource(R.string.step_location),
-                buttonText = stringResource(R.string.grant_location),
-                done = states.locationOk,
-                onClick = onLocation,
-            )
-            StepButton(
-                title = stringResource(R.string.step_notifications),
-                buttonText = stringResource(R.string.grant_notifications),
-                done = states.notificationsOk,
-                onClick = onNotifications,
-            )
-            StepButton(
-                title = stringResource(R.string.step_battery),
-                buttonText = stringResource(R.string.grant_battery),
-                done = states.batteryOk,
-                onClick = onBattery,
-            )
-            StepButton(
-                title = stringResource(R.string.step_gps),
-                buttonText = stringResource(R.string.grant_gps),
-                done = states.gpsOk,
-                onClick = onGps,
-            )
-
-            val vendor = VendorSettings.guideFor(VendorSettings.currentVendor())
-            if (vendor != null) {
-                Text(
-                    text = stringResource(R.string.vendor_step_title, vendor.vendorName)
-                        .let { if (vendorPressed) "✓ $it" else it },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    text = vendor.steps.joinToString("\n"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                )
-                Button(
-                    onClick = onVendorOpen,
-                    enabled = !vendorPressed,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                ) {
-                    Text(stringResource(R.string.vendor_open_settings, vendor.vendorName))
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                when (step) {
+                    0 -> Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.welcome_title),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text = stringResource(R.string.welcome_body),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        StepButton(
+                            title = stringResource(R.string.step_location),
+                            buttonText = stringResource(R.string.grant_location),
+                            detail = stringResource(R.string.step_location_detail),
+                            icon = Icons.Filled.LocationOn,
+                            done = states.locationOk,
+                            onClick = onLocation,
+                        )
+                    }
+                    1 -> StepButton(
+                        title = stringResource(R.string.step_notifications),
+                        buttonText = stringResource(R.string.grant_notifications),
+                        detail = stringResource(R.string.step_notifications_detail),
+                        icon = Icons.Filled.Notifications,
+                        done = states.notificationsOk,
+                        onClick = onNotifications,
+                    )
+                    2 -> StepButton(
+                        title = stringResource(R.string.step_battery),
+                        buttonText = stringResource(R.string.grant_battery),
+                        detail = stringResource(R.string.step_battery_detail),
+                        icon = Icons.Filled.BatteryChargingFull,
+                        done = states.batteryOk,
+                        onClick = onBattery,
+                    )
+                    else -> Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        StepButton(
+                            title = stringResource(R.string.step_gps),
+                            buttonText = stringResource(R.string.grant_gps),
+                            detail = stringResource(R.string.step_gps_detail),
+                            icon = Icons.Filled.MyLocation,
+                            done = states.gpsOk,
+                            onClick = onGps,
+                        )
+                        if (vendor != null) {
+                            Text(
+                                text = stringResource(R.string.vendor_step_title, vendor.vendorName)
+                                    .let { if (vendorPressed) "✓ $it" else it },
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                text = vendor.steps.joinToString("\n"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 10,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Button(
+                                onClick = onVendorOpen,
+                                enabled = !vendorPressed,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    stringResource(R.string.vendor_open_settings, vendor.vendorName),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            Button(
-                onClick = onFinish,
-                enabled = states.locationOk && states.notificationsOk && states.batteryOk && states.gpsOk,
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(stringResource(R.string.finish))
+                if (step > 0) {
+                    TextButton(
+                        onClick = { step-- },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Atrás")
+                    }
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                if (step < 3) {
+                    // Siguiente sencillo: sin elevación, altura fija, sin rebotes.
+                    // Apagado (sin alumbrar) hasta completar el paso actual.
+                    Button(
+                        onClick = { step++ },
+                        enabled = stepOk,
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 0.dp,
+                            pressedElevation = 0.dp,
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
+                    ) {
+                        Text("Siguiente")
+                    }
+                } else {
+                    Button(
+                        onClick = onFinish,
+                        enabled = allOk,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            stringResource(R.string.finish),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
     }
@@ -300,26 +460,70 @@ class OnboardingActivity : ComponentActivity() {
         buttonText: String,
         done: Boolean,
         onClick: () -> Unit,
+        detail: String = "",
+        icon: ImageVector? = null,
     ) {
-        Text(
-            text = if (done) "✓ $title" else title,
-            style = MaterialTheme.typography.titleMedium,
-            color = if (done) StatusOk else Primary,
+        // Sin scroll: columna compacta centrada para el celular.
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth(),
-        )
-        Button(
-            onClick = onClick,
-            enabled = !done,
-            colors = if (done) {
-                ButtonDefaults.buttonColors(containerColor = StatusOk)
-            } else {
-                ButtonDefaults.buttonColors()
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
         ) {
-            Text(buttonText)
+            if (icon != null) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (done) StatusOk.copy(alpha = 0.12f)
+                            else Primary.copy(alpha = 0.12f),
+                        ),
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (done) StatusOk else Primary,
+                        modifier = Modifier.size(32.dp),
+                    )
+                }
+            }
+            Text(
+                text = if (done) "✓ $title" else title,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (done) StatusOk else Primary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (detail.isNotBlank()) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Button(
+                onClick = onClick,
+                enabled = !done,
+                colors = if (done) {
+                    ButtonDefaults.buttonColors(containerColor = StatusOk)
+                } else {
+                    ButtonDefaults.buttonColors()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    buttonText,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 
@@ -336,21 +540,72 @@ class OnboardingActivity : ComponentActivity() {
                 ContextCompat.checkSelfPermission(
                     context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
-            val locationOk = fineGranted && backgroundGranted
+            // Android 14+: sin FOREGROUND_SERVICE_LOCATION el servicio con
+            // foregroundServiceType location lanza SecurityException al arrancar.
+            val fslGranted = !OnboardingPolicy.needsForegroundLocationPermission(Build.VERSION.SDK_INT) ||
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.FOREGROUND_SERVICE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            val locationOk = OnboardingPolicy.isLocationComplete(
+                fineGranted = fineGranted,
+                backgroundGranted = backgroundGranted,
+                fslGranted = fslGranted,
+                sdkInt = Build.VERSION.SDK_INT,
+            )
             val notificationsOk = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                 ContextCompat.checkSelfPermission(
                     context, Manifest.permission.POST_NOTIFICATIONS
                 ) == PackageManager.PERMISSION_GRANTED
             val pm = context.getSystemService(PowerManager::class.java)
             val batteryOk = pm.isIgnoringBatteryOptimizations(context.packageName)
-            val mode = Settings.Secure.getInt(
-                context.contentResolver,
-                Settings.Secure.LOCATION_MODE,
-                Settings.Secure.LOCATION_MODE_OFF
-            )
-            val gpsOk = mode != Settings.Secure.LOCATION_MODE_OFF
+            val gpsOk = LocationState.isEnabled(context)
 
             StepStates(locationOk, notificationsOk, batteryOk, gpsOk)
         }
+    }
+}
+
+/**
+ * Requisitos puros del onboarding para GPS robusto (JVM, sin Android) para
+ * `testDebugUnitTest`. El flujo sigue en 4 pasos: el paso 1 (ubicación) cubre
+ * FINE + BACKGROUND + FOREGROUND_SERVICE_LOCATION (Android 14+); los otros
+ * pasos (notificaciones, batería, GPS) no cambian.
+ */
+object OnboardingPolicy {
+    /** Android 14 (UPSIDE_DOWN_CAKE, API 34) exige FSL en runtime. */
+    const val FSL_SDK = 34
+
+    fun needsForegroundLocationPermission(sdkInt: Int): Boolean = sdkInt >= FSL_SDK
+
+    /**
+     * Paso 1 completo: FINE + BACKGROUND siempre, más FSL solo en API 34+.
+     * En API < 34 `fslGranted` se ignora (puede venir false sin bloquear).
+     */
+    fun isLocationComplete(
+        fineGranted: Boolean,
+        backgroundGranted: Boolean,
+        fslGranted: Boolean,
+        sdkInt: Int,
+    ): Boolean {
+        if (!fineGranted || !backgroundGranted) return false
+        if (needsForegroundLocationPermission(sdkInt) && !fslGranted) return false
+        return true
+    }
+
+    /**
+     * Secuencia de activación GPS: cada paso exige lo suyo antes de alumbrar
+     * "Siguiente" (0=ubicación, 1=avisos, 2=batería). El paso 3 (GPS) usa el
+     * botón final con allOk. Puro para tests.
+     */
+    fun isStepComplete(
+        step: Int,
+        locationOk: Boolean,
+        notificationsOk: Boolean,
+        batteryOk: Boolean,
+    ): Boolean = when (step) {
+        0 -> locationOk
+        1 -> notificationsOk
+        2 -> batteryOk
+        else -> true
     }
 }

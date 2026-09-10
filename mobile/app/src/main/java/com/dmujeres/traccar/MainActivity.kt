@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -18,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -39,6 +41,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -75,9 +78,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -87,15 +93,18 @@ import com.dmujeres.traccar.location.TrackingState
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.MqttStatus
+import com.dmujeres.traccar.mqtt.PendingAlertPolicy
 import com.dmujeres.traccar.mqtt.UpdateManager
 import com.dmujeres.traccar.ui.theme.Background
 import com.dmujeres.traccar.ui.theme.DmujeresTheme
 import com.dmujeres.traccar.ui.theme.Ink
-import com.dmujeres.traccar.ui.theme.StatusError
-import com.dmujeres.traccar.ui.theme.StatusIdle
-import com.dmujeres.traccar.ui.theme.StatusOffline
-import com.dmujeres.traccar.ui.theme.StatusOk
-import com.dmujeres.traccar.ui.theme.StatusWarn
+import com.dmujeres.traccar.ui.components.LoginCard
+import com.dmujeres.traccar.ui.components.MetricsRow
+import com.dmujeres.traccar.ui.components.StatusBanner
+import com.dmujeres.traccar.util.JourneyFormatter
+import com.dmujeres.traccar.ui.theme.JourneyColors
+import com.dmujeres.traccar.util.NetCause
+import com.dmujeres.traccar.util.snapshot
 import com.dmujeres.traccar.util.Notifications
 import com.dmujeres.traccar.util.RemoteConfig
 import kotlinx.coroutines.Dispatchers
@@ -110,6 +119,13 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_UPDATE = "open_update"
+        // TEMPORAL debug de diseño (solo builds debug): overrides solo en memoria.
+        // EXTRA_DEBUG_LOGGED fuerza logged true/false; EXTRA_DEBUG_DASH ("idle",
+        // "active", "error", "" para solo-login) inyecta estado falso de jornada;
+        // EXTRA_DEBUG_CLEAR limpia los overrides. No tocan prefs, jornada ni red.
+        const val EXTRA_DEBUG_LOGGED = "debug_logged"
+        const val EXTRA_DEBUG_DASH = "debug_dash"
+        const val EXTRA_DEBUG_CLEAR = "debug_clear"
     }
 
     private lateinit var config: AppConfig
@@ -127,16 +143,31 @@ class MainActivity : ComponentActivity() {
     private var logged by mutableStateOf(false)
 
     private var stateText by mutableStateOf("")
-    private var statusColor by mutableStateOf(StatusIdle)
+    private var trackingOk by mutableStateOf(false)
+    private var journeyHasError by mutableStateOf(false)
     private var batteryText by mutableStateOf("")
     private var batteryLevel by mutableIntStateOf(-1)
-    private var batteryColor by mutableStateOf(StatusOk)
+    private var batteryColor by mutableStateOf(JourneyColors.Verde)
+    private var journeyStartAt by mutableStateOf(0L)
+    private var journeyActive by mutableStateOf(false)
     private var logText by mutableStateOf("")
+    // Causa de red (Fase 1): mensaje humano + deep-link a WiFi donde aplica.
+    private var netCauseMessage by mutableStateOf<String?>(null)
+    private var netCauseWifiAction by mutableStateOf(false)
+    // true solo si los pendientes son ANORMALES (ver PendingAlertPolicy): con el dispatch
+    // secuencial (1 en vuelo, ackTimeout 15 s) casi siempre hay 1-5 sanos y no deben alarmar.
+    private var pendingAbnormal by mutableStateOf(false)
     private var detailsLoading by mutableStateOf(false)
     private var toggleLabel by mutableIntStateOf(R.string.start)
     private var toggleIcon by mutableIntStateOf(R.drawable.ic_play)
     private var toggleEnabled by mutableStateOf(true)
     private var updateBannerVisible by mutableStateOf(false)
+
+    // TEMPORAL debug de diseño: overrides solo en memoria (null = comportamiento real).
+    private var debugLoggedOverride: Boolean? = null
+    private var debugDashMode: String? = null
+    private var debugTapCount = 0
+    private var debugFirstTapAt = 0L
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private var tickCount = 0
@@ -181,12 +212,16 @@ class MainActivity : ComponentActivity() {
                     onLogin = ::login,
                     logged = logged,
                     stateText = stateText,
-                    statusColor = statusColor,
+                    trackingOk = trackingOk,
+                    journeyHasError = journeyHasError,
                     batteryText = batteryText,
                     batteryLevel = batteryLevel,
                     batteryColor = batteryColor,
+                    journeyStartAt = journeyStartAt,
+                    journeyActive = journeyActive,
                     detailsLoading = detailsLoading,
                     logText = logText,
+                    pendingAbnormal = pendingAbnormal,
                     toggleLabel = toggleLabel,
                     toggleIcon = toggleIcon,
                     toggleEnabled = toggleEnabled,
@@ -198,11 +233,16 @@ class MainActivity : ComponentActivity() {
                     },
                     onUpdateIcon = { checkForUpdate(auto = false) },
                     versionText = getString(R.string.app_version, BuildConfig.VERSION_NAME),
+                    onVersionTap = ::onVersionTapped,
+                    netCauseMessage = netCauseMessage,
+                    netCauseWifiAction = netCauseWifiAction,
+                    onOpenWifiSettings = ::openWifiSettings,
                 )
             }
         }
 
         ensureBatteryExemption()
+        readDebugExtras(intent)
         updateView()
         if (intent?.getBooleanExtra(EXTRA_OPEN_UPDATE, false) == true) {
             checkForUpdate(auto = false)
@@ -212,6 +252,8 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        readDebugExtras(intent)
+        updateView()
         if (intent.getBooleanExtra(EXTRA_OPEN_UPDATE, false)) {
             checkForUpdate(auto = false)
         }
@@ -252,8 +294,13 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    /** Exige la exención de batería: sin ella Android congela el GPS en reposo. */
+    /** Exige la exención de batería: sin ella Android congela el GPS en reposo.
+     * Con "No volver a mostrar" persistido en SharedPreferences "dmj_tracking"
+     * (clave "battery_dialog_dismissed", directo sin AppConfig por restricción).
+     * No se toca AppConfig.kt. */
     private fun ensureBatteryExemption() {
+        val dismissPrefs = getSharedPreferences("dmj_tracking", MODE_PRIVATE)
+        if (dismissPrefs.getBoolean("battery_dialog_dismissed", false)) return
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         if (pm.isIgnoringBatteryOptimizations(packageName)) return
         AlertDialog.Builder(this)
@@ -267,11 +314,122 @@ class MainActivity : ComponentActivity() {
                 runCatching { startActivity(intent) }
             }
             .setNegativeButton(R.string.dialog_close, null)
+            .setNeutralButton(R.string.battery_dismiss) { _, _ ->
+                dismissPrefs.edit().putBoolean("battery_dialog_dismissed", true).apply()
+            }
             .setCancelable(false)
             .show()
     }
 
+    // TEMPORAL debug de diseño: lee overrides solo en memoria (null = real).
+    // EXTRA_DEBUG_CLEAR limpia ambos; LOGGED fuerza logged; DASH (ifBlank→null)
+    // inyecta estado falso de jornada. No toca prefs, jornada ni red.
+    private fun readDebugExtras(intent: Intent?) {
+        if (!BuildConfig.DEBUG) return
+        if (intent == null) return
+        if (intent.getBooleanExtra(EXTRA_DEBUG_CLEAR, false)) {
+            debugLoggedOverride = null
+            debugDashMode = null
+            return
+        }
+        if (intent.hasExtra(EXTRA_DEBUG_LOGGED)) {
+            debugLoggedOverride = intent.getBooleanExtra(EXTRA_DEBUG_LOGGED, false)
+        }
+        if (intent.hasExtra(EXTRA_DEBUG_DASH)) {
+            val mode = intent.getStringExtra(EXTRA_DEBUG_DASH)
+            debugDashMode = if (mode.isNullOrBlank()) null else mode
+        }
+    }
+
+    private fun isDebugPreview(): Boolean {
+        if (!BuildConfig.DEBUG) return false
+        return debugLoggedOverride != null || debugDashMode != null
+    }
+
+    private fun debugToast(): Boolean {
+        if (!isDebugPreview()) return false
+        Toast.makeText(this, R.string.debug_preview_locked, Toast.LENGTH_SHORT).show()
+        return true
+    }
+
+    private fun onVersionTapped() {
+        if (!BuildConfig.DEBUG) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - debugFirstTapAt > 3_000) {
+            debugTapCount = 0
+            debugFirstTapAt = now
+        }
+        debugTapCount++
+        if (debugTapCount >= 5) {
+            debugTapCount = 0
+            debugFirstTapAt = 0L
+            startActivity(Intent(this, DebugDesignActivity::class.java))
+        }
+    }
+
+    private fun applyDebugDashState() {
+        if (!BuildConfig.DEBUG) return
+        val mode = debugDashMode
+        logged = true
+        journeyActive = (mode != "idle")
+        journeyStartAt = if (journeyActive) System.currentTimeMillis() - 2 * 60 * 60 * 1000 else 0L
+        detailsLoading = false
+        pendingAbnormal = false
+        updateBannerVisible = false
+        netCauseMessage = null
+        netCauseWifiAction = false
+        when (mode) {
+            "active" -> {
+                stateText = getString(R.string.state_active)
+                trackingOk = true
+                journeyHasError = false
+                batteryLevel = 85
+                batteryText = "85%"
+                batteryColor = JourneyColors.Verde
+                logText = listOf(
+                    getString(R.string.log_journey_on, 2, 14),
+                    getString(R.string.log_server_on),
+                    getString(R.string.log_battery, 85),
+                ).joinToString("\n")
+                toggleLabel = R.string.stop
+                toggleIcon = R.drawable.ic_stop
+            }
+            "error" -> {
+                stateText = getString(R.string.state_network)
+                trackingOk = false
+                journeyHasError = true
+                batteryLevel = 42
+                batteryText = "42%"
+                batteryColor = JourneyColors.Verde
+                logText = listOf(
+                    getString(R.string.log_journey_on, 0, 37),
+                    getString(R.string.log_server_off),
+                    getString(R.string.log_battery, 42),
+                ).joinToString("\n")
+                toggleLabel = R.string.stop
+                toggleIcon = R.drawable.ic_stop
+            }
+            else -> {
+                stateText = getString(R.string.tracking_off)
+                trackingOk = false
+                journeyHasError = false
+                batteryLevel = 85
+                batteryText = "85%"
+                batteryColor = JourneyColors.Verde
+                logText = listOf(
+                    getString(R.string.log_journey_off),
+                    getString(R.string.log_server_off),
+                    getString(R.string.log_battery, 85),
+                ).joinToString("\n")
+                toggleLabel = R.string.start
+                toggleIcon = R.drawable.ic_play
+            }
+        }
+        toggleEnabled = true
+    }
+
     private fun login() {
+        if (debugToast()) return
         val username = usernameInput.trim()
         val password = passwordInput
         if (username.isBlank() || password.isBlank()) {
@@ -310,6 +468,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onTogglePressed() {
+        if (debugToast()) return
         if (config.trackingEnabled) {
             confirmFinishJourney()
         } else {
@@ -350,6 +509,18 @@ class MainActivity : ComponentActivity() {
         ) {
             return false
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
@@ -362,11 +533,17 @@ class MainActivity : ComponentActivity() {
     /** Muestra login o pantalla principal según haya credenciales guardadas (con fundido). */
     private fun updateView() {
         logged = config.username.isNotBlank() && config.password.isNotBlank()
+        debugLoggedOverride?.let { logged = it }
+        if (debugDashMode != null) logged = true
         refreshState()
     }
 
     /** Registro de estado en lenguaje simple para el colaborador. */
     private fun refreshState() {
+        if (BuildConfig.DEBUG && debugDashMode != null) {
+            applyDebugDashState()
+            return
+        }
         val enabled = config.trackingEnabled
         val storedState = TrackingState.fromName(config.trackingState)
         val state = if (enabled && !TrackingService.isRunning) {
@@ -375,7 +552,8 @@ class MainActivity : ComponentActivity() {
             storedState
         }
         stateText = stateText(state)
-        statusColor = statusColor(state)
+        trackingOk = state == TrackingState.TRACKING_ACTIVE
+        journeyHasError = journeyHasError(state)
         toggleLabel = if (enabled) R.string.stop else R.string.start
         toggleIcon = if (enabled) R.drawable.ic_stop else R.drawable.ic_play
         toggleEnabled = !detailsTransition
@@ -385,10 +563,10 @@ class MainActivity : ComponentActivity() {
         lines += getString(R.string.log_state, stateText(state))
 
         val journey = config.journeyStartAt
+        journeyStartAt = journey
+        journeyActive = enabled && journey > 0
         if (enabled && journey > 0) {
-            val elapsed = (now - journey).coerceAtLeast(0)
-            val hours = elapsed / 3_600_000
-            val minutes = (elapsed % 3_600_000) / 60_000
+            val (hours, minutes) = JourneyFormatter.durationParts(now - journey)
             lines += getString(R.string.log_journey_on, hours, minutes)
         } else {
             lines += getString(R.string.log_journey_off)
@@ -404,13 +582,12 @@ class MainActivity : ComponentActivity() {
         val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         if (battery in 0..100) {
             batteryLevel = battery
-            batteryColor = when {
-                battery in 1..20 -> StatusError
-                battery <= 50 -> StatusWarn
-                else -> StatusOk
-            }
-            batteryText = getString(R.string.log_battery, battery)
-            lines += getString(R.string.log_battery, battery)
+            // Sistema de 3 colores estricto: sin ámbar; batería baja = rojo, resto = verde.
+            batteryColor = if (battery in 1..20) JourneyColors.Rojo else JourneyColors.Verde
+            // Solo el porcentaje para la tarjeta (MetricsRow lo muestra como "85%").
+            // No se añade línea de batería a `lines`: la tarjeta ya la muestra y
+            // LogPanel la filtraría para no duplicar el %.
+            batteryText = "$battery%"
         } else {
             batteryLevel = -1
             batteryText = ""
@@ -425,6 +602,22 @@ class MainActivity : ComponentActivity() {
             lines += getString(R.string.log_last_fix, agoText(lastFix))
         }
 
+        // Causa de red (Fase 1): el servicio es autoritativo cuando corre (usa
+        // previousLabel correcto); si está detenido se calcula en vivo para la UI.
+        val storedCause = NetCause.fromValue(config.netCause)
+        val liveCause = runCatching { NetCause.detect(snapshot(this, config.netLabel)) }.getOrNull()
+        val effectiveCause = if (TrackingService.isRunning) {
+            storedCause ?: liveCause ?: NetCause.OK
+        } else {
+            liveCause ?: storedCause ?: NetCause.OK
+        }
+        val showNetCause = journeyActive && effectiveCause != NetCause.OK
+        netCauseMessage = if (showNetCause) effectiveCause.userMessage() else null
+        netCauseWifiAction = if (showNetCause) effectiveCause.opensWifiSettings() else false
+        if (showNetCause) {
+            netCauseMessage?.let { lines += it }
+        }
+
         lifecycleScope.launch {
             val pendingInfo = withContext(Dispatchers.IO) {
                 runCatching {
@@ -433,10 +626,23 @@ class MainActivity : ComponentActivity() {
                 }.getOrDefault(0 to null)
             }
             val pending = pendingInfo.first
-            lines += if (pending > 0) getString(R.string.log_pending, pending)
-            else getString(R.string.log_pending_none)
-            if (pending > 0 && pendingInfo.second != null) {
-                lines += getString(R.string.log_oldest_pending, agoText(pendingInfo.second!!))
+            val oldest = pendingInfo.second
+            // Solo es anormal lo que un pipeline sano no produce (ver PendingAlertPolicy):
+            // 1-5 pendientes recientes con ACK al día muestran "Sincronizando N…" en verde.
+            val abnormal = PendingAlertPolicy.isAbnormal(
+                pendingCount = pending,
+                oldestPendingAt = oldest,
+                lastAckAt = lastAck,
+                now = now,
+            )
+            pendingAbnormal = abnormal
+            lines += when {
+                pending <= 0 -> getString(R.string.log_pending_none)
+                abnormal -> getString(R.string.log_pending, pending)
+                else -> getString(R.string.log_pending_sync, pending)
+            }
+            if (pending > 0 && oldest != null && oldest > 0L) {
+                lines += getString(R.string.log_oldest_pending, agoText(oldest))
             }
             if (battery in 1..20) {
                 lines += getString(R.string.log_warn_battery)
@@ -468,18 +674,16 @@ class MainActivity : ComponentActivity() {
         TrackingState.TRACKING_DISABLED_BY_USER -> getString(R.string.tracking_off)
     }
 
-    private fun statusColor(state: TrackingState): Color = when (state) {
-        TrackingState.TRACKING_ACTIVE -> StatusOk
+    /**
+     * En jornada, SERVICE_RECOVERY es transitorio (banner blanco con texto verde);
+     * cualquier otro estado no-OK es error (banner blanco con texto rojo).
+     * Fuera de jornada el banner es siempre rojo (ver journeyBannerColors).
+     */
+    private fun journeyHasError(state: TrackingState): Boolean = when (state) {
+        TrackingState.TRACKING_ACTIVE,
         TrackingState.SERVICE_RECOVERY,
-        TrackingState.TRACKING_DISABLED_BY_USER -> StatusIdle
-        TrackingState.PENDING_ACK_TIMEOUT,
-        TrackingState.BATTERY_LOW,
-        TrackingState.BUFFER_FULL -> StatusWarn
-        TrackingState.GPS_DISABLED -> StatusOffline
-        TrackingState.NETWORK_OFFLINE,
-        TrackingState.MQTT_DISCONNECTED,
-        TrackingState.SERVER_UNAVAILABLE,
-        TrackingState.PERMISSION_MISSING -> StatusError
+        TrackingState.TRACKING_DISABLED_BY_USER -> false
+        else -> true
     }
 
     private fun beginDetailsLoading() {
@@ -516,27 +720,18 @@ class MainActivity : ComponentActivity() {
         refreshState()
     }
 
-    private fun agoText(timestamp: Long): String {
-        val minutes = ((System.currentTimeMillis() - timestamp).coerceAtLeast(0)) / 60_000
-        return when {
-            minutes < 1 -> getString(R.string.ago_now)
-            minutes < 60 -> getString(R.string.ago_minutes, minutes)
-            else -> getString(R.string.ago_hours, minutes / 60)
-        }
-    }
+    private fun agoText(timestamp: Long): String =
+        JourneyFormatter.agoText(this, timestamp)
 
     /** Resumen de la jornada recién finalizada. */
     private fun showJourneySummary() {
         val startedAt = config.journeyStartAt
         if (startedAt <= 0) return
-        val durationMs = (System.currentTimeMillis() - startedAt).coerceAtLeast(0)
-        val hours = durationMs / 3_600_000
-        val minutes = (durationMs % 3_600_000) / 60_000
-        val duration = getString(R.string.journey_duration, hours, minutes)
-        val km = String.format(java.util.Locale.US, "%.1f", config.journeyDistanceM / 1000.0)
+        val duration = JourneyFormatter.journeyDuration(this, System.currentTimeMillis() - startedAt)
+        val km = JourneyFormatter.formatKm(config.journeyDistanceM)
         val points = config.journeyPoints
         val confirmedPoints = config.journeyConfirmedPoints
-        val summary = "$duration|$km|$points|$confirmedPoints"
+        val summary = JourneyFormatter.buildSummary(duration, km, points, confirmedPoints)
         config.lastJourneySummary = summary
         config.lastSummaryNotified = ""
         AlertDialog.Builder(this)
@@ -548,19 +743,30 @@ class MainActivity : ComponentActivity() {
 
     /** Comprueba si hay actualización en el servidor (auto al abrir o al pulsar el icono). */
     private fun checkForUpdate(auto: Boolean) {
+        if (debugDashMode != null) return
         if (updateCheckInFlight) return
         updateCheckInFlight = true
         lifecycleScope.launch {
             try {
                 val latest = withContext(Dispatchers.IO) { UpdateManager.check(config.serverUrl) }
+                config.lastUpdateCheckAt = System.currentTimeMillis()
                 if (latest == null) {
+                    config.lastUpdateLatest = ""
+                    config.lastUpdateError = UpdateManager.lastError ?: "sin respuesta"
                     hideUpdateBanner()
                     Notifications.clearUpdateAvailable(this@MainActivity)
                     if (!auto) {
-                        Toast.makeText(this@MainActivity, R.string.update_unreachable, Toast.LENGTH_LONG).show()
+                        val reason = config.lastUpdateError
+                        Toast.makeText(
+                            this@MainActivity,
+                            getString(R.string.update_unreachable) + if (reason.isBlank()) "" else "\n$reason",
+                            Toast.LENGTH_LONG,
+                        ).show()
                     }
                     return@launch
                 }
+                config.lastUpdateLatest = latest.version
+                config.lastUpdateError = ""
                 if (!UpdateManager.isNewer(BuildConfig.VERSION_NAME, latest.version)) {
                     hideUpdateBanner()
                     Notifications.clearUpdateAvailable(this@MainActivity)
@@ -618,7 +824,15 @@ class MainActivity : ComponentActivity() {
             if (file != null) {
                 UpdateManager.install(this@MainActivity, file)
             } else {
-                Toast.makeText(this@MainActivity, R.string.update_error, Toast.LENGTH_LONG).show()
+                val reason = UpdateManager.lastError
+                config.lastUpdateCheckAt = System.currentTimeMillis()
+                config.lastUpdateLatest = latest.version
+                config.lastUpdateError = reason ?: "sin respuesta"
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.update_error) + if (reason.isNullOrBlank()) "" else "\n$reason",
+                    Toast.LENGTH_LONG,
+                ).show()
             }
         }
     }
@@ -626,6 +840,10 @@ class MainActivity : ComponentActivity() {
     private fun openDiagnostics() {
         startActivity(Intent(this, DiagnosticsActivity::class.java))
         overridePendingTransition(R.anim.slide_in_right, R.anim.fade_out)
+    }
+
+    private fun openWifiSettings() {
+        runCatching { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
     }
 
     @Composable
@@ -640,12 +858,16 @@ class MainActivity : ComponentActivity() {
         onLogin: () -> Unit,
         logged: Boolean,
         stateText: String,
-        statusColor: Color,
+        trackingOk: Boolean,
+        journeyHasError: Boolean,
         batteryText: String,
         batteryLevel: Int,
         batteryColor: Color,
+        journeyStartAt: Long,
+        journeyActive: Boolean,
         detailsLoading: Boolean,
         logText: String,
+        pendingAbnormal: Boolean,
         toggleLabel: Int,
         toggleIcon: Int,
         toggleEnabled: Boolean,
@@ -655,6 +877,10 @@ class MainActivity : ComponentActivity() {
         onUpdateBanner: () -> Unit,
         onUpdateIcon: () -> Unit,
         versionText: String,
+        onVersionTap: () -> Unit = {},
+        netCauseMessage: String? = null,
+        netCauseWifiAction: Boolean = false,
+        onOpenWifiSettings: () -> Unit = {},
     ) {
         BoxWithConstraints(
             modifier = Modifier
@@ -666,63 +892,126 @@ class MainActivity : ComponentActivity() {
         ) {
             val isCompactHeight = maxHeight < 640.dp
             val horizontalPad = if (maxWidth > 600.dp) 32.dp else 20.dp
-            val verticalPad = if (isCompactHeight) 12.dp else 16.dp
+            // Compacto: menos padding vertical para que todo quepa sin scroll.
+            val verticalPad = if (isCompactHeight) 8.dp else 12.dp
+            // Orden vertical: logo (TopBanner, con espacio superior mayor) ->
+            // jornada activa (StatusBanner inmediatamente debajo del logo, con
+            // 10-12 dp de gap) -> métricas -> botón. Sin scroll nuevo. El grupo
+            // logo+banner queda alto (centre-alto). UpdateBanner es overlay
+            // TopCenter: cuando es visible se reserva su altura (~48.dp) arriba
+            // del contenido para no tapar el logo.
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = horizontalPad, vertical = verticalPad),
+                    .padding(horizontal = horizontalPad, vertical = verticalPad)
+                    .padding(top = if (updateBannerVisible) 48.dp else 0.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                TopBanner(onUpdateIcon = onUpdateIcon)
+                TopBanner(
+                    onUpdateIcon = onUpdateIcon,
+                    isCompactHeight = isCompactHeight,
+                    updateBannerVisible = updateBannerVisible,
+                    slimTop = !logged,
+                )
 
+                // TopCenter: el contenido logueado (MainCard) arranca justo
+                // debajo del logo, de modo que StatusBanner quede pegado a él;
+                // el login se centra en su propio Box de tamaño completo.
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
+                    contentAlignment = Alignment.TopCenter,
                 ) {
                     Crossfade(
                         targetState = logged,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .widthIn(max = 480.dp),
+                            .widthIn(max = 480.dp)
+                            .fillMaxSize(),
                     ) { isLogged ->
                         if (!isLogged) {
-                            LoginCard(
-                                username = username,
-                                onUsernameChange = onUsernameChange,
-                                password = password,
-                                onPasswordChange = onPasswordChange,
-                                passwordVisible = passwordVisible,
-                                onTogglePasswordVisible = onTogglePasswordVisible,
-                                loginTesting = loginTesting,
-                                onLogin = onLogin,
-                            )
+                            // Bienvenido debajo del logo + tarjeta solo con campos.
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.login_title),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 2.dp),
+                                )
+                                Text(
+                                    text = stringResource(R.string.login_subtitle),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 12.dp),
+                                )
+                                LoginCard(
+                                    username = username,
+                                    onUsernameChange = onUsernameChange,
+                                    password = password,
+                                    onPasswordChange = onPasswordChange,
+                                    passwordVisible = passwordVisible,
+                                    onTogglePasswordVisible = onTogglePasswordVisible,
+                                    loginTesting = loginTesting,
+                                    onLogin = onLogin,
+                                    showHeader = false,
+                                )
+                            }
                         } else {
-                            MainCard(
-                                stateText = stateText,
-                                statusColor = statusColor,
-                                batteryText = batteryText,
-                                batteryLevel = batteryLevel,
-                                batteryColor = batteryColor,
-                                detailsLoading = detailsLoading,
-                                logText = logText,
-                                toggleLabel = toggleLabel,
-                                toggleIcon = toggleIcon,
-                                toggleEnabled = toggleEnabled,
-                                onToggle = onToggle,
-                                onDiag = onDiag,
-                                isCompactHeight = isCompactHeight,
-                            )
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.TopCenter,
+                            ) {
+                                MainCard(
+                                    stateText = stateText,
+                                    trackingOk = trackingOk,
+                                    journeyHasError = journeyHasError,
+                                    batteryText = batteryText,
+                                    batteryLevel = batteryLevel,
+                                    batteryColor = batteryColor,
+                                    journeyStartAt = journeyStartAt,
+                                    journeyActive = journeyActive,
+                                    detailsLoading = detailsLoading,
+                                    logText = logText,
+                                    pendingAbnormal = pendingAbnormal,
+                                    toggleLabel = toggleLabel,
+                                    toggleIcon = toggleIcon,
+                                    toggleEnabled = toggleEnabled,
+                                    onToggle = onToggle,
+                                    onDiag = onDiag,
+                                    isCompactHeight = isCompactHeight,
+                                    netCauseMessage = netCauseMessage,
+                                    netCauseWifiAction = netCauseWifiAction,
+                                    onOpenWifiSettings = onOpenWifiSettings,
+                                )
+                            }
                         }
                     }
                 }
 
+                // Versión integrada: una sola línea con ellipsis para no empujar.
                 Text(
                     text = versionText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF8A8A8A),
-                    modifier = Modifier.padding(top = 8.dp),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(top = if (isCompactHeight) 4.dp else 8.dp)
+                        .clickable(onClick = onVersionTap),
                 )
             }
 
@@ -738,128 +1027,62 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun TopBanner(onUpdateIcon: () -> Unit) {
+    private fun TopBanner(
+        onUpdateIcon: () -> Unit,
+        isCompactHeight: Boolean,
+        updateBannerVisible: Boolean,
+        slimTop: Boolean = false,
+    ) {
+        // Espacio superior mayor (statusBarsPadding + 28-40 dp): el logo baja y
+        // queda JUSTO ENCIMA del banner de jornada activa (StatusBanner, en
+        // MainCard alineado arriba en MainScreen) con 10-12 dp de gap.
+        // En login (slimTop) el espacio es mínimo para que el conjunto quede
+        // centrado en pantalla. El botón de actualizar va en overlay pegado
+        // ARRIBA (a nivel de la barra de estado), fuera del área del logo.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 20.dp),
+                .statusBarsPadding(),
         ) {
-            Image(
-                painter = painterResource(R.drawable.logo_banner),
-                contentDescription = stringResource(R.string.app_name),
-                contentScale = ContentScale.FillWidth,
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 320.dp)
-                    .align(Alignment.Center),
-            )
-            IconButton(
-                onClick = onUpdateIcon,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(48.dp),
+                    .padding(
+                        top = when {
+                            slimTop -> if (isCompactHeight) 8.dp else 12.dp
+                            isCompactHeight -> 28.dp
+                            else -> 40.dp
+                        },
+                        bottom = if (isCompactHeight) 10.dp else 12.dp,
+                    )
+                    .padding(horizontal = 48.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_update),
-                    contentDescription = stringResource(R.string.check_updates),
-                    tint = MaterialTheme.colorScheme.primary,
+                // Logo ópticamente centrado: reserva simétrica de 48.dp (ancho del
+                // IconButton) a cada lado para no desplazarse a la izquierda.
+                Image(
+                    painter = painterResource(R.drawable.logo_banner),
+                    contentDescription = stringResource(R.string.app_name),
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = if (isCompactHeight) 240.dp else 320.dp),
                 )
             }
-        }
-    }
-
-    @Composable
-    private fun LoginCard(
-        username: String,
-        onUsernameChange: (String) -> Unit,
-        password: String,
-        onPasswordChange: (String) -> Unit,
-        passwordVisible: Boolean,
-        onTogglePasswordVisible: () -> Unit,
-        loginTesting: Boolean,
-        onLogin: () -> Unit,
-    ) {
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = stringResource(R.string.login_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                )
-                Text(
-                    text = stringResource(R.string.login_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(bottom = 20.dp),
-                )
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = onUsernameChange,
-                    label = { Text(stringResource(R.string.username_hint)) },
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_person),
-                            contentDescription = null,
-                            tint = Ink,
-                        )
-                    },
-                    singleLine = true,
+            // Mientras el banner rojo de actualización es visible
+            // (updateBannerVisible) el botón no se compone: la propia acción ya
+            // está en pantalla. El logo no se mueve (overlay simétrico).
+            if (!updateBannerVisible) {
+                IconButton(
+                    onClick = onUpdateIcon,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = onPasswordChange,
-                    label = { Text(stringResource(R.string.password_hint)) },
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_lock),
-                            contentDescription = null,
-                            tint = Ink,
-                        )
-                    },
-                    visualTransformation = if (passwordVisible) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    trailingIcon = {
-                        IconButton(onClick = onTogglePasswordVisible) {
-                            Icon(
-                                imageVector = if (passwordVisible) {
-                                    Icons.Filled.VisibilityOff
-                                } else {
-                                    Icons.Filled.Visibility
-                                },
-                                contentDescription = null,
-                                tint = Ink,
-                            )
-                        }
-                    },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 20.dp),
-                )
-                Button(
-                    onClick = onLogin,
-                    enabled = !loginTesting,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
+                        .align(Alignment.TopEnd)
+                        .size(48.dp),
                 ) {
-                    Text(
-                        text = stringResource(if (loginTesting) R.string.checking else R.string.login_button),
-                        fontSize = 16.sp,
+                    Icon(
+                        painter = painterResource(R.drawable.ic_update),
+                        contentDescription = stringResource(R.string.check_updates),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
@@ -869,27 +1092,44 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun MainCard(
         stateText: String,
-        statusColor: Color,
+        trackingOk: Boolean,
+        journeyHasError: Boolean,
         batteryText: String,
         batteryLevel: Int,
         batteryColor: Color,
+        journeyStartAt: Long,
+        journeyActive: Boolean,
         detailsLoading: Boolean,
         logText: String,
+        pendingAbnormal: Boolean,
         toggleLabel: Int,
         toggleIcon: Int,
         toggleEnabled: Boolean,
         onToggle: () -> Unit,
         onDiag: () -> Unit,
         isCompactHeight: Boolean,
+        netCauseMessage: String? = null,
+        netCauseWifiAction: Boolean = false,
+        onOpenWifiSettings: () -> Unit = {},
     ) {
         val isStarted = toggleLabel == R.string.stop
 
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 10.dp else 14.dp),
+            // Compacto: menos espacio para que todo quepa sin scroll en ~640dp.
+            verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 12.dp),
         ) {
-            // Estado — banner limpio con color de fondo
-            StatusBanner(isStarted = isStarted, stateText = stateText, isCompactHeight = isCompactHeight)
+            // Estado — banner con sistema de 3 colores estricto (ver JourneyColors).
+            StatusBanner(
+                isStarted = isStarted,
+                trackingOk = trackingOk,
+                hasError = journeyHasError,
+                stateText = stateText,
+                isCompactHeight = isCompactHeight,
+                netCauseMessage = netCauseMessage,
+                showWifiAction = netCauseWifiAction,
+                onOpenWifiSettings = onOpenWifiSettings,
+            )
 
             // Métricas — grid de 3 items
             if (!detailsLoading) {
@@ -899,18 +1139,31 @@ class MainActivity : ComponentActivity() {
                     batteryColor = batteryColor,
                     logText = logText,
                     isCompactHeight = isCompactHeight,
+                    journeyStartAt = journeyStartAt,
+                    journeyActive = journeyActive,
+                    // Solo rojo si PendingAlertPolicy dice anormal; 1-5 sanos quedan en verde.
+                    pendingAlert = pendingAbnormal,
                 )
             } else {
-                DetailsLoadingPanel()
+                DetailsLoadingPanel(isCompactHeight = isCompactHeight)
             }
 
-            // Botón principal — grande y prominente
+            // Botón principal — grande y prominente, con transición suave de
+            // color: verde al activar (Iniciar) y rojo al finalizar (regla 3
+            // colores). La animación va en ambos sentidos.
+            val toggleTargetColor =
+                if (isStarted) MaterialTheme.colorScheme.primary else JourneyColors.Verde
+            val toggleColor by animateColorAsState(
+                targetValue = toggleTargetColor,
+                animationSpec = tween(durationMillis = 600),
+                label = "toggleColor",
+            )
             Button(
                 onClick = onToggle,
                 enabled = toggleEnabled,
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
+                    containerColor = toggleColor,
                     disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
                 ),
                 modifier = Modifier
@@ -919,7 +1172,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 Icon(
                     painter = painterResource(toggleIcon),
-                    contentDescription = null,
+                    contentDescription = stringResource(toggleLabel),
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(if (isCompactHeight) 22.dp else 26.dp),
                 )
@@ -931,10 +1184,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            // Diagnóstico — sutil
+            // Diagnóstico — sutil (48dp mínimo táctil, sin rediseño).
             TextButton(
                 onClick = onDiag,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
             ) {
                 Text(
                     text = stringResource(R.string.diag_button),
@@ -945,153 +1200,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun StatusBanner(isStarted: Boolean, stateText: String, isCompactHeight: Boolean) {
-        val bgColor = if (isStarted) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
-        val dotColor = if (isStarted) StatusOk else StatusIdle
-        val title = if (isStarted) stringResource(R.string.journey_started_title) else stringResource(R.string.journey_finished_title)
-
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = bgColor),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = if (isCompactHeight) 14.dp else 18.dp),
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(if (isCompactHeight) 44.dp else 52.dp)
-                        .background(dotColor, CircleShape),
-                ) {
-                    Icon(
-                        painter = painterResource(if (isStarted) R.drawable.ic_play else R.drawable.ic_stop),
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(if (isCompactHeight) 22.dp else 26.dp),
-                    )
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = if (isCompactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = stateText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun MetricsRow(
-        batteryText: String,
-        batteryLevel: Int,
-        batteryColor: Color,
-        logText: String,
-        isCompactHeight: Boolean,
-    ) {
-        // Extraer pending del logText
-        val pendingMatch = Regex("(\\d+) ubicaciones pendientes").find(logText)
-        val pending = pendingMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
-
-        // Extraer estado del servidor del logText
-        val serverText = when {
-            "Conectado al servidor" in logText -> stringResource(R.string.log_server_on)
-            "Conectando al servidor" in logText -> stringResource(R.string.log_server_connecting)
-            else -> stringResource(R.string.log_server_off)
-        }
-        val serverOk = "Conectado al servidor" in logText
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 10.dp),
-        ) {
-            // Batería
-            MetricCard(
-                label = stringResource(R.string.log_battery, batteryLevel),
-                sublabel = if (batteryLevel in 0..100) batteryText else "",
-                accentColor = batteryColor,
-                modifier = Modifier.weight(1f),
-                isCompactHeight = isCompactHeight,
-            )
-            // Pendientes
-            MetricCard(
-                label = if (pending > 0) "$pending" else "0",
-                sublabel = stringResource(R.string.pending),
-                accentColor = if (pending > 0) StatusWarn else StatusOk,
-                modifier = Modifier.weight(1f),
-                isCompactHeight = isCompactHeight,
-            )
-            // Servidor
-            MetricCard(
-                label = if (serverOk) "✓" else "✕",
-                sublabel = serverText,
-                accentColor = if (serverOk) StatusOk else StatusError,
-                modifier = Modifier.weight(1f),
-                isCompactHeight = isCompactHeight,
-            )
-        }
-    }
-
-    @Composable
-    private fun MetricCard(
-        label: String,
-        sublabel: String,
-        accentColor: Color,
-        modifier: Modifier = Modifier,
-        isCompactHeight: Boolean,
-    ) {
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = modifier,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(if (isCompactHeight) 10.dp else 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(accentColor, CircleShape),
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = label,
-                    style = if (isCompactHeight) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                if (sublabel.isNotEmpty()) {
-                    Text(
-                        text = sublabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                        modifier = Modifier.padding(top = 2.dp),
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun DetailsLoadingPanel() {
+    private fun DetailsLoadingPanel(isCompactHeight: Boolean) {
         val transition = rememberInfiniteTransition(label = "skeleton")
         val alpha by transition.animateFloat(
             initialValue = 0.45f,
@@ -1102,42 +1211,57 @@ class MainActivity : ComponentActivity() {
             ),
             label = "skeletonAlpha",
         )
+        // Compacto: menos padding y barras más bajas para no empujar sin scroll.
+        val panelPad = if (isCompactHeight) 10.dp else 14.dp
+        val barHeight = if (isCompactHeight) 12.dp else 16.dp
+        val gapLarge = if (isCompactHeight) 8.dp else 12.dp
+        val gapSmall = if (isCompactHeight) 6.dp else 8.dp
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
-                .padding(14.dp),
+                .background(JourneyColors.Blanco, RoundedCornerShape(8.dp))
+                .padding(panelPad),
         ) {
-            SkeletonBar(widthFraction = 0.8f, alpha = alpha)
-            Spacer(modifier = Modifier.height(12.dp))
-            SkeletonBar(widthFraction = 0.95f, alpha = alpha)
-            Spacer(modifier = Modifier.height(12.dp))
-            SkeletonBar(widthFraction = 0.65f, alpha = alpha)
-            Spacer(modifier = Modifier.height(8.dp))
+            SkeletonBar(widthFraction = 0.8f, alpha = alpha, barHeight = barHeight)
+            Spacer(modifier = Modifier.height(gapLarge))
+            SkeletonBar(widthFraction = 0.95f, alpha = alpha, barHeight = barHeight)
+            Spacer(modifier = Modifier.height(gapLarge))
+            SkeletonBar(widthFraction = 0.65f, alpha = alpha, barHeight = barHeight)
+            Spacer(modifier = Modifier.height(gapSmall))
         }
     }
 
     @Composable
-    private fun SkeletonBar(widthFraction: Float, alpha: Float) {
+    private fun SkeletonBar(widthFraction: Float, alpha: Float, barHeight: androidx.compose.ui.unit.Dp = 16.dp) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(widthFraction)
-                .height(16.dp)
-                .background(Color(0xFFE4E4E4), RoundedCornerShape(6.dp))
+                .height(barHeight)
+                .background(JourneyColors.Rojo.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
                 .graphicsLayer { this.alpha = alpha },
         )
     }
 
     @Composable
     private fun LogPanel(logText: String) {
+        // La tarjeta de batería ya muestra el nivel: no repetir su línea
+        // ("Batería · NN%" de log_battery) en el registro para no duplicar el %.
+        // Se conserva el aviso de batería baja ("Aviso · …"), que empieza por "Aviso".
+        // Sin scroll: altura acotada con maxLines + ellipsis en vez de crecer.
+        val filtered = logText.lines()
+            .filterNot { it.trim().startsWith("Batería ·") && "%" in it }
+            .joinToString("\n")
+            .trim()
         Text(
-            text = logText,
-            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
+            text = filtered,
+            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
             color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFFFE9F0), RoundedCornerShape(8.dp))
-                .padding(14.dp),
+                .background(JourneyColors.Blanco, RoundedCornerShape(8.dp))
+                .padding(10.dp),
         )
     }
 
@@ -1147,13 +1271,14 @@ class MainActivity : ComponentActivity() {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .background(MaterialTheme.colorScheme.primary)
-                .clickable(onClick = onClick)
+                .clickable(role = Role.Button, onClick = onClick)
                 .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_update),
-                contentDescription = null,
+                contentDescription = stringResource(R.string.check_updates),
                 tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(20.dp),
             )

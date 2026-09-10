@@ -12,7 +12,11 @@ set -a; source "$ENV_FILE"; set +a
 SERVER_JAR="$PROJECT_ROOT/server/target/tracker-server.jar"
 CONFIG_TEMPLATE="$PROJECT_ROOT/server/conf/traccar-dev.xml.example"
 CONFIG_FILE="$PROJECT_ROOT/server/conf/traccar-dev.xml"
-LOG_FILE="$PROJECT_ROOT/server/logs/server-dev.log"
+LOG_DIR="$PROJECT_ROOT/server/logs"
+LOG_FILE="$LOG_DIR/server-dev.log"
+PID_FILE="$LOG_DIR/server-dev.pid"
+HEALTH_URL="http://localhost:${SERVER_WEB_PORT:-999}/api/health"
+HEALTH_TIMEOUT="${SERVER_HEALTH_TIMEOUT:-90}"
 
 cmd="${1:-start}"
 
@@ -40,9 +44,26 @@ fi
 
 make_config() {
   [[ -f "$CONFIG_TEMPLATE" ]] || { echo "ERROR: falta $CONFIG_TEMPLATE"; exit 1; }
+  if [[ -f "$CONFIG_FILE" ]]; then
+    backup="$CONFIG_FILE.bak-$(date +%Y%m%d-%H%M%S)"
+    cp "$CONFIG_FILE" "$backup"
+    echo "Backup config previa: $backup"
+  fi
   cp "$CONFIG_TEMPLATE" "$CONFIG_FILE"
   chmod 600 "$CONFIG_FILE"
   echo "OK: $CONFIG_FILE generado desde el template (sin secretos; se inyectan por env)."
+}
+
+wait_health() {
+  local deadline=$((SECONDS + HEALTH_TIMEOUT))
+  while (( SECONDS < deadline )); do
+    if curl -sf -o /dev/null "$HEALTH_URL" 2>/dev/null; then
+      curl -s -w "\nhealth HTTP %{http_code}\n" "$HEALTH_URL" || true
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
 }
 
 case "$cmd" in
@@ -51,13 +72,34 @@ case "$cmd" in
     ;;
   start)
     [[ -f "$CONFIG_FILE" ]] || make_config
-    echo "Arrancando server (log: $LOG_FILE)..."
+    mkdir -p "$LOG_DIR"
+    if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+      echo "El server ya está corriendo (PID $(cat "$PID_FILE")). Usa '$0 stop' o '$0 restart'."
+      exit 1
+    fi
+    rm -f "$PID_FILE"
+    echo "Arrancando server (log: $LOG_FILE, pid: $PID_FILE)..."
     cd "$PROJECT_ROOT/server"
     setsid nohup java -jar "$SERVER_JAR" "$CONFIG_FILE" > "$LOG_FILE" 2>&1 < /dev/null &
-    sleep 12
-    curl -s -w "\nhealth HTTP %{http_code}\n" http://localhost:8082/api/health || true
+    echo $! > "$PID_FILE"
+    if wait_health; then
+      echo "OK: server healthy ($HEALTH_URL), PID $(cat "$PID_FILE")"
+    else
+      echo "ERROR: el server no respondió $HEALTH_URL en ${HEALTH_TIMEOUT}s."
+      echo "Revisar: tail -50 $LOG_FILE  (PID $(cat "$PID_FILE" 2>/dev/null || echo '?'))"
+      exit 1
+    fi
     ;;
   stop)
+    if [[ -f "$PID_FILE" ]]; then
+      pid="$(cat "$PID_FILE")"
+      if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" && echo "server detenido (PID $pid)" || echo "(no se pudo detener PID $pid)"
+      else
+        echo "(PID $pid ya no existe; limpiando)"
+      fi
+      rm -f "$PID_FILE"
+    fi
     pkill -f "[t]racker-server.jar" && echo "server detenido" || echo "(no corriendo)"
     ;;
   restart)

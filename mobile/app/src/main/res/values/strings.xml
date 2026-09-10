@@ -1,59 +1,189 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- =============================================================
+  DMujeres Tracking — TODOS LOS TEXTOS DE LA APP, POR SECCIONES.
+  Para personalizar: cambia solo el texto entre > y <.
+  REGLAS: no borres ni renombres ninguna línea name="..."; conserva
+  los %1$s %1$d %2$s tal cual; evita & < > sueltos; acentos OK.
+  Los mensajes de causa de red (WiFi apagado, avión, sin cobertura…)
+  NO están aquí: viven en NetCause.kt (util/NetCause.kt, función userMessage).
+  ============================================================= -->
 <resources>
+
+    <!-- ============ GENERAL (toda la app) ============ -->
     <string name="app_name">DMujeres Tracking</string>
-    <string name="tracking_on">Jornada de trabajo en curso</string>
-    <string name="tracking_off">Jornada finalizada</string>
-    <string name="journey_started_title">Jornada iniciada</string>
-    <string name="journey_finished_title">Jornada finalizada</string>
-    <string name="start">Iniciar jornada</string>
-    <string name="stop">Finalizar jornada</string>
-    <string name="server_hint">Servidor (mqtt://ip:puerto)</string>
-    <string name="username_label">Usuario</string>
-    <string name="username_hint">Tu usuario (te lo entregó la empresa)</string>
-    <string name="password_label">Contraseña</string>
-    <string name="password_hint">Tu contraseña</string>
-    <string name="credentials_required">Primero ingresa tu usuario y contraseña</string>
-    <string name="login_body">Ingresa los datos que te entregó la empresa y pulsa "Activar tracking". El resto ya está configurado.</string>
-    <string name="state">Estado</string>
+    <string name="back">Volver</string>
+    <string name="dialog_close">Cerrar</string>
+    <string name="dialog_cancel">Cancelar</string>
+    <string name="dialog_ok_title">Conexión exitosa</string>
+    <string name="dialog_error_title">Error de conexión</string>
     <string name="save">Guardar y aplicar</string>
-    <string name="pending">Pendientes por enviar</string>
-    <string name="permission_title">Permisos necesarios</string>
-    <string name="permission_body">Para hacer tracking se necesita acceso a la ubicación (también en segundo plano) y notificaciones.</string>
     <string name="grant">Conceder permisos</string>
-    <string name="channel_name">Estado del tracking</string>
-    <string name="channel_updates">Actualizaciones</string>
-    <string name="update_badge_title">Nueva versión disponible</string>
-    <string name="update_badge_text">Versión %1$s · toca para actualizar</string>
-    <string name="device_id_label">ID del dispositivo</string>
-    <string name="device_id_hint">ID autogenerado (legado)</string>
     <string name="copy">Copiar</string>
     <string name="copied">ID copiado</string>
-    <string name="frequency_label">Frecuencia de envío (segundos, mínimo 3)</string>
-    <string name="buffer_label">Buffer máximo de pendientes (10–5000)</string>
-    <string name="permissions_button">Permisos y batería</string>
-    <string name="welcome_title">Configuración inicial</string>
-    <string name="welcome_body">Sigue los 4 pasos para que el tracking funcione siempre, incluso con la pantalla apagada y en segundo plano. Marca todo lo que te pida.</string>
-    <string name="step_location">1. Permisos de ubicación</string>
-    <string name="grant_location">Permitir ubicación (siempre)</string>
-    <string name="step_notifications">2. Notificaciones</string>
-    <string name="grant_notifications">Permitir notificaciones</string>
-    <string name="step_battery">3. Batería (para que nunca se detenga)</string>
-    <string name="grant_battery">Permitir sin límite de batería</string>
-    <string name="step_gps">4. GPS activado</string>
-    <string name="grant_gps">Abrir ajustes de ubicación y activarla</string>
-    <string name="finish">Listo, continuar</string>
     <string name="checking">Comprobando…</string>
     <string name="checking_connection">Comprobando conexión con el servidor…</string>
     <string name="connect_success">Conectado correctamente al servidor</string>
-    <string name="dialog_ok_title">Conexión exitosa</string>
-    <string name="dialog_error_title">Error de conexión</string>
-    <string name="dialog_close">Cerrar</string>
-    <string name="app_version">Versión %1$s</string>
-    <string name="channel_alerts">Avisos de la jornada</string>
-    <string name="jornada_iniciada">Jornada de trabajo iniciada</string>
-    <string name="jornada_iniciada_body">Tu jornada quedó registrada y se enviará tu ubicación al equipo.</string>
+    <string name="app_version">@DMujeres Tracking %1$s beta</string>
+    <string name="check_updates">Buscar actualizaciones</string>
+
+    <!-- ============ SPLASH (pantalla de arranque) ============ -->
+    <string name="splash_loading">Preparando aplicación de monitoreo…</string>
+
+    <!-- ============ BIENVENIDA (primera vez) ============ -->
+    <string name="welcome_title">¡Hola, bienvenido!</string>
+    <string name="welcome_body">Vamos a dejar tu app lista en 4 pasos cortos, para que tu recorrido se guarde siempre, incluso con la pantalla apagada. Solo toca lo que te pida cada paso.</string>
+    <string name="finish">Empezar</string>
+
+    <!-- ============ PASO 1: UBICACIÓN ============ -->
+    <string name="step_location">1. Tu ubicación</string>
+    <string name="grant_location">Permitir siempre</string>
+    <string name="step_location_detail">Tu recorrido se guarda aunque cierres la app.</string>
+
+    <!-- ============ PASO 2: AVISOS ============ -->
+    <string name="step_notifications">2. Tus avisos</string>
+    <string name="grant_notifications">Permitir avisos</string>
+    <string name="step_notifications_detail">Te avisamos si algo necesita tu atención.</string>
+
+    <!-- ============ PASO 3: BATERÍA ============ -->
+    <string name="step_battery">3. Que no se apague</string>
+    <string name="grant_battery">Sin límites</string>
+    <string name="step_battery_detail">Así Android no pausa tu ubicación en reposo.</string>
+    <string name="battery_title">Activa "Sin límite de batería"</string>
+    <string name="battery_body">Sin este permiso, Android puede pausar tu ubicación cuando el dispositivo está en reposo. Toca el botón y elige "Permitir" o "Sin restricciones".</string>
+    <string name="battery_grant">Ir a los ajustes</string>
+    <string name="battery_dismiss">No volver a mostrar</string>
+
+    <!-- ============ PASO 4: GPS ============ -->
+    <string name="step_gps">4. Tu lugar en el mapa</string>
+    <string name="grant_gps">Activar ubicación</string>
+    <string name="step_gps_detail">Con el GPS vemos tu lugar en el mapa.</string>
+    <string name="vendor_step_title">5. Protección de %1$s</string>
+    <string name="vendor_step_body">%1$s puede detener la app en segundo plano. Sigue estos pasos una sola vez:</string>
+    <string name="vendor_open_settings">Abrir ajustes de %1$s</string>
+    <string name="vendor_done">Ya lo configuré</string>
+
+    <!-- ============ PERMISOS (diálogos) ============ -->
+    <string name="permission_title">Permisos necesarios</string>
+    <string name="permission_body">Para registrar tu recorrido se necesita acceso a la ubicación (también con la app cerrada) y notificaciones.</string>
+    <string name="permissions_button">Permisos y batería</string>
+
+    <!-- ============ LOGIN ============ -->
+    <string name="login_title">¡Bienvenido!</string>
+    <string name="login_subtitle">Ingresa tu usuario y contraseña para iniciar tu jornada.</string>
+    <string name="login_button">Ingresar</string>
+    <string name="login_welcome">¡Hola! Ya puedes iniciar tu jornada con un toque.</string>
+    <string name="login_body">Ingresa los datos que te entregó CCTV y pulsa "Iniciar jornada". El resto ya está configurado.</string>
+    <string name="username_label">Usuario</string>
+    <string name="username_hint">Tu usuario (Ingresa los datos que CCTV te proporciono)</string>
+    <string name="password_label">Contraseña</string>
+    <string name="password_hint">Tu contraseña</string>
+    <string name="show_password">Mostrar contraseña</string>
+    <string name="hide_password">Ocultar contraseña</string>
+    <string name="credentials_required">Primero ingresa tu usuario y contraseña</string>
+    <string name="device_id_label">ID del dispositivo</string>
+    <string name="device_id_hint">ID autogenerado (legado)</string>
+
+    <!-- ============ DASH: SIN JORNADA ============ -->
+    <string name="tracking_off">Jornada finalizada</string>
+    <string name="start">Iniciar jornada</string>
+    <string name="stop">Finalizar jornada</string>
+    <string name="server_hint">Servidor (mqtt://ip:puerto)</string>
+    <string name="server_no_journey">Sin jornada</string>
+    <string name="server_duration_label">Duración</string>
+    <string name="log_journey_off">Jornada no iniciada</string>
+    <string name="log_pending_none">Sin ubicaciones pendientes</string>
+    <string name="tracking_starting">Iniciando seguimiento…</string>
+    <string name="start_error">No se pudo iniciar el servicio de seguimiento.</string>
+    <string name="journey_finished_title">Jornada finalizada</string>
     <string name="jornada_finalizada">Jornada de trabajo finalizada</string>
     <string name="jornada_finalizada_body">Gracias. Tu recorrido quedó guardado.</string>
+
+    <!-- ============ DASH: EN JORNADA ============ -->
+    <string name="tracking_on">Jornada en curso</string>
+    <string name="journey_started_title">Jornada iniciada</string>
+    <string name="jornada_iniciada">Jornada de trabajo iniciada</string>
+    <string name="jornada_iniciada_body">Tu jornada quedó registrada y se enviará tu ubicación al equipo.</string>
+    <string name="state">Estado</string>
+    <string name="state_active">Jornada activa y enviando ubicación</string>
+    <string name="pending">Pendientes por enviar</string>
+    <string name="battery_label">Batería</string>
+    <string name="server_connected">Servidor conectado</string>
+    <string name="server_connecting">Servidor conectando…</string>
+    <string name="server_disconnected">Servidor desconectado</string>
+    <string name="server_journey_active">Jornada %1$d h %2$d min</string>
+    <string name="server_connecting_label">Conectando…</string>
+    <string name="log_journey_on">Jornada activa · %1$d h %2$d min</string>
+    <string name="log_state">Estado · %1$s</string>
+    <string name="log_server_on">Conectado al servidor</string>
+    <string name="log_server_connecting">Conectando al servidor…</string>
+    <string name="log_server_off">Desconectado del servidor</string>
+    <string name="log_battery">Batería · %1$d%%</string>
+    <string name="log_pending">%1$d ubicaciones pendientes por enviar</string>
+    <!-- Caso leve y sano (1-5 recientes con ACK al día): informa sin alarmar. Solo se usa
+         cuando PendingAlertPolicy dice que NO es anormal; el caso anormal sigue con log_pending. -->
+    <string name="log_pending_sync">Sincronizando %1$d…</string>
+    <string name="log_last_ack">Última confirmación del servidor · %1$s</string>
+    <string name="log_last_fix">Último GPS válido · %1$s</string>
+    <string name="log_oldest_pending">Pendiente más antiguo · %1$s</string>
+    <string name="journey_duration">%1$d h %2$d min</string>
+    <string name="journey_summary_title">Resumen de jornada</string>
+    <string name="journey_summary_body">Tiempo activo: %1$s · Recorrido: %2$s km · Guardados: %3$d · Confirmados: %4$d</string>
+    <string name="daily_summary_title">Resumen de tu jornada de ayer</string>
+    <string name="daily_summary_body">%1$s activo · %2$s km · %3$d guardados · %4$d confirmados</string>
+    <string name="finish_confirm_title">¿Finalizar la jornada?</string>
+    <string name="finish_confirm_body">Las posiciones guardadas seguirán enviándose aunque no haya Internet ahora.</string>
+    <string name="finish_confirm_button">Finalizar</string>
+
+    <!-- ============ DASH: ERRORES Y AVISOS EN PANTALLA ============ -->
+    <string name="state_gps">Sin señal de GPS</string>
+    <string name="state_network">Sin conexión a Internet</string>
+    <string name="state_server">Servidor no disponible</string>
+    <string name="state_pending">Esperando envío</string>
+    <string name="state_battery">Batería baja</string>
+    <string name="state_buffer">Memoria llena: en pausa</string>
+    <string name="state_permission">Faltan permisos de ubicación</string>
+    <string name="state_recovery">Recuperando el servicio</string>
+    <string name="warning_title">Aviso de la jornada</string>
+    <string name="ok_title">Todo en orden</string>
+    <string name="ok_body">El servicio está funcionando correctamente.</string>
+    <string name="log_warn_battery">Aviso · batería baja, conecta el dispositivo</string>
+    <string name="log_warn_gps">Aviso · sin señal de GPS hace más de 5 minutos</string>
+    <string name="killed_title">La app fue detenida por el sistema</string>
+    <string name="killed_body">Tu teléfono detuvo la app en segundo plano. Completa los permisos de batería y la protección del fabricante para que no vuelva a pasar. ¿Quieres reactivar la jornada ahora?</string>
+    <string name="killed_reactivate">Reactivar jornada</string>
+    <string name="service_recovery_title">Recuperando el seguimiento</string>
+    <string name="service_recovery_body">El servicio se está reactivando. La jornada y las posiciones guardadas se conservan.</string>
+    <string name="buffer_warning_title">Memoria de ubicaciones llena</string>
+    <string name="buffer_warning_body">Se borraron %1$d ubicaciones antiguas para no llenar la memoria del dispositivo.</string>
+    <string name="buffer_full_stop_body">La memoria para guardar posiciones está llena. Se reanudará automáticamente cuando se envíe lo guardado.</string>
+    <string name="storage_warning_title">No se pudo guardar la ubicación</string>
+    <string name="storage_warning_body">No se pudo guardar tu ubicación. Revisa el espacio libre del dispositivo.</string>
+    <string name="policy_label">Si se llena la memoria</string>
+    <string name="policy_drop_oldest">Borrar las más antiguas</string>
+    <string name="policy_stop_capture">Pausar hasta enviar</string>
+    <string name="frequency_label">Frecuencia de envío (segundos, mínimo 3)</string>
+    <string name="buffer_label">Ubicaciones guardadas como máximo (10–5000)</string>
+    <string name="ack_timeout_label">Espera de respuesta del servidor (segundos, 5–60)</string>
+    <string name="max_retries_label">Intentos por ubicación (3–200)</string>
+
+    <!-- ============ NOTIFICACIONES (barra del teléfono) ============ -->
+    <string name="channel_name">Estado de tu jornada</string>
+    <string name="channel_alerts">Avisos de la jornada</string>
+    <string name="channel_updates">Actualizaciones</string>
+    <string name="notif_journey_active">Jornada de trabajo en curso</string>
+    <string name="notif_journey_duration">Jornada activa: %1$d h %2$d min</string>
+    <string name="notif_journey_finished">Jornada finalizada</string>
+    <string name="notif_journey_finished_duration">Jornada finalizada · %1$s de actividad</string>
+    <string name="notif_journey_finished_body">Jornada finalizada · %1$s · %2$s km · %3$d guardados · %4$d confirmados</string>
+    <string name="notif_battery">Batería %1$d%%</string>
+    <string name="notif_pending">%1$d pendientes por enviar</string>
+    <string name="notif_warn_battery">Batería baja</string>
+    <string name="notif_warn_gps">Sin señal de GPS</string>
+    <string name="sin_gps_title">Sin señal GPS</string>
+    <string name="sin_gps_body">El dispositivo no fija satélites. Las posiciones pueden ser de red y tu ruta no se dibujará en carretera. Camina unos segundos al aire libre o avisa a soporte.</string>
+    <string name="notif_state">Estado · %1$s</string>
+    <string name="journey_resumed_title">Jornada retomada</string>
+    <string name="journey_resumed_body">Tu jornada sigue activa. El seguimiento continúa en segundo plano.</string>
     <string name="connected_title">Conectado al servidor</string>
     <string name="connected_body">La comunicación con el servidor está activa.</string>
     <string name="disconnected_title">Desconectado del servidor</string>
@@ -61,57 +191,15 @@
     <string name="connection_lost_title">Conexión perdida</string>
     <string name="connection_lost_body">Llevas más de 5 minutos sin conexión. Las posiciones quedan guardadas y se enviarán al recuperar Internet.</string>
     <string name="battery_low_title">Batería baja</string>
-    <string name="battery_low_body">La batería está al %1$d%%. Conecta la tablet para mantener el seguimiento.</string>
-    <string name="service_recovery_title">Recuperando el seguimiento</string>
-    <string name="service_recovery_body">El servicio se está reactivando. La jornada y las posiciones guardadas se conservan.</string>
-    <string name="start_error">No se pudo iniciar el servicio de seguimiento.</string>
-    <string name="tracking_starting">Iniciando seguimiento…</string>
-    <string name="warning_title">Aviso de la jornada</string>
-    <string name="ok_title">Todo en orden</string>
-    <string name="ok_body">El servicio está funcionando correctamente.</string>
-    <string name="battery_title">Activa "Sin límite de batería"</string>
-    <string name="battery_body">Sin este permiso, Android puede pausar el GPS cuando la tablet está en reposo. Toca el botón y elige "Permitir" o "Sin restricciones".</string>
-    <string name="battery_grant">Ir a los ajustes</string>
+    <string name="battery_low_body">La batería está al %1$d%%. Conecta el dispositivo para no pausar tu jornada.</string>
     <string name="wake_title">Se detuvo el envío de ubicación</string>
-    <string name="wake_body">Revisa la tablet: no se ha recibido ubicación en 10 minutos. Abre la app para continuar la jornada.</string>
-    <string name="wake_gps_body">Revisa la tablet: no se ha recibido un fix GPS reciente. Abre la app y comprueba el GPS.</string>
-    <string name="wake_mqtt_body">Revisa la tablet: hay un problema con la conexión para enviar posiciones. Se reintentará automáticamente.</string>
-    <string name="wake_pending_body">Revisa la tablet: hay posiciones que no se pudieron enviar hace más de 10 minutos. Abre la app para continuar.</string>
-    <string name="buffer_warning_title">Memoria de ubicaciones llena</string>
-    <string name="buffer_warning_body">Se descartaron %1$d posiciones antiguas para no llenar la memoria de la tablet.</string>
-    <string name="storage_warning_title">No se pudo guardar la ubicación</string>
-    <string name="storage_warning_body">La posición actual no se pudo guardar. Revisa el espacio libre de la tablet.</string>
-    <string name="buffer_full_stop_body">La memoria para guardar posiciones está llena. Se reanudará automáticamente cuando se envíe lo guardado.</string>
-    <string name="policy_label">Política cuando se llena el buffer</string>
-    <string name="policy_drop_oldest">Descartar lo más antiguo</string>
-    <string name="policy_stop_capture">Detener captura</string>
-    <string name="vendor_step_title">5. Protección de %1$s</string>
-    <string name="vendor_step_body">%1$s puede detener la app en segundo plano. Sigue estos pasos una sola vez:</string>
-    <string name="vendor_open_settings">Abrir ajustes de %1$s</string>
-    <string name="vendor_done">Ya lo configuré</string>
-    <string name="killed_title">La app fue detenida por el sistema</string>
-    <string name="killed_body">Tu teléfono detuvo la app en segundo plano. Completa los permisos de batería y la protección del fabricante para que no vuelva a pasar. ¿Quieres reactivar la jornada ahora?</string>
-    <string name="killed_reactivate">Reactivar jornada</string>
-    <string name="ack_timeout_label">Tiempo de espera de confirmación (segundos, 5–60)</string>
-    <string name="max_retries_label">Máximos reintentos por mensaje (3–200)</string>
-    <string name="diag_title">Diagnóstico de la app</string>
-    <string name="diag_gps_off">GPS apagado. Actívalo en los ajustes del teléfono.</string>
-    <string name="diag_gps_ok">GPS con señal reciente</string>
-    <string name="diag_gps_waiting">GPS encendido, esperando señal…</string>
-    <string name="diag_network_ok">Internet disponible</string>
-    <string name="diag_network_off">Sin Internet</string>
-    <string name="diag_pending">Pendientes por enviar: %1$d</string>
-    <string name="diag_pending_age">Pendientes por enviar: %1$d · más antiguo %2$s</string>
-    <string name="diag_battery">Batería: %1$d%%</string>
-    <string name="diag_last_fix">Último GPS válido: %1$s</string>
-    <string name="diag_last_ack">Última confirmación: %1$s</string>
-    <string name="diag_never">Todavía no</string>
-    <string name="diag_service_off">· Jornada no activa</string>
-    <string name="diag_service_stopped">· Servicio detenido</string>
-    <string name="diag_test">Probar conexión al servidor</string>
-    <string name="diag_retry_service">Reintentar servicio de seguimiento</string>
-    <string name="diag_button">Diagnóstico</string>
-    <string name="update_button">Buscar actualización</string>
+    <string name="wake_body">Revisa el dispositivo: hace 10 minutos que no llega tu ubicación. Abre la app para seguir con tu jornada.</string>
+    <string name="wake_gps_body">Revisa el dispositivo: no hay señal de GPS. Abre la app y revisa que la ubicación esté activada.</string>
+    <string name="wake_mqtt_body">Revisa el dispositivo: no se pueden enviar tus ubicaciones. Se intentará de nuevo solo.</string>
+    <string name="wake_pending_body">Revisa el dispositivo: hay ubicaciones sin enviar desde hace más de 10 minutos. Abre la app para seguir.</string>
+    <string name="boot_fsl_missing">Falta el permiso de ubicación en segundo plano (Android 14). Abre la app y concede el permiso para retomar la jornada.</string>
+    <string name="update_badge_title">Nueva versión disponible</string>
+    <string name="update_badge_text">Versión %1$s · toca para actualizar</string>
     <string name="update_found">Hay una versión nueva: %1$s</string>
     <string name="update_notes">%1$s\n\n¿Descargar e instalar ahora? La app se actualiza sola sin borrar tus datos.</string>
     <string name="update_now">Actualizar</string>
@@ -120,57 +208,57 @@
     <string name="update_error">No se pudo descargar la actualización. Intenta más tarde.</string>
     <string name="update_no_new">Ya tienes la última versión.</string>
     <string name="update_unreachable">No se pudo comprobar si hay actualizaciones. Revisa tu conexión.</string>
-    <string name="journey_summary_title">Resumen de jornada</string>
-    <string name="journey_summary_body">Tiempo activo: %1$s · Recorrido: %2$s km · Guardados: %3$d · Confirmados: %4$d</string>
-    <string name="daily_summary_title">Resumen de tu jornada de ayer</string>
-    <string name="daily_summary_body">%1$s activo · %2$s km · %3$d guardados · %4$d confirmados</string>
-    <string name="journey_duration">%1$d h %2$d min</string>
-    <string name="notif_journey_active">Jornada de trabajo en curso</string>
-    <string name="notif_journey_duration">Jornada activa: %1$d h %2$d min</string>
-    <string name="notif_battery">Batería %1$d%%</string>
-    <string name="notif_pending">%1$d pendientes por enviar</string>
-    <string name="notif_warn_battery">Batería baja</string>
-    <string name="notif_warn_gps">Sin señal de GPS</string>
-    <string name="notif_state">Estado · %1$s</string>
-    <string name="state_active">Jornada activa y enviando ubicación</string>
-    <string name="state_gps">Sin señal de GPS</string>
-    <string name="state_network">Sin conexión a Internet</string>
-    <string name="state_server">Servidor no disponible</string>
-    <string name="state_pending">Pendientes sin confirmación</string>
-    <string name="state_battery">Batería baja</string>
-    <string name="state_buffer">Buffer lleno: captura pausada</string>
-    <string name="state_permission">Faltan permisos de ubicación</string>
-    <string name="state_recovery">Recuperando el servicio</string>
-    <string name="finish_confirm_title">¿Finalizar la jornada?</string>
-    <string name="finish_confirm_body">Las posiciones guardadas seguirán enviándose aunque no haya Internet ahora.</string>
-    <string name="finish_confirm_button">Finalizar</string>
-    <string name="dialog_cancel">Cancelar</string>
-    <string name="login_title">¡Bienvenida!</string>
-    <string name="login_subtitle">Ingresa tu usuario y contraseña para iniciar tu jornada.</string>
-    <string name="login_button">Ingresar</string>
-    <string name="login_welcome">¡Hola! Ya puedes iniciar tu jornada con un toque.</string>
-    <string name="check_updates">Buscar actualizaciones</string>
-    <string name="log_journey_on">Jornada activa · %1$d h %2$d min</string>
-    <string name="log_journey_off">Jornada no iniciada</string>
-    <string name="log_state">Estado · %1$s</string>
-    <string name="log_server_on">Conectado al servidor</string>
-    <string name="log_server_connecting">Conectando al servidor…</string>
-    <string name="log_server_off">Desconectado del servidor</string>
-    <string name="log_battery">Batería · %1$d%%</string>
-    <string name="log_pending">%1$d ubicaciones pendientes por enviar</string>
-    <string name="log_pending_none">Sin ubicaciones pendientes</string>
-    <string name="log_warn_battery">Aviso · batería baja, conecta la tablet</string>
-    <string name="log_warn_gps">Aviso · sin señal de GPS hace más de 5 minutos</string>
-    <string name="log_last_ack">Última confirmación del servidor · %1$s</string>
-    <string name="log_last_fix">Último GPS válido · %1$s</string>
-    <string name="log_oldest_pending">Pendiente más antiguo · %1$s</string>
+    <string name="update_button">Buscar actualización</string>
+    <string name="update_banner">Nueva versión disponible · toca para actualizar</string>
+
+    <!-- ============ DIAGNÓSTICO ============ -->
+    <string name="diag_button">Diagnóstico</string>
+    <string name="diag_title">Diagnóstico de la app</string>
+    <string name="diag_gps_off">GPS apagado. Actívalo en los ajustes del teléfono.</string>
+    <string name="diag_gps_ok">GPS con señal reciente</string>
+    <string name="diag_gps_waiting">GPS encendido, esperando señal…</string>
+    <string name="diag_gps_sats">GPS: %1$d satélites en uso de %2$d · último fix %3$s</string>
+    <string name="diag_gps_indoor">Bajo techo o sin vista al cielo — sal al aire libre</string>
+    <string name="diag_gps_first_signal">Esperando primera señal…</string>
+    <string name="diag_gps_searching">buscando señal…</string>
+    <string name="diag_network_ok">Internet disponible</string>
+    <string name="diag_network_off">Sin Internet</string>
+    <string name="diag_pending">Pendientes por enviar: %1$d</string>
+    <string name="diag_pending_age">Pendientes por enviar: %1$d · más antiguo %2$s</string>
+    <string name="diag_battery">Batería: %1$d%%</string>
+    <string name="diag_last_fix">Último GPS válido: %1$s</string>
+    <string name="diag_last_ack">Última confirmación: %1$s</string>
+    <string name="diag_never">Todavía no</string>
+    <string name="diag_update_never">Actualización: aún sin comprobar (abre inicio o pulsa Buscar actualización)</string>
+    <string name="diag_update_ok">Actualización al día (%1$s) · comprobado %2$s</string>
+    <string name="diag_update_available">Actualización disponible: tienes %1$s y hay %2$s · vuelve a inicio para instalarla</string>
+    <string name="diag_update_error">Actualización: falló hace %1$s (%2$s)</string>
+    <string name="diag_service_off">· Jornada no activa</string>
+    <string name="diag_service_stopped">· Servicio detenido</string>
+    <string name="diag_test">Probar conexión al servidor</string>
+    <string name="diag_retry_service">Reintentar servicio de seguimiento</string>
+    <string name="diag_improve">Mejorar diagnóstico</string>
+    <string name="diag_phone_rationale">Solo para decir si es tu chip/datos o la cobertura; no leemos tu número ni IMEI</string>
+    <string name="diag_phone_granted">Diagnóstico mejorado: ya distinguimos datos apagados de sin cobertura</string>
+    <string name="diag_phone_denied">Seguiremos con el diagnóstico básico</string>
+    <string name="diag_phone_already">El diagnóstico mejorado ya está activo</string>
+
+    <!-- ============ TIEMPOS RELATIVOS ============ -->
     <string name="ago_now">recién</string>
     <string name="ago_minutes">hace %1$d min</string>
     <string name="ago_hours">hace %1$d h</string>
-    <string name="splash_loading">Preparando tu app…</string>
-    <string name="update_banner">Nueva versión disponible · toca para actualizar</string>
-    <string name="back">Volver</string>
-    <string name="notif_journey_finished">Jornada finalizada</string>
-    <string name="notif_journey_finished_duration">Jornada finalizada · %1$s de actividad</string>
-    <string name="notif_journey_finished_body">Jornada finalizada · %1$s · %2$s km · %3$d guardados · %4$d confirmados</string>
+
+    <!-- ============ DEBUG DISEÑO (temporal: borrar con DebugDesignActivity) ============ -->
+    <string name="debug_design_title">Diseño (debug)</string>
+    <string name="debug_splash">Splash</string>
+    <string name="debug_onboarding_1">Bienvenida (paso 1)</string>
+    <string name="debug_onboarding_2">Notificaciones (paso 2)</string>
+    <string name="debug_onboarding_3">Batería (paso 3)</string>
+    <string name="debug_onboarding_4">GPS (paso 4)</string>
+    <string name="debug_login">Login</string>
+    <string name="debug_dash_idle">Dash sin jornada</string>
+    <string name="debug_dash_active">Dash en jornada</string>
+    <string name="debug_dash_error">Dash con error</string>
+    <string name="debug_clear">Salir del modo diseño</string>
+    <string name="debug_preview_locked">Vista previa de diseño: sin acciones reales</string>
 </resources>

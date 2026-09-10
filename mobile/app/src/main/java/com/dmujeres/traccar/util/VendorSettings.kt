@@ -32,6 +32,15 @@ object VendorSettings {
         }
     }
 
+    /**
+     * En Xiaomi/Redmi/Poco e Infinix/Tecno el diálogo del sistema para ubicación
+     * en segundo plano suele fallar en silencio (o solo ofrece denegar) según
+     * versión de MIUI/HiOS. En esos equipos se manda directo a Ajustes de la
+     * app, donde "Permitir siempre" sí funciona. Resto de marcas: diálogo normal.
+     */
+    fun requiresSettingsForBackground(vendor: String? = currentVendor()): Boolean =
+        vendor == "xiaomi" || vendor == "infinix" || vendor == "tecno"
+
     fun guideFor(vendor: String?): Guide? = when (vendor) {
         "xiaomi" -> Guide(
             vendorName = "Xiaomi / Redmi",

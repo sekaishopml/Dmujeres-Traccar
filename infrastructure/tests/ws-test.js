@@ -4,8 +4,8 @@
 const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@dmj.local';
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'Admin123!';
 const WebSocket = require('ws');
-const BASE = process.env.TEST_SERVER_URL || 'http://localhost:8082';
-const WS = process.env.TEST_WS_URL || 'ws://localhost:8082/api/socket';
+const BASE = process.env.TEST_SERVER_URL || 'http://localhost:999';
+const WS = process.env.TEST_WS_URL || 'ws://localhost:999/api/socket';
 
 const ADMIN = { email: ADMIN_EMAIL, password: ADMIN_PASSWORD };
 const results = [];

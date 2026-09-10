@@ -1,0 +1,21 @@
+[Unit]
+Description=DMujeres Traccar Server (GPS tracking)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=opencode
+Group=opencode
+WorkingDirectory=/DMujeres-Tracking/server
+ExecStartPre=/DMujeres-Tracking/infrastructure/scripts/dev.sh up
+ExecStart=/DMujeres-Tracking/infrastructure/scripts/traccar-systemd.sh
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

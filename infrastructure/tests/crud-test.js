@@ -2,7 +2,7 @@
 // Configuración desde entorno (ver README.md)
 const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@dmj.local';
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'Admin123!';
-const BASE = process.env.TEST_SERVER_URL || 'http://localhost:8082';
+const BASE = process.env.TEST_SERVER_URL || 'http://localhost:999';
 
 const results = [];
 function record(id, ok, detail) { results.push({ id, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'} ${id}: ${detail}`); }

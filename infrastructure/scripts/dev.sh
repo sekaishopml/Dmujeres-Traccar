@@ -33,7 +33,7 @@ cmd="${1:-up}"
 case "$cmd" in
   up)
     docker compose --env-file "$ENV_FILE" "${COMPOSE_ARGS[@]}" up -d
-    echo "OK. Servicios: PG(127.0.0.1:5433) Redis(127.0.0.1:6379) MQTT(127.0.0.1:1883) EMQX-dash(127.0.0.1:18083)"
+    echo "OK. Servicios: PG(127.0.0.1:5433) Redis(127.0.0.1:6379) MQTT(0.0.0.0:1883) EMQX-dash(127.0.0.1:18083)"
     ;;
   down)
     shift || true
@@ -51,16 +51,16 @@ case "$cmd" in
     ;;
   psql)
     shift || true
-    docker compose --env-file "$ENV_FILE" "${COMPOSE_ARGS[@]}" exec database \
+    docker compose --env-file "$ENV_FILE" "${COMPOSE_ARGS[@]}" exec -T database \
       psql -U "${POSTGRES_USER:-traccar}" -d "${POSTGRES_DB:-traccar}" "$@"
     ;;
   redis)
     shift || true
-    docker compose --env-file "$ENV_FILE" "${COMPOSE_ARGS[@]}" exec redis redis-cli "$@"
+    docker compose --env-file "$ENV_FILE" "${COMPOSE_ARGS[@]}" exec -T redis redis-cli "$@"
     ;;
   mqtt)
     shift || true
-    docker compose --env-file "$ENV_FILE" "${COMPOSE_ARGS[@]}" exec mqtt emqx ctl "$@"
+    docker compose --env-file "$ENV_FILE" "${COMPOSE_ARGS[@]}" exec -T mqtt emqx ctl "$@"
     ;;
   *)
     echo "uso: $0 {up|down|restart|logs|status|psql|redis|mqtt}"

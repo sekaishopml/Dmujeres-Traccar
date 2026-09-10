@@ -1,7 +1,7 @@
 // http-fallback.mjs — HTTP fallback batch con el mismo envelope y deduplicación
 import crypto from 'node:crypto';
 
-const BASE = process.env.TEST_SERVER_URL || 'http://localhost:8082';
+const BASE = process.env.TEST_SERVER_URL || 'http://localhost:999';
 const API_KEY = process.env.TEST_MOBILE_API_KEY || 'dev-key';
 const deviceId = process.env.MQTT_DEVICE_ID || 'demo-001';
 const messageId = process.env.MQTT_MESSAGE_ID || `01JHTTP${Date.now().toString(36).toUpperCase()}PAD`;

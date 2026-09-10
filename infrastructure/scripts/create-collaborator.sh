@@ -17,7 +17,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="$PROJECT_ROOT/.env"
 set -a; source "$ENV_FILE"; set +a
 
-DASH_URL="${DASH_URL:-http://localhost:8082}"
+DASH_URL="${DASH_URL:-http://localhost:999}"
 DASH_ADMIN_EMAIL="${DASH_ADMIN_EMAIL:?falta DASH_ADMIN_EMAIL en .env}"
 DASH_ADMIN_PASSWORD="${DASH_ADMIN_PASSWORD:?falta DASH_ADMIN_PASSWORD en .env}"
 
@@ -25,9 +25,9 @@ DASH_ADMIN_PASSWORD="${DASH_ADMIN_PASSWORD:?falta DASH_ADMIN_PASSWORD en .env}"
 
 echo "==> 1/2 Creando dispositivo en Traccar (uniqueId=$USERNAME)..."
 COOKIE=$(mktemp)
-curl -s -c "$COOKIE" -X POST "$DASH_URL/api/session" \
+curl -s -m 20 -c "$COOKIE" -X POST "$DASH_URL/api/session" \
   -d "email=$DASH_ADMIN_EMAIL&password=$DASH_ADMIN_PASSWORD" -o /dev/null
-if ! curl -s -b "$COOKIE" -X POST "$DASH_URL/api/devices" \
+if ! curl -s -m 20 -b "$COOKIE" -X POST "$DASH_URL/api/devices" \
     -H 'Content-Type: application/json' \
     -d "{\"name\":\"$USERNAME\",\"uniqueId\":\"$USERNAME\",\"category\":\"default\"}" \
     -o /tmp/opencode/collab-device.json -w '%{http_code}' | grep -q 200; then

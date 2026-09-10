@@ -1,5 +1,5 @@
 # DMujeres Traccar Platform — PRODUCCIÓN
-# Todo en red interna; SOLO se exponen: web (8082) y MQTT con TLS (8883).
+# Todo en red interna; SOLO se exponen: web (999) y MQTT con TLS (8883).
 # La imagen del server (Dockerfile propio del fork) se construye en Fase 1.
 # Requiere .env con todos los secretos. Uso:
 #   docker compose --env-file ../.env -f docker-compose.prod.yml up -d
@@ -108,11 +108,11 @@ services:
   #     DATABASE_USER: ${POSTGRES_USER}
   #     DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
   #     CONFIG_WEB_ADDRESS: "0.0.0.0"
-  #     CONFIG_WEB_PORT: 8082
+  #     CONFIG_WEB_PORT: 999
   #     CONFIG_WEB_CONSOLE: "false"
   #     CONFIG_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
   #   ports:
-  #     - "8082:8082"
+  #     - "999:999"
   #     - "5000-5500:5000-5500"  # protocolos GPS upstream (ajustar por protocolo)
   #   volumes:
   #     - dmj-prod-logs:/opt/traccar/logs

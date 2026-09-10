@@ -2,6 +2,7 @@ package com.dmujeres.traccar.config
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.dmujeres.traccar.mqtt.MqttServerNormalizer
 
 /**
  * Configuración persistida del dispositivo. El servidor viene preconfigurado con la IP del
@@ -17,22 +18,7 @@ class AppConfig(context: Context) {
     var serverUrl: String
         get() = prefs.getString(KEY_SERVER, DEFAULT_SERVER).orEmpty()
             .ifBlank { DEFAULT_SERVER }
-        set(value) = prefs.edit().putString(KEY_SERVER, normalizeServer(value)).apply()
-
-    private fun normalizeServer(value: String): String {
-        var server = value.trim().trimEnd('/')
-        var secure = false
-        if (server.startsWith("mqtts://")) { server = server.removePrefix("mqtts://"); secure = true }
-        if (server.startsWith("ssl://")) { server = server.removePrefix("ssl://"); secure = true }
-        if (server.startsWith("mqtt://")) server = server.removePrefix("mqtt://")
-        if (server.startsWith("http://")) server = server.removePrefix("http://")
-        if (server.startsWith("https://")) { server = server.removePrefix("https://"); secure = true }
-        if (server.contains("://")) return server
-        val hostPort = server.substringBefore('/')
-        val hasPort = hostPort.contains(':')
-        val defaultPort = if (secure) ":8883" else ":1883"
-        return (if (secure) "ssl://" else "tcp://") + hostPort + if (hasPort) "" else defaultPort
-    }
+        set(value) = prefs.edit().putString(KEY_SERVER, MqttServerNormalizer.normalizeServer(value)).apply()
 
     /**
      * Usuario del colaborador (lo crea el administrador). Se usa como identificador
@@ -42,6 +28,10 @@ class AppConfig(context: Context) {
         get() = prefs.getString(KEY_USERNAME, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_USERNAME, value.trim()).apply()
 
+    // TODO(security): migrar password (y username) a EncryptedSharedPreferences
+    // (androidx.security:security-crypto) para cifrar credenciales en reposo.
+    // Requiere añadir la dependencia "androidx.security:security-crypto" y una
+    // migración que copie los valores existentes y borre los de prefs en claro.
     var password: String
         get() = prefs.getString(KEY_PASSWORD, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_PASSWORD, value).apply()
@@ -58,6 +48,15 @@ class AppConfig(context: Context) {
     var sequence: Long
         get() = prefs.getLong(KEY_SEQUENCE, 0L)
         set(value) = prefs.edit().putLong(KEY_SEQUENCE, value).apply()
+
+    /**
+     * Sufijo estable del clientId MQTT (se genera una vez y se persiste). Con
+     * sufijos aleatorios cada reconexión creaba una sesión nueva en EMQX y los
+     * zombies acumulados consumían memoria y colas QoS1 de acks.
+     */
+    var mqttClientSuffix: String
+        get() = prefs.getString(KEY_MQTT_SUFFIX, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_MQTT_SUFFIX, value).apply()
 
     /** Intervalo de captura/envío de ubicación en segundos (frecuencia). */
     var intervalSeconds: Long
@@ -98,6 +97,51 @@ class AppConfig(context: Context) {
     var lastAckAt: Long
         get() = prefs.getLong(KEY_LAST_ACK, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_ACK, value).apply()
+
+    /**
+     * Observabilidad anti "cero capturas en silencio": contadores de la jornada
+     * para que el servidor distinga "GPS apagado" de "filtro mata todo".
+     * - fixReceived: fixes crudos recibidos en onLocationResult.
+     * - fixRejected: descartados por isValidLocation o por FixFilter.
+     * - fixEnqueued: insertados OK en Room (insertWithinLimit >= 0).
+     */
+    var fixReceived: Long
+        get() = prefs.getLong(KEY_FIX_RECEIVED, 0L)
+        set(value) = prefs.edit().putLong(KEY_FIX_RECEIVED, value).apply()
+
+    var fixRejected: Long
+        get() = prefs.getLong(KEY_FIX_REJECTED, 0L)
+        set(value) = prefs.edit().putLong(KEY_FIX_REJECTED, value).apply()
+
+    var fixEnqueued: Long
+        get() = prefs.getLong(KEY_FIX_ENQUEUED, 0L)
+        set(value) = prefs.edit().putLong(KEY_FIX_ENQUEUED, value).apply()
+
+    @Synchronized
+    fun incFixReceived(): Long {
+        val v = fixReceived + 1
+        fixReceived = v
+        return v
+    }
+
+    @Synchronized
+    fun incFixRejected(): Long {
+        val v = fixRejected + 1
+        fixRejected = v
+        return v
+    }
+
+    @Synchronized
+    fun incFixEnqueued(): Long {
+        val v = fixEnqueued + 1
+        fixEnqueued = v
+        return v
+    }
+
+    /** RTT medido hacia el servidor (EWMA publish→ACK en ms; -1 si aún no hay medición). */
+    var mobileRttMs: Int
+        get() = prefs.getInt(KEY_MOBILE_RTT_MS, -1)
+        set(value) = prefs.edit().putInt(KEY_MOBILE_RTT_MS, value).apply()
 
     /** Métricas de la jornada actual. */
     var journeyStartAt: Long
@@ -146,6 +190,31 @@ class AppConfig(context: Context) {
     var lastStartError: String
         get() = prefs.getString(KEY_LAST_START_ERROR, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_LAST_START_ERROR, value).apply()
+
+    /** Última comprobación de actualización (para Diagnóstico). */
+    var lastUpdateCheckAt: Long
+        get() = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, value).apply()
+
+    /** Motivo del último fallo al buscar actualización (vacío si funcionó). */
+    var lastUpdateError: String
+        get() = prefs.getString(KEY_LAST_UPDATE_ERROR, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_LAST_UPDATE_ERROR, value).apply()
+
+    /** Última versión vista en el servidor (para Diagnóstico). */
+    var lastUpdateLatest: String
+        get() = prefs.getString(KEY_LAST_UPDATE_LATEST, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_LAST_UPDATE_LATEST, value).apply()
+
+    /** Última causa de red detectada (NetCause.value; "ok" por defecto) para la UI. */
+    var netCause: String
+        get() = prefs.getString(KEY_NET_CAUSE, "ok").orEmpty().ifBlank { "ok" }
+        set(value) = prefs.edit().putString(KEY_NET_CAUSE, value).apply()
+
+    /** Última etiqueta network ("wifi"|"mobile"|"none") para distinguir wifi_lost vs sin cobertura. */
+    var netLabel: String
+        get() = prefs.getString(KEY_NET_LABEL, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_NET_LABEL, value).apply()
 
     /** Último estado real publicado por el servicio para que la UI no dependa solo del booleano. */
     var trackingState: String
@@ -214,7 +283,9 @@ class AppConfig(context: Context) {
         accuracyGoodM: Float? = null,
     ) {
         if (interval != null) this.intervalSeconds = interval
-        if (bufferMax != null) this.bufferMax = bufferMax
+        // Mínimo operativo = default local (5000 ≈ 13.8 h a 10 s): con menos, una
+        // jornada larga sin señal perdía trozos de ruta por drop_oldest.
+        if (bufferMax != null) this.bufferMax = clampRemoteBufferMax(bufferMax)
         if (bufferPolicy != null &&
             (bufferPolicy == POLICY_DROP_OLDEST || bufferPolicy == POLICY_STOP_CAPTURE)
         ) {
@@ -260,7 +331,7 @@ class AppConfig(context: Context) {
         const val HTTP_API_KEY = "dmj-dev-fallback-key"
 
         /** Puerto web del servidor para el fallback HTTP. */
-        const val WEB_PORT = 8082
+        const val WEB_PORT = 999
 
         /** Servidor por defecto: IP pública del entorno + puerto MQTT. */
         const val DEFAULT_SERVER = "tcp://68.168.20.219:1883"
@@ -270,6 +341,19 @@ class AppConfig(context: Context) {
         private const val KEY_PASSWORD = "password"
         private const val KEY_TRACKING = "tracking_enabled"
         private const val KEY_SEQUENCE = "sequence"
+        private const val KEY_MQTT_SUFFIX = "mqtt_client_suffix"
+        /**
+         * Mínimo operativo del buffer ante config remota (≈13.8 h a 10 s): cubre
+         * jornadas de 8 h sin que drop_oldest tire posiciones viejas en rutas
+         * largas sin señal. Puro (testeable en JVM vía [clampRemoteBufferMax]).
+         */
+        const val REMOTE_BUFFER_MIN = 5000
+
+        /**
+         * Sanea el bufferMax remoto: nunca por debajo del mínimo operativo.
+         * Pura, sin Android: unit-testeable en JVM.
+         */
+        fun clampRemoteBufferMax(requested: Int): Int = maxOf(requested, REMOTE_BUFFER_MIN)
         private const val KEY_INTERVAL = "interval_seconds"
         private const val KEY_BUFFER = "buffer_max"
         private const val KEY_ACK_TIMEOUT = "ack_timeout"
@@ -279,6 +363,10 @@ class AppConfig(context: Context) {
         private const val KEY_LAST_ENQUEUED = "last_enqueued_at"
         private const val KEY_LAST_PUBLISHED = "last_published_at"
         private const val KEY_LAST_ACK = "last_ack_at"
+        private const val KEY_FIX_RECEIVED = "fix_received"
+        private const val KEY_FIX_REJECTED = "fix_rejected"
+        private const val KEY_FIX_ENQUEUED = "fix_enqueued"
+        private const val KEY_MOBILE_RTT_MS = "mobile_rtt_ms"
         private const val KEY_JOURNEY_START = "journey_start_at"
         private const val KEY_JOURNEY_DISTANCE = "journey_distance_m"
         private const val KEY_JOURNEY_POINTS = "journey_points"
@@ -290,7 +378,12 @@ class AppConfig(context: Context) {
         private const val KEY_SUMMARY_NOTIFIED = "summary_notified"
         private const val KEY_LAST_SUMMARY = "last_journey_summary"
         private const val KEY_LAST_START_ERROR = "last_start_error"
+        private const val KEY_LAST_UPDATE_CHECK = "last_update_check_at"
+        private const val KEY_LAST_UPDATE_ERROR = "last_update_error"
+        private const val KEY_LAST_UPDATE_LATEST = "last_update_latest"
         private const val KEY_TRACKING_STATE = "tracking_state"
+        private const val KEY_NET_CAUSE = "net_cause"
+        private const val KEY_NET_LABEL = "net_label"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_BACKGROUND_LOCATION_ASKED = "background_location_asked"
         private const val KEY_MAX_IMPLIED_SPEED = "filter_max_speed_mps"

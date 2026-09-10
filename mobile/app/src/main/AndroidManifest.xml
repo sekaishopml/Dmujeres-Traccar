@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Opcional y bajo demanda (solo botón "Mejorar diagnóstico"): distingue datos
+         apagados de sin cobertura. Nunca se pide en onboarding ni bloquea la jornada. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
@@ -47,6 +52,21 @@
             android:name=".DiagnosticsActivity"
             android:exported="false" />
 
+        <!-- TEMPORAL debug de diseño: borrar al pasar a producción. -->
+        <activity
+            android:name=".DebugDesignActivity"
+            android:exported="false" />
+
+        <!-- Sentry: SIN auto-init (sus providers se removían/iniciaban antes que la
+             app y pueden tumbar el arranque). Solo inicia manual en DmujeresApp,
+             protegido con try/catch. -->
+        <provider
+            android:name="io.sentry.android.core.SentryInitProvider"
+            tools:node="remove" />
+        <provider
+            android:name="io.sentry.android.core.SentryPerformanceProvider"
+            tools:node="remove" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.dmujeres.traccar.fileprovider"
@@ -63,6 +83,13 @@
             android:stopWithTask="false"
             android:foregroundServiceType="location" />
 
+        <!-- Requerido por WorkManager expedited (TrackingRecoveryWorker): tipo
+             foreground declarado o el lint vital bloquea la release. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="location"
+            tools:node="merge" />
+
         <receiver
             android:name=".receiver.BootReceiver"
             android:exported="true">
@@ -70,6 +97,8 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.USER_UNLOCKED" />
+                <!-- Arranque rápido en HTC/algunas ROMs (no existe en Intent). -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 

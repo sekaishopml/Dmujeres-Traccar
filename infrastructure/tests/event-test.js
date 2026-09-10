@@ -2,7 +2,7 @@
 const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@dmj.local';
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'Admin123!';
 const WebSocket = require('ws');
-const BASE = process.env.TEST_SERVER_URL || 'http://localhost:8082';
+const BASE = process.env.TEST_SERVER_URL || 'http://localhost:999';
 async function main() {
   const login = await fetch(`${BASE}/api/session`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }), redirect: 'manual' });
   const cookie = login.headers.get('set-cookie').split(';')[0];
@@ -16,7 +16,7 @@ async function main() {
   }
   console.log('notificaciones del usuario:', notifs.map(n => n.type).join(', '));
 
-  const ws = new WebSocket(`ws://localhost:8082/api/socket?token=${encodeURIComponent(token)}`);
+  const ws = new WebSocket(`ws://localhost:999/api/socket?token=${encodeURIComponent(token)}`);
   const events = [];
   ws.on('message', d => { const m = JSON.parse(d); if (Array.isArray(m.events)) { console.log('EVENTO WS:', JSON.stringify(m.events[0]).slice(0, 180)); events.push(...m.events); } });
   await new Promise(r => ws.on('open', r));
