@@ -266,6 +266,11 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean(KEY_BACKGROUND_LOCATION_ASKED, false)
         set(value) = prefs.edit().putBoolean(KEY_BACKGROUND_LOCATION_ASKED, value).apply()
 
+    /** versionCode con el que se completó/revalidó el onboarding por última vez. */
+    var appVersionCode: Int
+        get() = prefs.getInt(KEY_APP_VERSION_CODE, 0)
+        set(value) = prefs.edit().putInt(KEY_APP_VERSION_CODE, value).apply()
+
     /**
      * Aplica la configuración remota que el administrador definió en el panel
      * (/settings/device). Solo se aplican los valores presentes y válidos.
@@ -386,6 +391,7 @@ class AppConfig(context: Context) {
         private const val KEY_NET_LABEL = "net_label"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_BACKGROUND_LOCATION_ASKED = "background_location_asked"
+        private const val KEY_APP_VERSION_CODE = "app_version_code"
         private const val KEY_MAX_IMPLIED_SPEED = "filter_max_speed_mps"
         private const val KEY_ACCURACY_BAD = "filter_accuracy_bad_m"
         private const val KEY_ACCURACY_GOOD = "filter_accuracy_good_m"

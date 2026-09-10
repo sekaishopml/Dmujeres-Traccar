@@ -21,8 +21,8 @@ android {
         applicationId = "com.dmujeres.traccar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 74
-        versionName = "1.0.73"
+        versionCode = 75
+        versionName = "1.0.74"
         // DSN de Sentry para reporte de crashes. Ver docs/SENTRY.md.
         // Se obtuvo de tu proyecto "DMujeres Tracking" (org sekaidev-w5).
         buildConfigField("String", "SENTRY_DSN", "\"https://1f47e345c56f117bf87d9221a403e53a@o4511839263064064.ingest.us.sentry.io/4512058795491328\"")

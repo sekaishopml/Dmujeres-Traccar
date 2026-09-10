@@ -104,6 +104,7 @@ import com.dmujeres.traccar.ui.components.StatusBanner
 import com.dmujeres.traccar.util.JourneyFormatter
 import com.dmujeres.traccar.ui.theme.JourneyColors
 import com.dmujeres.traccar.util.NetCause
+import com.dmujeres.traccar.util.PermissionHealth
 import com.dmujeres.traccar.util.snapshot
 import com.dmujeres.traccar.util.Notifications
 import com.dmujeres.traccar.util.RemoteConfig
@@ -200,6 +201,35 @@ class MainActivity : ComponentActivity() {
         usernameInput = config.username
         passwordInput = config.password
 
+        // TEMPORAL debug de diseño: leer overrides antes de la auditoría para
+        // que el modo preview (debugDashMode/debugLoggedOverride) la salte.
+        readDebugExtras(intent)
+
+        // AUDITORÍA POST-OTA: tras una actualización en la app, OEMs (ZTE/Mifavor,
+        // Xiaomi) suelen revocar permisos especiales y `onboardingDone` (one-shot)
+        // sigue en true, así que la pérdida sería silenciosa. Si cambió la versión
+        // y falta algo crítico, reabrir SOLO los pasos de reparación.
+        if (config.onboardingDone && !isDebugPreview()) {
+            if (config.appVersionCode != BuildConfig.VERSION_CODE) {
+                val missing = PermissionHealth.check(this).missing
+                if (missing.isNotEmpty()) {
+                    startActivity(
+                        Intent(this, OnboardingActivity::class.java)
+                            .putExtra(OnboardingActivity.EXTRA_REPAIR, true)
+                            .putExtra(
+                                OnboardingActivity.EXTRA_REPAIR_STEPS,
+                                PermissionHealth.repairStepsFor(missing).toIntArray(),
+                            ),
+                    )
+                    // NO marcar appVersionCode aquí: si el usuario no completa,
+                    // volvemos a preguntar en el próximo arranque.
+                    finish()
+                    return
+                }
+                config.appVersionCode = BuildConfig.VERSION_CODE
+            }
+        }
+
         setContent {
             DmujeresTheme {
                 MainScreen(
@@ -243,7 +273,6 @@ class MainActivity : ComponentActivity() {
         }
 
         ensureBatteryExemption()
-        readDebugExtras(intent)
         updateView()
         if (intent?.getBooleanExtra(EXTRA_OPEN_UPDATE, false) == true) {
             checkForUpdate(auto = false)

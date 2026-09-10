@@ -34,6 +34,9 @@
     <string name="welcome_body">Vamos a dejar tu app lista en 4 pasos cortos, para que tu recorrido se guarde siempre, incluso con la pantalla apagada. Solo toca lo que te pida cada paso.</string>
     <string name="finish">Empezar</string>
 
+    <!-- ============ REPARACIÓN POST-ACTUALIZACIÓN ============ -->
+    <string name="repair_title">La actualización restableció algunos permisos. Toca cada botón para re-activarlos.</string>
+
     <!-- ============ PASO 1: UBICACIÓN ============ -->
     <string name="step_location">1. Tu ubicación</string>
     <string name="grant_location">Permitir siempre</string>

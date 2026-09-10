@@ -77,6 +77,9 @@ class OnboardingActivity : ComponentActivity() {
         // TEMPORAL debug de diseño: paso inicial + modo preview (no persiste nada).
         const val EXTRA_DEBUG_STEP = "debug_step"
         const val EXTRA_DEBUG_PREVIEW = "debug_preview"
+        // Reparación post-OTA: solo se muestran los pasos indicados por indices.
+        const val EXTRA_REPAIR = "debug_repair"
+        const val EXTRA_REPAIR_STEPS = "repair_steps"
     }
 
     private val locationLauncher = registerForActivityResult(
@@ -98,11 +101,24 @@ class OnboardingActivity : ComponentActivity() {
         // TEMPORAL debug de diseño (QA interno, disponible en todos los builds).
         val debugPreview = intent.getBooleanExtra(EXTRA_DEBUG_PREVIEW, false)
         val debugStep = intent.getIntExtra(EXTRA_DEBUG_STEP, 0).coerceIn(0, 3)
+        // Reparación post-OTA: la auditoría de MainActivity manda los indices de
+        // los pasos cuyos permisos fueron revocados. El preview debug gana.
+        val repairSteps = if (
+            intent.getBooleanExtra(EXTRA_REPAIR, false) && !debugPreview
+        ) {
+            intent.getIntArrayExtra(EXTRA_REPAIR_STEPS)
+                ?.toList()?.filter { it in 0..2 }?.distinct()?.sorted()?.ifEmpty { null }
+        } else {
+            null
+        }
+        val allSteps = (0..3).toList()
         setContent {
             DmujeresTheme {
                 OnboardingContent(
                     refreshKey = refreshKey,
-                    initialStep = if (debugPreview) debugStep else 0,
+                    steps = repairSteps ?: allSteps,
+                    initialIndex = if (debugPreview) allSteps.indexOf(debugStep).coerceAtLeast(0) else 0,
+                    repair = repairSteps != null,
                     onLocation = { requestLocationPermissions() },
                     onNotifications = { requestNotifications() },
                     onBattery = { requestIgnoreBatteryOptimizations() },
@@ -227,6 +243,10 @@ class OnboardingActivity : ComponentActivity() {
             return
         }
         AppConfig(this).onboardingDone = true
+        // Marca la versión con la que el onboarding quedó revalidado: tras una
+        // OTA que revoque permisos, MainActivity compara este valueCode y ofrece
+        // reparar (onboardingDone ya era true y no volvería a abrirse solo).
+        AppConfig(this).appVersionCode = BuildConfig.VERSION_CODE
         startActivity(Intent(this, MainActivity::class.java))
         finish()
     }
@@ -234,7 +254,9 @@ class OnboardingActivity : ComponentActivity() {
     @Composable
     private fun OnboardingContent(
         refreshKey: Int,
-        initialStep: Int = 0,
+        steps: List<Int> = (0..3).toList(),
+        initialIndex: Int = 0,
+        repair: Boolean = false,
         onLocation: () -> Unit,
         onNotifications: () -> Unit,
         onBattery: () -> Unit,
@@ -244,7 +266,8 @@ class OnboardingActivity : ComponentActivity() {
     ) {
         val context = LocalContext.current
         val states = rememberStepStates(context, refreshKey)
-        var step by remember { mutableIntStateOf(initialStep) }
+        var index by remember { mutableIntStateOf(initialIndex.coerceIn(0, steps.lastIndex)) }
+        val step = steps[index]
         val vendor = VendorSettings.guideFor(VendorSettings.currentVendor())
         val allOk = states.locationOk && states.notificationsOk && states.batteryOk && states.gpsOk
         // Secuencia de activación: Siguiente NO alumbra hasta completar el paso
@@ -275,13 +298,13 @@ class OnboardingActivity : ComponentActivity() {
             )
 
             Text(
-                text = "Paso ${step + 1} de 4",
+                text = "Paso ${index + 1} de ${steps.size}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
             )
             // Barra de progreso animada: avanza suave entre pasos.
             val animatedProgress by animateFloatAsState(
-                targetValue = (step + 1) / 4f,
+                targetValue = (index + 1) / steps.size.toFloat(),
                 animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
                 label = "onboardingProgress",
             )
@@ -307,24 +330,38 @@ class OnboardingActivity : ComponentActivity() {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(
-                            text = stringResource(R.string.welcome_title),
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            text = stringResource(R.string.welcome_body),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        if (repair) {
+                            // Reparación post-OTA: el intro normal se reemplaza por
+                            // el aviso de permisos restablecidos.
+                            Text(
+                                text = stringResource(R.string.repair_title),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.welcome_title),
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                text = stringResource(R.string.welcome_body),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                         StepButton(
                             title = stringResource(R.string.step_location),
                             buttonText = stringResource(R.string.grant_location),
@@ -404,9 +441,9 @@ class OnboardingActivity : ComponentActivity() {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (step > 0) {
+                if (index > 0) {
                     TextButton(
-                        onClick = { step-- },
+                        onClick = { index-- },
                         modifier = Modifier.weight(1f),
                     ) {
                         Text("Atrás")
@@ -414,11 +451,11 @@ class OnboardingActivity : ComponentActivity() {
                 } else {
                     Spacer(modifier = Modifier.weight(1f))
                 }
-                if (step < 3) {
+                if (index < steps.lastIndex) {
                     // Siguiente sencillo: sin elevación, altura fija, sin rebotes.
                     // Apagado (sin alumbrar) hasta completar el paso actual.
                     Button(
-                        onClick = { step++ },
+                        onClick = { index++ },
                         enabled = stepOk,
                         elevation = ButtonDefaults.buttonElevation(
                             defaultElevation = 0.dp,
@@ -433,7 +470,9 @@ class OnboardingActivity : ComponentActivity() {
                 } else {
                     Button(
                         onClick = onFinish,
-                        enabled = allOk,
+                        // En reparación solo se exige completar el paso pendiente
+                        // (el paso GPS/vendor no forma parte de la lista).
+                        enabled = if (repair) stepOk else allOk,
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(
