@@ -95,8 +95,8 @@ class OnboardingActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // TEMPORAL debug de diseño: solo en builds debug.
-        val debugPreview = BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_DEBUG_PREVIEW, false)
+        // TEMPORAL debug de diseño (QA interno, disponible en todos los builds).
+        val debugPreview = intent.getBooleanExtra(EXTRA_DEBUG_PREVIEW, false)
         val debugStep = intent.getIntExtra(EXTRA_DEBUG_STEP, 0).coerceIn(0, 3)
         setContent {
             DmujeresTheme {
@@ -222,7 +222,7 @@ class OnboardingActivity : ComponentActivity() {
 
     private fun finishOnboarding() {
         // TEMPORAL debug de diseño: en preview no se persiste nada ni se avanza.
-        if (BuildConfig.DEBUG && intent.getBooleanExtra(EXTRA_DEBUG_PREVIEW, false)) {
+        if (intent.getBooleanExtra(EXTRA_DEBUG_PREVIEW, false)) {
             finish()
             return
         }

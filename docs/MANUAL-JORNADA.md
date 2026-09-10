@@ -172,9 +172,9 @@ parece buena). Para que la ruta se revise bien:
 - El servidor marca lo dudoso (`valid=false`) en vez de tirarlo.
 - El panel **oculta por defecto** lo impreciso (accuracy > 80 m),
   colapsa las paradas en un punto y aplana los saltos de ida y vuelta;
-  la insignia dice `mostrados / total · K ocultos` y el check
-  **"Ver todo"** muestra la ruta cruda para auditar.
-- En Preferencias → Mapa se puede cambiar el umbral o desactivar el filtro.
+  la insignia dice `mostrados / total · K ocultos`.
+- En Preferencias → Mapa se puede cambiar el umbral o desactivar el filtro
+  (mínimo 30 m: un umbral menor escondería ruta real y dibujaría zigzag).
 - Las rutas viejas se marcaron igual (`valid=false` donde accuracy > 80),
   con respaldo previo de la tabla.
 
@@ -188,7 +188,9 @@ limpia SOLO para dibujar, sin borrar nada:
 - Las rectas que saltan sobre datos ocultos **se cortan** (no se dibuja
   carretera donde no hay datos); las flechas siguen el rumbo del trazo.
 - La insignia dice `mostrados / total · K ocultos` (pasa el mouse para el
-  detalle) y **"Ver todo"** muestra los 3239 crudos para auditar.
+  detalle). El trazo aplica un suavizado leve en esquinas cerradas
+  (desvío máximo ~15 m, dentro del error GPS) para leerse como en el
+  Traccar original, sin inventar calles.
 
 ---
 

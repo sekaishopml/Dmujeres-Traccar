@@ -24,22 +24,43 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dmujeres.traccar.R
 import com.dmujeres.traccar.ui.theme.Ink
 import com.dmujeres.traccar.ui.theme.JourneyColors
 import com.dmujeres.traccar.util.JourneyFormatter
+import kotlinx.coroutines.delay
+
+// Suelos y techos de la fuente adaptativa: los valores grandes nunca bajan de 11 sp
+// (en 320 dp "12 h 34 min" a 16 sp pide ~88 dp y el hueco es de ~80 dp -> ~14.5 sp) y
+// las etiquetas no de 9 sp; en tarjetas anchas se permite crecer hasta 1.15x.
+private val MIN_SIZE_VALUE = 11.sp
+private val MIN_SIZE_LABEL = 9.sp
+private const val MAX_FONT_SCALE = 1.15f
+
+// Margen para que el redondeo del pintado no vuelva a recortar el texto medido.
+private val SAFETY_MARGIN_DP = 2.dp
 
 /**
  * Fila de 3 métricas (batería / pendientes / servidor) extraída de MainActivity.
@@ -160,19 +181,18 @@ private fun BatteryCard(
             }
             Spacer(modifier = Modifier.height(6.dp))
             // Invertida: ARRIBA el porcentaje grande, ABAJO la etiqueta pequeña.
-            Text(
+            FitText(
                 text = if (batteryLevel in 0..100) "$batteryLevel%" else "—",
-                style = if (isCompactHeight) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                baseStyle = if (isCompactHeight) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                minSize = MIN_SIZE_VALUE,
+                fontWeight = FontWeight.Bold,
             )
-            Text(
+            FitText(
                 text = stringResource(R.string.battery_label),
-                style = MaterialTheme.typography.labelSmall,
+                baseStyle = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                minSize = MIN_SIZE_LABEL,
             )
         }
     }
@@ -194,10 +214,22 @@ private fun ServerCard(
     // la duración ("2 h 15 min", vía JourneyFormatter.durationParts); si no,
     // "Sin jornada".
     val hasJourney = journeyActive && journeyStartAt > 0L
+    // La duración no es estado: si nadie recompone la tarjeta, System.currentTimeMillis()
+    // se evalúa una sola vez y se queda en "0 h 0 min" toda la jornada. Reloj local que
+    // se auto-invalida 1x/segundo solo mientras hay jornada activa.
+    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(hasJourney) {
+        // Refresco inmediato al entrar/salir de jornada (arranca o se congela el valor).
+        nowMs = System.currentTimeMillis()
+        while (hasJourney) {
+            delay(1000L)
+            nowMs = System.currentTimeMillis()
+        }
+    }
     val durationText = when {
         connecting -> stringResource(R.string.server_connecting_label)
         hasJourney -> {
-            val (hours, minutes) = JourneyFormatter.durationParts(System.currentTimeMillis() - journeyStartAt)
+            val (hours, minutes) = JourneyFormatter.durationParts(nowMs - journeyStartAt)
             stringResource(R.string.journey_duration, hours, minutes)
         }
         else -> stringResource(R.string.server_no_journey)
@@ -249,23 +281,21 @@ private fun ServerCard(
                 )
             }
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
+            FitText(
                 text = stringResource(R.string.server_duration_label),
-                style = MaterialTheme.typography.labelSmall,
+                baseStyle = MaterialTheme.typography.labelSmall,
                 color = Ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                minSize = MIN_SIZE_LABEL,
             )
             Spacer(modifier = Modifier.height(2.dp))
             // ABAJO: tiempo grande de la jornada.
-            Text(
+            FitText(
                 text = durationText,
-                style = if (isCompactHeight) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                baseStyle = if (isCompactHeight) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                 color = Ink,
+                minSize = MIN_SIZE_VALUE,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -309,24 +339,102 @@ private fun MetricCard(
                 )
             }
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
+            FitText(
                 text = label,
-                style = if (isCompactHeight) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                baseStyle = if (isCompactHeight) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                minSize = MIN_SIZE_VALUE,
+                fontWeight = FontWeight.Bold,
             )
             if (sublabel.isNotEmpty()) {
-                Text(
+                FitText(
                     text = sublabel,
-                    style = MaterialTheme.typography.labelSmall,
+                    baseStyle = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                    minSize = MIN_SIZE_LABEL,
                     modifier = Modifier.padding(top = 2.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
                 )
             }
         }
     }
+}
+
+/**
+ * Texto de una línea con fuente adaptativa: mide [text] con [baseStyle] y escala el
+ * tamaño de fuente para que quepa en el ancho real de la tarjeta. Sustituye al truncado
+ * con elipsis: en pantallas de 320 dp (tarjetas de ~80 dp de texto) o con la fuente del
+ * sistema grande, "12 h 34 min" / "Conectando…" encogen en vez de verse "2 h 15…".
+ *
+ * No usa BoxWithConstraints: la fila mide alturas intrínsecas (IntrinsicSize.Max) y una
+ * subcomposición ahí reportaría altura 0; onSizeChanged da el mismo ancho sin ese riesgo.
+ *
+ * @param baseStyle tipografía base (titleMedium/titleSmall/labelSmall): de ella se toma
+ *   el tamaño de partida, que en compacta ya es más pequeño (comportamiento de siempre).
+ * @param minSize suelo duro en sp (11 sp los valores grandes, 9 sp las etiquetas).
+ * @param maxScale techo de crecimiento para tarjetas anchas (16 sp -> ~18 sp).
+ */
+@Composable
+private fun FitText(
+    text: String,
+    baseStyle: TextStyle,
+    color: Color,
+    minSize: TextUnit,
+    modifier: Modifier = Modifier,
+    fontWeight: FontWeight? = null,
+    textAlign: TextAlign = TextAlign.Center,
+    maxScale: Float = MAX_FONT_SCALE,
+) {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    // Ancho real de la tarjeta: llega tras el primer layout (0f = todavía sin medir).
+    var availablePx by remember { mutableStateOf(0f) }
+    val style = baseStyle.let { if (fontWeight == null) it else it.copy(fontWeight = fontWeight) }
+    val fittedSp = remember(text, availablePx, style, minSize, maxScale, density) {
+        val basePx = with(density) { style.fontSize.toPx() }
+        val minPx = with(density) { minSize.toPx() }
+        val widthAtBasePx = if (availablePx > 0f) {
+            measurer.measure(
+                text = text,
+                style = style,
+                softWrap = false,
+                maxLines = 1,
+            ).size.width.toFloat()
+        } else {
+            0f
+        }
+        // 2 dp de margen de seguridad: el redondeo del pintado no vuelva a recortar.
+        val usablePx = availablePx - with(density) { SAFETY_MARGIN_DP.toPx() }
+        val scale = fitFontScale(widthAtBasePx, usablePx, minPx / basePx, maxScale)
+        with(density) { (basePx * scale).toSp() }
+    }
+    Text(
+        text = text,
+        style = style.copy(fontSize = fittedSp),
+        color = color,
+        textAlign = textAlign,
+        softWrap = false,
+        maxLines = 1,
+        // Clip y no Ellipsis: con el suelo de tamaño ya casi siempre cabe, y si aun así
+        // no entrara no debe aparecer nunca el "…" en estas tarjetas.
+        overflow = TextOverflow.Clip,
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { availablePx = it.width.toFloat() },
+    )
+}
+
+/**
+ * Lógica pura del escalado (testeable sin Android): escala (1f = tamaño base) para que un
+ * texto que al tamaño base ocupa [textWidthAtBasePx] quepa en [availableWidthPx],
+ * recortada entre [minScale] y [maxScale]. Si faltan datos (anchos <= 0) no toca nada.
+ */
+internal fun fitFontScale(
+    textWidthAtBasePx: Float,
+    availableWidthPx: Float,
+    minScale: Float,
+    maxScale: Float,
+): Float {
+    if (textWidthAtBasePx <= 0f || availableWidthPx <= 0f) return 1f
+    return (availableWidthPx / textWidthAtBasePx).coerceIn(minScale, maxScale)
 }

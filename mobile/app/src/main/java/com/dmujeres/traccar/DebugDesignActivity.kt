@@ -34,7 +34,7 @@ import com.dmujeres.traccar.ui.theme.Ink
 /**
  * TEMPORAL — Modo debug de diseño.
  *
- * Menú oculto (solo builds debug) para previsualizar como recién instalada:
+ * Menú oculto (QA interno, disponible en todos los builds) para previsualizar como recién instalada:
  * bienvenida, permisos, login y dash principal, sin tocar datos reales
  * (prefs, jornada, MQTT, BD). Todo via Intents con extras EXTRA_DEBUG_*.
  *
@@ -45,10 +45,6 @@ class DebugDesignActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (!BuildConfig.DEBUG) {
-            finish()
-            return
-        }
         setContent {
             DmujeresTheme {
                 DebugDesignContent(

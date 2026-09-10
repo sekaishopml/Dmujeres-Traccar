@@ -119,7 +119,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_UPDATE = "open_update"
-        // TEMPORAL debug de diseño (solo builds debug): overrides solo en memoria.
+        // TEMPORAL debug de diseño (QA interno, disponible en todos los builds):
+        // overrides solo en memoria.
         // EXTRA_DEBUG_LOGGED fuerza logged true/false; EXTRA_DEBUG_DASH ("idle",
         // "active", "error", "" para solo-login) inyecta estado falso de jornada;
         // EXTRA_DEBUG_CLEAR limpia los overrides. No tocan prefs, jornada ni red.
@@ -325,7 +326,6 @@ class MainActivity : ComponentActivity() {
     // EXTRA_DEBUG_CLEAR limpia ambos; LOGGED fuerza logged; DASH (ifBlank→null)
     // inyecta estado falso de jornada. No toca prefs, jornada ni red.
     private fun readDebugExtras(intent: Intent?) {
-        if (!BuildConfig.DEBUG) return
         if (intent == null) return
         if (intent.getBooleanExtra(EXTRA_DEBUG_CLEAR, false)) {
             debugLoggedOverride = null
@@ -342,7 +342,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isDebugPreview(): Boolean {
-        if (!BuildConfig.DEBUG) return false
         return debugLoggedOverride != null || debugDashMode != null
     }
 
@@ -353,7 +352,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onVersionTapped() {
-        if (!BuildConfig.DEBUG) return
         val now = SystemClock.elapsedRealtime()
         if (now - debugFirstTapAt > 3_000) {
             debugTapCount = 0
@@ -368,7 +366,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyDebugDashState() {
-        if (!BuildConfig.DEBUG) return
         val mode = debugDashMode
         logged = true
         journeyActive = (mode != "idle")
@@ -540,7 +537,7 @@ class MainActivity : ComponentActivity() {
 
     /** Registro de estado en lenguaje simple para el colaborador. */
     private fun refreshState() {
-        if (BuildConfig.DEBUG && debugDashMode != null) {
+        if (debugDashMode != null) {
             applyDebugDashState()
             return
         }
@@ -931,10 +928,14 @@ class MainActivity : ComponentActivity() {
                     ) { isLogged ->
                         if (!isLogged) {
                             // Bienvenido debajo del logo + tarjeta solo con campos.
+                            // Pegado arriba (no centrado): en pantallas altas el
+                            // bloque quedaba muy abajo.
                             Column(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = 8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
+                                verticalArrangement = Arrangement.Top,
                             ) {
                                 Text(
                                     text = stringResource(R.string.login_title),
