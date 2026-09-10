@@ -41,6 +41,7 @@ import com.dmujeres.traccar.util.TelInfo
 import com.dmujeres.traccar.util.readTelInfo
 import com.dmujeres.traccar.util.refine
 import com.dmujeres.traccar.util.snapshot
+import com.dmujeres.traccar.worker.TrackingRecoveryWorker
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -1707,9 +1708,13 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         // Si el usuario cierra la app desde la lista de recientes, el tracking continúa.
+        // Doble red: reinicio directo + worker inmediato (en Xiaomi/MIUI el reinicio
+        // directo tras swipe suele morir de nuevo; el worker expedited lo reintenta
+        // con backoff aunque el proceso caiga).
         if (config.trackingEnabled) {
             Notifications.ensureChannel(this)
             runCatching { TrackingService.start(this) }
+            runCatching { TrackingRecoveryWorker.enqueueImmediate(this) }
         }
     }
 
