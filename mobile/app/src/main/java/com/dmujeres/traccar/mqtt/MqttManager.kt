@@ -157,6 +157,7 @@ class MqttManager(
             override fun connectComplete(reconnect: Boolean, serverURI: String) {
                 connecting = false
                 if (client !== newClient) return
+                if (reconnect) runCatching { config.incReconnect24h() }
                 connected = true
                 ready = false
                 subscribed = false

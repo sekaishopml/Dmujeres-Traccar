@@ -148,6 +148,24 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_JOURNEY_START, 0L)
         set(value) = prefs.edit().putLong(KEY_JOURNEY_START, value).apply()
 
+    /**
+     * Elapsed de jornada acumulado por TrackingService con reloj monotónico
+     * (elapsedRealtime) e inmune a correcciones NTP; persistido en cada fix.
+     * 0 = servicio aún no acumula (jornada nueva o legado).
+     */
+    var journeyElapsedMs: Long
+        get() = prefs.getLong(KEY_JOURNEY_ELAPSED, 0L)
+        set(value) = prefs.edit().putLong(KEY_JOURNEY_ELAPSED, value).apply()
+
+    /**
+     * Wall clock (System.currentTimeMillis) del último anclaje de
+     * [journeyElapsedMs]: la UI suma ahora - este ancla, nunca ahora - inicio,
+     * para que un salto de reloj no deforma la duración mostrada.
+     */
+    var journeyElapsedWallMs: Long
+        get() = prefs.getLong(KEY_JOURNEY_ELAPSED_WALL, 0L)
+        set(value) = prefs.edit().putLong(KEY_JOURNEY_ELAPSED_WALL, value).apply()
+
     var journeyDistanceM: Double
         get() = prefs.getString(KEY_JOURNEY_DISTANCE, "0")?.toDoubleOrNull() ?: 0.0
         set(value) = prefs.edit().putString(KEY_JOURNEY_DISTANCE, value.toString()).apply()
@@ -260,6 +278,95 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
         set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_DONE, value).apply()
 
+    // ---- Salud (health) para el reporte de diagnóstico -----------------------
+    //
+    // Contadores en BUCKET DIARIO: se guardan como "epochDay:valor" en una sola
+    // clave; al leer, si el día guardado != hoy (UTC) el valor es 0 → auto-reset
+    // al rodar el día, sin jobs de limpieza. Pragmático, con límites conocidos:
+    // - "24h" es el día calendario UTC, no una ventana móvil real.
+    // - Escritos con apply(): un kill a mitad pierde el último incremento.
+    // - Un salto grande de reloj puede "saltarse" días (igual devuelve 0: fail
+    //   silencioso, nunca valores inflados).
+    // - anrs24h tiene helper pero NINGÚN hook todavía: detectar ANRs sin el SDK
+    //   de Sentry (watchdog de hilo principal) no es fiable desde la app; se
+    //   mantiene en 0 hasta que el wrapper de Sentry lo alimente.
+
+    /** Reinicios bruscos del proceso con jornada abierta (heurística cleanShutdown). */
+    var crashes24h: Int
+        get() = readDailyBucket(KEY_CRASHES_24H)
+        set(value) = writeDailyBucket(KEY_CRASHES_24H, value)
+
+    /** Paso de reloj (wall vs monotónico) detectados por el watchdog. */
+    var clockSteps24h: Int
+        get() = readDailyBucket(KEY_CLOCK_STEPS_24H)
+        set(value) = writeDailyBucket(KEY_CLOCK_STEPS_24H, value)
+
+    /** Reconexiones MQTT completadas (connectComplete con reconnect=true). */
+    var reconnects24h: Int
+        get() = readDailyBucket(KEY_RECONNECTS_24H)
+        set(value) = writeDailyBucket(KEY_RECONNECTS_24H, value)
+
+    /** Recuperaciones de "crash a mitad de stop" (StuckStopPolicy START_PREFER_RECOVERY). */
+    var stuckStops24h: Int
+        get() = readDailyBucket(KEY_STUCK_STOPS_24H)
+        set(value) = writeDailyBucket(KEY_STUCK_STOPS_24H, value)
+
+    /** ANRs del día (helper reservado; ver KDoc del bloque: aún sin emisor). */
+    var anrs24h: Int
+        get() = readDailyBucket(KEY_ANRS_24H)
+        set(value) = writeDailyBucket(KEY_ANRS_24H, value)
+
+    @Synchronized
+    fun incCrash24h(): Int = incDailyBucket(KEY_CRASHES_24H)
+
+    @Synchronized
+    fun incClockStep24h(): Int = incDailyBucket(KEY_CLOCK_STEPS_24H)
+
+    @Synchronized
+    fun incReconnect24h(): Int = incDailyBucket(KEY_RECONNECTS_24H)
+
+    @Synchronized
+    fun incStuckStop24h(): Int = incDailyBucket(KEY_STUCK_STOPS_24H)
+
+    @Synchronized
+    fun incAnr24h(): Int = incDailyBucket(KEY_ANRS_24H)
+
+    /**
+     * Bandera de apagado limpio: TrackingService la pone en false al nacer
+     * (servicio vivo = sin cerrar aún) y en true en ACTION_STOP. Si en el
+     * próximo arranque del servicio sigue en false con jornada abierta, la
+     * corrida anterior NO terminó bien → crashes24h++ (kill por OEM y reboot
+     * también cuentan: es "muerte inesperada", no solo exception).
+     */
+    var cleanShutdown: Boolean
+        get() = prefs.getBoolean(KEY_CLEAN_SHUTDOWN, true)
+        set(value) = prefs.edit().putBoolean(KEY_CLEAN_SHUTDOWN, value).apply()
+
+    /** Epoch ms del último reporte de diagnóstico ACEPTADO por el servidor. */
+    var diagnosticsLastReportAt: Long
+        get() = prefs.getLong(KEY_DIAG_LAST_REPORT_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_DIAG_LAST_REPORT_AT, value).apply()
+
+    /** Resultado legible del último intento de reporte (para la tarjeta Monitor). */
+    var diagnosticsLastResult: String
+        get() = prefs.getString(KEY_DIAG_LAST_RESULT, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_DIAG_LAST_RESULT, value.take(120)).apply()
+
+    private fun readDailyBucket(key: String): Int =
+        decodeDailyBucket(prefs.getString(key, null), epochDayOf(System.currentTimeMillis()))
+
+    private fun writeDailyBucket(key: String, value: Int) {
+        prefs.edit()
+            .putString(key, encodeDailyBucket(epochDayOf(System.currentTimeMillis()), value.coerceAtLeast(0)))
+            .apply()
+    }
+
+    private fun incDailyBucket(key: String): Int {
+        val v = readDailyBucket(key) + 1
+        writeDailyBucket(key, v)
+        return v
+    }
+
     /** Indica si ya se pidió el permiso de ubicación en segundo plano (para no re-pedir
      *  un diálogo que el usuario ya rechazó y llevarlo a los ajustes directamente). */
     var backgroundLocationAsked: Boolean
@@ -338,6 +445,27 @@ class AppConfig(context: Context) {
         /** Puerto web del servidor para el fallback HTTP. */
         const val WEB_PORT = 999
 
+        /** Ms de un día civil (UTC); base del bucket diario de los contadores de salud. */
+        const val MILLIS_PER_DAY = 86_400_000L
+
+        /** Día (UTC) de un epoch ms; floorDiv para que funcione bajo 1970. Pura. */
+        fun epochDayOf(epochMs: Long): Long = Math.floorDiv(epochMs, MILLIS_PER_DAY)
+
+        /** Formato del bucket diario: "epochDay:valor". Pura. */
+        fun encodeDailyBucket(epochDay: Long, value: Int): String = "$epochDay:${value.coerceAtLeast(0)}"
+
+        /**
+         * Valor del bucket: 0 si está ausente, corrupto o es de otro día
+         * (auto-reset por rollover de epochDay). Pura y testeable en JVM.
+         */
+        fun decodeDailyBucket(stored: String?, todayEpochDay: Long): Int {
+            val parts = stored?.split(':') ?: return 0
+            if (parts.size != 2) return 0
+            val day = parts[0].toLongOrNull() ?: return 0
+            if (day != todayEpochDay) return 0
+            return parts[1].toIntOrNull()?.takeIf { it >= 0 } ?: 0
+        }
+
         /** Servidor por defecto: IP pública del entorno + puerto MQTT. */
         const val DEFAULT_SERVER = "tcp://68.168.20.219:1883"
 
@@ -373,6 +501,8 @@ class AppConfig(context: Context) {
         private const val KEY_FIX_ENQUEUED = "fix_enqueued"
         private const val KEY_MOBILE_RTT_MS = "mobile_rtt_ms"
         private const val KEY_JOURNEY_START = "journey_start_at"
+        private const val KEY_JOURNEY_ELAPSED = "journey_elapsed_ms"
+        private const val KEY_JOURNEY_ELAPSED_WALL = "journey_elapsed_wall_ms"
         private const val KEY_JOURNEY_DISTANCE = "journey_distance_m"
         private const val KEY_JOURNEY_POINTS = "journey_points"
         private const val KEY_JOURNEY_CONFIRMED_POINTS = "journey_confirmed_points"
@@ -390,6 +520,14 @@ class AppConfig(context: Context) {
         private const val KEY_NET_CAUSE = "net_cause"
         private const val KEY_NET_LABEL = "net_label"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
+        private const val KEY_CRASHES_24H = "health_crashes_24h"
+        private const val KEY_CLOCK_STEPS_24H = "health_clock_steps_24h"
+        private const val KEY_RECONNECTS_24H = "health_reconnects_24h"
+        private const val KEY_STUCK_STOPS_24H = "health_stuck_stops_24h"
+        private const val KEY_ANRS_24H = "health_anrs_24h"
+        private const val KEY_CLEAN_SHUTDOWN = "health_clean_shutdown"
+        private const val KEY_DIAG_LAST_REPORT_AT = "diagnostics_last_report_at"
+        private const val KEY_DIAG_LAST_RESULT = "diagnostics_last_result"
         private const val KEY_BACKGROUND_LOCATION_ASKED = "background_location_asked"
         private const val KEY_APP_VERSION_CODE = "app_version_code"
         private const val KEY_MAX_IMPLIED_SPEED = "filter_max_speed_mps"

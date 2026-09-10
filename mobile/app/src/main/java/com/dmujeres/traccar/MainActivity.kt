@@ -102,6 +102,8 @@ import com.dmujeres.traccar.ui.components.LoginCard
 import com.dmujeres.traccar.ui.components.MetricsRow
 import com.dmujeres.traccar.ui.components.StatusBanner
 import com.dmujeres.traccar.util.JourneyFormatter
+import com.dmujeres.traccar.util.DiagnosticsReporter
+import com.dmujeres.traccar.util.SentryLog
 import com.dmujeres.traccar.ui.theme.JourneyColors
 import com.dmujeres.traccar.util.NetCause
 import com.dmujeres.traccar.util.PermissionHealth
@@ -152,6 +154,10 @@ class MainActivity : ComponentActivity() {
     private var batteryColor by mutableStateOf(JourneyColors.Verde)
     private var journeyStartAt by mutableStateOf(0L)
     private var journeyActive by mutableStateOf(false)
+    // Par (elapsed monotónico persistido, ancla wall) escrito por TrackingService:
+    // base de la duración mostrada, inmune a correcciones NTP tras sueño largo.
+    private var journeyElapsedMs by mutableStateOf(0L)
+    private var journeyElapsedWallMs by mutableStateOf(0L)
     private var logText by mutableStateOf("")
     // Causa de red (Fase 1): mensaje humano + deep-link a WiFi donde aplica.
     private var netCauseMessage by mutableStateOf<String?>(null)
@@ -213,6 +219,10 @@ class MainActivity : ComponentActivity() {
             if (config.appVersionCode != BuildConfig.VERSION_CODE) {
                 val missing = PermissionHealth.check(this).missing
                 if (missing.isNotEmpty()) {
+                    runCatching {
+                        SentryLog.breadcrumb("diag", "ota_update", "audit=repair_shown missing=${missing.size}")
+                        DiagnosticsReporter.report(this, "ota_update")
+                    }
                     startActivity(
                         Intent(this, OnboardingActivity::class.java)
                             .putExtra(OnboardingActivity.EXTRA_REPAIR, true)
@@ -227,6 +237,10 @@ class MainActivity : ComponentActivity() {
                     return
                 }
                 config.appVersionCode = BuildConfig.VERSION_CODE
+                runCatching {
+                    SentryLog.breadcrumb("diag", "ota_update", "audit=clean")
+                    DiagnosticsReporter.report(this, "ota_update")
+                }
             }
         }
 
@@ -250,6 +264,8 @@ class MainActivity : ComponentActivity() {
                     batteryColor = batteryColor,
                     journeyStartAt = journeyStartAt,
                     journeyActive = journeyActive,
+                    journeyElapsedMs = journeyElapsedMs,
+                    journeyElapsedWallMs = journeyElapsedWallMs,
                     detailsLoading = detailsLoading,
                     logText = logText,
                     pendingAbnormal = pendingAbnormal,
@@ -399,6 +415,10 @@ class MainActivity : ComponentActivity() {
         logged = true
         journeyActive = (mode != "idle")
         journeyStartAt = if (journeyActive) System.currentTimeMillis() - 2 * 60 * 60 * 1000 else 0L
+        // Preview sin servicio: elapsed=0/ancla=0 → displayElapsedMs cae al ancla
+        // de inicio (legacy) y la tarjeta muestra las 2 h sintéticas.
+        journeyElapsedMs = 0L
+        journeyElapsedWallMs = 0L
         detailsLoading = false
         pendingAbnormal = false
         updateBannerVisible = false
@@ -590,9 +610,14 @@ class MainActivity : ComponentActivity() {
 
         val journey = config.journeyStartAt
         journeyStartAt = journey
+        journeyElapsedMs = config.journeyElapsedMs
+        journeyElapsedWallMs = config.journeyElapsedWallMs
         journeyActive = enabled && journey > 0
         if (enabled && journey > 0) {
-            val (hours, minutes) = JourneyFormatter.durationParts(now - journey)
+            // Duración vista = elapsed monotónico persistido por el servicio + gap
+            // desde su ancla (nunca now - inicio): inmune a correcciones NTP.
+            val displayMs = JourneyFormatter.displayElapsedMs(journeyElapsedMs, journeyElapsedWallMs, journey, now)
+            val (hours, minutes) = JourneyFormatter.durationParts(displayMs)
             lines += getString(R.string.log_journey_on, hours, minutes)
         } else {
             lines += getString(R.string.log_journey_off)
@@ -753,7 +778,12 @@ class MainActivity : ComponentActivity() {
     private fun showJourneySummary() {
         val startedAt = config.journeyStartAt
         if (startedAt <= 0) return
-        val duration = JourneyFormatter.journeyDuration(this, System.currentTimeMillis() - startedAt)
+        // Mismo cálculo que la tarjeta: elapsed monotónico persistido + gap desde
+        // su ancla (capturado antes de que el servicio limpie las métricas).
+        val durationMs = JourneyFormatter.displayElapsedMs(
+            config.journeyElapsedMs, config.journeyElapsedWallMs, startedAt, System.currentTimeMillis(),
+        )
+        val duration = JourneyFormatter.journeyDuration(this, durationMs)
         val km = JourneyFormatter.formatKm(config.journeyDistanceM)
         val points = config.journeyPoints
         val confirmedPoints = config.journeyConfirmedPoints
@@ -891,6 +921,8 @@ class MainActivity : ComponentActivity() {
         batteryColor: Color,
         journeyStartAt: Long,
         journeyActive: Boolean,
+        journeyElapsedMs: Long = 0L,
+        journeyElapsedWallMs: Long = 0L,
         detailsLoading: Boolean,
         logText: String,
         pendingAbnormal: Boolean,
@@ -1014,6 +1046,8 @@ class MainActivity : ComponentActivity() {
                                     batteryColor = batteryColor,
                                     journeyStartAt = journeyStartAt,
                                     journeyActive = journeyActive,
+                                    journeyElapsedMs = journeyElapsedMs,
+                                    journeyElapsedWallMs = journeyElapsedWallMs,
                                     detailsLoading = detailsLoading,
                                     logText = logText,
                                     pendingAbnormal = pendingAbnormal,
@@ -1129,6 +1163,8 @@ class MainActivity : ComponentActivity() {
         batteryColor: Color,
         journeyStartAt: Long,
         journeyActive: Boolean,
+        journeyElapsedMs: Long = 0L,
+        journeyElapsedWallMs: Long = 0L,
         detailsLoading: Boolean,
         logText: String,
         pendingAbnormal: Boolean,
@@ -1171,6 +1207,8 @@ class MainActivity : ComponentActivity() {
                     isCompactHeight = isCompactHeight,
                     journeyStartAt = journeyStartAt,
                     journeyActive = journeyActive,
+                    journeyElapsedMs = journeyElapsedMs,
+                    journeyElapsedWallMs = journeyElapsedWallMs,
                     // Solo rojo si PendingAlertPolicy dice anormal; 1-5 sanos quedan en verde.
                     pendingAlert = pendingAbnormal,
                 )

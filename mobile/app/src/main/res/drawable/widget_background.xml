@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <!-- Panel claro opaco: contraste garantizado en cualquier wallpaper/launcher
+         sin necesidad de variantes night (texto #181818 fijo). -->
+    <solid android:color="#FFFFFF" />
+    <corners android:radius="16dp" />
+</shape>

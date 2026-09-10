@@ -246,6 +246,14 @@
     <string name="diag_phone_denied">Seguiremos con el diagnóstico básico</string>
     <string name="diag_phone_already">El diagnóstico mejorado ya está activo</string>
 
+    <!-- ============ DIAGNÓSTICO: MONITOR (reporte de diagnóstico + salud) ============ -->
+    <string name="diag_monitor_report">Monitor · reporte enviado %1$s · %2$s</string>
+    <string name="diag_monitor_never">Monitor · aún no se ha enviado ningún reporte de diagnóstico</string>
+    <string name="diag_monitor_counters">Saltos de reloj %1$d · reconexiones %2$d · parones %3$d · reinicios bruscos %4$d · cierre limpio: %5$s</string>
+    <string name="diag_monitor_clean_yes">sí</string>
+    <string name="diag_monitor_clean_no">no</string>
+    <string name="diag_send_report">Enviar reporte ahora</string>
+
     <!-- ============ TIEMPOS RELATIVOS ============ -->
     <string name="ago_now">recién</string>
     <string name="ago_minutes">hace %1$d min</string>
@@ -264,4 +272,13 @@
     <string name="debug_dash_error">Dash con error</string>
     <string name="debug_clear">Salir del modo diseño</string>
     <string name="debug_preview_locked">Vista previa de diseño: sin acciones reales</string>
+
+    <!-- ============ WIDGET DE INICIO (JourneyWidget) ============ -->
+    <string name="widget_label">Jornada DMujeres</string>
+    <string name="widget_desc">Inicia o finaliza tu jornada desde la pantalla de inicio</string>
+    <string name="action_start">Iniciar jornada</string>
+    <string name="action_end">Finalizar jornada</string>
+    <string name="widget_active_prefix">Jornada activa</string>
+    <string name="widget_idle">Sin jornada</string>
+    <string name="widget_waiting">Toca para iniciar tu jornada</string>
 </resources>

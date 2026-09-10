@@ -84,6 +84,10 @@ fun MetricsRow(
     isCompactHeight: Boolean,
     journeyStartAt: Long = 0L,
     journeyActive: Boolean = false,
+    // Elapsed monotónico persistido por el servicio + su ancla wall: la duración
+    // se calcula desde aquí (no desde journeyStartAt) para ser inmune a saltos NTP.
+    journeyElapsedMs: Long = 0L,
+    journeyElapsedWallMs: Long = 0L,
     // true solo si los pendientes son ANORMALES (ver PendingAlertPolicy). Con el dispatch
     // secuencial (1 en vuelo, ackTimeout 15 s) casi siempre hay 1-5 sanos: esos quedan en
     // verde y solo el backlog anormal pinta la tarjeta de rojo.
@@ -133,6 +137,8 @@ fun MetricsRow(
             connecting = serverConnecting,
             journeyStartAt = journeyStartAt,
             journeyActive = journeyActive,
+            journeyElapsedMs = journeyElapsedMs,
+            journeyElapsedWallMs = journeyElapsedWallMs,
             modifier = Modifier.weight(1f),
             isCompactHeight = isCompactHeight,
         )
@@ -204,6 +210,8 @@ private fun ServerCard(
     connecting: Boolean,
     journeyStartAt: Long,
     journeyActive: Boolean,
+    journeyElapsedMs: Long = 0L,
+    journeyElapsedWallMs: Long = 0L,
     modifier: Modifier = Modifier,
     isCompactHeight: Boolean,
 ) {
@@ -229,7 +237,11 @@ private fun ServerCard(
     val durationText = when {
         connecting -> stringResource(R.string.server_connecting_label)
         hasJourney -> {
-            val (hours, minutes) = JourneyFormatter.durationParts(nowMs - journeyStartAt)
+            // Elapsed del servicio + gap desde SU ancla: el ticker de 1 s mueve
+            // solo el gap; un paso NTP ya no colapsa ni infla las horas.
+            val (hours, minutes) = JourneyFormatter.durationParts(
+                JourneyFormatter.displayElapsedMs(journeyElapsedMs, journeyElapsedWallMs, journeyStartAt, nowMs),
+            )
             stringResource(R.string.journey_duration, hours, minutes)
         }
         else -> stringResource(R.string.server_no_journey)

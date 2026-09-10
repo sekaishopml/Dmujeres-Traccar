@@ -31,16 +31,20 @@ import com.dmujeres.traccar.mqtt.HttpFlushPolicy
 import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.PendingAlertPolicy
+import com.dmujeres.traccar.util.DiagnosticsCollector
+import com.dmujeres.traccar.util.DiagnosticsReporter
 import com.dmujeres.traccar.util.JourneyFormatter
 import com.dmujeres.traccar.util.LocationState
 import com.dmujeres.traccar.util.NETCONF_SUSPECTED
 import com.dmujeres.traccar.util.NetCause
 import com.dmujeres.traccar.util.NetSnapshot
 import com.dmujeres.traccar.util.Notifications
+import com.dmujeres.traccar.util.SentryLog
 import com.dmujeres.traccar.util.TelInfo
 import com.dmujeres.traccar.util.readTelInfo
 import com.dmujeres.traccar.util.refine
 import com.dmujeres.traccar.util.snapshot
+import com.dmujeres.traccar.widget.JourneyWidget
 import com.dmujeres.traccar.worker.TrackingRecoveryWorker
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -106,6 +110,13 @@ class TrackingService : Service() {
     private val started = AtomicBoolean(false)
     @Volatile private var currentState = TrackingState.TRACKING_DISABLED_BY_USER
     @Volatile private var startedTrackingAt = 0L
+    /**
+     * Acumulador monotónico de la duración de jornada (inmune a saltos NTP):
+     * elapsed de la última sesión + base de elapsedRealtime al arrancar/recuperar.
+     * monoBaseElapsed == 0 es centinela de "aún no corrió startTracking".
+     */
+    @Volatile private var monoBasePersisted = 0L
+    @Volatile private var monoBaseElapsed = 0L
     private val enqueueMutex = Mutex()
     @Volatile private var stopping = false
     @Volatile private var pendingStart = false
@@ -133,6 +144,9 @@ class TrackingService : Service() {
         super.onCreate()
         Notifications.ensureChannel(this)
         config = AppConfig(this)
+        // Observabilidad: muerte inesperada en la corrida anterior (crash/kill con
+        // jornada abierta) y stuck-stops pendientes ANTES de pisar cleanShutdown.
+        runCatching { detectAbnormalRestarts() }
         try {
             dao = (application as DmujeresApp).database.positionDao()
         } catch (e: Exception) {
@@ -147,9 +161,38 @@ class TrackingService : Service() {
         isRunning = true
     }
 
+    /**
+     * Heurística de arranques anómalos al nacer el servicio (ver KDoc del bloque
+     * de salud en AppConfig):
+     * - cleanShutdown==false con jornada abierta → la corrida anterior murió sin
+     *   ACTION_STOP (crash, kill de OEM o reboot) → crashes24h++ + breadcrumb +
+     *   report("crash_boot") (reason forzada, salta el throttle).
+     * - journeyStopRequested con jornada abierta → crash a mitad de stop
+     *   (decisión START_PREFER_RECOVERY de StuckStopPolicy, la cuentan BootReceiver
+     *   y TrackingRecoveryWorker antes de volver a arrancar el servicio) →
+     *   stuckStops24h++.
+     * Después se apaga cleanShutdown: el servicio vivo aún no cerró limpio.
+     */
+    private fun detectAbnormalRestarts() {
+        val unclean = !config.cleanShutdown && config.journeyStartAt > 0L
+        if (config.journeyStopRequested && config.journeyStartAt > 0L) {
+            runCatching { config.incStuckStop24h() }
+        }
+        config.cleanShutdown = false
+        if (unclean) {
+            runCatching { config.incCrash24h() }
+            SentryLog.breadcrumb("journey", "crash_boot", "Arranque tras muerte inesperada con jornada abierta")
+            runCatching { DiagnosticsReporter.report(this, "crash_boot") }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                // Breadcrumb del botón (widget y MainActivity llegan por aquí).
+                runCatching { SentryLog.breadcrumb("journey", "service_action", "ACTION_STOP") }
+                // Cierre solicitado por el usuario: cuenta como apagado limpio.
+                runCatching { config.cleanShutdown = true }
                 config.trackingEnabled = false
                 pendingStart = false
                 if (started.get() || stopping || config.journeyStartAt > 0L) {
@@ -158,11 +201,16 @@ class TrackingService : Service() {
                     publishState(TrackingState.TRACKING_DISABLED_BY_USER)
                     config.journeyStopRequested = false
                     stopForeground(STOP_FOREGROUND_REMOVE)
+                    // Refresca el widget ANTES de morir: si no, quedaría pintando
+                    // "Finalizar jornada" hasta el siguiente onUpdate del launcher.
+                    runCatching { JourneyWidget.updateAll(this) }
                     stopSelf()
                 }
                 return START_NOT_STICKY
             }
             else -> {
+                // START_STICKY null-intent y arranques (widget/MainActivity/Boot) caen aquí.
+                runCatching { SentryLog.breadcrumb("journey", "service_action", "ACTION_START (${intent?.action ?: "sticky"})") }
                 if (stopping) {
                     pendingStart = true
                     config.trackingEnabled = true
@@ -219,6 +267,17 @@ class TrackingService : Service() {
         stopping = false
         val recoveringJourney = config.journeyStartAt > 0L
         startedTrackingAt = if (recoveringJourney) config.journeyStartAt else System.currentTimeMillis()
+        // El único reloj digno de confianza mientras el servicio vive es el
+        // monotónico: se arraiga en elapsedRealtime y parte del elapsed
+        // persistido (o del seed legacy acotado si nunca se persistió).
+        monoBasePersisted = if (recoveringJourney) {
+            JourneyFormatter.seedElapsedOnRecovery(
+                config.journeyElapsedMs, config.journeyStartAt, System.currentTimeMillis(),
+            )
+        } else {
+            0L
+        }
+        monoBaseElapsed = SystemClock.elapsedRealtime()
         lastJourneyLat = if (recoveringJourney) config.journeyLastLat else 0.0
         lastJourneyLon = if (recoveringJourney) config.journeyLastLon else 0.0
         capturePausedForBuffer = false
@@ -239,6 +298,8 @@ class TrackingService : Service() {
         lastPollAttemptElapsedNanos = 0L
         pollFailures = 0
         pollInFlight = false
+        clockAnchorWallMs = 0L
+        clockAnchorMonoMs = 0L
         lastFixSpeedMps = null
         adaptiveMoving = false
         gnssForced = false
@@ -262,10 +323,18 @@ class TrackingService : Service() {
             config.journeyLastLon = 0.0
             config.journeyHasLastLocation = false
             config.journeyStopRequested = false
+            config.journeyElapsedMs = 0L
+            config.journeyElapsedWallMs = 0L
             Notifications.alert(this, getString(R.string.jornada_iniciada), getString(R.string.jornada_iniciada_body))
             enqueuePresence("started")
+            // Diagnóstico: snapshot forzado al abrir jornada (cola reciénStarted → pending 0).
+            runCatching { SentryLog.breadcrumb("journey", "journey_start", "Jornada $startedTrackingAt iniciada") }
+            runCatching { DiagnosticsReporter.report(this, "journey_start", pendingCount = 0) }
         } else {
             Notifications.alert(this, getString(R.string.service_recovery_title), getString(R.string.service_recovery_body))
+            // Re-ancla el elapsed persistido/sembrado con el wall actual: a partir
+            // de aquí la UI suma desde el servicio vivo, no desde el inicio de jornada.
+            persistJourneyElapsed()
             // Reafirma el inicio después de una muerte del proceso; el estado online es idempotente.
             enqueuePresence("started")
         }
@@ -1219,6 +1288,8 @@ class TrackingService : Service() {
                         )
                     }
                     config.journeyPoints = config.journeyPoints + 1
+                    // El elapsed monotónico viaja junto a los contadores de jornada.
+                    persistJourneyElapsed()
                     lastJourneyLat = location.latitude
                     lastJourneyLon = location.longitude
                     config.journeyLastLat = location.latitude
@@ -1265,6 +1336,42 @@ class TrackingService : Service() {
         }
     }
 
+    /**
+     * Anclaje rodante (wall + elapsedRealtime) para [maybeDetectClockStep].
+     * Se arraiga por primera vez en el primer tick del watchdog tras cada
+     * startTracking y se re-ancla en cada comparación: un paso sostenido
+     * cuenta UNA vez, no cada 30 s.
+     */
+    @Volatile private var clockAnchorWallMs = 0L
+    @Volatile private var clockAnchorMonoMs = 0L
+
+    /**
+     * Paso de reloj (NTP/zona/manual) durante la jornada: en la misma
+     * ventana, el delta del wall clock se desvía del monotónico más de
+     * [DiagnosticsCollector.CLOCK_STEP_THRESHOLD_MS]. Al detectar:
+     * clockSteps24h++ (bucket diario, ver AppConfig) + breadcrumb + log.
+     */
+    private fun maybeDetectClockStep() {
+        val nowWall = System.currentTimeMillis()
+        val nowMono = SystemClock.elapsedRealtime()
+        if (clockAnchorMonoMs == 0L) {
+            clockAnchorWallMs = nowWall
+            clockAnchorMonoMs = nowMono
+            return
+        }
+        val wallDiff = nowWall - clockAnchorWallMs
+        val monoDiff = nowMono - clockAnchorMonoMs
+        clockAnchorWallMs = nowWall
+        clockAnchorMonoMs = nowMono
+        if (DiagnosticsCollector.clockStepDelta(wallDiff, monoDiff)) {
+            runCatching { config.incClockStep24h() }
+            Log.w(TAG, "Paso de reloj: wall=$wallDiff ms monotónico=$monoDiff ms")
+            runCatching {
+                SentryLog.breadcrumb("diag", "clock_step", "Salto de reloj ${wallDiff - monoDiff} ms")
+            }
+        }
+    }
+
     private suspend fun watchdogLoop() {
         var lastWakeAlertAt = 0L
         var lastHeartbeatAt = 0L
@@ -1275,6 +1382,15 @@ class TrackingService : Service() {
                 continue
             }
             val now = System.currentTimeMillis()
+            // Anti-pasos-de-reloj: compara wall vs monotónico en la ventana del
+            // tick (30 s) y apunta el anclaje para el siguiente.
+            runCatching { maybeDetectClockStep() }
+            // Heartbeat ≥30 s: refresca el par (elapsed monotónico, ancla wall)
+            // aunque no lleguen fixes (GPS muerto/nocturno) para que la UI y un
+            // hipotético proc nuevo partan de un estado fresco e inmune a NTP.
+            if (started.get() && !stopping && config.journeyStartAt > 0L) {
+                persistJourneyElapsed()
+            }
             if (now - lastHeartbeatAt > 60_000) {
                 lastHeartbeatAt = now
                 sendPresenceHeartbeat()
@@ -1519,12 +1635,25 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
             val pending = withContext(Dispatchers.IO) {
                 runCatching { dao.countFlow().first() }.getOrDefault(0)
             }
+            // Piggyback diagnóstico: con jornada activa, reporte periódico cada
+            // 60 min (se dispara desde la ruta por-fix y desde los cambios de
+            // estado, que también llaman aquí). El throttle real lo aplica el
+            // reporter; aquí solo el umbral horario.
+            runCatching {
+                if (started.get() && !stopping &&
+                    System.currentTimeMillis() - config.diagnosticsLastReportAt > DiagnosticsReporter.PERIODIC_MS
+                ) {
+                    DiagnosticsReporter.report(this@TrackingService, "periodic", pending)
+                }
+            }
             val battery = batteryLevel()
             val state = TrackingState.fromName(config.trackingState)
 
             val journeyStart = config.journeyStartAt
             val journeyLine = if (config.trackingEnabled && journeyStart > 0) {
-                val (hours, minutes) = JourneyFormatter.durationParts(System.currentTimeMillis() - journeyStart)
+                // Reloj del servicio (monotónico), no wall bruto: un paso NTP no
+                // colapsa ni infla la duración de la notificación.
+                val (hours, minutes) = JourneyFormatter.durationParts(elapsedNowMs())
                 getString(R.string.notif_journey_duration, hours, minutes)
             } else {
                 getString(R.string.notif_journey_finished)
@@ -1550,6 +1679,9 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
                 lines += getString(R.string.notif_warn_gps)
             }
             Notifications.update(this@TrackingService, getString(R.string.app_name), lines.joinToString("\n"))
+            // Push del widget de inicio/fin de jornada: mismo ciclo que la notificación,
+            // así el reloj del widget nunca se queda rezagado respecto al panel.
+            runCatching { JourneyWidget.updateAll(this@TrackingService) }
         }
     }
 
@@ -1570,6 +1702,32 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
     /** Intervalo efectivo: Fase A densidad constante — NO se altera por batería baja. */
     private fun effectiveIntervalSeconds(): Long {
         return config.intervalSeconds
+    }
+
+    /**
+     * Duración de jornada según el reloj monotónico del servicio: base
+     * persistida (o sembrada en recuperación) + tiempo desde que se arraigó.
+     * Con centinela sin arraigar cae al valor persistido + gap desde su ancla,
+     * nunca al wall bruto desde el inicio (inmune a pasos NTP en ambos sentidos).
+     */
+    private fun elapsedNowMs(): Long {
+        val base = monoBaseElapsed
+        return if (base == 0L) {
+            JourneyFormatter.displayElapsedMs(
+                persistedElapsedMs = config.journeyElapsedMs,
+                persistedWallMs = config.journeyElapsedWallMs,
+                journeyStartWallMs = config.journeyStartAt,
+                nowWallMs = System.currentTimeMillis(),
+            )
+        } else {
+            (monoBasePersisted + (SystemClock.elapsedRealtime() - base)).coerceAtLeast(0L)
+        }
+    }
+
+    /** Fija el par (elapsed monotónico, ancla wall) que lee la UI y otras sesiones. */
+    private fun persistJourneyElapsed() {
+        config.journeyElapsedMs = elapsedNowMs()
+        config.journeyElapsedWallMs = System.currentTimeMillis()
     }
 
     private fun Location.isValidLocation(): Boolean {
@@ -1673,6 +1831,10 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
         } else {
             pendingStart = false
             stopping = false
+            // Diagnóstico: cierre real de jornada (tras drenar), reason forzada.
+            // pending = -1: el drain ya corrió y no se toca la DB desde el hilo main.
+            runCatching { SentryLog.breadcrumb("journey", "journey_stop", "Jornada finalizada (servicio detenido)") }
+            runCatching { DiagnosticsReporter.report(this, "journey_stop") }
             stopSelf()
         }
     }
@@ -1680,10 +1842,15 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
     /** Texto de la notificación final: jornada finalizada con duración y resumen. */
     private fun finishedJourneyText(): String {
         val start = config.journeyStartAt
+        // El resumen usa el elapsed monotónico capturado ANTES de limpiar el
+        // acumulador; así un salto NTP durante la jornada no deforma el cierre.
+        val finalElapsedMs = elapsedNowMs()
         val distanceM = config.journeyDistanceM
         val points = config.journeyPoints
         val confirmedPoints = config.journeyConfirmedPoints
         config.journeyStartAt = 0
+        config.journeyElapsedMs = 0L
+        config.journeyElapsedWallMs = 0L
         config.journeyDistanceM = 0.0
         config.journeyPoints = 0
         config.journeyConfirmedPoints = 0
@@ -1694,7 +1861,7 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
             config.journeyStopRequested = false
             return getString(R.string.notif_journey_finished)
         }
-        val (hours, minutes) = JourneyFormatter.durationParts(System.currentTimeMillis() - start)
+        val (hours, minutes) = JourneyFormatter.durationParts(finalElapsedMs)
         val duration = getString(R.string.journey_duration, hours, minutes)
         val km = JourneyFormatter.formatKm(distanceM)
         config.lastJourneySummary = JourneyFormatter.buildSummary(duration, km, points, confirmedPoints)

@@ -102,6 +102,22 @@
             </intent-filter>
         </receiver>
 
+        <!-- Widget de jornada en pantalla de inicio (RemoteViews puro: compatible
+             con cualquier launcher/OEM). Solo ACTION_APPWIDGET_UPDATE: el refresco
+             fino lo empuja TrackingService con JourneyWidget.updateAll(). -->
+        <receiver
+            android:name=".widget.JourneyWidget"
+            android:exported="true"
+            android:label="@string/widget_label"
+            android:description="@string/widget_desc">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/journey_widget_info" />
+        </receiver>
+
     </application>
 
 </manifest>

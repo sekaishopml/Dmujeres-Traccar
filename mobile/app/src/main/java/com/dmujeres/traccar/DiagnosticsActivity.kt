@@ -58,10 +58,12 @@ import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.UpdateManager
 import com.dmujeres.traccar.util.LocationState
+import com.dmujeres.traccar.util.DiagnosticsReporter
 import com.dmujeres.traccar.ui.theme.DmujeresTheme
 import com.dmujeres.traccar.ui.theme.Ink
 import com.dmujeres.traccar.util.JourneyFormatter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class DiagnosticsActivity : ComponentActivity() {
@@ -102,6 +104,7 @@ class DiagnosticsActivity : ComponentActivity() {
                     },
                     onRecoverService = { recoverService() },
                     onImprove = { requestPhoneState() },
+                    onSendReport = { sendReportNow() },
                 )
             }
         }
@@ -155,6 +158,24 @@ class DiagnosticsActivity : ComponentActivity() {
             .show()
     }
 
+    /**
+     * "Enviar reporte ahora": reason "manual" (salta el throttle cliente). El
+     * conteo de pendientes se hace en un hilo IO propio (nunca en main) y el
+     * POST viaja en el executor de [DiagnosticsReporter]; al terminar se
+     * refresca la tarjeta Monitor con refreshKey++.
+     */
+    private fun sendReportNow() {
+        Thread {
+            val pending = runCatching {
+                runBlocking(Dispatchers.IO) {
+                    (applicationContext as DmujeresApp).database.positionDao().count()
+                }
+            }.getOrDefault(-1)
+            runCatching { DiagnosticsReporter.report(this, "manual", pending) }
+            runOnUiThread { refreshKey++ }
+        }.start()
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun DiagnosticsContent(
@@ -164,6 +185,7 @@ class DiagnosticsActivity : ComponentActivity() {
         onPermissions: () -> Unit,
         onRecoverService: () -> Unit,
         onImprove: () -> Unit,
+        onSendReport: () -> Unit,
     ) {
         val context = LocalContext.current
         val rows = rememberDiagRows(context, refreshKey)
@@ -236,6 +258,28 @@ class DiagnosticsActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 2,
                 )
+
+                // Tarjeta Monitor: último reporte de diagnóstico + contadores
+                // de salud del día + envío manual.
+                DiagCell(
+                    text = rows.monitor,
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3,
+                )
+
+                Button(
+                    onClick = onSendReport,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.diag_send_report),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
 
                 Text(
                     text = rows.device,
@@ -333,6 +377,7 @@ private data class DiagRows(
     val lastFix: String = "",
     val lastAck: String = "",
     val update: String = "",
+    val monitor: String = "",
     val device: String = "",
     val recoverEnabled: Boolean = false,
 )
@@ -477,6 +522,25 @@ private suspend fun computeDiagRows(context: Context): DiagRows {
             )
     }
 
+    // Tarjeta Monitor: reporte + contadores de salud del bucket diario (AppConfig).
+    val monitorHeader = if (config.diagnosticsLastReportAt > 0L) {
+        context.getString(
+            R.string.diag_monitor_report,
+            agoText(context, config.diagnosticsLastReportAt),
+            config.diagnosticsLastResult.ifBlank { "…" },
+        )
+    } else {
+        context.getString(R.string.diag_monitor_never)
+    }
+    val monitor = monitorHeader + "\n" + context.getString(
+        R.string.diag_monitor_counters,
+        config.clockSteps24h,
+        config.reconnects24h,
+        config.stuckStops24h,
+        config.crashes24h,
+        context.getString(if (config.cleanShutdown) R.string.diag_monitor_clean_yes else R.string.diag_monitor_clean_no),
+    )
+
     val startError = config.lastStartError
     val deviceText = Build.MANUFACTURER + " " + Build.MODEL +
         " · Android " + Build.VERSION.RELEASE +
@@ -493,6 +557,7 @@ private suspend fun computeDiagRows(context: Context): DiagRows {
         lastFix = lastFixText,
         lastAck = lastAckText,
         update = updateText,
+        monitor = monitor,
         device = deviceText,
         recoverEnabled = recoverEnabled,
     )
