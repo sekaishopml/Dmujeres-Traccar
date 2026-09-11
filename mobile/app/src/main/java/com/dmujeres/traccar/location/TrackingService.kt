@@ -536,13 +536,7 @@ class TrackingService : Service() {
                 }
                 if (config.trackingEnabled) {
                     serviceScope.launch {
-                        try {
-                            HttpFallbackDispatcher.flush(dao, config)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Fallback HTTP al recuperar red", e)
-                        }
+                        drainBacklog("red-disponible")
                     }
                 }
                 // Notificar al servidor que la red se recuperó
@@ -715,6 +709,34 @@ class TrackingService : Service() {
         }
     }
 
+    /**
+     * Drena el buffer por lotes HTTP tras recuperar conexión (arreglo de
+     * almacenamiento): un solo flush (50 puntos) dejaba miles goteando por
+     * MQTT a ~4/min en enlace débil. Corre en serviceScope; el Mutex global
+     * (DispatchLock) lo serializa con el dispatch MQTT sin deadlock. Nunca
+     * borra: el flush solo elimina lo confirmado por el servidor.
+     */
+    private fun drainBacklog(reason: String) {
+        serviceScope.launch {
+            try {
+                var batches = 0
+                var confirmed = HttpFallbackDispatcher.flush(dao, config)
+                batches++
+                while (com.dmujeres.traccar.db.BufferDrainPolicy.continueDraining(confirmed, batches)) {
+                    confirmed = HttpFallbackDispatcher.flush(dao, config)
+                    batches++
+                }
+                if (batches > 1) {
+                    Log.i(TAG, "Drenaje post-reconexión ($reason): $batches lotes")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Drenaje post-reconexión ($reason)", e)
+            }
+        }
+    }
+
     private fun onMqttStateChanged() {
         val status = MqttStatus.status
         if (started.get()) {
@@ -739,6 +761,11 @@ class TrackingService : Service() {
                 }
                 MqttStatus.DISCONNECTED -> Notifications.setConnectedNotified(this, false)
                 else -> Unit
+            }
+            // Al reconectar MQTT también se drena: cubre el caso de enlace débil
+            // donde la red nunca se "perdió" del todo (sin evento onAvailable).
+            if (status == MqttStatus.CONNECTED && config.trackingEnabled) {
+                drainBacklog("mqtt-conectado")
             }
             lastMqttStatus = status
         }
