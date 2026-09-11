@@ -1,0 +1,14 @@
+[Unit]
+Description=DMujeres map-matching service (GraphHopper 8)
+After=network.target
+
+[Service]
+Type=simple
+User=opencode
+WorkingDirectory=/opt/matchservice
+ExecStart=/usr/bin/java -Xmx2g -jar /opt/matchservice/target/matchservice.jar
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
