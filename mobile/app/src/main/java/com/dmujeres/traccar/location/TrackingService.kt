@@ -367,6 +367,19 @@ class TrackingService : Service() {
         lastFixSpeedMps = null
         lastSpeedRefTimeMs = 0L
         consecDopplerStuck = 0
+        // Regla OR: arranca sin referencia (primer fix siempre acepta); si se
+        // recupera jornada se hereda la última posición persistida.
+        lastAcceptedLat = if (recoveringJourney) config.journeyLastLat else 0.0
+        lastAcceptedLon = if (recoveringJourney) config.journeyLastLon else 0.0
+        lastAcceptedTimeMs = 0L
+        lastAcceptedBearingDeg = Double.NaN
+        // En recuperación, si el último fix es viejo el heartbeat entra al
+        // primer aviso (el teléfono ya estaba quieto antes de morir).
+        lastMovementMs = if (recoveringJourney && config.lastFixAt > 0) {
+            config.lastFixAt
+        } else {
+            System.currentTimeMillis()
+        }
         adaptiveMoving = false
         gnssForced = false
         currentMinDistanceM = AdaptiveDistancePolicy.DISTANCE_STATIONARY_M
@@ -634,6 +647,14 @@ class TrackingService : Service() {
     @Volatile private var pollInFlight = false
     @Volatile private var lastFixSpeedMps: Float? = null
     @Volatile private var adaptiveMoving = false
+    // Referencia del último fix ACEPTADO (regla OR Traccar) + último movimiento
+    // visto (stop detection). Se tocan solo en el hilo del mutex de encolado
+    // salvo re-inicio/stop.
+    private var lastAcceptedLat = 0.0
+    private var lastAcceptedLon = 0.0
+    private var lastAcceptedTimeMs = 0L
+    private var lastAcceptedBearingDeg = Double.NaN
+    private var lastMovementMs = 0L
     // Referencia del último fix aceptado para velocidad implícita (respaldo
     // cuando el Doppler miente en 0) + racha de Doppler atascado para Sentry.
     private var lastSpeedRefLat = 0.0
@@ -829,6 +850,10 @@ class TrackingService : Service() {
      * `resumeCaptureAfterBuffer` use el valor vigente) pero re-registra el
      * request SOLO al cambiar de modo, reutilizando el re-registro existente
      * (sin timers nuevos). Devuelve true si re-registró.
+     *
+     * Stop detection (perfil oculto Traccar, ON): quieto más de 60 s →
+     * heartbeat de 60 s (GPS ciclado, jornada viva); al moverse vuelve la
+     * cadencia normal por el propio cambio de modo.
      */
     private fun applyAdaptiveMode(hasRecentFix: Boolean): Boolean {
         val current = if (adaptiveMoving) {
@@ -837,10 +862,22 @@ class TrackingService : Service() {
             AdaptiveDistancePolicy.Mode.STATIONARY
         }
         val next = AdaptiveDistancePolicy.nextMode(current, lastFixSpeedMps, hasRecentFix)
-        if (next == current) return false
-        adaptiveMoving = next == AdaptiveDistancePolicy.Mode.MOVING
-        currentMinDistanceM = AdaptiveDistancePolicy.distanceFor(next)
-        currentIntervalSeconds = AdaptiveDistancePolicy.intervalFor(next, config.intervalSeconds)
+        var changed = false
+        if (next != current) {
+            adaptiveMoving = next == AdaptiveDistancePolicy.Mode.MOVING
+            currentMinDistanceM = AdaptiveDistancePolicy.distanceFor(next)
+            currentIntervalSeconds = AdaptiveDistancePolicy.intervalFor(next, config.intervalSeconds)
+            changed = true
+        }
+        // Heartbeat de parada: prima sobre la cadencia del modo.
+        if (FixFilter.heartbeatDue(lastMovementMs, System.currentTimeMillis()) &&
+            currentIntervalSeconds != FixFilter.STOP_HEARTBEAT_SECONDS
+        ) {
+            currentIntervalSeconds = FixFilter.STOP_HEARTBEAT_SECONDS
+            Log.i(TAG, "Stop detection: quietud prolongada → heartbeat ${FixFilter.STOP_HEARTBEAT_SECONDS}s")
+            changed = true
+        }
+        if (!changed) return false
         if (!started.get() || stopping || capturePausedForBuffer) return false
         Log.i(TAG, "Adaptativo → ${currentMinDistanceM}m cada ${currentIntervalSeconds}s (modo $next, speed=$lastFixSpeedMps)")
         runCatching { fused?.removeLocationUpdates(locationCallback) }
@@ -1280,6 +1317,11 @@ class TrackingService : Service() {
             null
         }
         lastFixSpeedMps = SpeedEstimator.effectiveMps(doppler, implied)
+        // Stop detection (perfil oculto, ON): hay movimiento si la efectiva
+        // supera 1.5 m/s; el heartbeat entra tras 60 s sin moverse.
+        if ((lastFixSpeedMps ?: 0f) >= 1.5f) {
+            lastMovementMs = nowMs
+        }
         lastSpeedRefLat = location.latitude
         lastSpeedRefLon = location.longitude
         lastSpeedRefTimeMs = nowMs
@@ -1319,6 +1361,31 @@ class TrackingService : Service() {
                         distanceMeters(
                             lastJourneyLat, lastJourneyLon, location.latitude, location.longitude,
                         ) < 2.0
+                    ) {
+                        runCatching { config.incFixRejected() }
+                        return@withLock
+                    }
+                    // Regla OR Traccar (frecuencia/distancia 24 m/ángulo 15°):
+                    // solo se encola lo que aporta geometría al trazo; lo demás
+                    // se filtra sin tocar contadores, journey ni lastFixAt.
+                    val nowWallMs = System.currentTimeMillis()
+                    val acceptedRef = when {
+                        lastAcceptedTimeMs > 0 -> FixFilter.AcceptedRef(
+                            lastAcceptedLat, lastAcceptedLon,
+                            lastAcceptedTimeMs, lastAcceptedBearingDeg,
+                        )
+                        config.journeyHasLastLocation -> FixFilter.AcceptedRef(
+                            lastJourneyLat, lastJourneyLon, config.lastFixAt, Double.NaN,
+                        )
+                        else -> null
+                    }
+                    if (!FixFilter.acceptByRule(
+                            ref = acceptedRef,
+                            lat = location.latitude,
+                            lon = location.longitude,
+                            timeMs = nowWallMs,
+                            frequencyMs = currentIntervalSeconds * 1000L,
+                        )
                     ) {
                         runCatching { config.incFixRejected() }
                         return@withLock
@@ -1404,6 +1471,34 @@ class TrackingService : Service() {
                     config.journeyPoints = config.journeyPoints + 1
                     // El elapsed monotónico viaja junto a los contadores de jornada.
                     persistJourneyElapsed()
+                    // Referencia de la regla OR: rumbo del tramo que llegó aquí
+                    // (solo si el tramo mide; si no, se conserva el anterior).
+                    if (lastAcceptedTimeMs > 0) {
+                        val inboundLeg = FixFilter.distanceMeters(
+                            lastAcceptedLat, lastAcceptedLon,
+                            location.latitude, location.longitude,
+                        )
+                        if (inboundLeg >= 1.0) {
+                            lastAcceptedBearingDeg = FixFilter.bearingDeg(
+                                lastAcceptedLat, lastAcceptedLon,
+                                location.latitude, location.longitude,
+                            )
+                        }
+                    } else if (config.journeyHasLastLocation) {
+                        val inboundLeg = FixFilter.distanceMeters(
+                            lastJourneyLat, lastJourneyLon,
+                            location.latitude, location.longitude,
+                        )
+                        if (inboundLeg >= 1.0) {
+                            lastAcceptedBearingDeg = FixFilter.bearingDeg(
+                                lastJourneyLat, lastJourneyLon,
+                                location.latitude, location.longitude,
+                            )
+                        }
+                    }
+                    lastAcceptedLat = location.latitude
+                    lastAcceptedLon = location.longitude
+                    lastAcceptedTimeMs = nowWallMs
                     lastJourneyLat = location.latitude
                     lastJourneyLon = location.longitude
                     config.journeyLastLat = location.latitude
@@ -1980,6 +2075,8 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
         config.journeyLastLat = 0.0
         config.journeyLastLon = 0.0
         config.journeyHasLastLocation = false
+        lastAcceptedTimeMs = 0L
+        lastAcceptedBearingDeg = Double.NaN
         if (start <= 0) {
             config.journeyStopRequested = false
             return getString(R.string.notif_journey_finished)

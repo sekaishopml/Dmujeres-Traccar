@@ -135,12 +135,12 @@ class ActiveGpsPolicyTest {
     }
 
     @Test
-    fun movingUses15Meters() {
+    fun movingUses24Meters() {
         val mode = AdaptiveDistancePolicy.nextMode(
             AdaptiveDistancePolicy.Mode.STATIONARY, 6f, hasRecentFix = true,
         )
         assertEquals(AdaptiveDistancePolicy.Mode.MOVING, mode)
-        assertEquals(15f, AdaptiveDistancePolicy.distanceFor(mode))
+        assertEquals(24f, AdaptiveDistancePolicy.distanceFor(mode))
         assertEquals(FixFilter.MIN_UPDATE_DISTANCE_M, AdaptiveDistancePolicy.distanceFor(mode))
     }
 

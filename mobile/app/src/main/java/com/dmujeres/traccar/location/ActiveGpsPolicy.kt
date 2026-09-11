@@ -92,7 +92,7 @@ object AdaptiveDistancePolicy {
     /** En quietud: recibir todo lo que el FLP dé. */
     const val DISTANCE_STATIONARY_M = 0f
 
-    /** En movimiento: el valor urbano/peatón de [FixFilter.MIN_UPDATE_DISTANCE_M]. */
+    /** En movimiento: el valor de [FixFilter.MIN_UPDATE_DISTANCE_M] (perfil oculto). */
     val DISTANCE_MOVING_M: Float
         get() = FixFilter.MIN_UPDATE_DISTANCE_M
 

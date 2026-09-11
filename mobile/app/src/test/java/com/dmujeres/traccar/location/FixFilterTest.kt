@@ -215,4 +215,67 @@ class FixFilterTest {
         )
         assertTrue(decision is FixFilter.Decision.Reject)
     }
+
+    // ── Regla OR Traccar (frecuencia/distancia/ángulo) ──
+
+    @Test
+    fun orRuleFirstFixAccepts() {
+        assertTrue(FixFilter.acceptByRule(null, -2.2, -79.88, 1_000L, 5_000L))
+    }
+
+    @Test
+    fun orRuleTimeAccepts() {
+        val ref = FixFilter.AcceptedRef(-2.2, -79.88, 0L, Double.NaN)
+        assertTrue(FixFilter.acceptByRule(ref, -2.20001, -79.88, 6_000L, 5_000L))
+    }
+
+    @Test
+    fun orRuleDistanceAccepts() {
+        // ~30 m al norte en 2 s (< frecuencia 5 s): manda la distancia 24 m.
+        val ref = FixFilter.AcceptedRef(-2.2, -79.88, 0L, Double.NaN)
+        assertTrue(FixFilter.acceptByRule(ref, -2.19973, -79.88, 2_000L, 5_000L))
+    }
+
+    @Test
+    fun orRuleQuietStraightRejects() {
+        // 5 m en 2 s sin giro: redundante, se filtra.
+        val ref = FixFilter.AcceptedRef(-2.2, -79.88, 0L, 0.0)
+        assertFalse(FixFilter.acceptByRule(ref, -2.19996, -79.88, 2_000L, 5_000L))
+    }
+
+    @Test
+    fun orRuleTurnAccepts() {
+        // Venía al norte (rumbo 0), gira al este (~90°) con pata de 20 m en 4 s.
+        val ref = FixFilter.AcceptedRef(-2.2, -79.88, 0L, 0.0)
+        assertTrue(FixFilter.acceptByRule(ref, -2.2, -79.87982, 4_000L, 5_000L))
+    }
+
+    @Test
+    fun orRuleShortLegTurnRejects() {
+        // Giro de 90° pero pata de 3 m en 3 s (< frecuencia 5 s): jitter, no curva.
+        val ref = FixFilter.AcceptedRef(-2.2, -79.88, 0L, 0.0)
+        assertFalse(FixFilter.acceptByRule(ref, -2.2, -79.879973, 3_000L, 5_000L))
+    }
+
+    @Test
+    fun bearingNorthEastSouthWest() {
+        assertEquals(0.0, FixFilter.bearingDeg(0.0, 0.0, 1.0, 0.0), 0.5)
+        assertEquals(90.0, FixFilter.bearingDeg(0.0, 0.0, 0.0, 1.0), 0.5)
+        assertEquals(180.0, FixFilter.bearingDeg(1.0, 0.0, 0.0, 0.0), 0.5)
+        assertEquals(270.0, FixFilter.bearingDeg(0.0, 1.0, 0.0, 0.0), 0.5)
+    }
+
+    @Test
+    fun angleDiffWraps() {
+        assertEquals(20.0, FixFilter.angleDiffDeg(350.0, 10.0), 0.001)
+        assertEquals(180.0, FixFilter.angleDiffDeg(0.0, 180.0), 0.001)
+        assertEquals(0.0, FixFilter.angleDiffDeg(45.0, 45.0), 0.001)
+    }
+
+    @Test
+    fun heartbeatDueAfterMinuteStill() {
+        assertFalse(FixFilter.heartbeatDue(1_000L, 30_000L))
+        assertFalse(FixFilter.heartbeatDue(1_000L, 61_000L))
+        assertTrue(FixFilter.heartbeatDue(1_000L, 61_001L))
+    }
 }

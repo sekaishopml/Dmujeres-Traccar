@@ -19,10 +19,12 @@ package com.dmujeres.traccar.location
 object FixFilter {
 
     /**
-     * Distancia mínima entre updates del FLP (15 m urbano/peatón; en movimiento no se nota).
+     * Distancia mínima entre updates del FLP en movimiento (24 m, perfil oculto
+     * estilo Traccar "Highest": reportar cada N metros en marcha; el sistema
+     * nunca garantiza el valor exacto, es una sugerencia al FLP).
      * Se aplica con `LocationRequest.setMinUpdateDistanceMeters`.
      */
-    const val MIN_UPDATE_DISTANCE_M = 15f
+    const val MIN_UPDATE_DISTANCE_M = 24f
 
     /** Techo absoluto: accuracy >= 500 m se rechaza (igual que antes). */
     const val MAX_ACCURACY_M = 500f
@@ -35,6 +37,29 @@ object FixFilter {
 
     /** Tamaño de la ventana honesta (aceptados + rechazados). */
     const val WINDOW_SIZE = 6
+
+    // ── Perfil de captura oculto estilo Traccar "Highest" (sin UI: siempre
+    //    preciso en producción). Regla OR de reporte (docs Traccar + foros):
+    //    se encola si pasó la frecuencia O se avanzó la distancia O se giró
+    //    el ángulo. El ángulo es lo que evita rectas en curvas: cada giro en
+    //    intersección genera su punto y el trazo sigue la calle.
+    /** Distancia (m) desde el último aceptado que dispara reporte. */
+    const val REPORT_DISTANCE_M = 24.0
+
+    /** Giro (grados) respecto al rumbo aceptado que dispara reporte. */
+    const val REPORT_ANGLE_DEG = 15.0
+
+    /** Pata mínima (m) para que el giro cuente (filtra jitter parado). */
+    const val REPORT_ANGLE_MIN_LEG_M = 8.0
+
+    /** Velocidad implícita mínima (m/s) para que el giro cuente. */
+    const val REPORT_ANGLE_MIN_SPEED_MPS = 1.5
+
+    /** Quietud (ms) tras la cual entra el heartbeat de parada. */
+    const val STOP_STILL_TIMEOUT_MS = 60_000L
+
+    /** Cadencia del heartbeat en parada (Traccar: stationary heartbeat 60 s). */
+    const val STOP_HEARTBEAT_SECONDS = 60L
 
     /**
      * Anti-livelock R1: si la ventana sigue vacía (cero capturas) y el primer fix
@@ -116,6 +141,71 @@ object FixFilter {
         if (dt <= 0) return false
         return distanceMeters(a.lat, a.lon, b.lat, b.lon) / dt > consistentSpeedMps
     }
+
+    /** Rumbo geográfico 0-360 (0 = norte, horario) del tramo a→b. */
+    fun bearingDeg(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val dLon = Math.toRadians(lon2 - lon1)
+        val la1 = Math.toRadians(lat1)
+        val la2 = Math.toRadians(lat2)
+        val y = Math.sin(dLon) * Math.cos(la2)
+        val x = Math.cos(la1) * Math.sin(la2) -
+            Math.sin(la1) * Math.cos(la2) * Math.cos(dLon)
+        return (Math.toDegrees(Math.atan2(y, x)) + 360.0) % 360.0
+    }
+
+    /** Diferencia de rumbos 0-180. */
+    fun angleDiffDeg(bearingA: Double, bearingB: Double): Double {
+        if (!bearingA.isFinite() || !bearingB.isFinite()) return Double.NaN
+        var diff = Math.abs(bearingA - bearingB) % 360.0
+        if (diff > 180.0) diff = 360.0 - diff
+        return diff
+    }
+
+    /** Referencia del último fix ACEPTADO (encolado) para la regla OR. */
+    data class AcceptedRef(
+        val lat: Double,
+        val lon: Double,
+        val timeMs: Long,
+        /** Rumbo del tramo que LLEGÓ a este punto; NaN si se desconoce. */
+        val inboundBearingDeg: Double = Double.NaN,
+    )
+
+    /**
+     * Regla OR de reporte estilo Traccar (pura, testeable): acepta el candidato
+     * si pasó la frecuencia desde el último aceptado, o avanzó [REPORT_DISTANCE_M],
+     * o giró [REPORT_ANGLE_DEG] con pata e implícita mínimas (curvas densas,
+     * rectas limpias). Sin referencia (primer fix) siempre acepta.
+     */
+    fun acceptByRule(
+        ref: AcceptedRef?,
+        lat: Double,
+        lon: Double,
+        timeMs: Long,
+        frequencyMs: Long,
+        distanceM: Double = REPORT_DISTANCE_M,
+        angleDeg: Double = REPORT_ANGLE_DEG,
+    ): Boolean {
+        if (ref == null) return true
+        if (timeMs - ref.timeMs >= frequencyMs) return true
+        val leg = distanceMeters(ref.lat, ref.lon, lat, lon)
+        if (leg >= distanceM) return true
+        if (leg >= REPORT_ANGLE_MIN_LEG_M && ref.inboundBearingDeg.isFinite()) {
+            val dtSeconds = (timeMs - ref.timeMs) / 1000.0
+            val implied = if (dtSeconds > 0) leg / dtSeconds else Double.NaN
+            if (implied.isFinite() && implied >= REPORT_ANGLE_MIN_SPEED_MPS) {
+                val turn = angleDiffDeg(
+                    ref.inboundBearingDeg,
+                    bearingDeg(ref.lat, ref.lon, lat, lon),
+                )
+                if (turn.isFinite() && turn >= angleDeg) return true
+            }
+        }
+        return false
+    }
+
+    /** Heartbeat de parada: quieto más de [STOP_STILL_TIMEOUT_MS] → cadencia larga. */
+    fun heartbeatDue(lastMovementMs: Long, nowMs: Long): Boolean =
+        nowMs - lastMovementMs > STOP_STILL_TIMEOUT_MS
 
     @Suppress("ReturnCount")
     fun evaluate(
