@@ -367,6 +367,7 @@ class TrackingService : Service() {
         adaptiveMoving = false
         gnssForced = false
         currentMinDistanceM = AdaptiveDistancePolicy.DISTANCE_STATIONARY_M
+        currentIntervalSeconds = config.intervalSeconds
         if (recoveringJourney) {
             // El monotónico no sobrevive a la muerte del proceso: mapea el
             // lastFixAt (wall) al arranque para no disparar polling con fix reciente.
@@ -631,6 +632,7 @@ class TrackingService : Service() {
     @Volatile private var lastFixSpeedMps: Float? = null
     @Volatile private var adaptiveMoving = false
     @Volatile private var currentMinDistanceM = AdaptiveDistancePolicy.DISTANCE_STATIONARY_M
+    @Volatile private var currentIntervalSeconds = 10L
     private var gnssCallback: GnssStatus.Callback? = null
 
     /**
@@ -829,8 +831,9 @@ class TrackingService : Service() {
         if (next == current) return false
         adaptiveMoving = next == AdaptiveDistancePolicy.Mode.MOVING
         currentMinDistanceM = AdaptiveDistancePolicy.distanceFor(next)
+        currentIntervalSeconds = AdaptiveDistancePolicy.intervalFor(next, config.intervalSeconds)
         if (!started.get() || stopping || capturePausedForBuffer) return false
-        Log.i(TAG, "Distancia adaptativa → ${currentMinDistanceM}m (modo $next, speed=$lastFixSpeedMps)")
+        Log.i(TAG, "Adaptativo → ${currentMinDistanceM}m cada ${currentIntervalSeconds}s (modo $next, speed=$lastFixSpeedMps)")
         runCatching { fused?.removeLocationUpdates(locationCallback) }
         requestLocationUpdates()
         lastGpsReregisterAt = System.currentTimeMillis()
@@ -1781,9 +1784,9 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
         return batteryLevel() in 1..20
     }
 
-    /** Intervalo efectivo: Fase A densidad constante — NO se altera por batería baja. */
+    /** Intervalo efectivo: base quieto, 5 s en marcha (re-registrado al cambiar de modo). */
     private fun effectiveIntervalSeconds(): Long {
-        return config.intervalSeconds
+        return currentIntervalSeconds.coerceAtLeast(1L)
     }
 
     /**

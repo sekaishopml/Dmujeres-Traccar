@@ -96,6 +96,22 @@ object AdaptiveDistancePolicy {
     val DISTANCE_MOVING_M: Float
         get() = FixFilter.MIN_UPDATE_DISTANCE_M
 
+    /** En movimiento se captura cada 5 s: trazo y flechas densos y reales
+     *  (cada flecha del replay es un fix recolectado, nunca interpolado). */
+    const val MOVING_INTERVAL_SECONDS = 5L
+
+    /**
+     * Intervalo de captura según modo: en marcha, denso (5 s, nunca por
+     * encima de la base configurada); quieto, la base sin cambios.
+     */
+    fun intervalFor(mode: Mode, baseSeconds: Long): Long {
+        val base = baseSeconds.coerceAtLeast(1L)
+        return when (mode) {
+            Mode.MOVING -> minOf(base, MOVING_INTERVAL_SECONDS)
+            Mode.STATIONARY -> base
+        }
+    }
+
     enum class Mode { STATIONARY, MOVING }
 
     /**
