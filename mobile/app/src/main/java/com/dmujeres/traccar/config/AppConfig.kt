@@ -311,6 +311,11 @@ class AppConfig(context: Context) {
         get() = readDailyBucket(KEY_STUCK_STOPS_24H)
         set(value) = writeDailyBucket(KEY_STUCK_STOPS_24H, value)
 
+    /** Veces que el Doppler se atascó en 0 en marcha (implícita >= 5 m/s). */
+    var speedStuck24h: Int
+        get() = readDailyBucket(KEY_SPEED_STUCK_24H)
+        set(value) = writeDailyBucket(KEY_SPEED_STUCK_24H, value)
+
     /** ANRs del día (helper reservado; ver KDoc del bloque: aún sin emisor). */
     var anrs24h: Int
         get() = readDailyBucket(KEY_ANRS_24H)
@@ -327,6 +332,9 @@ class AppConfig(context: Context) {
 
     @Synchronized
     fun incStuckStop24h(): Int = incDailyBucket(KEY_STUCK_STOPS_24H)
+
+    @Synchronized
+    fun incSpeedStuck24h(): Int = incDailyBucket(KEY_SPEED_STUCK_24H)
 
     @Synchronized
     fun incAnr24h(): Int = incDailyBucket(KEY_ANRS_24H)
@@ -524,6 +532,7 @@ class AppConfig(context: Context) {
         private const val KEY_CLOCK_STEPS_24H = "health_clock_steps_24h"
         private const val KEY_RECONNECTS_24H = "health_reconnects_24h"
         private const val KEY_STUCK_STOPS_24H = "health_stuck_stops_24h"
+        private const val KEY_SPEED_STUCK_24H = "health_speed_stuck_24h"
         private const val KEY_ANRS_24H = "health_anrs_24h"
         private const val KEY_CLEAN_SHUTDOWN = "health_clean_shutdown"
         private const val KEY_DIAG_LAST_REPORT_AT = "diagnostics_last_report_at"

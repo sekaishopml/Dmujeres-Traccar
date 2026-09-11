@@ -40,6 +40,7 @@ import com.dmujeres.traccar.util.NetCause
 import com.dmujeres.traccar.util.NetSnapshot
 import com.dmujeres.traccar.util.Notifications
 import com.dmujeres.traccar.util.SentryLog
+import com.dmujeres.traccar.util.SpeedEstimator
 import com.dmujeres.traccar.util.TelInfo
 import com.dmujeres.traccar.util.readTelInfo
 import com.dmujeres.traccar.util.refine
@@ -364,6 +365,8 @@ class TrackingService : Service() {
         clockAnchorWallMs = 0L
         clockAnchorMonoMs = 0L
         lastFixSpeedMps = null
+        lastSpeedRefTimeMs = 0L
+        consecDopplerStuck = 0
         adaptiveMoving = false
         gnssForced = false
         currentMinDistanceM = AdaptiveDistancePolicy.DISTANCE_STATIONARY_M
@@ -631,6 +634,12 @@ class TrackingService : Service() {
     @Volatile private var pollInFlight = false
     @Volatile private var lastFixSpeedMps: Float? = null
     @Volatile private var adaptiveMoving = false
+    // Referencia del último fix aceptado para velocidad implícita (respaldo
+    // cuando el Doppler miente en 0) + racha de Doppler atascado para Sentry.
+    private var lastSpeedRefLat = 0.0
+    private var lastSpeedRefLon = 0.0
+    private var lastSpeedRefTimeMs = 0L
+    private var consecDopplerStuck = 0
     @Volatile private var currentMinDistanceM = AdaptiveDistancePolicy.DISTANCE_STATIONARY_M
     @Volatile private var currentIntervalSeconds = 10L
     private var gnssCallback: GnssStatus.Callback? = null
@@ -1256,9 +1265,43 @@ class TrackingService : Service() {
         val lowQuality = (decision as FixFilter.Decision.Accept).lowQuality
         recordRecentFix(location)
         // Fix válido aceptado por el filtro (misma vía para FLP pasivo y
-        // polling activo): memoriza speed para la distancia adaptativa. El fix
-        // en curso es reciente por definición.
-        lastFixSpeedMps = if (location.hasSpeed()) location.speed.coerceAtLeast(0f) else null
+        // polling activo): velocidad EFECTIVA para la distancia adaptativa.
+        // El Doppler de algunos equipos (ZTE) se atasca en 0 en marcha: si no
+        // es creíble se usa la implícita (geometría entre fixes), que en parado
+        // también tiende a ~0 y no dispara MOVING por jitter.
+        val nowMs = System.currentTimeMillis()
+        val doppler = if (location.hasSpeed()) location.speed.coerceAtLeast(0f) else null
+        val implied = if (lastSpeedRefTimeMs > 0) {
+            SpeedEstimator.impliedMps(
+                lastSpeedRefLat, lastSpeedRefLon, lastSpeedRefTimeMs,
+                location.latitude, location.longitude, nowMs,
+            )
+        } else {
+            null
+        }
+        lastFixSpeedMps = SpeedEstimator.effectiveMps(doppler, implied)
+        lastSpeedRefLat = location.latitude
+        lastSpeedRefLon = location.longitude
+        lastSpeedRefTimeMs = nowMs
+        // Caza del Doppler atascado para Sentry/telemetría: Doppler en 0 con
+        // implícita de marcha (>= 5 m/s) 3 fixes seguidos.
+        if ((doppler ?: 0f) <= SpeedEstimator.DOPPLER_TRUST_MPS
+            && (implied ?: 0f) >= SpeedEstimator.STUCK_IMPL_MIN_MPS
+        ) {
+            consecDopplerStuck += 1
+            if (consecDopplerStuck == SpeedEstimator.STUCK_CONSECUTIVE) {
+                val count = runCatching { config.incSpeedStuck24h() }.getOrDefault(0)
+                SentryLog.breadcrumb(
+                    "diag", "speed",
+                    "doppler atascado en 0 con implícita ${(implied ?: 0f)} m/s (veces hoy: $count)",
+                )
+                if (count == 1) {
+                    SentryLog.event("speed_doppler_stuck", "Doppler en 0 en marcha (implícita >= 5 m/s)")
+                }
+            }
+        } else {
+            consecDopplerStuck = 0
+        }
         runCatching { applyAdaptiveMode(hasRecentFix = true) }
         // lastFixAt avanza SOLO tras insert OK (ver abajo): avanzar antes
         // enmascara fallos de DB/buffer y suprime heartbeats.

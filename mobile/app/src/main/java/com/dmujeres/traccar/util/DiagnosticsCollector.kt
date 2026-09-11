@@ -40,6 +40,7 @@ data class DiagnosticsSources(
     val anrs24h: Int,
     val stuckStops24h: Int,
     val clockSteps24h: Int,
+    val speedStuck24h: Int,
     val lastStartError: String,
 )
 
@@ -125,6 +126,7 @@ object DiagnosticsCollector {
             put("anrs24h", s.anrs24h.coerceAtLeast(0))
             put("stuckStops", s.stuckStops24h.coerceAtLeast(0))
             put("clockSteps24h", s.clockSteps24h.coerceAtLeast(0))
+            put("speedStuck24h", s.speedStuck24h.coerceAtLeast(0))
             nonBlank(s.lastStartError)?.let { put("lastStartError", it.take(64)) }
         },
     )
@@ -192,6 +194,7 @@ object DiagnosticsCollector {
             anrs24h = runCatching { config.anrs24h }.getOrDefault(0),
             stuckStops24h = runCatching { config.stuckStops24h }.getOrDefault(0),
             clockSteps24h = runCatching { config.clockSteps24h }.getOrDefault(0),
+            speedStuck24h = runCatching { config.speedStuck24h }.getOrDefault(0),
             lastStartError = config.lastStartError,
         )
     }

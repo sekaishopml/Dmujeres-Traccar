@@ -36,6 +36,7 @@ class DiagnosticsCollectorTest {
         anrs24h = 0,
         stuckStops24h = 2,
         clockSteps24h = 4,
+        speedStuck24h = 1,
         lastStartError = "sin permiso",
     )
 
@@ -60,7 +61,7 @@ class DiagnosticsCollectorTest {
         assertEquals(setOf("cause", "cellular", "airplane"), group(report, "net").keys)
         assertEquals(setOf("battery", "exempt", "idleMs"), group(report, "power").keys)
         assertEquals(
-            setOf("crashes24h", "anrs24h", "stuckStops", "clockSteps24h", "lastStartError"),
+            setOf("crashes24h", "anrs24h", "stuckStops", "clockSteps24h", "speedStuck24h", "lastStartError"),
             group(report, "health").keys,
         )
     }

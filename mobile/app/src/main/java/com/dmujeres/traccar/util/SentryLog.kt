@@ -21,4 +21,15 @@ object SentryLog {
             io.sentry.Sentry.addBreadcrumb(crumb)
         }
     }
+
+    /**
+     * Evento de telemetría para cazar errores de campo (NO un crash): llega al
+     * stream de issues de Sentry. El llamador lo limita (p. ej. 1 vez/día con
+     * un contador diario) para no spamear.
+     */
+    fun event(tag: String, message: String) {
+        runCatching {
+            io.sentry.Sentry.captureMessage("[$tag] $message")
+        }
+    }
 }
