@@ -62,24 +62,36 @@ class JourneyWidget : AppWidgetProvider() {
                 elapsedMs = elapsedMs,
                 online = online,
             )
-            manager.updateAppWidget(widgetId, buildViews(context, state))
+            // Launchers que conservan la celda vieja (2x1): si la altura estimada
+            // no da para las cuatro líneas, se sacrifica solo el subtítulo para
+            // que estado y botón SIEMPRE se lean completos.
+            val shortCell = runCatching {
+                manager.getAppWidgetOptions(widgetId)
+                    .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 999) < 95
+            }.getOrDefault(false)
+            manager.updateAppWidget(widgetId, buildViews(context, state, shortCell))
         }.onFailure { Log.w(TAG, "No se pudo renderizar el widget $widgetId", it) }
     }
 
-    private fun buildViews(context: Context, state: WidgetUiState): RemoteViews {
+    private fun buildViews(context: Context, state: WidgetUiState, shortCell: Boolean): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_journey)
 
         views.setTextViewText(R.id.widget_title, context.getString(R.string.app_name))
+        // 2x2: ESTADO grande legible ("15 h 42 min") + subtítulo pequeño.
         views.setTextViewText(
             R.id.widget_status,
             if (state.active) {
-                context.getString(R.string.widget_active_prefix) + " · " +
-                    JourneyWidgetState.formatDuration(state.durationMs)
+                JourneyWidgetState.formatDurationWords(state.durationMs)
             } else {
-                context.getString(
-                    if (state.waitingHint) R.string.widget_waiting
-                    else R.string.widget_idle,
-                )
+                context.getString(R.string.widget_idle)
+            },
+        )
+        views.setTextViewText(
+            R.id.widget_subtitle,
+            when {
+                state.active -> context.getString(R.string.widget_active_prefix)
+                state.waitingHint -> context.getString(R.string.widget_waiting)
+                else -> context.getString(R.string.widget_idle_hint)
             },
         )
         views.setTextViewText(
@@ -197,6 +209,15 @@ object JourneyWidgetState {
     fun formatDuration(durationMs: Long): String {
         val (hours, minutes) = JourneyFormatter.durationParts(durationMs.coerceAtMost(MAX_DISPLAY_MS))
         return if (hours <= 0L) "${minutes}m" else "${hours}h ${minutes}m"
+    }
+
+    /**
+     * Versión legible del título 2x2: "15 h 42 min" / "42 min" (nunca "0 h").
+     * Puro, testeable en JVM.
+     */
+    fun formatDurationWords(durationMs: Long): String {
+        val (hours, minutes) = JourneyFormatter.durationParts(durationMs.coerceAtMost(MAX_DISPLAY_MS))
+        return if (hours <= 0L) "$minutes min" else "$hours h $minutes min"
     }
 
     /**

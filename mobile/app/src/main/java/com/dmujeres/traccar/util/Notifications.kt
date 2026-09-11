@@ -6,11 +6,42 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.dmujeres.traccar.MainActivity
 import com.dmujeres.traccar.R
 
+/**
+ * Política pura anti-spam de alertas (JVM-testable, sin Android).
+ *
+ * Reglas (aplicadas centralmente en [Notifications.alert], invisibles para los
+ * ~15 call sites):
+ * - MISMA alerta (title+body): no se repite dentro de [SAME_KEY_COOLDOWN_MS]
+ *   (mata el doble Boot+Worker de la misma recuperación y el reintento del
+ *   mismo aviso en ciclos de refresh).
+ * - GAP GLOBAL: entre dos alertas CUALESQUIERA deben pasar [GLOBAL_MIN_GAP_MS]
+ *   (acota el flap estado A↔B aunque las claves difieran).
+ * - Umbral 0 = "nunca alerté" → siempre pasa la primera.
+ */
+object AlertPolicy {
+    const val SAME_KEY_COOLDOWN_MS = 30 * 60_000L
+    const val GLOBAL_MIN_GAP_MS = 60_000L
+
+    fun shouldAlert(now: Long, lastSameKeyAt: Long, lastAnyAt: Long): Boolean =
+        now - lastSameKeyAt >= SAME_KEY_COOLDOWN_MS && now - lastAnyAt >= GLOBAL_MIN_GAP_MS
+
+    /** Clave de dedupe: lo que el usuario ve (título + cuerpo). */
+    fun keyOf(title: String, body: String): String = "$title\n$body"
+}
+
 object Notifications {
+
+    private const val ALERTS_PREFS = "dmj_alerts"
+    private const val KEY_LAST_ALERT = "lastAlertKey"
+    private const val KEY_LAST_ALERT_AT = "lastAlertKeyAt"
+    private const val KEY_LAST_ANY_AT = "lastAnyAt"
+    private const val KEY_CONNECTED_NOTIFIED = "lastConnectedNotified"
 
     const val CHANNEL_ID = "dmj_tracking"
     const val CHANNEL_ALERTS = "dmj_alerts"
@@ -93,8 +124,62 @@ object Notifications {
             .build()
     }
 
-/** Alerta puntual con sonido (conectado/desconectado, inicio/fin de jornada, avisos). */
+/**
+ * Alerta puntual con sonido (conectado/desconectado, avisos...). Firma y_semántica
+ * externas intactas; por dentro aplica la dedupe+cooldown de [AlertPolicy] con
+ * estado persistente (mismo proceso, boot, worker comparten prefs): la misma
+ * title+body no se repite en 30 min y entre alertas distintas hay 60 s mínimas.
+ * Se salta en silencio (log). Para alertas que deben ser inmediatas
+ * (inicio de jornada) usa [alertNow].
+ */
     fun alert(context: Context, title: String, text: String, notificationId: Int = ALERT_ID) {
+        val now = System.currentTimeMillis()
+        val p = alertPrefs(context)
+        val key = AlertPolicy.keyOf(title, text)
+        val lastSameKeyAt = if (p.getString(KEY_LAST_ALERT, "") == key) {
+            p.getLong(KEY_LAST_ALERT_AT, 0L)
+        } else {
+            0L
+        }
+        if (!AlertPolicy.shouldAlert(now, lastSameKeyAt, p.getLong(KEY_LAST_ANY_AT, 0L))) {
+            Log.d("Notifications", "Alerta suprimida por cooldown: $title")
+            return
+        }
+        p.edit()
+            .putString(KEY_LAST_ALERT, key)
+            .putLong(KEY_LAST_ALERT_AT, now)
+            .putLong(KEY_LAST_ANY_AT, now)
+            .apply()
+        postAlert(context, title, text, notificationId)
+    }
+
+    /** Alerta inmediata sin cooldown (inicio de jornada: el usuario la pidió ya). */
+    fun alertNow(context: Context, title: String, text: String, notificationId: Int = ALERT_ID) {
+        val p = alertPrefs(context)
+        p.edit()
+            .putString(KEY_LAST_ALERT, AlertPolicy.keyOf(title, text))
+            .putLong(KEY_LAST_ALERT_AT, System.currentTimeMillis())
+            .putLong(KEY_LAST_ANY_AT, System.currentTimeMillis())
+            .apply()
+        postAlert(context, title, text, notificationId)
+    }
+
+    /**
+     * Estado persistido del aviso "Conectado al servidor": solo transición real
+     * OFF→ON (false→alert→true; DISCONNECTED lo vuelve a false). Sobrevive al proceso
+     * para que un restart conectado no vuelva a sonar.
+     */
+    fun wasConnectedNotified(context: Context): Boolean =
+        alertPrefs(context).getBoolean(KEY_CONNECTED_NOTIFIED, false)
+
+    fun setConnectedNotified(context: Context, value: Boolean) {
+        alertPrefs(context).edit().putBoolean(KEY_CONNECTED_NOTIFIED, value).apply()
+    }
+
+    private fun alertPrefs(context: Context): SharedPreferences =
+        context.getSharedPreferences(ALERTS_PREFS, Context.MODE_PRIVATE)
+
+    private fun postAlert(context: Context, title: String, text: String, notificationId: Int) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
             .setContentTitle(title)

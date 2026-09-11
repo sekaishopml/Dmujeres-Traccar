@@ -1,10 +1,7 @@
 package com.dmujeres.traccar
 
-import android.Manifest
-import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
@@ -13,7 +10,6 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,7 +44,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.location.GnssState
 import com.dmujeres.traccar.location.GnssSummary
@@ -71,22 +66,6 @@ class DiagnosticsActivity : ComponentActivity() {
     private lateinit var config: AppConfig
     private var refreshKey by mutableIntStateOf(0)
 
-    /**
-     * Permiso opcional READ_PHONE_STATE, solo bajo demanda desde este botón.
-     * Nunca se pide en onboarding ni bloquea Iniciar jornada: si lo deniegan
-     * se sigue con la heurística sin insistir.
-     */
-    private val phoneStateLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        Toast.makeText(
-            this,
-            if (granted) R.string.diag_phone_granted else R.string.diag_phone_denied,
-            Toast.LENGTH_LONG,
-        ).show()
-        refreshKey++
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         config = AppConfig(this)
@@ -103,7 +82,6 @@ class DiagnosticsActivity : ComponentActivity() {
                         startActivity(Intent(this, OnboardingActivity::class.java))
                     },
                     onRecoverService = { recoverService() },
-                    onImprove = { requestPhoneState() },
                     onSendReport = { sendReportNow() },
                 )
             }
@@ -139,25 +117,6 @@ class DiagnosticsActivity : ComponentActivity() {
         }
     }
 
-    /** Explicación previa + solicitud del permiso opcional de diagnóstico. */
-    private fun requestPhoneState() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) ==
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            Toast.makeText(this, R.string.diag_phone_already, Toast.LENGTH_LONG).show()
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.diag_improve)
-            .setMessage(R.string.diag_phone_rationale)
-            .setPositiveButton(android.R.string.ok) { dialog, _ ->
-                dialog.dismiss()
-                phoneStateLauncher.launch(Manifest.permission.READ_PHONE_STATE)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
     /**
      * "Enviar reporte ahora": reason "manual" (salta el throttle cliente). El
      * conteo de pendientes se hace en un hilo IO propio (nunca en main) y el
@@ -184,7 +143,6 @@ class DiagnosticsActivity : ComponentActivity() {
         onTestConnection: () -> Unit,
         onPermissions: () -> Unit,
         onRecoverService: () -> Unit,
-        onImprove: () -> Unit,
         onSendReport: () -> Unit,
     ) {
         val context = LocalContext.current
@@ -327,20 +285,6 @@ class DiagnosticsActivity : ComponentActivity() {
                 ) {
                     Text(
                         stringResource(R.string.permissions_button),
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
-                Button(
-                    onClick = onImprove,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(40.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.diag_improve),
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

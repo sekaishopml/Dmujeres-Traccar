@@ -240,11 +240,6 @@
     <string name="diag_service_stopped">· Servicio detenido</string>
     <string name="diag_test">Probar conexión al servidor</string>
     <string name="diag_retry_service">Reintentar servicio de seguimiento</string>
-    <string name="diag_improve">Mejorar diagnóstico</string>
-    <string name="diag_phone_rationale">Solo para decir si es tu chip/datos o la cobertura; no leemos tu número ni IMEI</string>
-    <string name="diag_phone_granted">Diagnóstico mejorado: ya distinguimos datos apagados de sin cobertura</string>
-    <string name="diag_phone_denied">Seguiremos con el diagnóstico básico</string>
-    <string name="diag_phone_already">El diagnóstico mejorado ya está activo</string>
 
     <!-- ============ DIAGNÓSTICO: MONITOR (reporte de diagnóstico + salud) ============ -->
     <string name="diag_monitor_report">Monitor · reporte enviado %1$s · %2$s</string>
@@ -273,12 +268,26 @@
     <string name="debug_clear">Salir del modo diseño</string>
     <string name="debug_preview_locked">Vista previa de diseño: sin acciones reales</string>
 
-    <!-- ============ WIDGET DE INICIO (JourneyWidget) ============ -->
+    <!-- ============ WIDGET DE INICIO (JourneyWidget) ============
+         2x2: textos pensados para ~140dp de útil; nada debe entrar recortado. -->
     <string name="widget_label">Jornada DMujeres</string>
     <string name="widget_desc">Inicia o finaliza tu jornada desde la pantalla de inicio</string>
-    <string name="action_start">Iniciar jornada</string>
-    <string name="action_end">Finalizar jornada</string>
+    <string name="action_start">Iniciar</string>
+    <string name="action_end">Finalizar</string>
     <string name="widget_active_prefix">Jornada activa</string>
     <string name="widget_idle">Sin jornada</string>
-    <string name="widget_waiting">Toca para iniciar tu jornada</string>
+    <string name="widget_waiting">Toca para iniciar</string>
+    <string name="widget_idle_hint">Pulsa el botón</string>
+    <!-- Duración grande del widget: "15 h 42 min" / "42 min". -->
+    <string name="widget_duration_hours">%1$d h %2$d min</string>
+    <string name="widget_duration_minutes">%1$d min</string>
+
+    <!-- ============ DASH: FILA DE DIAGNÓSTICO EN VIVO ============ -->
+    <string name="chip_gps">GPS</string>
+    <string name="chip_fix">Fix</string>
+    <string name="chip_ack">Ack</string>
+    <string name="chip_pending">Pendientes</string>
+    <string name="chip_report">Reporte</string>
+    <string name="chip_never">nunca</string>
+    <string name="dash_diag_title">Diagnóstico en vivo</string>
 </resources>

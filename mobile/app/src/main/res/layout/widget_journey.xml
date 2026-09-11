@@ -1,16 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Widget de jornada (RemoteViews puro = máxima compatibilidad de launchers).
-  Solo vistas soportadas por RemoteViews: LinearLayout/FrameLayout/TextView/ImageView.
-  El fondo del botón se cambia por código (verde/rojo) vía setBackgroundResource.
+  Widget de jornada 2x2 (RemoteViews puro = máxima compatibilidad de launchers).
+  Solo vistas soportadas por RemoteViews: LinearLayout/TextView/ImageView.
+  Todo en wrap_content: si el launcher conserva una celda vieja más baja (2x1),
+  el botón NUNCA se comprime a una franja sin texto; con 2x2 sobra aire.
+  El fondo del botón se cambia por código (verde/rojo).
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
+    android:minHeight="110dp"
     android:orientation="vertical"
     android:background="@drawable/widget_background"
-    android:padding="10dp">
+    android:padding="8dp">
 
     <LinearLayout
         android:id="@+id/widget_header"
@@ -21,55 +24,67 @@
 
         <ImageView
             android:id="@+id/widget_icon"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
             android:src="@mipmap/ic_launcher"
             android:contentDescription="@string/widget_label" />
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/widget_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="8dp"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/widget_title"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:ellipsize="end"
-                android:textColor="#181818"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:text="@string/app_name" />
-
-            <TextView
-                android:id="@+id/widget_status"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:ellipsize="end"
-                android:textColor="#181818"
-                android:textSize="12sp"
-                android:text="@string/widget_idle" />
-        </LinearLayout>
+            android:layout_marginStart="6dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:textColor="#181818"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:text="@string/app_name" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:textColor="#181818"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:text="@string/widget_idle" />
+
+    <TextView
+        android:id="@+id/widget_subtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="1dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:textColor="#666666"
+        android:textSize="11sp"
+        android:text="@string/widget_waiting" />
 
     <TextView
         android:id="@+id/widget_action"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="6dp"
+        android:minHeight="34dp"
         android:background="@drawable/widget_button_verde"
         android:gravity="center"
-        android:minHeight="44dp"
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
+        android:paddingTop="7dp"
+        android:paddingBottom="7dp"
+        android:maxLines="1"
+        android:includeFontPadding="false"
         android:textColor="#FFFFFF"
-        android:textSize="15sp"
+        android:textSize="13sp"
         android:textStyle="bold"
         android:text="@string/action_start" />
 

@@ -38,6 +38,22 @@ class JourneyWidgetStateTest {
     }
 
     @Test
+    fun wordyTitleFormatForLegible2x2() {
+        // Título grande del widget 2x2: "15 h 42 min" / "42 min", nunca "0 h".
+        assertEquals("0 min", JourneyWidgetState.formatDurationWords(0L))
+        assertEquals("42 min", JourneyWidgetState.formatDurationWords(42 * 60_000L))
+        assertEquals("59 min", JourneyWidgetState.formatDurationWords(59 * 60_000L))
+        assertEquals("1 h 30 min", JourneyWidgetState.formatDurationWords(90 * 60_000L))
+        assertEquals("15 h 42 min", JourneyWidgetState.formatDurationWords(15 * 3_600_000L + 42 * 60_000L))
+    }
+
+    @Test
+    fun wordyTitleIsClampedAndCapped() {
+        assertEquals("0 min", JourneyWidgetState.formatDurationWords(-12_345L))
+        assertEquals("24 h 0 min", JourneyWidgetState.formatDurationWords(100L * 3_600_000L))
+    }
+
+    @Test
     fun activeJourneyMapsToEndActionInRojo() {
         val state = JourneyWidgetState.stateFor(
             trackingEnabled = true,

@@ -108,6 +108,10 @@ class TrackingService : Service() {
     private var fused: FusedLocationProviderClient? = null
     private var mqtt: MqttManager? = null
     private val started = AtomicBoolean(false)
+    /** El foreground ya fue reclamado (startForeground OK) en esta corrida del servicio. */
+    @Volatile private var foregroundClaimed = false
+    /** Heavy init (DB/recoveries/FLP) hecho, post-reclamo. Ver [initCore]. */
+    @Volatile private var coreReady = false
     @Volatile private var currentState = TrackingState.TRACKING_DISABLED_BY_USER
     @Volatile private var startedTrackingAt = 0L
     /**
@@ -140,30 +144,80 @@ class TrackingService : Service() {
         }
     }
 
+    /**
+     * onCreate deliberadamente mínimo: el canal (que necesita la notificación del
+     * reclamo) + prefs. La apertura de DB, las heurísticas de arranque anómalo y
+     * el cliente FLP se corren DESPUÉS de reclamar el foreground en
+     * [onStartCommand] ([initCore]) para no gastar el timeout de
+     * ForegroundServiceDidNotStartInTimeException (crash real en Sentry ×2) en
+     * trabajo pesado antes del startForeground.
+     */
     override fun onCreate() {
         super.onCreate()
         Notifications.ensureChannel(this)
         config = AppConfig(this)
-        // Observabilidad: muerte inesperada en la corrida anterior (crash/kill con
-        // jornada abierta) y stuck-stops pendientes ANTES de pisar cleanShutdown.
+    }
+
+    /**
+     * Reclama el foreground con la notificación mínima ("Iniciando seguimiento…")
+     * idempotente. Devuelve null OK / el Throwable del fallo (SecurityException en
+     * Android 14 sin FOREGROUND_SERVICE_LOCATION, u otro).
+     */
+    private fun claimForeground(): Throwable? {
+        if (foregroundClaimed) return null
+        return try {
+            ServiceCompat.startForeground(
+                this,
+                Notifications.NOTIFICATION_ID,
+                Notifications.foregroundNotification(
+                    this,
+                    getString(R.string.app_name),
+                    getString(R.string.tracking_starting),
+                ),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+            )
+            foregroundClaimed = true
+            null
+        } catch (e: Exception) {
+            e
+        }
+    }
+
+    /** Libera el reclamo (quita la notificación ongoing del id 1, también la de boot). */
+    private fun releaseForeground() {
+        foregroundClaimed = false
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+    }
+
+    /**
+     * Init pesado que antes corría en onCreate, ahora tras el reclamo.
+     * Idempotente. false = BD inutilizable (el servicio ya se auto-detuvo).
+     * Mantiene el orden original: detecciones anómalas ANTES de pisar
+     * cleanShutdown y antes de abrir la BD.
+     */
+    private fun initCore(): Boolean {
+        if (coreReady) return true
         runCatching { detectAbnormalRestarts() }
-        try {
+        return try {
             dao = (application as DmujeresApp).database.positionDao()
+            fused = LocationServices.getFusedLocationProviderClient(this)
+            coreReady = true
+            isRunning = true
+            true
         } catch (e: Exception) {
             Log.e(TAG, "No se pudo abrir la base de datos", e)
             config.trackingEnabled = false
             config.lastStartError = "Error de base de datos: " + (e.message ?: e.javaClass.simpleName)
             publishState(TrackingState.SERVER_UNAVAILABLE)
+            releaseForeground()
             stopSelf()
-            return
+            false
         }
-        fused = LocationServices.getFusedLocationProviderClient(this)
-        isRunning = true
     }
 
     /**
-     * Heurística de arranques anómalos al nacer el servicio (ver KDoc del bloque
-     * de salud en AppConfig):
+     * Heurística de arranques anómalos tras reclamar el foreground (ver KDoc del
+     * bloque de salud en AppConfig):
      * - cleanShutdown==false con jornada abierta → la corrida anterior murió sin
      *   ACTION_STOP (crash, kill de OEM o reboot) → crashes24h++ + breadcrumb +
      *   report("crash_boot") (reason forzada, salta el throttle).
@@ -187,6 +241,42 @@ class TrackingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val isStop = intent?.action == ACTION_STOP
+        // ANTI ForegroundServiceDidNotStartInTimeException (crash real Sentry): el
+        // primer acto es pagar la promesa de startForegroundService con
+        // ServiceCompat.startForeground + notificación mínima, ANTES de tocar
+        // config/DAO/MQTT. STOP sobre servicio no arrancado jamás reclama
+        // (Android 14+); basta con stopSelf() abajo, que cancela la promesa.
+        val alive = started.get() || stopping || isRunning
+        if (ForegroundClaimPolicy.shouldClaimForeground(isStop, alive)) {
+            claimForeground()?.let { error ->
+                if (isStop) {
+                    // Estaba vivo: ya había reclamado antes; el cierre sigue igual.
+                    Log.w(TAG, "No se pudo re-afirmar el foreground en ACTION_STOP", error)
+                } else {
+                    val permissionFailure = error is SecurityException
+                    config.trackingEnabled = !permissionFailure
+                    config.lastStartError = if (permissionFailure) {
+                        "Sin permiso de ubicación en segundo plano"
+                    } else {
+                        "No se pudo iniciar el servicio de seguimiento"
+                    }
+                    publishState(
+                        if (permissionFailure) TrackingState.PERMISSION_MISSING
+                        else TrackingState.SERVER_UNAVAILABLE,
+                    )
+                    Notifications.alert(this, getString(R.string.warning_title), config.lastStartError)
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+            }
+        }
+        // STOP sobre servicio muerto sin jornada colgada: no se toca la DB ni nada
+        // pesado; se publica, se quita la ongoing de boot y stopSelf inmediato.
+        val needCore = !isStop || started.get() || stopping || config.journeyStartAt > 0L
+        if (needCore && !initCore()) {
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_STOP -> {
                 // Breadcrumb del botón (widget y MainActivity llegan por aquí).
@@ -200,7 +290,7 @@ class TrackingService : Service() {
                 } else {
                     publishState(TrackingState.TRACKING_DISABLED_BY_USER)
                     config.journeyStopRequested = false
-                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    releaseForeground()
                     // Refresca el widget ANTES de morir: si no, quedaría pintando
                     // "Finalizar jornada" hasta el siguiente onUpdate del launcher.
                     runCatching { JourneyWidget.updateAll(this) }
@@ -223,34 +313,7 @@ class TrackingService : Service() {
                     return START_STICKY
                 }
                 if (!config.trackingEnabled) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                    return START_NOT_STICKY
-                }
-                try {
-                    ServiceCompat.startForeground(
-                        this,
-                        Notifications.NOTIFICATION_ID,
-                        Notifications.foregroundNotification(
-                            this,
-                            getString(R.string.app_name),
-                            getString(R.string.tracking_starting),
-                        ),
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-                    )
-                } catch (e: Exception) {
-                    val permissionFailure = e is SecurityException
-                    config.trackingEnabled = !permissionFailure
-                    config.lastStartError = if (permissionFailure) {
-                        "Sin permiso de ubicación en segundo plano"
-                    } else {
-                        "No se pudo iniciar el servicio de seguimiento"
-                    }
-                    publishState(
-                        if (permissionFailure) TrackingState.PERMISSION_MISSING
-                        else TrackingState.SERVER_UNAVAILABLE,
-                    )
-                    Notifications.alert(this, getString(R.string.warning_title), config.lastStartError)
+                    releaseForeground()
                     stopSelf()
                     return START_NOT_STICKY
                 }
@@ -325,7 +388,9 @@ class TrackingService : Service() {
             config.journeyStopRequested = false
             config.journeyElapsedMs = 0L
             config.journeyElapsedWallMs = 0L
-            Notifications.alert(this, getString(R.string.jornada_iniciada), getString(R.string.jornada_iniciada_body))
+            // Inmediata por diseño: el usuario acaba de pedir arrancar; no puede
+            // quedar sujeta al cooldown global (alertNow la exime).
+            Notifications.alertNow(this, getString(R.string.jornada_iniciada), getString(R.string.jornada_iniciada_body))
             enqueuePresence("started")
             // Diagnóstico: snapshot forzado al abrir jornada (cola reciénStarted → pending 0).
             runCatching { SentryLog.breadcrumb("journey", "journey_start", "Jornada $startedTrackingAt iniciada") }
@@ -542,7 +607,6 @@ class TrackingService : Service() {
     @Volatile private var lastJourneyLat = 0.0
     @Volatile private var lastJourneyLon = 0.0
 
-    @Volatile private var lastConnectAlertAt = 0L
     @Volatile private var connectionUnavailableSince = 0L
     @Volatile private var lastConnectionAlertAt = 0L
     @Volatile private var lastBatteryAlertAt = 0L
@@ -633,12 +697,16 @@ class TrackingService : Service() {
             }
         }
         if (status != lastMqttStatus) {
-            val now = System.currentTimeMillis()
             when (status) {
-                MqttStatus.CONNECTED -> if (now - lastConnectAlertAt > 5 * 60_000) {
-                    lastConnectAlertAt = now
+                // "Conectado" solo en transición real OFF→ON, persistida: un restart
+                // del servicio ya conectado no vuelve a sonar (y si alguna vez se
+                // perdió, la recuperación sí avisa).
+                MqttStatus.CONNECTED -> if (!Notifications.wasConnectedNotified(this)) {
+                    Notifications.setConnectedNotified(this, true)
                     Notifications.alert(this, getString(R.string.connected_title), getString(R.string.connected_body))
                 }
+                MqttStatus.DISCONNECTED -> Notifications.setConnectedNotified(this, false)
+                else -> Unit
             }
             lastMqttStatus = status
         }
@@ -1609,6 +1677,14 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
         config.trackingState = state.name
     }
 
+    /**
+     * Último estado POR EL QUE SE ALERTÓ (distinto de currentState): una alerta de
+     * warning/ok solo sale si el estado alertable CAMBIÓ respecto a la última alerta,
+     * no en cada ciclo de refresh ni en flaps A→recovery→A (refresca por fix + watchdog
+     * 30 s y el flap re-alarmaba ok_title/warning_title cada pocos segundos).
+     */
+    @Volatile private var lastAlertedState: TrackingState? = null
+
     private fun setState(state: TrackingState) {
         if (currentState == state) {
             config.trackingState = state.name
@@ -1622,9 +1698,15 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
             || state == TrackingState.BATTERY_LOW
         if (state != TrackingState.TRACKING_ACTIVE && state != TrackingState.TRACKING_DISABLED_BY_USER
             && state != TrackingState.SERVICE_RECOVERY && !delayedAlertState) {
-            Notifications.alert(this, getString(R.string.warning_title), state.label)
+            if (state != lastAlertedState) {
+                lastAlertedState = state
+                Notifications.alert(this, getString(R.string.warning_title), state.label)
+            }
         }
-        if (state == TrackingState.TRACKING_ACTIVE && previous != TrackingState.TRACKING_ACTIVE) {
+        if (state == TrackingState.TRACKING_ACTIVE && previous != TrackingState.TRACKING_ACTIVE
+            && lastAlertedState != TrackingState.TRACKING_ACTIVE
+        ) {
+            lastAlertedState = TrackingState.TRACKING_ACTIVE
             Notifications.alert(this, getString(R.string.ok_title), getString(R.string.ok_body))
         }
         refreshStateAndNotify()
@@ -1801,7 +1883,7 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
         if (mqtt === closingMqtt) mqtt = null
         closingScope.cancel()
         val finalText = finishedJourneyText()
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        releaseForeground()
         Notifications.finished(this, finalText)
         stopJob = null
 
@@ -1810,19 +1892,14 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
             stopping = false
             serviceScope = newServiceScope()
             started.set(false)
-            try {
-                ServiceCompat.startForeground(
-                    this,
-                    Notifications.NOTIFICATION_ID,
-                    Notifications.foregroundNotification(
-                        this,
-                        getString(R.string.app_name),
-                        getString(R.string.tracking_starting),
-                    ),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
-                )
+            // Reclamo vía el mismo camino idempotente (claimForeground ya no está
+            // reclamado tras releaseForeground). Su fallo NO puede dejar la nueva
+            // promesa sin pagar: si reclama mal, se apaga sin reiniciar.
+            val claimError = claimForeground()
+            if (claimError == null) {
                 startTracking()
-            } catch (e: Exception) {
+            } else {
+                Log.w(TAG, "No se pudo reafirmar el foreground al retomar jornada", claimError)
                 config.trackingEnabled = false
                 config.lastStartError = "No se pudo reiniciar la jornada"
                 publishState(TrackingState.TRACKING_DISABLED_BY_USER)
@@ -1912,4 +1989,23 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+}
+
+/**
+ * Decisión pura (JVM-testable) de si onStartCommand debe reclamar el foreground
+ * (ServiceCompat.startForeground) como PRIMER acto, antes de cualquier init
+ * pesado — anti ForegroundServiceDidNotStartInTimeException:
+ * - START (ACTION_START o null-intent sticky): siempre. Hay una promesa de
+ *   startForegroundService viva que pagar, incluso si el servicio está
+ *   stopping: el drenaje de cierre puede exceder con creces el timeout.
+ * - STOP sobre servicio vivo/arrancado: sí, re-afirmar barato (companion.stop
+ *   cae a startForegroundService cuando startService es rechazado en background
+ *   y eso también deja promesa).
+ * - STOP sobre servicio NO arrancado: nunca. startForeground sin promesa en
+ *   Android 14+ puede saltar en ForegroundServiceStartNotAllowedException; el
+ *   camino solo publica estado y stopSelf(), que cancela la promesa pendiente.
+ */
+object ForegroundClaimPolicy {
+    fun shouldClaimForeground(isStopAction: Boolean, serviceAlive: Boolean): Boolean =
+        !isStopAction || serviceAlive
 }

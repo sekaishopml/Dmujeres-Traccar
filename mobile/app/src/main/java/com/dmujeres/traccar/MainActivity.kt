@@ -39,9 +39,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -69,26 +71,34 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.dmujeres.traccar.config.AppConfig
+import com.dmujeres.traccar.location.GnssState
 import com.dmujeres.traccar.location.TrackingState
 import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.mqtt.MqttManager
@@ -165,6 +175,14 @@ class MainActivity : ComponentActivity() {
     // true solo si los pendientes son ANORMALES (ver PendingAlertPolicy): con el dispatch
     // secuencial (1 en vuelo, ackTimeout 15 s) casi siempre hay 1-5 sanos y no deben alarmar.
     private var pendingAbnormal by mutableStateOf(false)
+    // Fila de diagnóstico en vivo del dash: valores exactos ya calculados en
+    // refreshState (mismas fuentes que Diagnóstico: config.lastFixAt/lastAckAt,
+    // conteo RealTime de Room y GnssState en memoria). Nunca se duplica lógica.
+    private var diagSatsText by mutableStateOf("—")
+    private var diagFixAgo by mutableStateOf("")
+    private var diagAckAgo by mutableStateOf("")
+    private var diagPending by mutableIntStateOf(0)
+    private var diagReportAgo by mutableStateOf("")
     private var detailsLoading by mutableStateOf(false)
     private var toggleLabel by mutableIntStateOf(R.string.start)
     private var toggleIcon by mutableIntStateOf(R.drawable.ic_play)
@@ -284,6 +302,11 @@ class MainActivity : ComponentActivity() {
                     netCauseMessage = netCauseMessage,
                     netCauseWifiAction = netCauseWifiAction,
                     onOpenWifiSettings = ::openWifiSettings,
+                    diagSatsText = diagSatsText,
+                    diagFixAgo = diagFixAgo,
+                    diagAckAgo = diagAckAgo,
+                    diagPending = diagPending,
+                    diagReportAgo = diagReportAgo,
                 )
             }
         }
@@ -472,6 +495,29 @@ class MainActivity : ComponentActivity() {
             }
         }
         toggleEnabled = true
+        // Fila de diagnóstico en modo preview: valores fijos coherentes con la
+        // tarjeta mostrada (no tocan la ruta real de refreshState).
+        when (mode) {
+            "active" -> {
+                diagSatsText = "9/14"
+                diagFixAgo = getString(R.string.ago_now)
+                diagAckAgo = getString(R.string.ago_minutes, 1)
+                diagReportAgo = getString(R.string.ago_hours, 2)
+            }
+            "error" -> {
+                diagSatsText = "0/0"
+                diagFixAgo = getString(R.string.ago_minutes, 12)
+                diagAckAgo = getString(R.string.ago_minutes, 8)
+                diagReportAgo = getString(R.string.ago_minutes, 5)
+            }
+            else -> {
+                diagSatsText = "—"
+                diagFixAgo = ""
+                diagAckAgo = ""
+                diagReportAgo = ""
+            }
+        }
+        diagPending = if (mode == "error") 3 else 0
     }
 
     private fun login() {
@@ -653,6 +699,21 @@ class MainActivity : ComponentActivity() {
             lines += getString(R.string.log_last_fix, agoText(lastFix))
         }
 
+        // Fila de diagnóstico en vivo: reutiliza exactamente los valores de
+        // arriba (mismo tick de 3 s) + GnssState en memoria (la misma fuente
+        // que lee Diagnóstico) + config.diagnosticsLastReportAt del monitor.
+        diagFixAgo = if (lastFix > 0) agoText(lastFix) else ""
+        diagAckAgo = if (lastAck > 0) agoText(lastAck) else ""
+        val satsUsed = GnssState.satsUsed
+        val satsTotal = GnssState.satsTotal
+        diagSatsText = if (GnssState.hasData() && satsUsed != null && satsTotal != null) {
+            "$satsUsed/$satsTotal"
+        } else {
+            "—"
+        }
+        val lastReport = config.diagnosticsLastReportAt
+        diagReportAgo = if (lastReport > 0) agoText(lastReport) else ""
+
         // Causa de red (Fase 1): el servicio es autoritativo cuando corre (usa
         // previousLabel correcto); si está detenido se calcula en vivo para la UI.
         val storedCause = NetCause.fromValue(config.netCause)
@@ -687,6 +748,8 @@ class MainActivity : ComponentActivity() {
                 now = now,
             )
             pendingAbnormal = abnormal
+            // Mismo conteo RealTime de Room: alimenta el chip "Pendientes".
+            diagPending = pending
             lines += when {
                 pending <= 0 -> getString(R.string.log_pending_none)
                 abnormal -> getString(R.string.log_pending, pending)
@@ -939,6 +1002,11 @@ class MainActivity : ComponentActivity() {
         netCauseMessage: String? = null,
         netCauseWifiAction: Boolean = false,
         onOpenWifiSettings: () -> Unit = {},
+        diagSatsText: String = "—",
+        diagFixAgo: String = "",
+        diagAckAgo: String = "",
+        diagPending: Int = 0,
+        diagReportAgo: String = "",
     ) {
         BoxWithConstraints(
             modifier = Modifier
@@ -1060,6 +1128,11 @@ class MainActivity : ComponentActivity() {
                                     netCauseMessage = netCauseMessage,
                                     netCauseWifiAction = netCauseWifiAction,
                                     onOpenWifiSettings = onOpenWifiSettings,
+                                    diagSatsText = diagSatsText,
+                                    diagFixAgo = diagFixAgo,
+                                    diagAckAgo = diagAckAgo,
+                                    diagPending = diagPending,
+                                    diagReportAgo = diagReportAgo,
                                 )
                             }
                         }
@@ -1177,6 +1250,11 @@ class MainActivity : ComponentActivity() {
         netCauseMessage: String? = null,
         netCauseWifiAction: Boolean = false,
         onOpenWifiSettings: () -> Unit = {},
+        diagSatsText: String = "—",
+        diagFixAgo: String = "",
+        diagAckAgo: String = "",
+        diagPending: Int = 0,
+        diagReportAgo: String = "",
     ) {
         val isStarted = toggleLabel == R.string.stop
 
@@ -1215,6 +1293,19 @@ class MainActivity : ComponentActivity() {
             } else {
                 DetailsLoadingPanel(isCompactHeight = isCompactHeight)
             }
+
+            // Fila compacta de diagnóstico EN VIVO (always-on): GPS (sats usados/
+            // totales), Fix (último fix), Ack (última confirmación), Pendientes y
+            // Reporte (último reporte del monitor). Mismas fuentes que Diagnóstico;
+            // el estado del servidor sigue en el dot de MetricsRow.
+            DiagLiveRow(
+                gps = diagSatsText,
+                fix = diagFixAgo.ifBlank { stringResource(R.string.chip_never) },
+                ack = diagAckAgo.ifBlank { stringResource(R.string.chip_never) },
+                pending = diagPending.toString(),
+                report = diagReportAgo.ifBlank { stringResource(R.string.chip_never) },
+                isCompactHeight = isCompactHeight,
+            )
 
             // Botón principal — grande y prominente, con transición suave de
             // color: verde al activar (Iniciar) y rojo al finalizar (regla 3
@@ -1265,6 +1356,110 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * Fila de 5 chips de diagnóstico en vivo (GPS/Fix/Ack/Pendientes/Reporte).
+     * labelSmall + bodySmall como las tarjetas existentes; una línea por texto
+     * con encogido tipo FitText para que nada se lea recortado en 360 dp.
+     */
+    @Composable
+    private fun DiagLiveRow(
+        gps: String,
+        fix: String,
+        ack: String,
+        pending: String,
+        report: String,
+        isCompactHeight: Boolean,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Max),
+            horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 4.dp else 6.dp),
+        ) {
+            DiagChip(stringResource(R.string.chip_gps), gps, Modifier.weight(1f))
+            DiagChip(stringResource(R.string.chip_fix), fix, Modifier.weight(1f))
+            DiagChip(stringResource(R.string.chip_ack), ack, Modifier.weight(1f))
+            DiagChip(stringResource(R.string.chip_pending), pending, Modifier.weight(1f))
+            DiagChip(stringResource(R.string.chip_report), report, Modifier.weight(1f))
+        }
+    }
+
+    @Composable
+    private fun DiagChip(label: String, value: String, modifier: Modifier = Modifier) {
+        Column(
+            modifier = modifier
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(8.dp))
+                .background(JourneyColors.Blanco)
+                .padding(horizontal = 3.dp, vertical = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            DiagFitText(
+                text = label,
+                baseStyle = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                minSize = 7.sp,
+            )
+            DiagFitText(
+                text = value,
+                baseStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                minSize = 8.sp,
+            )
+        }
+    }
+
+    /**
+     * Variante privada del encogido de MetricsRow (mismo patrón onSizeChanged +
+     * TextMeasurer, suelo duro en [minSize], sin crecer sobre la base): los chips
+     * caben en 5 columnas de ~60 dp en 360 dp sin elipsis ni recortes.
+     */
+    @Composable
+    private fun DiagFitText(
+        text: String,
+        baseStyle: TextStyle,
+        color: Color,
+        minSize: TextUnit,
+    ) {
+        val measurer = rememberTextMeasurer()
+        val density = LocalDensity.current
+        var availablePx by remember { mutableStateOf(0f) }
+        val fittedSp = remember(text, availablePx, baseStyle, minSize, density) {
+            val basePx = with(density) { baseStyle.fontSize.toPx() }
+            val minPx = with(density) { minSize.toPx() }
+            val scale = if (availablePx > 0f && basePx > 0f) {
+                val widthAtBasePx = measurer.measure(
+                    text = text,
+                    style = baseStyle,
+                    softWrap = false,
+                    maxLines = 1,
+                ).size.width.toFloat()
+                val usablePx = availablePx - with(density) { 2.dp.toPx() }
+                if (widthAtBasePx > 0f && usablePx > 0f) {
+                    (usablePx / widthAtBasePx).coerceIn(minPx / basePx, 1f)
+                } else {
+                    1f
+                }
+            } else {
+                1f
+            }
+            with(density) { (basePx * scale).toSp() }
+        }
+        Text(
+            text = text,
+            style = baseStyle.copy(fontSize = fittedSp),
+            color = color,
+            softWrap = false,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { availablePx = it.width.toFloat() },
+        )
     }
 
     @Composable

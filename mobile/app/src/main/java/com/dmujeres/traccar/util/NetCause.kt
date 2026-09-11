@@ -1,31 +1,47 @@
 package com.dmujeres.traccar.util
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.provider.Settings
+import android.telephony.TelephonyManager
+import androidx.core.content.ContextCompat
 
 /**
- * Causa probable de pérdida de red (Fase 1, sin fricción: sin READ_PHONE_STATE).
+ * Causa probable de pérdida de red.
  *
- * Todo lo que necesita permiso peligroso está prohibido aquí. Solo se lee:
- * - Settings.Global.WIFI_ON (wifi habilitado por el usuario)
- * - Settings.Global.AIRPLANE_MODE_ON (modo avión)
- * - NetworkCapabilities (transportes + VALIDATED + CAPTIVE_PORTAL)
- * - Settings.Global.MOBILE_DATA como heurístico de "sospecha" (ver abajo).
+ * Fuentes sin permiso peligroso:
+ * - Settings.Global.WIFI_ON / AIRPLANE_MODE_ON / MOBILE_DATA (heurísticos, OEM-dependientes).
+ * - NetworkCapabilities: transportes de la red activa + cualquier red WiFi existente
+ *   (un NetworkAgent con TRANSPORT_WIFI solo existe con el WiFi encendido: distingue
+ *   "apagué el WiFi" de "perdí la señal").
+ * - TelephonyManager.isDataEnabled (API 30+, SIN permiso: el switch real de datos) y
+ *   getDataState (sin permiso: NONE/OUT_OF_SERVICE = sin cobertura, DISCONNECTED/SUSPENDED
+ *   = registrado pero el dato caído/pausado).
+ * - TelephonyManager.getSimState SOLO con READ_PHONE_STATE concedido (declarado en el
+ *   manifest; sin permiso es null, no se miente).
  *
- * ACCESS_WIFI_STATE es permiso normal (sin diálogo) y no se usa directamente
- * porque WIFI_ON ya cubre "wifi apagado por el usuario" sin fricción.
+ * Prioridad estricta (ver [NetCause.detect]): avión > certeza de switch (WiFi apagado,
+ * SIM ausente, datos apagados por el usuario) > cobertura > heurísticos > wifi perdido.
  */
 enum class NetCause(val value: String) {
     OK("ok"),
     WIFI_OFF_USER("wifi_off_user"),
     WIFI_LOST("wifi_lost"),
     MOBILE_DATA_OFF_SUSPECTED("mobile_data_off_suspected"),
-    /** Certeza con READ_PHONE_STATE (refine): el switch de datos está apagado. */
+    /** Certeza del switch real: isDataEnabled==false (API 30+, sin permiso) o refine con permiso. */
     MOBILE_DATA_OFF_USER("mobile_data_off_user"),
     NO_COVERAGE_SUSPECTED("no_coverage_suspected"),
-    /** Certeza con READ_PHONE_STATE (refine): no hay SIM presente. */
+    /**
+     * Datos encendidos y el módem reporta DATA_SUSPENDED/DISCONNECTED sostenido: el
+     * operador pausó el servicio (límite de saldo, deuda). Distinto de [NO_COVERAGE_SUSPECTED]
+     * (antenas): aquí el mensaje pide revisar el plan, no moverse.
+     */
+    DATA_SUSPENDED("data_suspended"),
+    /** Certeza con READ_PHONE_STATE: no hay SIM presente. */
     SIM_MISSING("sim_missing"),
     AIRPLANE("airplane"),
     NO_INTERNET("no_internet"),
@@ -39,6 +55,7 @@ enum class NetCause(val value: String) {
         MOBILE_DATA_OFF_SUSPECTED -> "Parece que los datos están apagados — actívalos para seguir enviando"
         MOBILE_DATA_OFF_USER -> "Apagaste los datos — actívalos para seguir enviando"
         NO_COVERAGE_SUSPECTED -> "Sin cobertura — guardamos tu recorrido, se enviará solo"
+        DATA_SUSPENDED -> "El operador pausó tus datos — revisa tu plan; guardamos tu recorrido"
         SIM_MISSING -> "Sin chip — revisa tu tarjeta SIM para seguir enviando"
         AIRPLANE -> "Modo avión activado — desactívalo para seguir enviando"
         NO_INTERNET -> "Conectado sin internet — revisa tu conexión"
@@ -56,24 +73,37 @@ enum class NetCause(val value: String) {
             entries.firstOrNull { it.value == value }
 
         /**
-         * Lógica pura y testeable. Orden estricto (especificación Fase 1):
-         * 1. airplane == true → [AIRPLANE] (aunque haya red validada: el usuario lo activó).
+         * Lógica pura y testeable. Orden estricto:
+         * 1. airplane == true → [AIRPLANE] (gana a cualquier certeza de switch: el usuario
+         *    lo activó y apagarlo resuelve todo).
          * 2. !validated && captive → [CAPTIVE_SUSPECTED].
          * 3. !validated && (wifi||cell) → [NO_INTERNET] (conectado sin internet).
          * 4. red validada → [OK].
          * 5. sin transporte usable ("none"):
-         *    - wifiOn == false → [WIFI_OFF_USER].
-         *    - wifiOn == true + mobileDataOffSuspected → [MOBILE_DATA_OFF_SUSPECTED].
-         *    - wifiOn == true + previousLabel == "wifi" → [WIFI_LOST].
+         *    - !wifiOn && !wifiNetworkExists → [WIFI_OFF_USER] (el switch apagado SOLO
+         *      convence si además no existe ninguna red WiFi: WIFI_ON está deprecado y
+         *      puede leerse obsoleto en OEMs; nunca es fuente única).
+         *    - simAbsent == true → [SIM_MISSING] (certeza física: sin chip no hay datos).
+         *    - dataEnabled == false → [MOBILE_DATA_OFF_USER] (certeza del switch real,
+         *      isDataEnabled API 30+ sin permiso).
+         *    - dataEnabled == true + dataState ∈ {NONE, OUT_OF_SERVICE} →
+         *      [NO_COVERAGE_SUSPECTED] ("encendidos pero sin antena" ≠ "apagados").
+         *    - dataEnabled == true + dataState ∈ {DISCONNECTED, SUSPENDED} →
+         *      [DATA_SUSPENDED] (registrado pero el operador cae/pausa el dato).
+         *    - mobileDataOffSuspected (solo si no hay certeza de dataEnabled) →
+         *      [MOBILE_DATA_OFF_SUSPECTED].
+         *    - previousLabel == "wifi" → [WIFI_LOST].
          *    - en otro caso → [NO_COVERAGE_SUSPECTED].
          *
          * @param mobileDataOffSuspected heurístico: true si Settings.Global MOBILE_DATA == 0.
-         * Se llama "sospecha" porque esa clave es dependiente de OEM/versión, puede no
-         * existir o no reflejar el switch real en todos los dispositivos; nunca se usa
-         * para bloquear nada, solo para el mensaje humano.
+         * Clave OEM-dependiente: solo se usa en ausencia de la certeza de isDataEnabled.
          * @param previousLabel última etiqueta network conocida ("wifi"|"mobile"|"none"|"").
-         * Sirve para distinguir "se perdió el wifi" ([WIFI_LOST]) de "sin cobertura"
-         * ([NO_COVERAGE_SUSPECTED]) cuando no hay transporte usable y el wifi sigue on.
+         * @param wifiNetworkExists true si existe algún NetworkAgent con TRANSPORT_WIFI.
+         * Con el WiFi apagado no existe: corrobora (junto con WIFI_ON==0) el "Apagaste el WiFi".
+         * @param dataEnabled TelephonyManager.isDataEnabled (API 30+, sin permiso); null = sin dato.
+         * @param dataState TelephonyManager.dataState (sin permiso); null = sin dato.
+         * @param simAbsent TelephonyManager.simState == ABSENT; SOLO con READ_PHONE_STATE,
+         * null sin permiso (no se afirma lo que no se puede leer).
          */
         fun detect(
             wifiOn: Boolean,
@@ -84,6 +114,10 @@ enum class NetCause(val value: String) {
             captive: Boolean,
             previousLabel: String,
             mobileDataOffSuspected: Boolean = false,
+            wifiNetworkExists: Boolean = false,
+            dataEnabled: Boolean? = null,
+            dataState: Int? = null,
+            simAbsent: Boolean? = null,
         ): NetCause {
             if (airplane) return AIRPLANE
             if (!validated && captive) return CAPTIVE_SUSPECTED
@@ -91,8 +125,21 @@ enum class NetCause(val value: String) {
             if (validated) return OK
             // Sin red usable (none). Los casos con transporte sin validar ya salieron arriba.
             if (!hasWifiTransport && !hasCellTransport) {
-                if (!wifiOn) return WIFI_OFF_USER
-                if (mobileDataOffSuspected) return MOBILE_DATA_OFF_SUSPECTED
+                // "Apagaste el WiFi": solo con switch off + cero redes WiFi existentes.
+                if (!wifiOn && !wifiNetworkExists) return WIFI_OFF_USER
+                // "El usuario apagó datos" vs "perdió cobertura": primero las certezas.
+                if (simAbsent == true) return SIM_MISSING
+                if (dataEnabled == false) return MOBILE_DATA_OFF_USER
+                if (dataEnabled == true && dataState != null) {
+                    when (dataState) {
+                        TEL_DATA_STATE_NONE, TEL_DATA_STATE_OUT_OF_SERVICE ->
+                            return NO_COVERAGE_SUSPECTED
+                        TEL_DATA_STATE_DISCONNECTED, TEL_DATA_STATE_SUSPENDED ->
+                            return DATA_SUSPENDED
+                    }
+                }
+                // El heurístico MOBILE_DATA==0 solo vale si no hay lectura cierta del switch.
+                if (mobileDataOffSuspected && dataEnabled == null) return MOBILE_DATA_OFF_SUSPECTED
                 if (previousLabel == "wifi") return WIFI_LOST
                 return NO_COVERAGE_SUSPECTED
             }
@@ -110,9 +157,19 @@ enum class NetCause(val value: String) {
             captive = snapshot.captive,
             previousLabel = snapshot.previousLabel,
             mobileDataOffSuspected = snapshot.mobileDataOffSuspected,
+            wifiNetworkExists = snapshot.wifiNetworkExists,
+            dataEnabled = snapshot.dataEnabled,
+            dataState = snapshot.dataState,
+            simAbsent = snapshot.simAbsent,
         )
     }
 }
+
+/** Valores crudos de TelephonyManager.getDataState() (evita importar android en los tests). */
+const val TEL_DATA_STATE_NONE = 0
+const val TEL_DATA_STATE_OUT_OF_SERVICE = 1
+const val TEL_DATA_STATE_DISCONNECTED = 2
+const val TEL_DATA_STATE_SUSPENDED = 3
 
 /**
  * Función top-level pura (alias de [NetCause.detect]) para la firma pedida:
@@ -134,10 +191,9 @@ fun detect(
     validated = validated,
     captive = captive,
     previousLabel = previousLabel,
-    mobileDataOffSuspected = false,
 )
 
-/** Foto del estado de red leída sin permisos peligrosos. */
+/** Foto del estado de red leída sin permisos peligrosos (simState exige READ_PHONE_STATE ya declarado). */
 data class NetSnapshot(
     val wifiOn: Boolean,
     val airplane: Boolean,
@@ -147,12 +203,23 @@ data class NetSnapshot(
     val captive: Boolean,
     val previousLabel: String = "",
     val mobileDataOffSuspected: Boolean = false,
+    /** Existe alguna red (NetworkAgent) con TRANSPORT_WIFI: false con el WiFi apagado. */
+    val wifiNetworkExists: Boolean = false,
+    /** TelephonyManager.isDataEnabled (API 30+, sin permiso). null = sin lectura. */
+    val dataEnabled: Boolean? = null,
+    /** TelephonyManager.dataState (sin permiso). null = sin lectura. */
+    val dataState: Int? = null,
+    /** simState == ABSENT, solo con READ_PHONE_STATE. null = sin permiso/lectura. */
+    val simAbsent: Boolean? = null,
 )
 
 /**
- * Lee [NetSnapshot] desde el sistema (no puro: toca Settings.Global + ConnectivityManager).
- * Sin fricción: no pide ningún permiso en tiempo de ejecución.
+ * Lee [NetSnapshot] desde el sistema (no puro: toca Settings.Global + ConnectivityManager
+ * + telefonía sin-permiso). Única fuente de verdad de conectividad (la consumen
+ * TrackingService, MainActivity y DiagnosticsCollector solo-lectura).
+ * Cada lectura protegida: un fallo OEM degrada a null/false, nunca lanza.
  */
+@Suppress("DEPRECATION")
 fun snapshot(
     context: Context,
     previousLabel: String = "",
@@ -173,6 +240,36 @@ fun snapshot(
     val caps: NetworkCapabilities? = runCatching {
         cm.getNetworkCapabilities(cm.activeNetwork)
     }.getOrNull()
+    // Un NetworkAgent WiFi solo existe con el WiFi encendido: distingue "apagado
+    // por el usuario" de "apagado por el usuario pero WIFI_ON obsoleto" y de
+    // "WiFi on sin señal" (aquí false aunque WIFI_ON==1).
+    val wifiNetworkExists = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+        runCatching {
+            cm.allNetworks.any { network ->
+                runCatching {
+                    cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+                }.getOrDefault(false)
+            }
+        }.getOrDefault(false)
+    val tel = runCatching { context.getSystemService(TelephonyManager::class.java) }.getOrNull()
+    // isDataEnabled: API 30+ y SIN permiso dangerous (el switch real del usuario).
+    val dataEnabled: Boolean? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        runCatching { tel?.isDataEnabled }.getOrNull()
+    } else {
+        null
+    }
+    // dataState: público sin permiso. NONE/OUT_OF_SERVICE = sin antena;
+    // DISCONNECTED/SUSPENDED con datos on = el operador cae/pausa el dato.
+    val dataState: Int? = runCatching { tel?.dataState }.getOrNull()
+    // simState necesita READ_PHONE_STATE (ya declarado): sin permiso null.
+    val simAbsent: Boolean? = if (
+        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
+        PackageManager.PERMISSION_GRANTED
+    ) {
+        runCatching { tel?.simState == TelephonyManager.SIM_STATE_ABSENT }.getOrNull()
+    } else {
+        null
+    }
     return NetSnapshot(
         wifiOn = wifiOn,
         airplane = airplane,
@@ -182,5 +279,9 @@ fun snapshot(
         captive = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true,
         previousLabel = previousLabel,
         mobileDataOffSuspected = mobileDataOffSuspected,
+        wifiNetworkExists = wifiNetworkExists,
+        dataEnabled = dataEnabled,
+        dataState = dataState,
+        simAbsent = simAbsent,
     )
 }
