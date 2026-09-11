@@ -51,9 +51,17 @@ class DmujeresApp : Application() {
                 options.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE}"
                 options.tracesSampleRate = 0.1
                 options.isAttachScreenshot = false
+                // ANR reales (antes el contador anrs24h no tenía emisor): con
+                // video del replay en errores (artefacto transitivo, solo-error).
+                options.isAnrEnabled = true
+                options.isAnrReportInDebug = false
                 options.beforeSend = io.sentry.SentryOptions.BeforeSendCallback { event, _ ->
                     // Sin PII extra: solo crash + contexto de app (versión, dispositivo).
                     event.user?.ipAddress = null
+                    // Los ANR por fin tienen emisor: contarlos para el monitor diario.
+                    if (event.exceptions?.any { it.type?.contains("ANR", ignoreCase = true) == true } == true) {
+                        runCatching { AppConfig(applicationContext).incAnr24h() }
+                    }
                     event
                 }
             }
