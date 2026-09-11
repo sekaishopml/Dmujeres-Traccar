@@ -283,11 +283,5 @@
     <string name="widget_duration_minutes">%1$d min</string>
 
     <!-- ============ DASH: FILA DE DIAGNÓSTICO EN VIVO ============ -->
-    <string name="chip_gps">GPS</string>
-    <string name="chip_fix">Fix</string>
-    <string name="chip_ack">Ack</string>
-    <string name="chip_pending">Pendientes</string>
-    <string name="chip_report">Reporte</string>
-    <string name="chip_never">nunca</string>
     <string name="dash_diag_title">Diagnóstico en vivo</string>
 </resources>
