@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.DmujeresApp
 import com.dmujeres.traccar.R
 import com.dmujeres.traccar.config.AppConfig
+import com.dmujeres.traccar.db.OutboxRetentionPolicy
 import com.dmujeres.traccar.db.PendingPosition
 import com.dmujeres.traccar.db.StopDrainPolicy
 import com.dmujeres.traccar.mqtt.Envelope
@@ -35,6 +36,9 @@ import com.dmujeres.traccar.util.DiagnosticsCollector
 import com.dmujeres.traccar.util.DiagnosticsReporter
 import com.dmujeres.traccar.util.JourneyFormatter
 import com.dmujeres.traccar.util.LocationState
+import com.dmujeres.traccar.util.LinkState
+import com.dmujeres.traccar.util.MqttLink
+import com.dmujeres.traccar.util.Transport
 import com.dmujeres.traccar.util.NETCONF_SUSPECTED
 import com.dmujeres.traccar.util.NetCause
 import com.dmujeres.traccar.util.NetSnapshot
@@ -84,6 +88,14 @@ class TrackingService : Service() {
 
         /** Ventana anti re-entrega: mismo punto de red <5 min y <2 m no se encola. */
         private const val NETWORK_RELAY_SKIP_MS = 5 * 60_000L
+
+        /**
+         * Debounce entre drenajes del outbox: `onAvailable` puede flapear en
+         * handovers WiFi↔datos y además dispara `onMqttStateChanged(CONNECTED)`;
+         * sin esto el mismo backlog se drenaba 2-3 veces en segundos (trabajo
+         * duplicado; el Mutex lo serializaba pero igual gastaba radio).
+         */
+        private const val DRAIN_DEBOUNCE_MS = 10_000L
 
         @Volatile
         var isRunning: Boolean = false
@@ -448,6 +460,14 @@ class TrackingService : Service() {
 
     @Volatile private var lastReportedNetwork: String = ""
 
+    /**
+     * Single-flight del drenaje: un solo `drainBacklog` corre a la vez aunque
+     * se acumulen eventos (red + MQTT + watchdog). El que llega tarde se omite:
+     * el drenaje en curso ya vacía por lotes hasta que un lote confirma 0.
+     */
+    private val drainInProgress = AtomicBoolean(false)
+    @Volatile private var lastDrainAt = 0L
+
     /** Foto de red sin fricción + causa probable (Fase 1). Persiste para la UI. */
     private fun currentNetSnapshot(): NetSnapshot =
         runCatching { snapshot(this, lastReportedNetwork) }.getOrDefault(
@@ -522,21 +542,37 @@ class TrackingService : Service() {
         val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: android.net.Network) {
-                runCatching {
-                    val shot = currentNetSnapshot()
-                    val cause = currentNetCause(shot)
-                    persistNetState(shot, cause)
-                    Log.i(TAG, "Red disponible netCause=${cause.value} validated=${shot.validated}")
+                val shot = runCatching {
+                    val s = currentNetSnapshot()
+                    persistNetState(s, currentNetCause(s))
+                    Log.i(TAG, "Red disponible netCause=${currentNetCause(s).value} validated=${s.validated}")
+                    s
+                }.getOrNull()
+                // Señal, no verdad: sin VALIDATED no hay Internet real (captive /
+                // WiFi sin salida). No se intenta MQTT ni se drena (fallarían y
+                // quemarían backoff); igual se encola presencia para que el
+                // servidor vea network=none. La verdad la pone el watchdog con
+                // LinkState (validated + mqtt + reachability).
+                if (shot != null && !shot.validated) {
+                    if (started.get() && !stopping) {
+                        serviceScope.launch {
+                            try {
+                                enqueuePresence()
+                            } catch (e: Exception) {
+                                Log.w(TAG, "No se pudo enviar presencia al recuperar red", e)
+                            }
+                        }
+                    }
+                    return
                 }
                 mqtt?.let { manager ->
                     if (!manager.connected) {
-                        serviceScope.launch { manager.connect() }
+                        // Vía inmediata de la puerta: vuelta de red validada.
+                        serviceScope.launch { manager.connect(immediate = true) }
                     }
                 }
                 if (config.trackingEnabled) {
-                    serviceScope.launch {
-                        drainBacklog("red-disponible")
-                    }
+                    drainBacklog("red-disponible")
                 }
                 // Notificar al servidor que la red se recuperó
                 if (started.get() && !stopping) {
@@ -714,8 +750,22 @@ class TrackingService : Service() {
      * MQTT a ~4/min en enlace débil. Corre en serviceScope; el Mutex global
      * (DispatchLock) lo serializa con el dispatch MQTT sin deadlock. Nunca
      * borra: el flush solo elimina lo confirmado por el servidor.
+     *
+     * Single-flight + debounce: si ya hay un drenaje en curso o el último fue
+     * hace <10 s, se omite (el en curso vacía hasta que un lote confirma 0 y
+     * el watchdog hace trickle cada 30 s de todos modos).
      */
     private fun drainBacklog(reason: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastDrainAt < DRAIN_DEBOUNCE_MS) {
+            Log.i(TAG, "Drenaje omitido ($reason): debounce")
+            return
+        }
+        if (!drainInProgress.compareAndSet(false, true)) {
+            Log.i(TAG, "Drenaje omitido ($reason): ya hay uno en curso")
+            return
+        }
+        lastDrainAt = now
         serviceScope.launch {
             try {
                 var batches = 0
@@ -732,6 +782,8 @@ class TrackingService : Service() {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Drenaje post-reconexión ($reason)", e)
+            } finally {
+                drainInProgress.set(false)
             }
         }
     }
@@ -1106,6 +1158,22 @@ class TrackingService : Service() {
     )
 
     /**
+     * Transporte del activeNetwork para [LinkState] (sin implicar Internet:
+     * la validación la aporta [isNetworkAvailable]).
+     */
+    private fun currentTransport(): Transport {
+        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val capabilities = runCatching {
+            connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+        }.getOrNull() ?: return Transport.NONE
+        return when {
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> Transport.WIFI
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> Transport.CELLULAR
+            else -> Transport.OTHER
+        }
+    }
+
+    /**
      * Etiqueta común de red (wifi|mobile|none) para presence y position. Requiere
      * NET_CAPABILITY_VALIDATED; un socket sin validar se reporta como "none".
      */
@@ -1426,8 +1494,13 @@ class TrackingService : Service() {
                         return@withLock
                     }
                     val currentCount = withContext(Dispatchers.IO) { dao.count() }
+                    // STOP_CAPTURE solo pausa más allá de la retención dura
+                    // (100 000 / 7 d): con el default antiguo (5 000 ≈ 14 h) esto
+                    // detenía el GPS en outages de 1 día y la ruta quedaba con
+                    // hueco para siempre. La retención efectiva sanea ese valor.
+                    val retentionMax = OutboxRetentionPolicy.effectiveMax(config.bufferMax)
                     if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE
-                        && currentCount >= config.bufferMax
+                        && currentCount >= retentionMax
                     ) {
                         val now = System.currentTimeMillis()
                         if (now - lastBufferFullAlertAt > 60_000) {
@@ -1545,7 +1618,7 @@ class TrackingService : Service() {
                         val now = System.currentTimeMillis()
                         if (now - lastDiscardAlertAt > 60_000) {
                             lastDiscardAlertAt = now
-                            Log.w(TAG, "Buffer Room lleno; se descartaron $discarded posiciones")
+                            Log.w(TAG, "Retención del outbox (100k/7d): se purgaron $discarded posiciones antiguas ya fuera de ventana")
                             Notifications.alert(
                                 this@TrackingService,
                                 getString(R.string.buffer_warning_title),
@@ -1731,22 +1804,41 @@ class TrackingService : Service() {
                 lastAckAt = config.lastAckAt,
                 now = now,
             )
-            val mqttUnavailable = mqtt?.ready != true
-            val networkAvailable = isNetworkAvailable()
-            val connectionUnavailable = !networkAvailable || mqttUnavailable
+            // Estado del enlace en 4 dominios separados (ver LinkState): transporte,
+            // Internet validada, sesión MQTT y reachability del servidor. Ninguno
+            // equivale a otro: WiFi sin validar no es Internet; TCP conectado sin
+            // subscribe no entrega; ACKs de presence no prueban que las posiciones
+            // salgan (por eso la pata oldestPendingAt).
+            val mgr = mqtt
+            val link = LinkState.current(
+                transport = currentTransport(),
+                validatedInternet = isNetworkAvailable(),
+                mqttReady = mgr?.ready == true,
+                mqttConnected = mgr?.connected == true,
+                pendingCount = pendingCount,
+                lastAckAt = config.lastAckAt,
+                oldestPendingAt = oldestPendingAt,
+                now = now,
+            )
+            val mqttUnavailable = link.mqtt != MqttLink.READY
+            val networkAvailable = link.validatedInternet
+            val connectionUnavailable = link.isUnavailable()
 
-            if (mqttUnavailable && networkAvailable) {
-                // Reintenta conectar MQTT periódicamente aunque no haya evento de red.
+            if (link.shouldAttemptMqtt()) {
+                // Reintenta conectar MQTT periódicamente aunque no haya evento de
+                // red. La cadencia la impone la puerta (ReconnectGate dentro de
+                // connect()): este tick es solo un evento más, no un loop propio.
                 try {
-                    mqtt?.connect()
+                    mgr?.connect()
                 } catch (e: Exception) {
                     Log.w(TAG, "No se pudo reconectar MQTT", e)
                 }
             }
 
-            if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE && pendingCount >= config.bufferMax) {
+            val retentionMax = OutboxRetentionPolicy.effectiveMax(config.bufferMax)
+            if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE && pendingCount >= retentionMax) {
                 pauseCaptureForBuffer()
-            } else if (capturePausedForBuffer && pendingCount < (config.bufferMax * 0.8).toInt()) {
+            } else if (capturePausedForBuffer && pendingCount < (retentionMax * 0.8).toInt()) {
                 resumeCaptureAfterBuffer()
             }
 
@@ -1802,7 +1894,7 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
                 != PackageManager.PERMISSION_GRANTED
             ) {
                 setState(TrackingState.PERMISSION_MISSING)
-            } else if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE && pendingCount >= config.bufferMax) {
+            } else if (config.bufferPolicy == AppConfig.POLICY_STOP_CAPTURE && pendingCount >= OutboxRetentionPolicy.effectiveMax(config.bufferMax)) {
                 setState(TrackingState.BUFFER_FULL)
             } else if (gpsWithoutFix) {
                 setState(TrackingState.GPS_DISABLED)

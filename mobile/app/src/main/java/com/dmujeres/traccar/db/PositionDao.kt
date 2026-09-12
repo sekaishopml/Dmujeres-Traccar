@@ -67,6 +67,16 @@ abstract class PositionDao {
     @Query("DELETE FROM pending_positions WHERE messageId IN (SELECT messageId FROM pending_positions WHERE isControl = 0 AND payload NOT LIKE '%\"journeyStarted\":true%' AND payload NOT LIKE '%\"journeyEnded\":true%' ORDER BY sequence ASC LIMIT :count)")
     abstract suspend fun deleteOldestNonControl(count: Int): Int
 
+    /**
+     * Purga por edad de la retención dura ([OutboxRetentionPolicy.MAX_AGE_MS]):
+     * posiciones y heartbeats (`isControl = 0`) encolados hace más de 7 días.
+     * El servidor los rechazaría con `expired` (terminal) igualmente; purgarlos
+     * aquí ahorra radio/batería. Los controles de jornada (`started/ended`)
+     * están exentos (1-2 filas, críticas para abrir/cerrar la jornada).
+     */
+    @Query("DELETE FROM pending_positions WHERE isControl = 0 AND enqueuedAt > 0 AND enqueuedAt < :cutoffMs")
+    abstract suspend fun deleteExpiredNonControl(cutoffMs: Long): Int
+
     @Query("DELETE FROM pending_positions WHERE messageId = :messageId")
     abstract suspend fun delete(messageId: String): Int
 
@@ -82,15 +92,32 @@ abstract class PositionDao {
     @Query("DELETE FROM pending_positions")
     abstract suspend fun clear()
 
-    /** Elimina lo necesario e inserta en una única transacción para no superar el límite. */
+    /**
+     * Inserta respetando la retención dura ([OutboxRetentionPolicy]): primero
+     * purga expirados (>7 días, que el servidor rechazaría con `expired`), y
+     * solo después desaloja por overflow contra el tope efectivo
+     * ([OutboxRetentionPolicy.effectiveMax], 100 000 como mínimo: sanea el
+     * default antiguo de 5 000 ≈ 14 h, insuficiente para 24-72 h offline).
+     *
+     * Dentro de la retención NUNCA se pierde en silencio: solo el ACK de
+     * aplicación terminal borra, o la purga de retención (con alerta + log en
+     * el llamador cuando `discarded > 0`). Los controles (`started/ended`)
+     * están exentos y pueden superar el tope por unas filas.
+     *
+     * @return nº de filas purgadas por retención, o -1 si no hay espacio ni
+     * desalojando (cola llena solo de controles: prácticamente inalcanzable).
+     */
     @Transaction
     open suspend fun insertWithinLimit(position: PendingPosition, maximum: Int): Int {
-        val toDiscard = PositionBufferPolicy.discardCount(count(), maximum)
-        val discarded = if (toDiscard > 0) deleteOldestNonControl(toDiscard) else 0
+        val now = System.currentTimeMillis()
+        val expired = deleteExpiredNonControl(OutboxRetentionPolicy.expiredCutoffMs(now))
+        val effectiveMax = OutboxRetentionPolicy.effectiveMax(maximum)
+        val toDiscard = PositionBufferPolicy.discardCount(count(), effectiveMax)
+        val overflow = if (toDiscard > 0) deleteOldestNonControl(toDiscard) else 0
         // Los eventos de control (started/ended) se conservan aunque la cola tenga
         // que superar el límite por unos pocos registros.
-        if (count() >= maximum && !position.isControl) return -1
+        if (count() >= effectiveMax && !position.isControl) return -1
         insert(position)
-        return discarded
+        return expired + overflow
     }
 }

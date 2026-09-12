@@ -61,7 +61,17 @@ class MqttManager(
     private var subscriptionRetryJob: Job? = null
     @Volatile private var subscribed = false
     @Volatile private var connecting = false
-    private val connectRetryScheduled = java.util.concurrent.atomic.AtomicBoolean(false)
+    /**
+     * Puerta única de reconexión ([ReconnectGate]): TODOS los disparadores
+     * (watchdog, onAvailable, connectionLost, onFailure) pasan por `connect()`
+     * y su cadencia. Sin bucles infinitos paralelos: cada fallo programa UN
+     * solo reintento (cancelable); el watchdog re-toca la puerta cada 30 s.
+     */
+    @Volatile private var connectAttempts = 0
+    @Volatile private var lastConnectAttemptAt = 0L
+    @Volatile private var nextConnectAllowedAt = 0L
+    @Volatile private var connectGeneration = 0
+    private var connectRetryJob: Job? = null
 
     /** Despierta el dispatcher después de insertar una posición en Room. */
     fun wakeDispatch() {
@@ -78,16 +88,28 @@ class MqttManager(
             ?: error?.toString()?.takeIf { it.isNotBlank() }
             ?: fallback
 
-    /** Reintenta la conexión inicial con jitter ±25% (base 30 s, techo 5 min). */
+    /**
+     * Programa UN solo reintento con backoff exponencial + jitter
+     * ([ReconnectGate.connectDelayMs]): lo cancela cualquier intento nuevo,
+     * un éxito o un `disconnect()` voluntario. No hay bucle `while`: la cadena
+     * avanza fallo → 1 tiro programado → fallo → … con techo 5 min, y el
+     * watchdog es el otro único emisor (también tras la puerta).
+     */
     private fun scheduleConnectRetry() {
-        if (!connectRetryScheduled.compareAndSet(false, true)) return
-        scope.launch {
-            while (scope.isActive && !connected && client != null) {
-                delay(DispatchPolicy.connectRetryDelayMs())
-                connecting = false
-                connect()
+        connectRetryJob?.cancel()
+        val generation = connectGeneration
+        val delayMs = ReconnectGate.connectDelayMs(connectAttempts)
+        nextConnectAllowedAt = System.currentTimeMillis() + delayMs
+        connectRetryJob = scope.launch {
+            delay(delayMs)
+            connectRetryJob = null
+            if (connectGeneration != generation || !scope.isActive) return@launch
+            if (connected) {
+                connectAttempts = 0
+                return@launch
             }
-            connectRetryScheduled.set(false)
+            connecting = false
+            connect()
         }
     }
 
@@ -99,9 +121,28 @@ class MqttManager(
         dispatchWake.trySend(Unit)
     }
 
-    fun connect() {
+    /**
+     * Único punto de entrada para (re)conectar. La [ReconnectGate] limita a 1
+     * intento por ventana aunque la red flapee y varios emisores pidan a la
+     * vez (watchdog 30 s + onAvailable + reintento programado).
+     *
+     * @param immediate vía rápida para vuelta de red VALIDADA: solo debounce
+     * 2 s, sin esperar el backoff (el usuario volvió a tener Internet, no hay
+     * que castigarlo con la espera del outage).
+     */
+    fun connect(immediate: Boolean = false) {
+        val now = System.currentTimeMillis()
         if (connecting) return
         if (client != null && connected) return
+        if (immediate) {
+            if (!ReconnectGate.shouldAttemptImmediate(now, lastConnectAttemptAt)) return
+        } else {
+            if (!ReconnectGate.shouldAttempt(now, nextConnectAllowedAt, lastConnectAttemptAt)) return
+        }
+        lastConnectAttemptAt = now
+        connectGeneration++
+        connectRetryJob?.cancel()
+        connectRetryJob = null
         connecting = true
         val server = config.serverUrl
         val deviceId = config.deviceId
@@ -157,6 +198,10 @@ class MqttManager(
             override fun connectComplete(reconnect: Boolean, serverURI: String) {
                 connecting = false
                 if (client !== newClient) return
+                connectAttempts = 0
+                nextConnectAllowedAt = 0L
+                connectRetryJob?.cancel()
+                connectRetryJob = null
                 if (reconnect) runCatching { config.incReconnect24h() }
                 connected = true
                 ready = false
@@ -177,6 +222,7 @@ class MqttManager(
                 connected = false
                 ready = false
                 subscribed = false
+                connectAttempts = (connectAttempts + 1).coerceAtMost(ReconnectGate.MAX_ATTEMPTS)
                 val error = errorText(cause, "Conexión perdida")
                 completeInFlightWithoutAck()
                 notifyDisconnected(error, "Sin conexión: $error")
@@ -213,8 +259,10 @@ class MqttManager(
         }.toString().toByteArray(Charsets.UTF_8)
 
         val options = MqttConnectOptions().apply {
-            isAutomaticReconnect = true
-            maxReconnectDelay = 10_000
+            // Dueño único de la cadencia: la app (ReconnectGate). Paho NO
+            // reconecta solo: su retry peleaba con el nuestro (cada connect()
+            // cierra el cliente anterior y mataba el retry de Paho a mitad).
+            isAutomaticReconnect = false
             connectionTimeout = 10
             keepAliveInterval = 45
             isCleanSession = true
@@ -234,6 +282,7 @@ class MqttManager(
                     connected = false
                     ready = false
                     subscribed = false
+                    connectAttempts = (connectAttempts + 1).coerceAtMost(ReconnectGate.MAX_ATTEMPTS)
                     val error = errorText(exception, "Fallo de conexión")
                     completeInFlightWithoutAck()
                     notifyDisconnected(error, "Sin conexión: $error")
@@ -527,6 +576,11 @@ class MqttManager(
         dispatchJob?.cancel()
         subscriptionRetryJob?.cancel()
         subscriptionRetryJob = null
+        connectRetryJob?.cancel()
+        connectRetryJob = null
+        connectAttempts = 0
+        nextConnectAllowedAt = 0L
+        connectGeneration++
         completeInFlightWithoutAck()
         inFlightSequences.clear()
         val oldClient = client

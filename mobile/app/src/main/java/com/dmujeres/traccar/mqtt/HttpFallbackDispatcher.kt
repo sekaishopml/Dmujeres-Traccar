@@ -30,8 +30,13 @@ object HttpFallbackDispatcher {
     }
 
     private suspend fun flushLocked(dao: PositionDao, config: AppConfig): Int {
+        // FIFO sobre VENCIDOS (igual que el dispatch MQTT): respeta el backoff
+        // por mensaje (retryAt). La versión anterior usaba allOrdered() y
+        // reenviaba en caliente mensajes en backoff, duplicando publish en red
+        // contra el dispatch MQTT en vuelo (el servidor deduplicaba, pero se
+        // gastaba radio/batería y se infra-contaba el drenaje).
         val pending = try {
-            dao.allOrdered(BATCH_SIZE)
+            dao.allDue(System.currentTimeMillis(), BATCH_SIZE)
         } catch (e: Exception) {
             return 0
         }

@@ -83,12 +83,13 @@ WebSocket al panel`.
 ### 2.2. Si te quedas sin internet (modo offline)
 
 - La app **sigue capturando** y guarda los puntos en una **cola local**
-  (buffer) de hasta **5000 puntos** (≈ 14 horas a ritmo de 10 s).
+  (buffer) con retención de **100 000 posiciones o 7 días** (a ritmo de 10 s,
+  72 h offline son ~26 000 puntos: caben de sobra).
 - Cuando vuelve la conexión, la app **reenvía (replay)** todo lo guardado en
   orden, primero por MQTT y, si hace falta, por internet directo (HTTP).
-- Si la cola se llena, según lo configurado: se **borra lo más antiguo**
-  (`drop_oldest`, lo habitual) o se **pausa la captura** (`stop_capture`, la
-  app te avisa).
+- Dentro de la retención **nada se pierde**: un punto solo se borra de la cola
+  cuando el servidor lo confirma (ACK); lo más antiguo solo se purga al superar
+  los 100 000 / 7 días (con aviso en el teléfono).
 
 Tú no tienes que hacer nada: solo vuelve a una zona con cobertura.
 
@@ -152,9 +153,33 @@ con internet.
 | Estado del chip/marcador | Color | Cuándo |
 |---|---|---|
 | **DESHABILITADO** | gris | Jornada finalizada o no iniciada (aunque haya internet) |
-| **SIN SEÑAL** | naranja | En jornada pero mala conexión: túnel, edificio, ping alto (> 2 s), sin datos > 2 min, GPS impreciso (> 80 m) o red caída |
+| **SIN SEÑAL** | naranja | En jornada pero mala conexión: túnel, edificio, ping alto (> 2 s), GPS impreciso (> 80 m), red caída o presencia SUSPECT (ver abajo) |
 | **DETENIDO** | verde | En jornada, con buena señal pero sin moverse |
 | **EN LINEA** | verde | En jornada, con buena señal y en movimiento |
+
+### 2.3a. Presencia real: ONLINE / SUSPECT / OFFLINE (máquina del servidor)
+
+El servidor ya no declara OFFLINE por un simple silencio: un cambio de
+WiFi a datos, un reintento de conexión o unos minutos guardando ruta sin
+cobertura NO te sacan del mapa. La presencia de cada jornada activa es:
+
+| Presencia (`mobile.presenceState`) | Cuándo | Motivo (`mobile.presenceReason`) |
+|---|---|---|
+| **ONLINE** | Dato válido hace menos de 5 min | `JOURNEY_START`, `RECONNECT`, `BOOT` |
+| **SUSPECT** | 5-10 min sin nada (posible túnel, sesión MQTT caída, buffering) | `TIMEOUT_SUSPECT`, `SESSION_LOST` |
+| **OFFLINE** | Más de 10 min sin nada, o jornada finalizada | `TIMEOUT_OFFLINE`, `JOURNEY_ENDED` |
+
+- El **LWT** (aviso del broker al cortarse la sesión) significa "sesión
+  perdida", no "teléfono apagado": con jornada activa pasa a SUSPECT.
+- Un **replay** (puntos de hace horas) se acepta e ingresa igual si el
+  mensaje es válido y no es duplicado; no reabre una jornada ya cerrada.
+- Por separado, sin mezclarse, el panel puede leer: GPS
+  (`mobile.gpsState`: OK / NO_FIX / STALE), red (`mobile.netState`: WIFI /
+  MOBILE / NONE / UNVALIDATED), sesión MQTT (`mobile.mqttState`: CONNECTED /
+  CONNECTING / DISCONNECTED) y cola del teléfono (`mobile.outboxState`:
+  EMPTY / PENDING / DRAINING + `mobile.pending`).
+- Eventos automáticos: `mobilePresenceSuspect`, `mobilePresenceOffline` y
+  `mobilePresenceRecovered` (con `reason` y minutos de silencio).
 
 - En tu fila además se ve: hace cuánto llegó tu último dato, puntos
   **pendientes de enviar** (aviso si hay más de 50, rojo si más de 100) y tu

@@ -63,10 +63,18 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_INTERVAL, 10L)
         set(value) = prefs.edit().putLong(KEY_INTERVAL, value.coerceIn(3, 300)).apply()
 
-    /** Tamaño máximo de la cola offline (buffer). Default 5000 ≈ 14 h a 10 s; techo 10000 ≈ 28h @10s. */
+    /**
+     * Tamaño configurado de la cola offline. La EVICCIÓN real la gobierna la
+     * retención dura ([com.dmujeres.traccar.db.OutboxRetentionPolicy], 100 000
+     * posiciones o 7 días): este valor es el umbral configurado por el admin y
+     * el tope efectivo nunca baja de la retención
+     * (`effectiveMax = max(configurado, 100 000)`), de modo que instalaciones
+     * con el default antiguo (5 000 ≈ 14 h) también sobreviven 24-72 h offline
+     * sin migración de prefs. Default 100 000 para instalaciones nuevas.
+     */
     var bufferMax: Int
-        get() = prefs.getInt(KEY_BUFFER, 5000)
-        set(value) = prefs.edit().putInt(KEY_BUFFER, value.coerceIn(10, 10000)).apply()
+        get() = prefs.getInt(KEY_BUFFER, DEFAULT_BUFFER_MAX)
+        set(value) = prefs.edit().putInt(KEY_BUFFER, value.coerceIn(BUFFER_MIN, BUFFER_MAX)).apply()
 
     /** Política al llenarse el buffer: descartar lo más antiguo o detener la captura. */
     var bufferPolicy: String
@@ -437,6 +445,16 @@ class AppConfig(context: Context) {
     companion object {
         const val POLICY_DROP_OLDEST = "drop_oldest"
         const val POLICY_STOP_CAPTURE = "stop_capture"
+
+        /**
+         * Default del buffer para instalaciones nuevas: cubre 72 h offline a
+         * 10 s (25 920) y 7 días a 10 s (60 480) dentro de la retención dura.
+         */
+        const val DEFAULT_BUFFER_MAX = 100_000
+
+        /** Piso/aceptación del ajuste local (la retención dura pone el piso real). */
+        const val BUFFER_MIN = 5_000
+        const val BUFFER_MAX = 100_000
 
         /** Anti "GPS loco": se descartan saltos con velocidad implicita mayor (≈162 km/h). Fase A: 45 m/s. */
         const val DEFAULT_MAX_IMPLIED_SPEED_MPS = 45f

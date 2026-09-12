@@ -9,7 +9,7 @@ class BufferDrainPolicyTest {
     @Test
     fun continuesWhileProgress() {
         assertTrue(BufferDrainPolicy.continueDraining(lastConfirmed = 50, batchesDone = 1))
-        assertTrue(BufferDrainPolicy.continueDraining(lastConfirmed = 3, batchesDone = 39))
+        assertTrue(BufferDrainPolicy.continueDraining(lastConfirmed = 3, batchesDone = 199))
     }
 
     @Test
@@ -20,7 +20,8 @@ class BufferDrainPolicyTest {
 
     @Test
     fun stopsAtCap() {
-        assertFalse(BufferDrainPolicy.continueDraining(lastConfirmed = 50, batchesDone = 40))
-        assertFalse(BufferDrainPolicy.continueDraining(lastConfirmed = 50, batchesDone = 41))
+        // 200 lotes × 50 = 10 000 puntos/evento (≈72 h offline en ~3 eventos).
+        assertFalse(BufferDrainPolicy.continueDraining(lastConfirmed = 50, batchesDone = 200))
+        assertFalse(BufferDrainPolicy.continueDraining(lastConfirmed = 50, batchesDone = 201))
     }
 }

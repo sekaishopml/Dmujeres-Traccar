@@ -15,7 +15,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.db.AppDatabase
-import com.dmujeres.traccar.location.TrackingService
 import com.dmujeres.traccar.util.Notifications
 import com.dmujeres.traccar.util.UpdateChecker
 import com.dmujeres.traccar.worker.RecoverySchedule
@@ -80,13 +79,15 @@ class DmujeresApp : Application() {
             if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return
             // Al volver la conexión, comprueba la versión de inmediato.
             appScope.launch { UpdateChecker.checkAndRefreshBadge(applicationContext) }
-            // SEGUNDO PLANO BLINDADO: además del UpdateChecker, drenaje + GPS.
-            // - One-shot expedited inmediato (no espera al periódico de 15 min).
-            // - Re-registro GPS vía intent al servicio (TrackingService.start es
-            //   idempotente: si ya corre, startTracking() retorna sin duplicar el
-            //   watchdog; el watchdog interno ya re-registra cada 2 min si no hay
-            //   fix, aquí solo se le da un empujón tras reconectar).
-            // Respeta VendorSettings: no se toca su guía, solo se reintenta.
+            // SEGUNDO PLANO BLINDADO: un solo camino. El NetworkCallback del
+            // servicio (vivo) ya drena + reconecta MQTT con puerta inmediata;
+            // aquí SOLO se encola el one-shot del worker por si el servicio
+            // está muerto (él lo re-arranca vía StuckStopPolicy). Antes además
+            // se llamaba a TrackingService.start directo: doble disparo por
+            // cada reconexión (intents redundantes + drenajes duplicados).
+            // La validación real (VALIDATED) la aplican el callback del
+            // servicio y el watchdog con LinkState; este broadcast legacy solo
+            // exige INTERNET y es apenas una señal.
             appScope.launch {
                 try {
                     val trackingOn = runCatching { AppConfig(applicationContext).trackingEnabled }
@@ -94,10 +95,6 @@ class DmujeresApp : Application() {
                     if (ReconnectPolicy.shouldExpediteOnReconnect(trackingOn)) {
                         runCatching { TrackingRecoveryWorker.enqueueReconnect(applicationContext) }
                             .onFailure { Log.w(TAG, "No se pudo encolar recovery de reconexión", it) }
-                    }
-                    if (ReconnectPolicy.shouldReregisterGps(trackingOn)) {
-                        runCatching { TrackingService.start(applicationContext) }
-                            .onFailure { Log.w(TAG, "No se pudo pedir re-registro GPS", it) }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Reconexión: no se pudo blindar segundo plano", e)
