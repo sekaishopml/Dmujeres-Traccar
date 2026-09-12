@@ -5,8 +5,8 @@ package com.dmujeres.traccar.mqtt
  *
  * Antes la lógica estaba duplicada en [com.dmujeres.traccar.config.AppConfig]
  * (setter privado) y en [MqttManager] (companion). También centraliza la
- * derivación de la base web (mismo host, puerto web) que vivía en
- * [HttpFallbackDispatcher.webBase].
+ * derivación de la base web (mismo host, puerto web) que usan el dispatcher
+ * HTTP y el reporte de diagnóstico.
  *
  * No depende de [com.dmujeres.traccar.config.AppConfig] a propósito para evitar
  * un ciclo config <-> mqtt: el puerto web se pasa como parámetro.

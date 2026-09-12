@@ -187,6 +187,21 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_JOURNEY_CONFIRMED_POINTS, 0L)
         set(value) = prefs.edit().putLong(KEY_JOURNEY_CONFIRMED_POINTS, value).apply()
 
+    /**
+     * Mensajes con NACK terminal preservados en cuarentena (dead_letters).
+     * Acumulado histórico (NO bucket diario: es evidencia de diagnóstico).
+     */
+    var quarantinedTotal: Long
+        get() = prefs.getLong(KEY_QUARANTINED_TOTAL, 0L)
+        set(value) = prefs.edit().putLong(KEY_QUARANTINED_TOTAL, value).apply()
+
+    @Synchronized
+    fun incQuarantinedTotal(): Long {
+        val v = quarantinedTotal + 1
+        quarantinedTotal = v
+        return v
+    }
+
     @Synchronized
     fun recordJourneyConfirmed(journeyId: Long) {
         if (journeyId > 0L && journeyId == journeyStartAt) {
@@ -532,6 +547,7 @@ class AppConfig(context: Context) {
         private const val KEY_JOURNEY_DISTANCE = "journey_distance_m"
         private const val KEY_JOURNEY_POINTS = "journey_points"
         private const val KEY_JOURNEY_CONFIRMED_POINTS = "journey_confirmed_points"
+        private const val KEY_QUARANTINED_TOTAL = "quarantined_total"
         private const val KEY_JOURNEY_LAST_LAT = "journey_last_lat"
         private const val KEY_JOURNEY_LAST_LON = "journey_last_lon"
         private const val KEY_JOURNEY_HAS_LAST_LOCATION = "journey_has_last_location"

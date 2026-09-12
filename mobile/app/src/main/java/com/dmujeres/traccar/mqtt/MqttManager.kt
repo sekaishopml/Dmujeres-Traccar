@@ -42,7 +42,9 @@ class MqttManager(
     private val config: AppConfig,
     private val dao: PositionDao,
     private val scope: CoroutineScope,
-    private val onStateChange: (String) -> Unit = {}
+    private val onStateChange: (String) -> Unit = {},
+    /** Métrica/alerta cuando una presencia cae en cuarentena (NACK terminal). */
+    private val onQuarantined: (com.dmujeres.traccar.db.DeadLetter) -> Unit = {},
 ) {
 
     @Volatile private var client: MqttAsyncClient? = null
@@ -361,16 +363,11 @@ class MqttManager(
         dispatchJob = scope.launch { dispatchLoop() }
     }
 
-    // TODO(throughput, sin implementar por riesgo): el dispatch es estrictamente secuencial
-    //  (1 mensaje en vuelo, ackTimeout 15 s por mensaje + 200 ms entre envíos) mientras la
-    //  captura es cada 10 s. Con latencia normal del consumer (MQTT -> Java -> PG -> ACK) casi
-    //  siempre hay >= 1 pendiente y un solo timeout (15 s + backoff 10/20/40 s…) crea un backlog
-    //  de 2-3 que tarda en drenar: el throughput efectivo (~1 msg / latencia ACK) apenas da para
-    //  el intervalo de 10 s + reintentos. NO tocar protocolo/orden/dedupe sin análisis previo.
-    //  Opciones: (a) ventana de 2-3 en vuelo con orden preservado (el dedupe por
-    //  messageId/sequence del servidor lo permite; habría que reordenar por sequence antes de
-    //  confirmar métricas de jornada); o (b) ackTimeout adaptativo (EWMA de la latencia de ACK
-    //  con piso/techo 5-60 s, coherente con AppConfig.ackTimeoutSeconds). Ver informe.
+    // MQTT es el canal de PRESENCIA (heartbeat/started/ended), NO de posiciones:
+    // las posiciones las entrega PositionOutboxDispatcher por HTTP en lotes, así
+    // que MQTT nunca es punto único de falla para la ruta. Este loop solo toma
+    // controles vencidos (dueControls); el throughput single-flight sobra para
+    // el volumen de presencia. Ver informe de arquitectura HTTP-first.
     private suspend fun dispatchLoop() {
         while (scope.isActive) {
             if (!ready) {
@@ -379,22 +376,11 @@ class MqttManager(
             }
 
             val now = System.currentTimeMillis()
-            // Dispatch paginado: como máximo 2 lotes de 100 por vuelta (vencidos + controles
-            // vencidos). Nunca se carga toda la tabla (evita O(N²) y OOM con 10k).
+            // Solo presencia: lote acotado de controles vencidos (nunca toda la
+            // tabla; las posiciones las drena HTTP por otro camino disjunto).
             val batch: List<PendingPosition> = try {
                 withContext(Dispatchers.IO) {
-                    val due = dao.allDue(now, DISPATCH_BATCH_SIZE)
-                    if (due.any { it.isControl }) {
-                        due
-                    } else {
-                        val controls = try {
-                            dao.dueControls(now, DISPATCH_BATCH_SIZE)
-                        } catch (_: Exception) {
-                            emptyList()
-                        }
-                        if (controls.isEmpty()) due
-                        else (due + controls).distinctBy { it.messageId }
-                    }
+                    dao.dueControls(now, DISPATCH_BATCH_SIZE)
                 }
             } catch (_: Exception) {
                 emptyList()
@@ -443,28 +429,42 @@ class MqttManager(
                 continue
             }
 
-            // Single-flight con el fallback HTTP: publish/delete/update bajo el mismo
+            // Single-flight con el dispatcher HTTP: publish/delete/update bajo el mismo
             // Mutex para no pisar el mismo messageId. withLock es suspend (sin deadlock).
             DispatchLock.mutex.withLock {
                 val status = publishWithAck(next)
                 when (status) {
-                    "accepted", "duplicate", "rejected", "invalid", "expired" -> {
+                    "accepted", "duplicate" -> {
                         val deleted = withContext(Dispatchers.IO) { dao.delete(next.messageId) }
                         retryAt.remove(next.messageId)
-                        if (deleted > 0 && (status == "accepted" || status == "duplicate")) {
+                        if (deleted > 0) {
                             recordConfirmedPosition(next)
                         }
-                        if (status != "accepted" && status != "duplicate") {
-                            notifyState("Mensaje rechazado por el servidor ($status): ${next.messageId}")
+                    }
+                    "rejected", "invalid", "expired" -> {
+                        // NACK terminal: a cuarentena con motivo, JAMÁS delete
+                        // directo (evidencia de bug/deriva de contrato).
+                        val nowMs = System.currentTimeMillis()
+                        val moved = withContext(Dispatchers.IO) {
+                            PositionOutboxDispatcher.quarantine(dao, next, status, nowMs)
                         }
+                        retryAt.remove(next.messageId)
+                        if (moved) {
+                            runCatching {
+                                onQuarantined(
+                                    com.dmujeres.traccar.db.DeadLetter.fromPending(next, status, nowMs),
+                                )
+                            }
+                        }
+                        notifyState("Mensaje rechazado por el servidor ($status): ${next.messageId}")
                     }
 
                     else -> {
                         // Sin ACK: backoff exponencial con jitter y RETENCIÓN infinita.
                         // Ruta sin pérdida: sin ACK no se sabe si el servidor lo vio,
                         // así que el mensaje NO se borra por agotar reintentos (ver
-                        // DispatchPolicy.shouldDiscardUnacked); solo un NACK explícito
-                        // (rejected/invalid/expired) autoriza el borrado.
+                        // DispatchPolicy.shouldDiscardUnacked); un NACK explícito
+                        // (rejected/invalid/expired) va a CUARENTENA, nunca a borrado.
                         val attempts = next.attempts + 1
                         val backoffMs = DispatchPolicy.dispatchBackoffMs(attempts)
                         val nextRetryAt = System.currentTimeMillis() + backoffMs

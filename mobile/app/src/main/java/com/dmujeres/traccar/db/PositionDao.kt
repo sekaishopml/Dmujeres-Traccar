@@ -80,6 +80,35 @@ abstract class PositionDao {
     @Query("DELETE FROM pending_positions WHERE messageId = :messageId")
     abstract suspend fun delete(messageId: String): Int
 
+    // ---- Cuarentena (dead-letter): NACK terminal nunca borra en silencio ----
+
+    /**
+     * Inserta en cuarentena ignorando duplicados (si la evidencia ya existe de
+     * un traslado parcial previo, se conserva la original).
+     * @return rowId o -1 si ya existía.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertDeadLetter(deadLetter: DeadLetter): Long
+
+    @Query("SELECT COUNT(*) FROM dead_letters")
+    abstract suspend fun deadLetterCount(): Int
+
+    @Query("SELECT * FROM dead_letters ORDER BY quarantinedAt DESC LIMIT :limit")
+    abstract suspend fun deadLetters(limit: Int): List<DeadLetter>
+
+    /**
+     * Traslada un pendiente a cuarentena en una única transacción. El insert es
+     * IGNORE: si la evidencia ya existe de un traslado parcial previo, se
+     * conserva la original y solo sale el pendiente (idempotente). Si el insert
+     * falla por error real, la transacción revierte y el pendiente se conserva:
+     * nunca se pierde ni se duplica evidencia.
+     */
+    @Transaction
+    open suspend fun moveToDeadLetter(deadLetter: DeadLetter) {
+        insertDeadLetter(deadLetter)
+        delete(deadLetter.messageId)
+    }
+
     @Query("SELECT COUNT(*) FROM pending_positions")
     abstract fun countFlow(): Flow<Int>
 

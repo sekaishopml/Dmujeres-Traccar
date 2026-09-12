@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.mqtt.MqttServerNormalizer
+import com.dmujeres.traccar.mqtt.PositionOutboxDispatcher
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -12,7 +13,7 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Envía diagnósticos a `POST {base}/api/mobile/v1/diagnostics` (204 = ok,
  * rate-limit del servidor 20 s/dispositivo). Mismo canal de autenticación que
- * [com.dmujeres.traccar.mqtt.HttpFallbackDispatcher] / RemoteConfig: base web
+ * el dispatcher HTTP ([PositionOutboxDispatcher.HttpTransport]) / RemoteConfig: base web
  * derivada del servidor MQTT ([MqttServerNormalizer.webBase]), la api key
  * compartida [AppConfig.HTTP_API_KEY] en X-Api-Key y el uniqueId del
  * dispositivo ([AppConfig.username]) en X-Device-Id — sin duplicar manejo de
@@ -90,7 +91,7 @@ object DiagnosticsReporter {
         }
     }
 
-    /** POST con la misma plomería que HttpFallbackDispatcher. 204/2xx = ok. */
+    /** POST con plomería HTTP propia (timeouts acotados). 204/2xx = ok. */
     private fun post(config: AppConfig, reason: String, body: String) {
         val base = MqttServerNormalizer.webBase(config.serverUrl, AppConfig.WEB_PORT)
         val connection = (URL("$base/api/mobile/v1/diagnostics").openConnection() as HttpURLConnection).apply {

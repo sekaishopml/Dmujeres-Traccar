@@ -23,15 +23,16 @@ import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.DmujeresApp
 import com.dmujeres.traccar.R
 import com.dmujeres.traccar.config.AppConfig
+import com.dmujeres.traccar.db.DeadLetter
 import com.dmujeres.traccar.db.OutboxRetentionPolicy
 import com.dmujeres.traccar.db.PendingPosition
 import com.dmujeres.traccar.db.StopDrainPolicy
 import com.dmujeres.traccar.mqtt.Envelope
-import com.dmujeres.traccar.mqtt.HttpFallbackDispatcher
-import com.dmujeres.traccar.mqtt.HttpFlushPolicy
+import com.dmujeres.traccar.mqtt.MqttServerNormalizer
 import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.PendingAlertPolicy
+import com.dmujeres.traccar.mqtt.PositionOutboxDispatcher
 import com.dmujeres.traccar.util.DiagnosticsCollector
 import com.dmujeres.traccar.util.DiagnosticsReporter
 import com.dmujeres.traccar.util.JourneyFormatter
@@ -437,7 +438,10 @@ class TrackingService : Service() {
             config = config,
             dao = dao,
             scope = serviceScope,
-            onStateChange = { _ -> onMqttStateChanged() }
+            onStateChange = { _ -> onMqttStateChanged() },
+            // Presencia con NACK terminal vía MQTT: misma cuarentena + aviso
+            // que el camino HTTP (un solo criterio en ambos transportes).
+            onQuarantined = { dead -> onQuarantined(dead) },
         )
         mqtt = manager
         manager.connect()
@@ -649,6 +653,7 @@ class TrackingService : Service() {
     @Volatile private var lastMqttStatus: String = ""
     @Volatile private var lastBufferFullAlertAt = 0L
     @Volatile private var lastDiscardAlertAt = 0L
+    @Volatile private var lastQuarantineAlertAt = 0L
     @Volatile private var lastStorageAlertAt = 0L
     @Volatile private var lastJourneyLat = 0.0
     @Volatile private var lastJourneyLon = 0.0
@@ -745,11 +750,47 @@ class TrackingService : Service() {
     }
 
     /**
-     * Drena el buffer por lotes HTTP tras recuperar conexión (arreglo de
-     * almacenamiento): un solo flush (50 puntos) dejaba miles goteando por
-     * MQTT a ~4/min en enlace débil. Corre en serviceScope; el Mutex global
-     * (DispatchLock) lo serializa con el dispatch MQTT sin deadlock. Nunca
-     * borra: el flush solo elimina lo confirmado por el servidor.
+     * Manejo único de cuarentena en ambos transportes (HTTP y MQTT): contador
+     * acumulado + aviso con throttle. Un NACK terminal es raro y merece
+     * atención, nunca silencio.
+     */
+    private fun onQuarantined(@Suppress("UNUSED_PARAMETER") dead: DeadLetter) {
+        val total = runCatching { config.incQuarantinedTotal() }.getOrDefault(0L)
+        Log.w(TAG, "Outbox: cuarentena #$total (ver dead_letters en diagnóstico)")
+        val now = System.currentTimeMillis()
+        if (now - lastQuarantineAlertAt > 60_000) {
+            lastQuarantineAlertAt = now
+            Notifications.alert(
+                this@TrackingService,
+                getString(R.string.quarantine_warning_title),
+                getString(R.string.quarantine_warning_body, total),
+            )
+        }
+    }
+
+    /**
+     * Contexto del dispatcher HTTP-first (propietario único de posiciones):
+     * base web + API key + métricas de jornada y cuarentena (contador + aviso
+     * con throttle: un NACK terminal es raro y merece atención, no silencio).
+     */
+    private fun dispatchContext() = PositionOutboxDispatcher.DispatchContext(
+        webBaseUrl = MqttServerNormalizer.webBase(config.serverUrl, AppConfig.WEB_PORT),
+        apiKey = AppConfig.HTTP_API_KEY,
+        journeyStartAt = config.journeyStartAt,
+        onConfirmedPosition = { item ->
+            if (PositionOutboxDispatcher.isCurrentJourneyPosition(config.journeyStartAt, item)) {
+                runCatching { config.recordJourneyConfirmed(item.journeyId) }
+            }
+        },
+        onQuarantined = { dead -> onQuarantined(dead) },
+    )
+
+    /**
+     * Drena el outbox por lotes HTTP tras recuperar conexión: el propietario
+     * único (PositionOutboxDispatcher) envía posiciones FIFO con ACK de negocio;
+     * MQTT lleva solo presencia en paralelo disjunto. Corre en serviceScope.
+     * Nunca borra: el flush solo elimina lo confirmado; lo terminal va a
+     * cuarentena; lo no confirmado reintenta con backoff.
      *
      * Single-flight + debounce: si ya hay un drenaje en curso o el último fue
      * hace <10 s, se omite (el en curso vacía hasta que un lote confirma 0 y
@@ -766,18 +807,30 @@ class TrackingService : Service() {
             return
         }
         lastDrainAt = now
+        // Plan B para presencia: si MQTT no entrega, HTTP también barre los
+        // controles vencidos (con MQTT sano los lleva MQTT en vivo).
+        val includePresence = mqtt?.ready != true
+        val ctx = dispatchContext()
         serviceScope.launch {
             try {
                 var batches = 0
-                var confirmed = HttpFallbackDispatcher.flush(dao, config)
-                batches++
-                while (com.dmujeres.traccar.db.BufferDrainPolicy.continueDraining(confirmed, batches)) {
-                    confirmed = HttpFallbackDispatcher.flush(dao, config)
+                var totalConfirmed = 0
+                var totalQuarantined = 0
+                var progress = 0
+                do {
+                    val outcome = PositionOutboxDispatcher.flushOnce(
+                        dao, PositionOutboxDispatcher.HttpTransport, ctx,
+                        includePresence = includePresence,
+                    )
+                    // Progreso = confirmadas + cuarentenadas (ambas vacían outbox).
+                    progress = outcome.confirmed + outcome.quarantined
+                    totalConfirmed += outcome.confirmed
+                    totalQuarantined += outcome.quarantined
                     batches++
-                }
-                if (batches > 1) {
-                    Log.i(TAG, "Drenaje post-reconexión ($reason): $batches lotes")
-                }
+                    if (!outcome.transportOk) break
+                } while (com.dmujeres.traccar.db.BufferDrainPolicy.continueDraining(progress, batches))
+                Log.i(TAG, "Drenaje ($reason): $batches lotes, confirmed=$totalConfirmed "
+                    + "quarantined=$totalQuarantined")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1849,28 +1902,27 @@ class TrackingService : Service() {
             }
             maybeNotifyOperationalAlerts(now, connectionUnavailable, batteryNow)
 
-            // El plan B HTTP drena la cola cuando MQTT no entrega: desconectado, o conectado
-            // pero sin ACK reciente (broker/servidor mudo, caso del bug de 3906). Además ayuda
-            // aunque haya ACKs recientes si el pendiente más viejo envejece: los ACKs de
-            // presencia (heartbeat sin fix) refrescan lastAckAt y ocultarían un backlog de
-            // posiciones atascado con MQTT "conectado". Ver HttpFlushPolicy.
-            if (HttpFlushPolicy.shouldFlush(
-                    pendingCount = pendingCount,
-                    mqttDelivering = !connectionUnavailable,
-                    lastAckAt = config.lastAckAt,
-                    oldestPendingAt = oldestPendingAt,
-                    now = now,
-                )
-            ) {
+            // HTTP es el transporte PRINCIPAL de posiciones (lotes FIFO con ACK
+            // de negocio); MQTT lleva solo presencia. Goteo de 1 lote/30 s con
+            // red validada + backlog: mantiene el outbox al día sin esperar
+            // eventos. Las presencias van por HTTP solo si MQTT no entrega.
+            if (pendingCount > 0 && networkAvailable) {
                 try {
-                    val flushed = HttpFallbackDispatcher.flush(dao, config)
-                    if (flushed > 0) {
-                        Log.i(TAG, "Fallback HTTP confirmó $flushed mensajes")
+                    val outcome = PositionOutboxDispatcher.flushOnce(
+                        dao,
+                        PositionOutboxDispatcher.HttpTransport,
+                        dispatchContext(),
+                        nowMs = now,
+                        includePresence = mqttUnavailable,
+                    )
+                    if (outcome.confirmed > 0 || outcome.quarantined > 0) {
+                        Log.i(TAG, "Trickle HTTP confirmó ${outcome.confirmed} "
+                            + "cuarentena ${outcome.quarantined}")
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.w(TAG, "Fallback HTTP falló", e)
+                    Log.w(TAG, "Trickle HTTP falló", e)
                 }
             }
 
@@ -2133,15 +2185,19 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
     }
 
     private suspend fun flushPendingOnStop() {
-        // Al finalizar NO se borra la cola: se drena por HTTP hasta vaciarla o
-        // hasta el deadline (ver StopDrainPolicy). Lo que quede sigue en Room y
-        // lo drena TrackingRecoveryWorker; nunca se descarta.
+        // Al finalizar NO se borra la cola: se drena por HTTP (propietario
+        // único de posiciones) hasta vaciarla o hasta el deadline (ver
+        // StopDrainPolicy). Lo que quede sigue en Room y lo drena
+        // TrackingRecoveryWorker; nunca se descarta.
+        val ctx = dispatchContext()
         val deadline = System.currentTimeMillis() + StopDrainPolicy.TIMEOUT_MS
         while (!StopDrainPolicy.timedOut(System.currentTimeMillis(), deadline)) {
             val pending = withContext(Dispatchers.IO) { dao.count() }
             if (pending == 0) return
-            val flushed = HttpFallbackDispatcher.flush(dao, config)
-            delay(StopDrainPolicy.retryDelayAfter(flushed))
+            val outcome = PositionOutboxDispatcher.flushOnce(
+                dao, PositionOutboxDispatcher.HttpTransport, ctx, includePresence = true,
+            )
+            delay(StopDrainPolicy.retryDelayAfter(outcome.confirmed + outcome.quarantined))
         }
     }
 

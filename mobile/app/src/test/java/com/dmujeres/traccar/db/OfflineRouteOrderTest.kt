@@ -113,6 +113,12 @@ class OfflineRouteOrderTest {
             rows.clear()
         }
 
+        override suspend fun insertDeadLetter(deadLetter: DeadLetter): Long = 1L
+
+        override suspend fun deadLetterCount(): Int = 0
+
+        override suspend fun deadLetters(limit: Int): List<DeadLetter> = emptyList()
+
         override suspend fun oldestEnqueuedAt(): Long? =
             rows.map { it.enqueuedAt }.filter { it > 0 }.minOrNull()
     }

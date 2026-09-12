@@ -21,8 +21,8 @@ android {
         applicationId = "com.dmujeres.traccar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 84
-        versionName = "1.0.84"
+        versionCode = 85
+        versionName = "1.0.85"
         // DSN de Sentry para reporte de crashes. Ver docs/SENTRY.md.
         // Se obtuvo de tu proyecto "DMujeres Tracking" (org sekaidev-w5).
         buildConfigField("String", "SENTRY_DSN", "\"https://1f47e345c56f117bf87d9221a403e53a@o4511839263064064.ingest.us.sentry.io/4512058795491328\"")
@@ -71,6 +71,14 @@ android {
         viewBinding = true
         buildConfig = true
         compose = true
+    }
+
+    // Unit tests JVM: los stubs de android.jar lanzan por defecto ("not mocked").
+    // Con defaults, android.util.Log y amigos son no-op en tests (org.json sí es
+    // real vía testImplementation). Sin esto, cualquier Log en código bajo test
+    // rompería la suite con RuntimeException en vez de probar lógica.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     composeOptions {

@@ -20,7 +20,8 @@ import com.dmujeres.traccar.db.StopDrainPolicy
 import com.dmujeres.traccar.DmujeresApp
 import com.dmujeres.traccar.R
 import com.dmujeres.traccar.location.TrackingService
-import com.dmujeres.traccar.mqtt.HttpFallbackDispatcher
+import com.dmujeres.traccar.mqtt.MqttServerNormalizer
+import com.dmujeres.traccar.mqtt.PositionOutboxDispatcher
 import com.dmujeres.traccar.receiver.StuckStopPolicy
 import com.dmujeres.traccar.util.Notifications
 import com.dmujeres.traccar.util.UpdateChecker
@@ -121,22 +122,40 @@ class TrackingRecoveryWorker(
     }
 
     private suspend fun drainPending(dao: com.dmujeres.traccar.db.PositionDao, config: AppConfig) {
-        // Igual que el flush de cierre: drenar hasta vaciar o hasta el deadline,
-        // sin abortar al primer intento fallido (la red puede volver a mitad).
-        // Lo no drenado sigue en Room para el próximo ciclo; nunca se descarta.
+        // Igual que el flush de cierre: drenar por HTTP (propietario único de
+        // posiciones) hasta vaciar o hasta el deadline, sin abortar al primer
+        // intento fallido (la red puede volver a mitad). Lo no drenado sigue en
+        // Room para el próximo ciclo; nunca se descarta (lo terminal va a
+        // cuarentena, no a borrado).
+        val ctx = PositionOutboxDispatcher.DispatchContext(
+            webBaseUrl = MqttServerNormalizer.webBase(config.serverUrl, AppConfig.WEB_PORT),
+            apiKey = AppConfig.HTTP_API_KEY,
+            journeyStartAt = config.journeyStartAt,
+            onConfirmedPosition = { item ->
+                if (PositionOutboxDispatcher.isCurrentJourneyPosition(config.journeyStartAt, item)) {
+                    runCatching { config.recordJourneyConfirmed(item.journeyId) }
+                }
+            },
+            onQuarantined = { runCatching { config.incQuarantinedTotal() } },
+        )
         val deadline = System.currentTimeMillis() + StopDrainPolicy.TIMEOUT_MS
         while (!StopDrainPolicy.timedOut(System.currentTimeMillis(), deadline)) {
             val remaining = withContext(Dispatchers.IO) { dao.count() }
             if (remaining == 0) return
-            val flushed = runCatching {
+            val outcome = runCatching {
                 withContext(Dispatchers.IO) {
-                    HttpFallbackDispatcher.flush(dao, config)
+                    PositionOutboxDispatcher.flushOnce(
+                        dao, PositionOutboxDispatcher.HttpTransport, ctx, includePresence = true,
+                    )
                 }
             }.getOrElse { error ->
                 Log.w("TrackingRecoveryWorker", "No se pudo drenar el outbox", error)
-                0
+                PositionOutboxDispatcher.FlushOutcome(0, 0, 0, transportOk = false)
             }
-            delay(StopDrainPolicy.retryDelayAfter(flushed))
+            if (!outcome.transportOk && outcome.confirmed == 0 && outcome.quarantined == 0) {
+                Log.d("TrackingRecoveryWorker", "drain detenido sin transporte; Room intacto")
+            }
+            delay(StopDrainPolicy.retryDelayAfter(outcome.confirmed + outcome.quarantined))
         }
     }
 

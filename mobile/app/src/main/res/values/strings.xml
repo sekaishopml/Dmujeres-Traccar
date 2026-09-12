@@ -161,6 +161,8 @@
     <string name="buffer_full_stop_body">La memoria para guardar posiciones está llena. Se reanudará automáticamente cuando se envíe lo guardado.</string>
     <string name="storage_warning_title">No se pudo guardar la ubicación</string>
     <string name="storage_warning_body">No se pudo guardar tu ubicación. Revisa el espacio libre del dispositivo.</string>
+    <string name="quarantine_warning_title">Posición apartada para diagnóstico</string>
+    <string name="quarantine_warning_body">El servidor rechazó %1$d mensaje(s). Se conservaron para diagnóstico, tu ruta no se ve afectada.</string>
     <string name="policy_label">Si se llena la memoria</string>
     <string name="policy_drop_oldest">Borrar las más antiguas</string>
     <string name="policy_stop_capture">Pausar hasta enviar</string>
