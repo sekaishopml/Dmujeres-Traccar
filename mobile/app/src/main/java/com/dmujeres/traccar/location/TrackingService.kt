@@ -373,13 +373,12 @@ class TrackingService : Service() {
         lastAcceptedLon = if (recoveringJourney) config.journeyLastLon else 0.0
         lastAcceptedTimeMs = 0L
         lastAcceptedBearingDeg = Double.NaN
-        // En recuperación, si el último fix es viejo el heartbeat entra al
-        // primer aviso (el teléfono ya estaba quieto antes de morir).
-        lastMovementMs = if (recoveringJourney && config.lastFixAt > 0) {
-            config.lastFixAt
-        } else {
-            System.currentTimeMillis()
-        }
+        // Stop detection: arranca en MODO MARCHA (cadencia normal). El
+        // heartbeat de parada entra solo tras 60 s quieto DENTRO de esta
+        // sesión; heredar lastFixAt viejo dejaba la captura en heartbeat de
+        // 60 s desde el arranque (causa raíz de "no hay ruta": el teléfono
+        // parado en casa/work nunca volvía a cadencia de marcha).
+        lastMovementMs = System.currentTimeMillis()
         adaptiveMoving = false
         gnssForced = false
         currentMinDistanceM = AdaptiveDistancePolicy.DISTANCE_STATIONARY_M
@@ -1345,8 +1344,17 @@ class TrackingService : Service() {
         }
         lastFixSpeedMps = SpeedEstimator.effectiveMps(doppler, implied)
         // Stop detection (perfil oculto, ON): hay movimiento si la efectiva
-        // supera 1.5 m/s; el heartbeat entra tras 60 s sin moverse.
-        if ((lastFixSpeedMps ?: 0f) >= 1.5f) {
+        // supera 1.5 m/s O la geometría se movió > 8 m desde el último fix
+        // (el Doppler atascado en 0 no debe llamar a "quieto" un viaje real).
+        val movedSinceLast = if (lastSpeedRefTimeMs > 0) {
+            SpeedEstimator.haversineMeters(
+                lastSpeedRefLat, lastSpeedRefLon,
+                location.latitude, location.longitude,
+            )
+        } else {
+            0.0
+        }
+        if ((lastFixSpeedMps ?: 0f) >= 1.5f || movedSinceLast >= 8.0) {
             lastMovementMs = nowMs
         }
         lastSpeedRefLat = location.latitude
