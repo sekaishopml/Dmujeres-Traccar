@@ -661,7 +661,7 @@ class MainActivity : ComponentActivity() {
         // Causa de red (Fase 1): el servicio es autoritativo cuando corre (usa
         // previousLabel correcto); si está detenido se calcula en vivo para la UI.
         val storedCause = NetCause.fromValue(config.netCause)
-        val liveCause = runCatching { NetCause.detect(snapshot(this, config.netLabel)) }.getOrNull()
+        val liveCause = runCatching { NetCause.detect(snapshot(this, config.netLabel, config.lastDataEnabled)) }.getOrNull()
         val effectiveCause = if (TrackingService.isRunning) {
             storedCause ?: liveCause ?: NetCause.OK
         } else {
@@ -792,9 +792,6 @@ class MainActivity : ComponentActivity() {
         val km = JourneyFormatter.formatKm(config.journeyDistanceM)
         val points = config.journeyPoints
         val confirmedPoints = config.journeyConfirmedPoints
-        val summary = JourneyFormatter.buildSummary(duration, km, points, confirmedPoints)
-        config.lastJourneySummary = summary
-        config.lastSummaryNotified = ""
         AlertDialog.Builder(this)
             .setTitle(R.string.journey_summary_title)
             .setMessage(getString(R.string.journey_summary_body, duration, km, points, confirmedPoints))

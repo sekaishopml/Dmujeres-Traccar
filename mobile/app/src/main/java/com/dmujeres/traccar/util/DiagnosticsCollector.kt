@@ -163,7 +163,7 @@ object DiagnosticsCollector {
                 .isIgnoringBatteryOptimizations(context.packageName)
         }.getOrDefault(false)
         // Foto de red vía el mismo snapshot util que alimenta NetCause (cellular/avión).
-        val shot = runCatching { snapshot(context, config.netLabel) }.getOrNull()
+        val shot = runCatching { snapshot(context, config.netLabel, config.lastDataEnabled) }.getOrNull()
         // Idle: tiempo sin capturar/enviar; 0 si nunca hubo actividad (arranque limpio).
         val idleAnchor = maxOf(config.lastFixAt, config.lastEnqueuedAt)
         return DiagnosticsSources(

@@ -131,8 +131,6 @@
     <string name="journey_duration">%1$d h %2$d min</string>
     <string name="journey_summary_title">Resumen de jornada</string>
     <string name="journey_summary_body">Tiempo activo: %1$s · Recorrido: %2$s km · Guardados: %3$d · Confirmados: %4$d</string>
-    <string name="daily_summary_title">Resumen de tu jornada de ayer</string>
-    <string name="daily_summary_body">%1$s activo · %2$s km · %3$d guardados · %4$d confirmados</string>
     <string name="finish_confirm_title">¿Finalizar la jornada?</string>
     <string name="finish_confirm_body">Las posiciones guardadas seguirán enviándose aunque no haya Internet ahora.</string>
     <string name="finish_confirm_button">Finalizar</string>

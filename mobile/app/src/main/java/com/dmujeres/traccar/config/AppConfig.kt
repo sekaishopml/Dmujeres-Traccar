@@ -257,19 +257,30 @@ class AppConfig(context: Context) {
         get() = prefs.getString(KEY_NET_LABEL, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_NET_LABEL, value).apply()
 
+    /**
+     * Último switch de datos móviles observado (isDataEnabled API 30+).
+     * null = nunca observado (arranque): sin transición true→false NO se acusa
+     * "apagaste los datos" (el switch apagado crónico no prueba manipulación).
+     */
+    var lastDataEnabled: Boolean?
+        get() = when (prefs.getInt(KEY_LAST_DATA_ENABLED, -1)) {
+            1 -> true
+            0 -> false
+            else -> null
+        }
+        set(value) = prefs.edit().putInt(
+            KEY_LAST_DATA_ENABLED,
+            when (value) {
+                true -> 1
+                false -> 0
+                null -> -1
+            },
+        ).apply()
+
     /** Último estado real publicado por el servicio para que la UI no dependa solo del booleano. */
     var trackingState: String
         get() = prefs.getString(KEY_TRACKING_STATE, "TRACKING_DISABLED_BY_USER").orEmpty()
         set(value) = prefs.edit().putString(KEY_TRACKING_STATE, value).apply()
-
-    var lastSummaryNotified: String
-        get() = prefs.getString(KEY_SUMMARY_NOTIFIED, "").orEmpty()
-        set(value) = prefs.edit().putString(KEY_SUMMARY_NOTIFIED, value).apply()
-
-    /** Resumen de la última jornada finalizada (para notificación diaria). */
-    var lastJourneySummary: String
-        get() = prefs.getString(KEY_LAST_SUMMARY, "").orEmpty()
-        set(value) = prefs.edit().putString(KEY_LAST_SUMMARY, value).apply()
 
     /** Máximo de reintentos de un mensaje antes de descartarlo. */
     var maxRetries: Int
@@ -552,8 +563,6 @@ class AppConfig(context: Context) {
         private const val KEY_JOURNEY_LAST_LON = "journey_last_lon"
         private const val KEY_JOURNEY_HAS_LAST_LOCATION = "journey_has_last_location"
         private const val KEY_JOURNEY_STOP_REQUESTED = "journey_stop_requested"
-        private const val KEY_SUMMARY_NOTIFIED = "summary_notified"
-        private const val KEY_LAST_SUMMARY = "last_journey_summary"
         private const val KEY_LAST_START_ERROR = "last_start_error"
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check_at"
         private const val KEY_LAST_UPDATE_ERROR = "last_update_error"
@@ -561,6 +570,7 @@ class AppConfig(context: Context) {
         private const val KEY_TRACKING_STATE = "tracking_state"
         private const val KEY_NET_CAUSE = "net_cause"
         private const val KEY_NET_LABEL = "net_label"
+        private const val KEY_LAST_DATA_ENABLED = "last_data_enabled"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_CRASHES_24H = "health_crashes_24h"
         private const val KEY_CLOCK_STEPS_24H = "health_clock_steps_24h"

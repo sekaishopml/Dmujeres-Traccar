@@ -84,7 +84,4 @@ object JourneyFormatter {
         }
     }
 
-    /** Resumen persistido "duration|km|points|confirmed" (formato de AppConfig). */
-    fun buildSummary(duration: String, km: String, points: Long, confirmedPoints: Long): String =
-        "$duration|$km|$points|$confirmedPoints"
 }

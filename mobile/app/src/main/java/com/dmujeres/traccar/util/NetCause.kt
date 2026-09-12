@@ -84,8 +84,12 @@ enum class NetCause(val value: String) {
          *      convence si además no existe ninguna red WiFi: WIFI_ON está deprecado y
          *      puede leerse obsoleto en OEMs; nunca es fuente única).
          *    - simAbsent == true → [SIM_MISSING] (certeza física: sin chip no hay datos).
-         *    - dataEnabled == false → [MOBILE_DATA_OFF_USER] (certeza del switch real,
-         *      isDataEnabled API 30+ sin permiso).
+         *    - dataEnabled == false + previousDataEnabled == true → [MOBILE_DATA_OFF_USER]
+         *      (TRANSICIÓN observada encendido→apagado = manipulación manual cierta;
+         *      solo así se acusa "apagaste". Con switch apagado de forma estable o
+         *      sin lectura previa se informa [NO_COVERAGE_SUSPECTED]: el dato
+         *      apagado crónico (p.ej. vivir en WiFi) no prueba que LO APAGARAS ahora).
+         *    - dataEnabled == false sin transición → [NO_COVERAGE_SUSPECTED].
          *    - dataEnabled == true + dataState ∈ {NONE, OUT_OF_SERVICE} →
          *      [NO_COVERAGE_SUSPECTED] ("encendidos pero sin antena" ≠ "apagados").
          *    - dataEnabled == true + dataState ∈ {DISCONNECTED, SUSPENDED} →
@@ -118,6 +122,9 @@ enum class NetCause(val value: String) {
             dataEnabled: Boolean? = null,
             dataState: Int? = null,
             simAbsent: Boolean? = null,
+            // Último dataEnabled conocido (AppConfig.lastDataEnabled). Solo una
+            // transición true→false autoriza "apagaste los datos".
+            previousDataEnabled: Boolean? = null,
         ): NetCause {
             if (airplane) return AIRPLANE
             if (!validated && captive) return CAPTIVE_SUSPECTED
@@ -129,7 +136,10 @@ enum class NetCause(val value: String) {
                 if (!wifiOn && !wifiNetworkExists) return WIFI_OFF_USER
                 // "El usuario apagó datos" vs "perdió cobertura": primero las certezas.
                 if (simAbsent == true) return SIM_MISSING
-                if (dataEnabled == false) return MOBILE_DATA_OFF_USER
+                if (dataEnabled == false) {
+                    return if (previousDataEnabled == true) MOBILE_DATA_OFF_USER
+                    else NO_COVERAGE_SUSPECTED
+                }
                 if (dataEnabled == true && dataState != null) {
                     when (dataState) {
                         TEL_DATA_STATE_NONE, TEL_DATA_STATE_OUT_OF_SERVICE ->
@@ -161,6 +171,7 @@ enum class NetCause(val value: String) {
             dataEnabled = snapshot.dataEnabled,
             dataState = snapshot.dataState,
             simAbsent = snapshot.simAbsent,
+            previousDataEnabled = snapshot.previousDataEnabled,
         )
     }
 }
@@ -211,6 +222,11 @@ data class NetSnapshot(
     val dataState: Int? = null,
     /** simState == ABSENT, solo con READ_PHONE_STATE. null = sin permiso/lectura. */
     val simAbsent: Boolean? = null,
+    /**
+     * Último dataEnabled conocido antes de esta lectura (AppConfig).
+     * Solo la transición true → false actual autoriza "apagaste los datos".
+     */
+    val previousDataEnabled: Boolean? = null,
 )
 
 /**
@@ -223,6 +239,7 @@ data class NetSnapshot(
 fun snapshot(
     context: Context,
     previousLabel: String = "",
+    previousDataEnabled: Boolean? = null,
 ): NetSnapshot {
     val resolver = context.contentResolver
     val wifiOn = runCatching {
@@ -283,5 +300,6 @@ fun snapshot(
         dataEnabled = dataEnabled,
         dataState = dataState,
         simAbsent = simAbsent,
+        previousDataEnabled = previousDataEnabled,
     )
 }

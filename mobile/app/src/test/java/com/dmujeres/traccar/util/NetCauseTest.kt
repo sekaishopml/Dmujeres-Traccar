@@ -79,14 +79,21 @@ class NetCauseTest {
             val dataEnabled: Boolean? = null,
             val dataState: Int? = null,
             val simAbsent: Boolean? = null,
+            // Último switch conocido: solo true→false autoriza "apagaste".
+            val prevData: Boolean? = null,
         )
         val cases = listOf(
             // "Apagaste el WiFi" exige switch-off + CERO redes WiFi; WIFI_ON solo no basta.
             PCase("wifi off sin red alguna -> apagaste", NetCause.WIFI_OFF_USER, wifiOn = false),
             PCase("WIFI_ON obsoleto con red wifi existiendo -> no es 'apagaste'", NetCause.WIFI_LOST, wifiOn = false, wifiNetworkExists = true, previous = "wifi"),
-            // Datos apagados por el usuario (isDataEnabled, API 30+, sin permiso).
-            PCase("switch datos off con certeza -> mobile_data_off_user", NetCause.MOBILE_DATA_OFF_USER, dataEnabled = false),
-            PCase("switch off pisa al heurístico OEM", NetCause.MOBILE_DATA_OFF_USER, mobileOff = true, dataEnabled = false),
+            // Datos apagados: SOLO la transición true→false prueba manipulación
+            // manual. Switch apagado crónico (vivir en WiFi) + blip de red NO es
+            // "apagaste": es sin cobertura (acusación grave exige certeza).
+            PCase("switch off sin previo -> sin cobertura, no acusación", NetCause.NO_COVERAGE_SUSPECTED, dataEnabled = false),
+            PCase("switch off estable (prev false) -> sin cobertura", NetCause.NO_COVERAGE_SUSPECTED, dataEnabled = false, prevData = false),
+            PCase("transición on->off observada -> apagaste (certeza)", NetCause.MOBILE_DATA_OFF_USER, dataEnabled = false, prevData = true),
+            PCase("switch off pisa al heurístico OEM solo con transición", NetCause.MOBILE_DATA_OFF_USER, mobileOff = true, dataEnabled = false, prevData = true),
+            PCase("switch off + heurístico sin transición -> sin cobertura", NetCause.NO_COVERAGE_SUSPECTED, mobileOff = true, dataEnabled = false),
             PCase("heurístico solo -> sospecha", NetCause.MOBILE_DATA_OFF_SUSPECTED, mobileOff = true, dataEnabled = null),
             // "Encendidos pero sin antena" ≠ "apagados".
             PCase("datos on + state NONE -> sin cobertura", NetCause.NO_COVERAGE_SUSPECTED, dataEnabled = true, dataState = TEL_DATA_STATE_NONE),
@@ -123,6 +130,7 @@ class NetCauseTest {
                 dataEnabled = c.dataEnabled,
                 dataState = c.dataState,
                 simAbsent = c.simAbsent,
+                previousDataEnabled = c.prevData,
             )
             assertEquals("${c.name}: esperado ${c.expected.value}", c.expected, got)
         }

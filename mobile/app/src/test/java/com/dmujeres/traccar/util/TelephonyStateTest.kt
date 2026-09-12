@@ -60,16 +60,36 @@ class TelephonyStateTest {
     }
 
     @Test
-    fun withPermissionDataOffIsConfirmed() {
+    fun withPermissionDataOffNeedsTransitionForAccusation() {
+        // Transición observada on->off = manipulación manual cierta.
         assertEquals(
             NetCause.MOBILE_DATA_OFF_USER to "confirmed",
-            refine(NetCause.NO_COVERAGE_SUSPECTED, withPerm(dataEnabled = false)),
+            refine(
+                NetCause.NO_COVERAGE_SUSPECTED,
+                withPerm(dataEnabled = false),
+                previousDataEnabled = true,
+            ),
         )
         assertEquals(
             NetCause.MOBILE_DATA_OFF_USER to "confirmed",
             refine(
                 NetCause.MOBILE_DATA_OFF_SUSPECTED,
                 withPerm(dataEnabled = false, simPresent = true, service = "in_service"),
+                previousDataEnabled = true,
+            ),
+        )
+        // Switch apagado crónico o sin lectura previa: NO se acusa; se queda
+        // la base (sin cobertura) como sospecha.
+        assertEquals(
+            NetCause.NO_COVERAGE_SUSPECTED to "suspected",
+            refine(NetCause.NO_COVERAGE_SUSPECTED, withPerm(dataEnabled = false)),
+        )
+        assertEquals(
+            NetCause.NO_COVERAGE_SUSPECTED to "suspected",
+            refine(
+                NetCause.NO_COVERAGE_SUSPECTED,
+                withPerm(dataEnabled = false),
+                previousDataEnabled = false,
             ),
         )
     }
@@ -86,9 +106,18 @@ class TelephonyStateTest {
     }
 
     @Test
-    fun dataOffWinsOverMissingSim() {
+    fun simMissingWinsOverDataSwitch() {
+        // Certeza física: sin chip no hay dato posible, el switch no importa.
         assertEquals(
-            NetCause.MOBILE_DATA_OFF_USER to "confirmed",
+            NetCause.SIM_MISSING to "confirmed",
+            refine(
+                NetCause.NO_COVERAGE_SUSPECTED,
+                withPerm(dataEnabled = false, simPresent = false),
+                previousDataEnabled = true,
+            ),
+        )
+        assertEquals(
+            NetCause.SIM_MISSING to "confirmed",
             refine(NetCause.NO_COVERAGE_SUSPECTED, withPerm(dataEnabled = false, simPresent = false)),
         )
     }

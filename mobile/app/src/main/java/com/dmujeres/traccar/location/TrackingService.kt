@@ -474,12 +474,13 @@ class TrackingService : Service() {
 
     /** Foto de red sin fricción + causa probable (Fase 1). Persiste para la UI. */
     private fun currentNetSnapshot(): NetSnapshot =
-        runCatching { snapshot(this, lastReportedNetwork) }.getOrDefault(
+        runCatching { snapshot(this, lastReportedNetwork, config.lastDataEnabled) }.getOrDefault(
             NetSnapshot(
                 wifiOn = true, airplane = false,
                 hasWifiTransport = false, hasCellTransport = false,
                 validated = false, captive = false,
                 previousLabel = lastReportedNetwork,
+                previousDataEnabled = config.lastDataEnabled,
             )
         )
 
@@ -496,6 +497,11 @@ class TrackingService : Service() {
                     shot.hasCellTransport -> "mobile"
                     else -> config.netLabel
                 }
+            }
+            // lastDataEnabled: referencia para detectar manipulación MANUAL del
+            // switch (transición true→false). Solo se avanza con lectura real.
+            if (shot.dataEnabled != null) {
+                config.lastDataEnabled = shot.dataEnabled
             }
         }
     }
@@ -1278,7 +1284,8 @@ class TrackingService : Service() {
         // Telefonía opcional (READ_PHONE_STATE bajo demanda): sin permiso se
         // degrada a la heurística sin permiso; nunca bloquea ni lanza.
         val tel = runCatching { readTelInfo(this) }.getOrDefault(TelInfo.noPermission())
-        val (cause, conf) = runCatching { refine(base, tel) }.getOrDefault(base to NETCONF_SUSPECTED)
+        val (cause, conf) = runCatching { refine(base, tel, config.lastDataEnabled) }
+            .getOrDefault(base to NETCONF_SUSPECTED)
         return Telemetry(
             pending = pendingCount,
             battery = battery,
@@ -1926,20 +1933,19 @@ class TrackingService : Service() {
                 }
             }
 
-if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
-                && !wakeAlertActive) {
+            // Pantalla de aviso SOLO por pérdida de conexión (único caso con
+            // acción real del usuario: recuperar señal). Sin GPS pero con red,
+            // el heartbeat sigue y el servidor ya marca STALE: despertar por
+            // GPS solo generaba spam estacionado (parqueaderos, interiores).
+            if (connectionUnavailable && !wakeAlertActive) {
                 // Alerta de pantalla una sola vez por episodio, no cada 20 minutos.
                 wakeAlertActive = true
                 Notifications.wakeScreen(
                     this,
                     getString(R.string.wake_title),
-                    when {
-                        gpsWithoutFix -> getString(R.string.wake_gps_body)
-                        pendingWithoutAck -> getString(R.string.wake_pending_body)
-                        else -> getString(R.string.wake_mqtt_body)
-                    },
+                    getString(R.string.wake_mqtt_body),
                 )
-            } else if (!gpsWithoutFix && !connectionUnavailable && !pendingWithoutAck) {
+            } else if (!connectionUnavailable) {
                 wakeAlertActive = false
             }
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
@@ -2267,7 +2273,6 @@ if ((gpsWithoutFix || connectionUnavailable || pendingWithoutAck)
         val (hours, minutes) = JourneyFormatter.durationParts(finalElapsedMs)
         val duration = getString(R.string.journey_duration, hours, minutes)
         val km = JourneyFormatter.formatKm(distanceM)
-        config.lastJourneySummary = JourneyFormatter.buildSummary(duration, km, points, confirmedPoints)
         return if (points > 0) {
             getString(R.string.notif_journey_finished_body, duration, km, points, confirmedPoints)
         } else {

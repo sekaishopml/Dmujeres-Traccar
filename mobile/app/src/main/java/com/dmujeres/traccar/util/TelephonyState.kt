@@ -114,13 +114,23 @@ fun readTelInfo(context: Context): TelInfo {
  *
  * Con permiso (las ciertas anteriores se preservan: la telefonía no puede
  * contradecir al modo avión ni al WiFi apagado por el usuario):
- * - dataEnabled == false → (mobile_data_off_user, confirmed).
+ * - dataEnabled == false + previousDataEnabled == true → (mobile_data_off_user,
+ *   confirmed): TRANSICIÓN observada = manipulación manual cierta.
+ * - dataEnabled == false sin transición → (base, suspected): el switch apagado
+ *   de forma estable (p.ej. vivir en WiFi) no prueba que LO APAGARAS ahora.
  * - simPresent == false → (sim_missing, confirmed).
  * - service out_of_service/emergency + dataEnabled == true →
  *   (no_coverage_suspected, confirmed).
  * - resto → (base, suspected).
+ *
+ * @param previousDataEnabled último dataEnabled conocido (AppConfig); null si
+ * nunca se observó (arranque): sin transición no hay acusación.
  */
-fun refine(base: NetCause, tel: TelInfo): Pair<NetCause, String> {
+fun refine(
+    base: NetCause,
+    tel: TelInfo,
+    previousDataEnabled: Boolean? = null,
+): Pair<NetCause, String> {
     if (base == NetCause.WIFI_OFF_USER ||
         base == NetCause.AIRPLANE ||
         base == NetCause.CAPTIVE_SUSPECTED ||
@@ -129,8 +139,13 @@ fun refine(base: NetCause, tel: TelInfo): Pair<NetCause, String> {
         return base to NETCONF_CONFIRMED
     }
     if (!tel.hasPermission) return base to NETCONF_SUSPECTED
-    if (tel.dataEnabled == false) return NetCause.MOBILE_DATA_OFF_USER to NETCONF_CONFIRMED
+    // Certeza física primero (igual que NetCause.detect): sin chip no hay
+    // dato móvil posible y el switch es irrelevante.
     if (tel.simPresent == false) return NetCause.SIM_MISSING to NETCONF_CONFIRMED
+    if (tel.dataEnabled == false) {
+        return if (previousDataEnabled == true) NetCause.MOBILE_DATA_OFF_USER to NETCONF_CONFIRMED
+        else base to NETCONF_SUSPECTED
+    }
     if ((tel.service == TEL_SERVICE_OUT_OF_SERVICE || tel.service == TEL_SERVICE_EMERGENCY) &&
         tel.dataEnabled == true
     ) {
