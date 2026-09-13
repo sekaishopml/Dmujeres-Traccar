@@ -2084,8 +2084,13 @@ class TrackingService : Service() {
             || state == TrackingState.MQTT_DISCONNECTED
             || state == TrackingState.SERVER_UNAVAILABLE
             || state == TrackingState.BATTERY_LOW
+        // GPS y pendientes-ACK excluidos del canal de alertas: cambian con
+        // frecuencia (interiores, estacionamiento, lotes a la espera) y la
+        // persistente ya los muestra. Sonar aquí solo genera spam.
+        val silentState = state == TrackingState.GPS_DISABLED
+            || state == TrackingState.PENDING_ACK_TIMEOUT
         if (state != TrackingState.TRACKING_ACTIVE && state != TrackingState.TRACKING_DISABLED_BY_USER
-            && state != TrackingState.SERVICE_RECOVERY && !delayedAlertState) {
+            && state != TrackingState.SERVICE_RECOVERY && !delayedAlertState && !silentState) {
             if (state != lastAlertedState) {
                 lastAlertedState = state
                 Notifications.alert(this, getString(R.string.warning_title), state.label)
