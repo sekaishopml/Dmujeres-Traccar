@@ -33,8 +33,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   silencioso: es evidencia de bug/deriva de contrato).
  * - pending/throttled/error/sin-respuesta → backoff exponencial con jitter y
  *   reintento (retención: sin ACK no se sabe si el servidor lo vio).
- * - Fallo de transporte (excepción, HTTP no-2xx) → NO se toca attempts: el
- *   próximo evento reintenta de inmediato en vez de esperar backoff.
+ * - Fallo de transporte (excepción) → NO se toca attempts: el próximo evento
+ *   reintenta de inmediato en vez de esperar backoff.
+ * - HTTP no-2xx GLOBAL del lote se clasifica (DispatchPolicy.classifyHttpFailure):
+ *   TRANSIENT (5xx/0) igual que excepción; THROTTLED (429/408) escala attempts
+ *   con backoff y corta el drain; TERMINAL (401/403/404/405/413/414/422)
+ *   cuarentena del lote completo con motivo "http_<code>".
  *
  * Las presencias (isControl) las envía MQTT en vivo; aquí solo se incluyen
  * cuando MQTT no entrega (`includePresence=true`) como plan B, nunca en
@@ -151,9 +155,15 @@ object PositionOutboxDispatcher {
         batchSize: Int = BATCH_SIZE,
         includePresence: Boolean = true,
     ): FlushOutcome {
-        return DispatchLock.mutex.withLock {
+        val outcome = DispatchLock.mutex.withLock {
             flushLocked(dao, transport, ctx, nowMs, batchSize, includePresence)
         }
+        // Trazabilidad de métricas en TODOS los caminos (drain/wake/trickle):
+        // ACK, retries y cuarentena agregados por el dueño del servicio.
+        if (outcome.confirmed > 0 || outcome.quarantined > 0 || outcome.retryScheduled > 0) {
+            runCatching { onFlushOutcome?.invoke(outcome) }
+        }
+        return outcome
     }
 
     private suspend fun flushLocked(
@@ -182,6 +192,47 @@ object PositionOutboxDispatcher {
             return FlushOutcome(0, 0, 0, transportOk = false)
         }
         if (!result.transportOk) {
+            val code = result.httpCode
+            if (code < 200 || code >= 300) {
+                when (DispatchPolicy.classifyHttpFailure(code)) {
+                    DispatchPolicy.HttpFailure.TERMINAL -> {
+                        // No-2xx definitivo: el lote COMPLETO a cuarentena con
+                        // motivo "http_<code>" (misma rama que rejected/invalid/
+                        // expired: evidencia preservada, JAMÁS delete directo).
+                        val reason = "http_$code"
+                        var quarantinedTerminal = 0
+                        for (item in pending) {
+                            if (quarantine(dao, item, reason, nowMs)) {
+                                quarantinedTerminal++
+                                runCatching { ctx.onQuarantined(DeadLetter.fromPending(item, reason, nowMs)) }
+                            }
+                        }
+                        Log.w(TAG, "dispatch: HTTP $code terminal: lote a cuarentena "
+                            + "items=${pending.size} quarantined=$quarantinedTerminal")
+                        return FlushOutcome(0, quarantinedTerminal, 0, transportOk = false)
+                    }
+                    DispatchPolicy.HttpFailure.THROTTLED -> {
+                        // 429/408: el servidor está en sobrecarga. transportOk=false
+                        // corta el drain (no hay que machacar), pero attempts SÍ
+                        // escala para que el backoff crezca (5s→5min) en lugar de
+                        // reintentar cada 30 s indefinidamente.
+                        var throttledRetry = 0
+                        for (item in pending) {
+                            val attempts = item.attempts + 1
+                            val backoffMs = DispatchPolicy.dispatchBackoffMs(attempts)
+                            runCatching {
+                                dao.updateAttempts(item.messageId, attempts)
+                                dao.updateRetryAt(item.messageId, nowMs + backoffMs)
+                            }
+                            throttledRetry++
+                        }
+                        Log.w(TAG, "dispatch: HTTP $code sobrecarga: backoff escalado "
+                            + "items=${pending.size} scheduled=$throttledRetry")
+                        return FlushOutcome(0, 0, throttledRetry, transportOk = false)
+                    }
+                    DispatchPolicy.HttpFailure.TRANSIENT -> Unit
+                }
+            }
             return FlushOutcome(0, 0, 0, transportOk = false)
         }
         Log.d(TAG, "POSITION_DISPATCHED items=${pending.size} "
@@ -289,6 +340,13 @@ object PositionOutboxDispatcher {
      * hook ausente o listo → solo posiciones (las presencias son de MQTT).
      */
     @Volatile var mqttReady: (() -> Boolean)? = null
+
+    /**
+     * Métricas por flush (drain, wake o trickle — cualquier camino). Se invoca
+     * con el FlushOutcome una vez aplicado: TrackingService las agrega a
+     * AppConfig (ackTotal/retryTotal/lastAckAt) para el diagnóstico. Null = no-op.
+     */
+    @Volatile var onFlushOutcome: ((FlushOutcome) -> Unit)? = null
 
     /**
      * Señala un flush inmediato post-insert. No-suspend, nunca lanza: desde

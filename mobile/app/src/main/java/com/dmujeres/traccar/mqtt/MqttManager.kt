@@ -1,6 +1,7 @@
 package com.dmujeres.traccar.mqtt
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.db.DispatchLock
@@ -63,6 +64,8 @@ class MqttManager(
     private var subscriptionRetryJob: Job? = null
     @Volatile private var subscribed = false
     @Volatile private var connecting = false
+    /** elapsedRealtime de cuándo entró `connecting=true` (watchdog de cuña). */
+    @Volatile private var connectingStartedElapsedMs = 0L
     /**
      * Puerta única de reconexión ([ReconnectGate]): TODOS los disparadores
      * (watchdog, onAvailable, connectionLost, onFailure) pasan por `connect()`
@@ -128,12 +131,44 @@ class MqttManager(
      * intento por ventana aunque la red flapee y varios emisores pidan a la
      * vez (watchdog 30 s + onAvailable + reintento programado).
      *
+     * El guard es atómico (monitor de instancia): check connecting/connected →
+     * crear cliente → conectar corre TODO bajo el mismo lock, así dos
+     * llamadores concurrentes (main + Dispatchers.Default) producen UN cliente,
+     * no dos.
+     *
      * @param immediate vía rápida para vuelta de red VALIDADA: solo debounce
      * 2 s, sin esperar el backoff (el usuario volvió a tener Internet, no hay
      * que castigarlo con la espera del outage).
      */
     fun connect(immediate: Boolean = false) {
+        synchronized(this) {
+            connectLocked(immediate)
+        }
+    }
+
+    /**
+     * Cuña anti-colgado: si Paho nunca invocó onSuccess/onFailure (socket
+     * colgado pese a connectionTimeout), `connecting` quedaría true para
+     * siempre y TODOS los connect() posteriores serían no-op. Un connect()
+     * posterior que encuentra el guard tomado desde hace más de
+     * [StaleConnectingPolicy.CONNECTION_WATCHDOG_MS] lo libera y procede con
+     * un intento nuevo (el cliente viejo se cierra como ya hace el cuerpo).
+     */
+    private fun clearStaleConnecting() {
+        if (StaleConnectingPolicy.clearIfStale(
+                connecting, connectingStartedElapsedMs, SystemClock.elapsedRealtime(),
+            )
+        ) {
+            Log.w(TAG, "connect: guard 'connecting' colgado >"
+                + "${StaleConnectingPolicy.CONNECTION_WATCHDOG_MS}ms, se libera y reintenta")
+            connecting = false
+            connectingStartedElapsedMs = 0L
+        }
+    }
+
+    private fun connectLocked(immediate: Boolean) {
         val now = System.currentTimeMillis()
+        clearStaleConnecting()
         if (connecting) return
         if (client != null && connected) return
         if (immediate) {
@@ -146,10 +181,12 @@ class MqttManager(
         connectRetryJob?.cancel()
         connectRetryJob = null
         connecting = true
+        connectingStartedElapsedMs = SystemClock.elapsedRealtime()
         val server = config.serverUrl
         val deviceId = config.deviceId
         if (server.isBlank() || deviceId.isBlank()) {
             connecting = false
+            connectingStartedElapsedMs = 0L
             connected = false
             ready = false
             subscribed = false
@@ -161,6 +198,8 @@ class MqttManager(
             MqttServerNormalizer.normalizeServer(server).also { URI(it) }
         } catch (e: Exception) {
             val error = "Servidor inválido: $server"
+            connecting = false
+            connectingStartedElapsedMs = 0L
             connected = false
             ready = false
             subscribed = false
@@ -700,5 +739,33 @@ class MqttManager(
                 else -> "Fallo de conexión: $raw"
             }
         }
+    }
+}
+
+/**
+ * Política pura del watchdog de conexión colgada (JVM-testeable): ¿está el
+ * guard `connecting` tomado desde hace más de [CONNECTION_WATCHDOG_MS]?
+ * `startedElapsedMs <= 0` (sin marca) nunca se considera colgado.
+ */
+object StaleConnectingPolicy {
+
+    /** Paho connectionTimeout=10 s; margen hasta 15 s para declarar colgado. */
+    const val CONNECTION_WATCHDOG_MS = 15_000L
+
+    /**
+     * @param connecting guard actual.
+     * @param startedElapsedMs elapsedRealtime al entrar en connecting (0 = sin marca).
+     * @param nowElapsedMs elapsedRealtime actual.
+     * @return true si hay que liberar el guard (connecting=false) y reintentar.
+     */
+    fun clearIfStale(
+        connecting: Boolean,
+        startedElapsedMs: Long,
+        nowElapsedMs: Long,
+        watchdogMs: Long = CONNECTION_WATCHDOG_MS,
+    ): Boolean {
+        if (!connecting) return false
+        if (startedElapsedMs <= 0L) return false
+        return nowElapsedMs - startedElapsedMs > watchdogMs
     }
 }

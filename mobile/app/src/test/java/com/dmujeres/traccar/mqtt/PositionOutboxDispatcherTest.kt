@@ -109,6 +109,8 @@ class PositionOutboxDispatcherTest {
         var failWith: Throwable? = null,
         var transportOk: Boolean = true,
         var defaultStatus: String? = null,
+        /** httpCode explícito del lote; 0 = default según transportOk (503/200). */
+        var httpCode: Int = 0,
     ) : PositionOutboxDispatcher.Transport {
         val postedBatches = mutableListOf<List<String>>()
 
@@ -119,10 +121,14 @@ class PositionOutboxDispatcherTest {
             postedBatches.add(items.map { it.messageId })
             failWith?.let { throw it }
             if (!transportOk) {
-                return PositionOutboxDispatcher.PostResult(emptyMap(), transportOk = false, httpCode = 503)
+                return PositionOutboxDispatcher.PostResult(
+                    emptyMap(), transportOk = false, httpCode = if (httpCode != 0) httpCode else 503,
+                )
             }
             val map = items.associate { it.messageId to (statuses[it.messageId] ?: defaultStatus ?: "accepted") }
-            return PositionOutboxDispatcher.PostResult(map, transportOk = true, httpCode = 200)
+            return PositionOutboxDispatcher.PostResult(
+                map, transportOk = true, httpCode = if (httpCode != 0) httpCode else 200,
+            )
         }
     }
 
@@ -268,6 +274,57 @@ class PositionOutboxDispatcherTest {
         assertEquals(false, outcome.transportOk)
         assertEquals(1, dao.count())
         assertEquals(0, dao.deadLetterCount())
+    }
+
+    @Test
+    fun httpTerminalQuarantinesBatch() = runBlocking {
+        val dao = FakeDao()
+        dao.insert(position(1))
+        dao.insert(position(2))
+        dao.insert(position(3))
+        val quarantined = mutableListOf<String>()
+        val outcome = PositionOutboxDispatcher.flushOnce(
+            dao,
+            FakeTransport(transportOk = false, httpCode = 401),
+            ctx(quarantined = quarantined),
+            includePresence = true,
+        )
+        assertEquals(false, outcome.transportOk)
+        assertEquals(3, outcome.quarantined)
+        assertEquals(0, outcome.confirmed)
+        // NINGUNA fila queda en outbox y NINGUNA se borró como accepted: todas
+        // están en dead-letter con motivo "http_401" (evidencia preservada).
+        assertEquals(0, dao.count())
+        assertEquals(3, dao.deadLetterCount())
+        assertEquals(listOf("dmj-t-1", "dmj-t-2", "dmj-t-3"), quarantined)
+        val reasons = dao.deadLetters(10).associate { it.messageId to it.reason }
+        assertEquals("http_401", reasons["dmj-t-1"])
+        assertEquals("http_401", reasons["dmj-t-2"])
+        assertEquals("http_401", reasons["dmj-t-3"])
+    }
+
+    @Test
+    fun httpThrottledScalesBackoff() = runBlocking {
+        val dao = FakeDao()
+        dao.insert(position(1))
+        val before = System.currentTimeMillis()
+        val outcome = PositionOutboxDispatcher.flushOnce(
+            dao,
+            FakeTransport(transportOk = false, httpCode = 429),
+            ctx(),
+            includePresence = true,
+        )
+        // El drain se corta (transportOk=false) pero attempts SÍ escala para
+        // que el backoff crezca en lugar de reintentar cada 30 s.
+        assertEquals(false, outcome.transportOk)
+        assertEquals(1, outcome.retryScheduled)
+        assertEquals(1, dao.count())
+        assertEquals(0, dao.deadLetterCount())
+        val row = dao.allOrdered().single()
+        assertEquals(1, row.attempts)
+        // Backoff attempts=1: 5s * 2^1 = 10 s ±25% jitter.
+        val wait = row.retryAt - before
+        assertTrue("backoff $wait", wait in 7_500L..12_500L)
     }
 
     @Test

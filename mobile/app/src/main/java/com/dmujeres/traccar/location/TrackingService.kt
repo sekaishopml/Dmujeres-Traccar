@@ -97,6 +97,7 @@ class TrackingService : Service() {
          * duplicado; el Mutex lo serializaba pero igual gastaba radio).
          */
         private const val DRAIN_DEBOUNCE_MS = 10_000L
+        private const val DRAIN_CHAIN_DELAY_MS = 10_500L
 
         @Volatile
         var isRunning: Boolean = false
@@ -477,6 +478,17 @@ class TrackingService : Service() {
         // El insert solo SEÑALA; el wake flush es el mismo flushOnce con
         // DispatchLock.mutex, así microbatch y replay nunca compiten por Room.
         PositionOutboxDispatcher.mqttReady = { mqtt?.ready == true }
+        // Métricas de transporte (ACK/retry/cuarentena) en cualquier camino de
+        // flush; reloj de ACK independiente para LinkState y diagnóstico.
+        PositionOutboxDispatcher.onFlushOutcome = { outcome ->
+            runCatching {
+                if (outcome.confirmed > 0) {
+                    config.incAckTotal(outcome.confirmed)
+                    config.lastAckAt = System.currentTimeMillis()
+                }
+                if (outcome.retryScheduled > 0) config.incRetryTotal(outcome.retryScheduled)
+            }
+        }
         PositionOutboxDispatcher.startWakeLoop(
             serviceScope, dao, PositionOutboxDispatcher.HttpTransport, ::dispatchContext,
         )
@@ -874,6 +886,20 @@ class TrackingService : Service() {
                     + "quarantined=$totalQuarantined")
                 if (totalConfirmed > 0) {
                     runCatching { config.lastHttpAt = System.currentTimeMillis() }
+                    // Anti-hambre (Fase 10): si quedó backlog tras un lote de
+                    // progreso, se AUTO-ENCADENA el siguiente drain ~10 s
+                    // después (el debounce lo admite). Si el transporte falla
+                    // o el outbox vacía, la cadena termina sola: solo se
+                    // encadena cuando CONFIRMÓ algo.
+                    val pendingLeft = runCatching {
+                        withContext(Dispatchers.IO) { dao.countFlow().first() }
+                    }.getOrDefault(0)
+                    if (pendingLeft > 0) {
+                        serviceScope.launch {
+                            delay(DRAIN_CHAIN_DELAY_MS)
+                            drainBacklog("continuación")
+                        }
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e

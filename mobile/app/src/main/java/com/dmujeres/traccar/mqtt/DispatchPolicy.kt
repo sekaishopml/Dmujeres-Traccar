@@ -125,4 +125,30 @@ object DispatchPolicy {
      * (rejected/invalid/expired) es final y autoriza el borrado.
      */
     fun shouldDiscardUnacked(isControl: Boolean, attempts: Int, maxRetries: Int): Boolean = false
+
+    // --- Clasificación de un HTTP no-2xx GLOBAL del lote (pura, testeable) ---
+
+    /** Destino de un lote rechazado por HTTP no-2xx. */
+    enum class HttpFailure {
+        /** Transporte/red sobrecargado: sin attempts, reintento inmediato próximo evento. */
+        TRANSIENT,
+        /** Sobrecarga explícita del servidor: attempts+1 y backoff existente. */
+        THROTTLED,
+        /** Definitivo (auth/recurso/payload): cuarentena del lote, nunca delete directo. */
+        TERMINAL,
+    }
+
+    /**
+     * Clasifica UN código HTTP no-2xx global del lote. Solo se invoca con
+     * códigos fuera de 2xx: 200 no llega aquí. 429/408 son temporales
+     * (throttle/timeout del cliente); 401/403/404/405/413/414/422 no cambian
+     * con reintentos (credenciales, ruta o payload); el resto (5xx, 0 sin
+     * respuesta, <100 inválido, 4xx desconocidos, >499) se trata como
+     * transitorio.
+     */
+    fun classifyHttpFailure(code: Int): HttpFailure = when (code) {
+        429, 408 -> HttpFailure.THROTTLED
+        401, 403, 404, 405, 413, 414, 422 -> HttpFailure.TERMINAL
+        else -> HttpFailure.TRANSIENT
+    }
 }

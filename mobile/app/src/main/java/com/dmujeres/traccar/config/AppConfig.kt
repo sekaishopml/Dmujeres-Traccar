@@ -251,6 +251,30 @@ class AppConfig(context: Context) {
         return v
     }
 
+    /** ACKs de negocio recibidos (accepted o duplicate: ambos liberan Room). */
+    var ackTotal: Long
+        get() = prefs.getLong(KEY_ACK_TOTAL, 0L)
+        set(value) = prefs.edit().putLong(KEY_ACK_TOTAL, value).apply()
+
+    /** Mensajes de vuelta a backoff (throttled/error/pending: reintentos por item). */
+    var retryTotal: Long
+        get() = prefs.getLong(KEY_RETRY_TOTAL, 0L)
+        set(value) = prefs.edit().putLong(KEY_RETRY_TOTAL, value).apply()
+
+    @Synchronized
+    fun incAckTotal(n: Int): Long {
+        val v = ackTotal + n
+        ackTotal = v
+        return v
+    }
+
+    @Synchronized
+    fun incRetryTotal(n: Int): Long {
+        val v = retryTotal + n
+        retryTotal = v
+        return v
+    }
+
     @Synchronized
     fun recordJourneyConfirmed(journeyId: Long) {
         if (journeyId > 0L && journeyId == journeyStartAt) {
@@ -691,6 +715,8 @@ class AppConfig(context: Context) {
         private const val KEY_JOURNEY_POINTS = "journey_points"
         private const val KEY_JOURNEY_CONFIRMED_POINTS = "journey_confirmed_points"
         private const val KEY_QUARANTINED_TOTAL = "quarantined_total"
+        private const val KEY_ACK_TOTAL = "ack_total"
+        private const val KEY_RETRY_TOTAL = "retry_total"
         private const val KEY_JOURNEY_LAST_LAT = "journey_last_lat"
         private const val KEY_JOURNEY_LAST_LON = "journey_last_lon"
         private const val KEY_JOURNEY_HAS_LAST_LOCATION = "journey_has_last_location"

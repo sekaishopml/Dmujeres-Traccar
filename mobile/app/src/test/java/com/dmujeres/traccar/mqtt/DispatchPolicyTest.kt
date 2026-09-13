@@ -121,4 +121,32 @@ class DispatchPolicyTest {
         assertEquals(false, DispatchPolicy.shouldDiscardUnacked(true, 61, 30))
         assertEquals(false, DispatchPolicy.shouldDiscardUnacked(true, 10_000, 200))
     }
+
+    @Test
+    fun classifyHttp429Y408SonThrottled() {
+        assertEquals(DispatchPolicy.HttpFailure.THROTTLED, DispatchPolicy.classifyHttpFailure(429))
+        assertEquals(DispatchPolicy.HttpFailure.THROTTLED, DispatchPolicy.classifyHttpFailure(408))
+    }
+
+    @Test
+    fun classifyHttpTerminalNuncaReintenta() {
+        // Credenciales/ruta/payload: reintentar no cambia nada.
+        listOf(401, 403, 404, 405, 413, 414, 422).forEach {
+            assertEquals("$it", DispatchPolicy.HttpFailure.TERMINAL, DispatchPolicy.classifyHttpFailure(it))
+        }
+    }
+
+    @Test
+    fun classifyHttpRestoEsTransient() {
+        // 5xx, 0 (sin respuesta), <100 inválido, 3xx, 4xx desconocidos y >499.
+        listOf(0, 99, 301, 418, 426, 451, 499, 500, 502, 503, 504, 599, 700).forEach {
+            assertEquals("$it", DispatchPolicy.HttpFailure.TRANSIENT, DispatchPolicy.classifyHttpFailure(it))
+        }
+    }
+
+    @Test
+    fun classifyHttp2xxNoSeInvocaPeroEsTransient() {
+        // La clasificación SOLO aplica al no-2xx global; 200 queda en el else.
+        assertEquals(DispatchPolicy.HttpFailure.TRANSIENT, DispatchPolicy.classifyHttpFailure(200))
+    }
 }

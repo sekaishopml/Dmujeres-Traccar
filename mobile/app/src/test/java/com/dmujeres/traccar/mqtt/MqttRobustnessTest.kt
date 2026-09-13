@@ -63,4 +63,35 @@ class MqttRobustnessTest {
     fun batchSizeEs100() {
         assertEquals(100, MqttManager.DISPATCH_BATCH_SIZE)
     }
+
+    @Test
+    fun guardColgado20sSeLibera() {
+        // Paho nunca respondió (socket colgado): el watchdog libera la cuña.
+        val now = 1_000_000L
+        assertTrue(StaleConnectingPolicy.clearIfStale(true, now - 20_000L, now))
+    }
+
+    @Test
+    fun guardCon5sNoSeLibera() {
+        // Un intento EN CURSO legítimo (15 s > Paho timeout 10 s) no se toca.
+        val now = 1_000_000L
+        assertTrue(!StaleConnectingPolicy.clearIfStale(true, now - 5_000L, now))
+    }
+
+    @Test
+    fun guardNoStaleSiNoConectandoOsinMarca() {
+        val now = 1_000_000L
+        // Sin connecting activo: nada que liberar aunque la marca sea vieja.
+        assertTrue(!StaleConnectingPolicy.clearIfStale(false, now - 60_000L, now))
+        // Sin marca (0): nunca se considera colgado.
+        assertTrue(!StaleConnectingPolicy.clearIfStale(true, 0L, now))
+    }
+
+    @Test
+    fun guardColgadoJustoEnElUmbralNoSeLibera() {
+        // 15 s exactos NO superan el umbral (> watchdogMs), 1 ms más sí.
+        val now = 1_000_000L
+        assertTrue(!StaleConnectingPolicy.clearIfStale(true, now - 15_000L, now))
+        assertTrue(StaleConnectingPolicy.clearIfStale(true, now - 15_001L, now))
+    }
 }
