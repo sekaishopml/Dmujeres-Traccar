@@ -24,8 +24,8 @@ object SpeedEstimator {
         val earthRadius = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
-        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-            + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
             Math.sin(dLon / 2) * Math.sin(dLon / 2)
         return 2 * earthRadius * Math.asin(minOf(1.0, Math.sqrt(a)))
     }

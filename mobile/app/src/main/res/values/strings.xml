@@ -129,6 +129,7 @@
     <string name="log_last_fix">Último GPS válido · %1$s</string>
     <string name="log_oldest_pending">Pendiente más antiguo · %1$s</string>
     <string name="journey_duration">%1$d h %2$d min</string>
+    <string name="journey_duration_compact">%1$d:%2$02d</string>
     <string name="journey_summary_title">Resumen de jornada</string>
     <string name="journey_summary_body">Tiempo activo: %1$s · Recorrido: %2$s km · Guardados: %3$d · Confirmados: %4$d</string>
     <string name="finish_confirm_title">¿Finalizar la jornada?</string>
@@ -179,7 +180,6 @@
     <string name="notif_journey_finished_duration">Jornada finalizada · %1$s de actividad</string>
     <string name="notif_journey_finished_body">Jornada finalizada · %1$s · %2$s km · %3$d guardados · %4$d confirmados</string>
     <string name="notif_battery">Batería %1$d%%</string>
-    <string name="notif_pending">%1$d pendientes por enviar</string>
     <string name="notif_warn_battery">Batería baja</string>
     <string name="notif_warn_gps">Sin señal de GPS</string>
     <string name="sin_gps_title">Sin señal GPS</string>

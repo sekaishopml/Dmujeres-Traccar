@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -43,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,6 +64,21 @@ private const val MAX_FONT_SCALE = 1.15f
 
 // Margen para que el redondeo del pintado no vuelva a recortar el texto medido.
 private val SAFETY_MARGIN_DP = 2.dp
+
+// La fila replica el límite de ancho de la tarjeta principal (480 dp, centrada):
+// en tablets/landscape las 3 tarjetas no se estiran a líneas absurdas.
+private val MAX_ROW_WIDTH = 480.dp
+
+// Alturas coherentes entre los 3 recuadros (los puntos alinean entre tarjetas).
+private val DOT_AREA_HEIGHT = 16.dp
+private val CARD_MIN_HEIGHT_COMPACT = 72.dp
+private val CARD_MIN_HEIGHT = 88.dp
+
+// Etiquetas que caben en una línea a tamaño base (p.ej. "Batería", "Duración");
+// las más largas ("Pendientes por enviar") pueden partir en 2 y elipsar.
+private const val LABEL_MAX_LINES_SINGLE = 1
+private const val LABEL_MAX_LINES_DOUBLE = 2
+private val LABEL_SINGLE_LINE_MAX_CHARS = 12
 
 /**
  * Fila de 3 métricas (batería / pendientes / servidor) extraída de MainActivity.
@@ -104,11 +122,12 @@ fun MetricsRow(
     // Fuera de línea: ni conectado ni conectando -> no se muestra la batería.
     val online = serverConnected || serverConnecting
 
-    // Recuadros alineados y del mismo tamaño: la fila mide lo del más alto
-    // y cada tarjeta rellena esa altura con el contenido centrado.
+    // Recuadros con peso igual (los 3 ocupan el mismo ancho), altura común (la del
+    // más alto) y ancho total acotado como la tarjeta principal, centrado.
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .widthIn(max = MAX_ROW_WIDTH)
             .height(IntrinsicSize.Max),
         horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 6.dp else 8.dp),
     ) {
@@ -161,7 +180,9 @@ private fun BatteryCard(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = modifier.fillMaxHeight(),
+        modifier = modifier
+            .fillMaxHeight()
+            .heightIn(min = if (isCompactHeight) CARD_MIN_HEIGHT_COMPACT else CARD_MIN_HEIGHT),
     ) {
         Column(
             modifier = Modifier
@@ -170,21 +191,10 @@ private fun BatteryCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // Bloque superior fijo (16dp) para alinear los puntos con las
-            // otras dos tarjetas.
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(16.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(accentColor, CircleShape)
-                        .semantics { contentDescription = batteryDescription },
-                )
-            }
+            StateDot(
+                accentColor = accentColor,
+                dotDescription = batteryDescription,
+            )
             Spacer(modifier = Modifier.height(6.dp))
             // Invertida: ARRIBA el porcentaje grande, ABAJO la etiqueta pequeña.
             FitText(
@@ -194,12 +204,7 @@ private fun BatteryCard(
                 minSize = MIN_SIZE_VALUE,
                 fontWeight = FontWeight.Bold,
             )
-            FitText(
-                text = stringResource(R.string.battery_label),
-                baseStyle = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                minSize = MIN_SIZE_LABEL,
-            )
+            FittedLabel(text = stringResource(R.string.battery_label))
         }
     }
 }
@@ -242,7 +247,9 @@ private fun ServerCard(
             val (hours, minutes) = JourneyFormatter.durationParts(
                 JourneyFormatter.displayElapsedMs(journeyElapsedMs, journeyElapsedWallMs, journeyStartAt, nowMs),
             )
-            stringResource(R.string.journey_duration, hours, minutes)
+            // Formato compacto de tarjeta: "2:26" cabe a cualquier ancho/escala
+            // de fuente; la versión larga vive en la notificación persistente.
+            stringResource(R.string.journey_duration_compact, hours, minutes)
         }
         else -> stringResource(R.string.server_no_journey)
     }
@@ -265,7 +272,9 @@ private fun ServerCard(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = modifier.fillMaxHeight(),
+        modifier = modifier
+            .fillMaxHeight()
+            .heightIn(min = if (isCompactHeight) CARD_MIN_HEIGHT_COMPACT else CARD_MIN_HEIGHT),
     ) {
         Column(
             modifier = Modifier
@@ -280,7 +289,7 @@ private fun ServerCard(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(16.dp),
+                    .height(DOT_AREA_HEIGHT),
             ) {
                 // El punto pulsante verde/rojo se conserva como único indicador de
                 // conexión (accesible por contentDescription).
@@ -293,11 +302,9 @@ private fun ServerCard(
                 )
             }
             Spacer(modifier = Modifier.height(6.dp))
-            FitText(
+            FittedLabel(
                 text = stringResource(R.string.server_duration_label),
-                baseStyle = MaterialTheme.typography.labelSmall,
                 color = Ink,
-                minSize = MIN_SIZE_LABEL,
             )
             Spacer(modifier = Modifier.height(2.dp))
             // ABAJO: tiempo grande de la jornada.
@@ -326,7 +333,9 @@ private fun MetricCard(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = modifier.fillMaxHeight(),
+        modifier = modifier
+            .fillMaxHeight()
+            .heightIn(min = if (isCompactHeight) CARD_MIN_HEIGHT_COMPACT else CARD_MIN_HEIGHT),
     ) {
         Column(
             modifier = Modifier
@@ -335,21 +344,10 @@ private fun MetricCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // Bloque superior fijo (16dp) para alinear los puntos con las
-            // otras dos tarjetas.
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(16.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(accentColor, CircleShape)
-                        .semantics { contentDescription = dotDescription },
-                )
-            }
+            StateDot(
+                accentColor = accentColor,
+                dotDescription = dotDescription,
+            )
             Spacer(modifier = Modifier.height(6.dp))
             FitText(
                 text = label,
@@ -359,24 +357,65 @@ private fun MetricCard(
                 fontWeight = FontWeight.Bold,
             )
             if (sublabel.isNotEmpty()) {
-                FitText(
+                FittedLabel(
                     text = sublabel,
-                    baseStyle = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                    minSize = MIN_SIZE_LABEL,
                     modifier = Modifier.padding(top = 2.dp),
-                    textAlign = TextAlign.Center,
                 )
             }
         }
     }
 }
 
+@Composable
+private fun StateDot(accentColor: Color, dotDescription: String) {
+    // Bloque superior fijo (16dp) para alinear los puntos con las otras tarjetas.
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(DOT_AREA_HEIGHT),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(accentColor, CircleShape)
+                .semantics { contentDescription = dotDescription },
+        )
+    }
+}
+
 /**
- * Texto de una línea con fuente adaptativa: mide [text] con [baseStyle] y escala el
- * tamaño de fuente para que quepa en el ancho real de la tarjeta. Sustituye al truncado
- * con elipsis: en pantallas de 320 dp (tarjetas de ~80 dp de texto) o con la fuente del
- * sistema grande, "12 h 34 min" / "Conectando…" encogen en vez de verse "2 h 15…".
+ * Etiqueta pequeña de las tarjetas: "Pendientes por enviar" no cabe en una línea
+ * en 320-360 dp, así que puede partir en 2 líneas y elipsar con elegancia; las
+ * cortas ("Batería", "Duración") se quedan en 1. La fuente se encoge con el mismo
+ * sistema de FitText antes de partir líneas.
+ */
+@Composable
+private fun FittedLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+) {
+    val maxLines = if (text.length <= LABEL_SINGLE_LINE_MAX_CHARS) {
+        LABEL_MAX_LINES_SINGLE
+    } else {
+        LABEL_MAX_LINES_DOUBLE
+    }
+    FitText(
+        text = text,
+        baseStyle = MaterialTheme.typography.labelSmall,
+        color = color,
+        minSize = MIN_SIZE_LABEL,
+        modifier = modifier,
+        maxLines = maxLines,
+    )
+}
+
+/**
+ * Texto con fuente adaptativa: mide [text] con [baseStyle] y escala el tamaño de
+ * fuente para que quepa en el ancho real de la tarjeta. Con [maxLines] > 1 el texto
+ * puede partir en varias líneas y elipsar en lugar de recortarse: se mide con
+ * [Constraints] reales y se elige la fuente más grande que quepa.
  *
  * No usa BoxWithConstraints: la fila mide alturas intrínsecas (IntrinsicSize.Max) y una
  * subcomposición ahí reportaría altura 0; onSizeChanged da el mismo ancho sin ese riesgo.
@@ -396,50 +435,81 @@ private fun FitText(
     fontWeight: FontWeight? = null,
     textAlign: TextAlign = TextAlign.Center,
     maxScale: Float = MAX_FONT_SCALE,
+    maxLines: Int = 1,
 ) {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    // Ancho real de la tarjeta: llega tras el primer layout (0f = todavía sin medir).
-    var availablePx by remember { mutableStateOf(0f) }
+    // Ancho real de la tarjeta: llega tras el primer layout (sin medir = ancho ilimitado).
+    var availableWidthPx by remember { mutableStateOf(-1) }
     val style = baseStyle.let { if (fontWeight == null) it else it.copy(fontWeight = fontWeight) }
-    val fittedSp = remember(text, availablePx, style, minSize, maxScale, density) {
-        val basePx = with(density) { style.fontSize.toPx() }
-        val minPx = with(density) { minSize.toPx() }
-        val widthAtBasePx = if (availablePx > 0f) {
-            measurer.measure(
-                text = text,
-                style = style,
-                softWrap = false,
-                maxLines = 1,
-            ).size.width.toFloat()
+    val fittedSp = remember(text, availableWidthPx, style, minSize, maxScale, density, maxLines) {
+        if (availableWidthPx <= 0) {
+            style.fontSize
         } else {
-            0f
+            val basePx = with(density) { style.fontSize.toPx() }
+            val minPx = with(density) { minSize.toPx() }
+            // 2 dp de margen de seguridad: el redondeo del pintado no vuelva a recortar.
+            val usablePx = availableWidthPx - with(density) { SAFETY_MARGIN_DP.toPx() }.toInt()
+            val scale = fitFontScaleMultiLine(
+                basePx = basePx,
+                minPx = minPx,
+                maxScale = maxScale,
+                fits = { candidatePx ->
+                    measurer.measure(
+                        text = text,
+                        style = style.copy(fontSize = with(density) { candidatePx.toSp() }),
+                        constraints = Constraints(maxWidth = usablePx.coerceAtLeast(0)),
+                        maxLines = maxLines,
+                        overflow = TextOverflow.Ellipsis,
+                    ).didOverflowWidth.not()
+                },
+            )
+            with(density) { (basePx * scale).toSp() }
         }
-        // 2 dp de margen de seguridad: el redondeo del pintado no vuelva a recortar.
-        val usablePx = availablePx - with(density) { SAFETY_MARGIN_DP.toPx() }
-        val scale = fitFontScale(widthAtBasePx, usablePx, minPx / basePx, maxScale)
-        with(density) { (basePx * scale).toSp() }
     }
     Text(
         text = text,
         style = style.copy(fontSize = fittedSp),
         color = color,
         textAlign = textAlign,
-        softWrap = false,
-        maxLines = 1,
-        // Clip y no Ellipsis: con el suelo de tamaño ya casi siempre cabe, y si aun así
-        // no entrara no debe aparecer nunca el "…" en estas tarjetas.
-        overflow = TextOverflow.Clip,
+        softWrap = true,
+        maxLines = maxLines,
+        // Con el suelo de tamaño y las 2 líneas de las etiquetas largas ya casi
+        // siempre cabe; si aun así no entrara se elipsa con elegancia.
+        overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .fillMaxWidth()
-            .onSizeChanged { availablePx = it.width.toFloat() },
+            .onSizeChanged { availableWidthPx = it.width },
     )
 }
 
 /**
- * Lógica pura del escalado (testeable sin Android): escala (1f = tamaño base) para que un
- * texto que al tamaño base ocupa [textWidthAtBasePx] quepa en [availableWidthPx],
- * recortada entre [minScale] y [maxScale]. Si faltan datos (anchos <= 0) no toca nada.
+ * Lógica pura del escalado (testeable sin Android): crece hasta [maxScale] si sobra
+ * espacio y, si no cabe, baja en pasos discretos (1.0 -> 0.9 -> 0.8 -> …) hasta que
+ * [fits] se cumple o se llega al suelo [minPx]. Sin datos de medición se queda en 1.
+ */
+internal fun fitFontScaleMultiLine(
+    basePx: Float,
+    minPx: Float,
+    maxScale: Float,
+    fits: (Float) -> Boolean,
+): Float {
+    if (basePx <= 0f || minPx <= 0f) return 1f
+    val maxScaleSafe = maxScale.coerceAtLeast(1f)
+    if (fits(maxScaleSafe * basePx)) return maxScaleSafe
+    var scale = 1.0f
+    while (scale * basePx > minPx) {
+        if (fits(scale * basePx)) return scale
+        scale -= 0.1f
+    }
+    return (minPx / basePx).coerceAtLeast(0.1f)
+}
+
+/**
+ * Lógica pura del escalado a 1 línea (mantenida por sus tests): escala (1f = tamaño
+ * base) para que un texto que al tamaño base ocupa [textWidthAtBasePx] quepa en
+ * [availableWidthPx], recortada entre [minScale] y [maxScale]. Si faltan datos
+ * (anchos <= 0) no toca nada.
  */
 internal fun fitFontScale(
     textWidthAtBasePx: Float,

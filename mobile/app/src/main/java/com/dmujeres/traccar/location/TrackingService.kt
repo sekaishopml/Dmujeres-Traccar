@@ -741,7 +741,11 @@ class TrackingService : Service() {
     }
 
     private fun registerGnssFallback() {
-        if (gnssFallbackRegistered || !hasFineLocation()) return
+        if (gnssFallbackRegistered) return
+        if (ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.ACCESS_FINE_LOCATION,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
         runCatching {
             val lm = getSystemService(LOCATION_SERVICE) as LocationManager
             @Suppress("DEPRECATION")
@@ -2130,9 +2134,6 @@ class TrackingService : Service() {
             details += MqttStatus.status
             if (battery in 0..100) {
                 details += getString(R.string.notif_battery, battery)
-            }
-            if (pending > 0) {
-                details += getString(R.string.notif_pending, pending)
             }
 
             val lines = mutableListOf<String>(journeyLine)

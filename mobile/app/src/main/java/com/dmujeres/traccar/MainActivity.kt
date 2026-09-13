@@ -20,6 +20,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -1201,20 +1202,22 @@ class MainActivity : ComponentActivity() {
             // Compacto: menos espacio para que todo quepa sin scroll en ~640dp.
             verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 12.dp),
         ) {
-            // Estado — banner con sistema de 3 colores estricto (ver JourneyColors).
-            StatusBanner(
-                isStarted = isStarted,
-                trackingOk = trackingOk,
-                hasError = journeyHasError,
-                stateText = stateText,
-                isCompactHeight = isCompactHeight,
-                netCauseMessage = netCauseMessage,
-                showWifiAction = netCauseWifiAction,
-                onOpenWifiSettings = onOpenWifiSettings,
-            )
+            if (detailsLoading) {
+                DashboardSkeleton(isCompactHeight = isCompactHeight)
+            } else {
+                // Estado — banner con sistema de 3 colores estricto (ver JourneyColors).
+                StatusBanner(
+                    isStarted = isStarted,
+                    trackingOk = trackingOk,
+                    hasError = journeyHasError,
+                    stateText = stateText,
+                    isCompactHeight = isCompactHeight,
+                    netCauseMessage = netCauseMessage,
+                    showWifiAction = netCauseWifiAction,
+                    onOpenWifiSettings = onOpenWifiSettings,
+                )
 
-            // Métricas — grid de 3 items
-            if (!detailsLoading) {
+                // Métricas — grid de 3 items
                 MetricsRow(
                     batteryText = batteryText,
                     batteryLevel = batteryLevel,
@@ -1228,63 +1231,71 @@ class MainActivity : ComponentActivity() {
                     // Solo rojo si PendingAlertPolicy dice anormal; 1-5 sanos quedan en verde.
                     pendingAlert = pendingAbnormal,
                 )
-            } else {
-                DetailsLoadingPanel(isCompactHeight = isCompactHeight)
-            }
 
-            // Botón principal — grande y prominente, con transición suave de
-            // color: verde al activar (Iniciar) y rojo al finalizar (regla 3
-            // colores). La animación va en ambos sentidos.
-            val toggleTargetColor =
-                if (isStarted) MaterialTheme.colorScheme.primary else JourneyColors.Verde
-            val toggleColor by animateColorAsState(
-                targetValue = toggleTargetColor,
-                animationSpec = tween(durationMillis = 600),
-                label = "toggleColor",
-            )
-            Button(
-                onClick = onToggle,
-                enabled = toggleEnabled,
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = toggleColor,
-                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(if (isCompactHeight) 56.dp else 64.dp),
-            ) {
-                Icon(
-                    painter = painterResource(toggleIcon),
-                    contentDescription = stringResource(toggleLabel),
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(if (isCompactHeight) 22.dp else 26.dp),
+                // Botón principal — grande y prominente, con transición suave de
+                // color: verde al activar (Iniciar) y rojo al finalizar (regla 3
+                // colores). La animación va en ambos sentidos, con el mismo tween
+                // (800 ms) que el banner para que se muevan como un conjunto.
+                val toggleTargetColor =
+                    if (isStarted) MaterialTheme.colorScheme.primary else JourneyColors.Verde
+                val toggleColor by animateColorAsState(
+                    targetValue = toggleTargetColor,
+                    animationSpec = tween(
+                        durationMillis = 800,
+                        easing = FastOutSlowInEasing,
+                    ),
+                    label = "toggleColor",
                 )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = stringResource(toggleLabel),
-                    fontSize = if (isCompactHeight) 16.sp else 18.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+                Button(
+                    onClick = onToggle,
+                    enabled = toggleEnabled,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = toggleColor,
+                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(if (isCompactHeight) 56.dp else 64.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(toggleIcon),
+                        contentDescription = stringResource(toggleLabel),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(if (isCompactHeight) 22.dp else 26.dp),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(toggleLabel),
+                        fontSize = if (isCompactHeight) 16.sp else 18.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
 
-            // Diagnóstico — sutil (48dp mínimo táctil, sin rediseño).
-            TextButton(
-                onClick = onDiag,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.diag_button),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                // Diagnóstico — sutil (48dp mínimo táctil, sin rediseño).
+                TextButton(
+                    onClick = onDiag,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.diag_button),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
     }
 
+    /**
+     * Esqueleto de carga con la MISMA composición que el contenido final
+     * (banner grande redondeado con círculo, fila de 3 recuadros, botón
+     * grande, link de diagnóstico): así el salto al cargar no se percibe.
+     * Animación sutil: alpha pulsante (~650 ms, va y vuelve).
+     */
     @Composable
-    private fun DetailsLoadingPanel(isCompactHeight: Boolean) {
+    private fun DashboardSkeleton(isCompactHeight: Boolean) {
         val transition = rememberInfiniteTransition(label = "skeleton")
         val alpha by transition.animateFloat(
             initialValue = 0.45f,
@@ -1295,33 +1306,63 @@ class MainActivity : ComponentActivity() {
             ),
             label = "skeletonAlpha",
         )
-        // Compacto: menos padding y barras más bajas para no empujar sin scroll.
-        val panelPad = if (isCompactHeight) 10.dp else 14.dp
-        val barHeight = if (isCompactHeight) 12.dp else 16.dp
-        val gapLarge = if (isCompactHeight) 8.dp else 12.dp
-        val gapSmall = if (isCompactHeight) 6.dp else 8.dp
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(JourneyColors.Blanco, RoundedCornerShape(8.dp))
-                .padding(panelPad),
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 12.dp),
         ) {
-            SkeletonBar(widthFraction = 0.8f, alpha = alpha, barHeight = barHeight)
-            Spacer(modifier = Modifier.height(gapLarge))
-            SkeletonBar(widthFraction = 0.95f, alpha = alpha, barHeight = barHeight)
-            Spacer(modifier = Modifier.height(gapLarge))
-            SkeletonBar(widthFraction = 0.65f, alpha = alpha, barHeight = barHeight)
-            Spacer(modifier = Modifier.height(gapSmall))
+            SkeletonBox(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isCompactHeight) 60.dp else 72.dp),
+                cornerRadius = 16.dp,
+                alpha = alpha,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Max),
+                horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 6.dp else 8.dp),
+            ) {
+                repeat(3) {
+                    SkeletonBox(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .heightIn(min = if (isCompactHeight) 72.dp else 88.dp),
+                        cornerRadius = 12.dp,
+                        alpha = alpha,
+                    )
+                }
+            }
+            SkeletonBox(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isCompactHeight) 56.dp else 64.dp),
+                cornerRadius = 16.dp,
+                alpha = alpha,
+            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+            ) {
+                SkeletonBox(
+                    modifier = Modifier
+                        .width(96.dp)
+                        .height(12.dp),
+                    cornerRadius = 6.dp,
+                    alpha = alpha,
+                )
+            }
         }
     }
 
     @Composable
-    private fun SkeletonBar(widthFraction: Float, alpha: Float, barHeight: androidx.compose.ui.unit.Dp = 16.dp) {
+    private fun SkeletonBox(modifier: Modifier, cornerRadius: androidx.compose.ui.unit.Dp, alpha: Float) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth(widthFraction)
-                .height(barHeight)
-                .background(JourneyColors.Rojo.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+            modifier = modifier
+                .background(Ink.copy(alpha = 0.10f), RoundedCornerShape(cornerRadius))
                 .graphicsLayer { this.alpha = alpha },
         )
     }

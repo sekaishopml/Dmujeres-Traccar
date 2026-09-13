@@ -1,5 +1,8 @@
 package com.dmujeres.traccar.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,8 +23,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.liveRegion
@@ -58,15 +63,41 @@ fun StatusBanner(
     val colors = journeyBannerColors(isStarted, trackingOk, hasError)
     val title = if (isStarted) stringResource(R.string.journey_started_title) else stringResource(R.string.journey_finished_title)
 
+    val animatedBackground by animateColorAsState(
+        targetValue = colors.background,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "bannerBackground",
+    )
+    val animatedContent by animateColorAsState(
+        targetValue = colors.content,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "bannerContent",
+    )
+    val animatedBadge by animateColorAsState(
+        targetValue = colors.badge,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "bannerBadge",
+    )
+    val animatedOnBadge by animateColorAsState(
+        targetValue = colors.onBadge,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "bannerOnBadge",
+    )
+    val animatedBorder by animateColorAsState(
+        targetValue = if (colors.background == JourneyColors.Blanco) {
+            colors.content.copy(alpha = 0.35f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "bannerBorder",
+    )
+
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = colors.background),
+        colors = CardDefaults.cardColors(containerColor = animatedBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = if (colors.background == JourneyColors.Blanco) {
-            BorderStroke(1.dp, colors.content.copy(alpha = 0.35f))
-        } else {
-            null
-        },
+        border = BorderStroke(1.dp, animatedBorder),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -79,12 +110,12 @@ fun StatusBanner(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(if (isCompactHeight) 40.dp else 48.dp)
-                    .background(colors.badge, CircleShape),
+                    .background(animatedBadge, CircleShape),
             ) {
                 Icon(
                     painter = painterResource(if (isStarted) R.drawable.ic_play else R.drawable.ic_stop),
                     contentDescription = title,
-                    tint = colors.onBadge,
+                    tint = animatedOnBadge,
                     modifier = Modifier.size(if (isCompactHeight) 20.dp else 24.dp),
                 )
             }
@@ -94,12 +125,12 @@ fun StatusBanner(
                     text = title,
                     style = if (isCompactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = colors.content,
+                    color = animatedContent,
                 )
                 Text(
                     text = stateText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.content.copy(alpha = 0.8f),
+                    color = animatedContent.copy(alpha = 0.8f),
                     modifier = Modifier
                         .padding(top = 2.dp)
                         .semantics { liveRegion = LiveRegionMode.Polite },
@@ -108,7 +139,7 @@ fun StatusBanner(
                     Text(
                         text = if (showWifiAction) "$netCauseMessage · Abrir WiFi" else netCauseMessage,
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.content.copy(alpha = 0.9f),
+                        color = animatedContent.copy(alpha = 0.9f),
                         textDecoration = if (showWifiAction) TextDecoration.Underline else null,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
