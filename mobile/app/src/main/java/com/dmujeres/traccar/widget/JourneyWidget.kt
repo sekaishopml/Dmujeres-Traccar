@@ -63,22 +63,15 @@ class JourneyWidget : AppWidgetProvider() {
                 elapsedMs = elapsedMs,
                 online = online,
             )
-            // Launchers que conservan la celda vieja (2x1): si la altura estimada
-            // no da para las cuatro líneas, se sacrifica solo el subtítulo para
-            // que estado y botón SIEMPRE se lean completos.
-            val shortCell = runCatching {
-                manager.getAppWidgetOptions(widgetId)
-                    .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 999) < 95
-            }.getOrDefault(false)
-            manager.updateAppWidget(widgetId, buildViews(context, state, shortCell))
+            // 2x1: la celda es baja; estado, subtítulo y botón caben con aire.
+            manager.updateAppWidget(widgetId, buildViews(context, state))
         }.onFailure { Log.w(TAG, "No se pudo renderizar el widget $widgetId", it) }
     }
 
-    private fun buildViews(context: Context, state: WidgetUiState, shortCell: Boolean): RemoteViews {
+    private fun buildViews(context: Context, state: WidgetUiState): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_journey)
 
-        views.setTextViewText(R.id.widget_title, context.getString(R.string.app_name))
-        // 2x2: ESTADO grande legible ("15 h 42 min") + subtítulo pequeño.
+        // 2x1 horizontal: ESTADO grande a la izquierda + botón píldora a la derecha.
         views.setTextViewText(
             R.id.widget_status,
             if (state.active) {
@@ -114,7 +107,7 @@ class JourneyWidget : AppWidgetProvider() {
         // Tocar el área de estado hace lo mismo que el botón: un solo gesto útil
         // en launchers que recortan el widget.
         views.setOnClickPendingIntent(
-            R.id.widget_header,
+            R.id.widget_content,
             if (state.active) stopPendingIntent(context) else startPendingIntent(context),
         )
         return views
