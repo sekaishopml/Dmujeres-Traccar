@@ -63,7 +63,7 @@ class JourneyWidget : AppWidgetProvider() {
                 elapsedMs = elapsedMs,
                 online = online,
             )
-            // 2x1: la celda es baja; estado, subtítulo y botón caben con aire.
+            // 2x2: header arriba, estado centrado, botón abajo bien repartidos.
             manager.updateAppWidget(widgetId, buildViews(context, state))
         }.onFailure { Log.w(TAG, "No se pudo renderizar el widget $widgetId", it) }
     }
@@ -71,7 +71,8 @@ class JourneyWidget : AppWidgetProvider() {
     private fun buildViews(context: Context, state: WidgetUiState): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_journey)
 
-        // 2x1 horizontal: ESTADO grande a la izquierda + botón píldora a la derecha.
+        // 2x2: header arriba, ESTADO grande centrado ("15 h 42 min"), botón abajo.
+        views.setTextViewText(R.id.widget_title, context.getString(R.string.app_name))
         views.setTextViewText(
             R.id.widget_status,
             if (state.active) {
@@ -104,8 +105,12 @@ class JourneyWidget : AppWidgetProvider() {
             R.id.widget_action,
             if (state.active) stopPendingIntent(context) else startPendingIntent(context),
         )
-        // Tocar el área de estado hace lo mismo que el botón: un solo gesto útil
-        // en launchers que recortan el widget.
+        // Tocar header o área de estado hace lo mismo que el botón: un solo
+        // gesto útil en launchers que recortan el widget.
+        views.setOnClickPendingIntent(
+            R.id.widget_header,
+            if (state.active) stopPendingIntent(context) else startPendingIntent(context),
+        )
         views.setOnClickPendingIntent(
             R.id.widget_content,
             if (state.active) stopPendingIntent(context) else startPendingIntent(context),

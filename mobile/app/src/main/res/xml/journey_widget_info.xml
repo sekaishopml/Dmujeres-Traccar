@@ -3,14 +3,14 @@
   RemoteViews clásico: updatePeriodMillis 30 min es solo red de seguridad;
   el refresco fino lo empuja TrackingService vía JourneyWidget.updateAll().
   Sin pantalla de configuración (configure omitido) y preview con el logo.
-  2x1: ancho 70*2−30 = 110dp; alto mínimo pequeño para caber en 1 celda.
+  2x2: regla Android 70*n−30 → n=2 ⇒ 110dp.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:initialLayout="@layout/widget_journey"
-    android:minHeight="60dp"
+    android:minHeight="110dp"
     android:minWidth="110dp"
     android:resizeMode="horizontal|vertical"
-    android:targetCellHeight="1"
+    android:targetCellHeight="2"
     android:targetCellWidth="2"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen"
