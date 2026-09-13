@@ -189,6 +189,25 @@ class FixFilterTest {
     }
 
     @Test
+    fun longSilenceIsReacquisitionNotTeleport() {
+        // REGRESSION JOSEPH: mismo salto imposible, pero 2 h después del último
+        // fix (Doze/túnel). Juzgar velocidad contra una referencia de hace horas
+        // no tiene sentido: se acepta como re-adquisición (siguen vigentes las
+        // demás reglas). Sin esto, el primer fix tras despertar se rechaza y,
+        // con fixes escasos, la ruta tarda horas en reaparecer.
+        val w = windowOf(fix(lat = 19.4326, lon = -99.1332, acc = 10f, timeMs = 1_000_000L))
+        val twoHoursLater = 1_000_000L + 2 * 3_600_000L
+        val decision = FixFilter.evaluate(
+            lat = 19.5326, lon = -99.1332, accuracyM = 10f,
+            wallTimeMs = twoHoursLater,
+            elapsedNanos = twoHoursLater * 1_000_000L,
+            nowElapsedNanos = twoHoursLater * 1_000_000L,
+            window = w,
+        )
+        assertTrue(decision is FixFilter.Decision.Accept)
+    }
+
+    @Test
     fun consistentMotionToleratesPeak() {
         // Ventana con movimiento sostenido > 30 m/s: dos fixes a ~400 m en 10 s (40 m/s).
         val a = fix(lat = 19.4326, lon = -99.1332, acc = 10f, timeMs = 1_000_000L)

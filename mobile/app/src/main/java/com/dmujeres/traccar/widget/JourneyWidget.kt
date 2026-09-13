@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.RemoteViews
+import com.dmujeres.traccar.MainActivity
 import com.dmujeres.traccar.R
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.location.TrackingService
@@ -139,12 +140,22 @@ class JourneyWidget : AppWidgetProvider() {
                 Intent(context, TrackingService::class.java).setAction(TrackingService.ACTION_START),
             )
 
-        private fun stopPendingIntent(context: Context): PendingIntent =
-            servicePendingIntent(
+        private fun stopPendingIntent(context: Context): PendingIntent {
+            // Parar NUNCA es directo desde el widget (un toque accidental en el
+            // bolsillo cerraba la jornada, caso Santiago): abre MainActivity con
+            // petición de confirmación y el diálogo habitual decide.
+            val intent = Intent(context, MainActivity::class.java).apply {
+                action = Intent.ACTION_MAIN
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                putExtra(MainActivity.EXTRA_CONFIRM_STOP, true)
+            }
+            return PendingIntent.getActivity(
                 context,
                 REQ_STOP,
-                Intent(context, TrackingService::class.java).setAction(TrackingService.ACTION_STOP),
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
+        }
 
         private fun servicePendingIntent(context: Context, requestCode: Int, intent: Intent): PendingIntent =
             PendingIntent.getForegroundService(

@@ -127,6 +127,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_UPDATE = "open_update"
+        /** El widget pide confirmación de cierre (nunca parar directo). */
+        const val EXTRA_CONFIRM_STOP = "confirm_stop"
         // TEMPORAL debug de diseño (QA interno, disponible en todos los builds):
         // overrides solo en memoria.
         // EXTRA_DEBUG_LOGGED fuerza logged true/false; EXTRA_DEBUG_DASH ("idle",
@@ -298,6 +300,12 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra(EXTRA_OPEN_UPDATE, false) == true) {
             checkForUpdate(auto = false)
         }
+        if (intent?.getBooleanExtra(EXTRA_CONFIRM_STOP, false) == true) {
+            intent?.removeExtra(EXTRA_CONFIRM_STOP)
+            if (config.trackingEnabled && config.journeyStartAt > 0L) {
+                confirmFinishJourney()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -307,6 +315,12 @@ class MainActivity : ComponentActivity() {
         updateView()
         if (intent.getBooleanExtra(EXTRA_OPEN_UPDATE, false)) {
             checkForUpdate(auto = false)
+        }
+        if (intent.getBooleanExtra(EXTRA_CONFIRM_STOP, false)) {
+            intent.removeExtra(EXTRA_CONFIRM_STOP)
+            if (config.trackingEnabled && config.journeyStartAt > 0L) {
+                confirmFinishJourney()
+            }
         }
     }
 

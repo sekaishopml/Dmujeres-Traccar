@@ -34,6 +34,10 @@ object Envelope {
         provider: String? = null,
         // Segundos desde que se generó el fix hasta el enqueue (0 = fresco).
         fixAgeSec: Long? = null,
+        // Origen de la velocidad enviada: "doppler" | "implied" | "unknown".
+        // Un 0 con source "unknown" es "no se sabe", NO "detenido": el mapa y
+        // el servidor nunca deben leerlo como parado confirmado.
+        speedSource: String? = null,
     ): String {
         val payload = JSONObject()
         payload.put("latitude", latitude)
@@ -48,6 +52,7 @@ object Envelope {
         if (lowQuality) payload.put("lowQuality", true)
         if (!provider.isNullOrBlank()) payload.put("provider", provider)
         if (fixAgeSec != null && fixAgeSec > 0L) payload.put("fixAgeSec", fixAgeSec)
+        if (!speedSource.isNullOrBlank()) payload.put("speedSource", speedSource)
 
         val body = JSONObject()
         body.put("schema", 1)
@@ -103,6 +108,9 @@ object Envelope {
         gnssUsed: Int? = null,
         gnssTotal: Int? = null,
         pollActive: Boolean? = null,
+        // Desglose de rechazos del filtro ("accuracy:3|implied:10|..."): solo
+        // viaja en presence (heartbeat), nunca por fix (no engorda la ruta).
+        rejectBreakdown: String? = null,
     ): String {
         val payload = JSONObject()
         payload.put("pending", pending)
@@ -132,6 +140,7 @@ object Envelope {
         if (gnssUsed != null) payload.put("gnssUsed", gnssUsed)
         if (gnssTotal != null) payload.put("gnssTotal", gnssTotal)
         if (pollActive == true) payload.put("pollActive", true)
+        if (!rejectBreakdown.isNullOrBlank()) payload.put("rejectBreakdown", rejectBreakdown)
         if (journeyStatus == "started") payload.put("journeyStarted", true)
         if (journeyStatus == "ended") payload.put("journeyEnded", true)
         if (journeyId > 0L) payload.put("journeyId", journeyId)

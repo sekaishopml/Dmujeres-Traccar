@@ -96,6 +96,31 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_LAST_ENQUEUED, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_ENQUEUED, value).apply()
 
+    /**
+     * Relojes del guardián por capa (§13/watchdog): cada uno responde UNA
+     * pregunta distinta (un solo lastFixAt no basta para saber dónde se
+     * rompió el pipeline). Todos en wall ms, 0 = aún no ocurrió.
+     */
+    /** Último callback crudo del FLP (haya o no fix válido). */
+    var lastLocationCallbackAt: Long
+        get() = prefs.getLong(KEY_LAST_CALLBACK, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_CALLBACK, value).apply()
+
+    /** Último fix aceptado por el filtro (apto para encolar). */
+    var lastAcceptedAt: Long
+        get() = prefs.getLong(KEY_LAST_ACCEPTED, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_ACCEPTED, value).apply()
+
+    /** Último cambio de estado MQTT (connect/loss/ready). */
+    var lastMqttAt: Long
+        get() = prefs.getLong(KEY_LAST_MQTT, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_MQTT, value).apply()
+
+    /** Último lote HTTP que confirmó algo (drain efectivo). */
+    var lastHttpAt: Long
+        get() = prefs.getLong(KEY_LAST_HTTP, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_HTTP, value).apply()
+
     /** Último publish MQTT aceptado localmente por Paho. */
     var lastPublishedAt: Long
         get() = prefs.getLong(KEY_LAST_PUBLISHED, 0L)
@@ -138,6 +163,29 @@ class AppConfig(context: Context) {
         fixRejected = v
         return v
     }
+
+    /**
+     * Desglose del rechazo por motivo (causa raíz en vez de un total ciego):
+     * accuracy (techo/inválido), firstfix, stale, relay (re-entrega cacheada),
+     * implied (salto imposible), degraded, rule (regla OR difiere, no es error).
+     * Viaja compacto en presence como `rejectBreakdown`.
+     */
+    @Synchronized
+    fun incRejected(reason: String): Long {
+        val total = incFixRejected()
+        val key = reasonKey(reason)
+        if (key != null) {
+            prefs.edit().putLong(key, prefs.getLong(key, 0L) + 1).apply()
+        }
+        return total
+    }
+
+    private fun rejectCount(key: String): Long = prefs.getLong(key, 0L)
+
+    /** "accuracy:3|implied:10|..." para presence (orden estable, solo >0). */
+    fun rejectBreakdown(): String = formatBreakdown(
+        REJECT_ORDER.associate { (_, pref) -> pref to rejectCount(pref) },
+    )
 
     @Synchronized
     fun incFixEnqueued(): Long {
@@ -546,11 +594,54 @@ class AppConfig(context: Context) {
         private const val KEY_BUFFER_POLICY = "buffer_policy"
         private const val KEY_LAST_FIX = "last_fix_at"
         private const val KEY_LAST_ENQUEUED = "last_enqueued_at"
+        private const val KEY_LAST_CALLBACK = "last_location_callback_at"
+        private const val KEY_LAST_ACCEPTED = "last_accepted_at"
+        private const val KEY_LAST_MQTT = "last_mqtt_at"
+        private const val KEY_LAST_HTTP = "last_http_at"
         private const val KEY_LAST_PUBLISHED = "last_published_at"
         private const val KEY_LAST_ACK = "last_ack_at"
         private const val KEY_FIX_RECEIVED = "fix_received"
         private const val KEY_FIX_REJECTED = "fix_rejected"
         private const val KEY_FIX_ENQUEUED = "fix_enqueued"
+        private const val KEY_REJ_ACCURACY = "fix_rej_accuracy"
+        private const val KEY_REJ_FIRSTFIX = "fix_rej_firstfix"
+        private const val KEY_REJ_STALE = "fix_rej_stale"
+        private const val KEY_REJ_RELAY = "fix_rej_relay"
+        private const val KEY_REJ_NETRELAY = "fix_rej_netrelay"
+        private const val KEY_REJ_IMPLIED = "fix_rej_implied"
+        private const val KEY_REJ_DEGRADED = "fix_rej_degraded"
+        private const val KEY_REJ_RULE = "fix_rej_rule"
+
+        /** Orden estable nombre→pref del desglose de rechazos. Puro y testeable. */
+        val REJECT_ORDER = listOf(
+            "accuracy" to KEY_REJ_ACCURACY,
+            "firstfix" to KEY_REJ_FIRSTFIX,
+            "stale" to KEY_REJ_STALE,
+            "relay" to KEY_REJ_RELAY,
+            "netrelay" to KEY_REJ_NETRELAY,
+            "implied" to KEY_REJ_IMPLIED,
+            "degraded" to KEY_REJ_DEGRADED,
+            "rule" to KEY_REJ_RULE,
+        )
+
+        /** Motivo de filtro → clave de pref (null = solo total). Pura y testeable. */
+        fun reasonKey(reason: String): String? = when {
+            reason.startsWith("invalid") || reason.startsWith("accuracy") -> KEY_REJ_ACCURACY
+            reason == "first_fix_bad" -> KEY_REJ_FIRSTFIX
+            reason == "stale" -> KEY_REJ_STALE
+            reason == "stale_relay" -> KEY_REJ_RELAY
+            reason == "network_relay" -> KEY_REJ_NETRELAY
+            reason == "implied_speed" -> KEY_REJ_IMPLIED
+            reason == "degraded" -> KEY_REJ_DEGRADED
+            reason == "rule_deferred" -> KEY_REJ_RULE
+            else -> null
+        }
+
+        /** "accuracy:3|implied:10|..." (orden estable, solo >0). Pura y testeable. */
+        fun formatBreakdown(counts: Map<String, Long>): String = REJECT_ORDER.mapNotNull { (name, key) ->
+            val value = counts[key] ?: 0L
+            if (value > 0) "$name:$value" else null
+        }.joinToString("|")
         private const val KEY_MOBILE_RTT_MS = "mobile_rtt_ms"
         private const val KEY_JOURNEY_START = "journey_start_at"
         private const val KEY_JOURNEY_ELAPSED = "journey_elapsed_ms"

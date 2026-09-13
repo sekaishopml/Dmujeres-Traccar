@@ -35,6 +35,16 @@ object FixFilter {
     /** Staleness máxima por elapsedRealtimeNanos: > 120 s se descarta. */
     const val STALE_AFTER_NANOS = 120_000_000_000L
 
+    /**
+     * Silencio (ms) tras el cual un fix se trata como RE-ADQUISICIÓN: juzgar
+     * "velocidad implícita" contra una referencia de hace horas es meaningless
+     * (cualquier velocidad fue posible en el hueco: viaje real sin fixes por
+     * Doze/túnel, o salto). Pasado este umbral se omite el rechazo
+     * implied_speed (siguen vigentes accuracy/degraded/stale). Mayor que el
+     * peor hueco legítimo (polling con backoff hasta 10 min en batería baja).
+     */
+    const val REACQUIRE_AFTER_MS = 15 * 60_000L
+
     /** Tamaño de la ventana honesta (aceptados + rechazados). */
     const val WINDOW_SIZE = 6
 
@@ -256,11 +266,15 @@ object FixFilter {
                 Decision.Reject("stale_relay")
             }
         }
-        // 5. Velocidad implícita (GPS loco).
+        // 5. Velocidad implícita (GPS loco). Con silencio prolongado NO se juzga:
+        // la referencia es de hace horas y cualquier velocidad fue posible en
+        // el hueco (re-adquisición tras Doze/túnel). Ver REACQUIRE_AFTER_MS.
         val dt = (wallTimeMs - previous.timeMs) / 1000.0
         // dt > 0 garantizado por el bloque anterior.
         val implied = distanceMeters(previous.lat, previous.lon, lat, lon) / dt
-        if (implied > maxImpliedSpeedMps && !recentMovingConsistently(window, consistentSpeedMps)) {
+        if (dt * 1000.0 <= REACQUIRE_AFTER_MS &&
+            implied > maxImpliedSpeedMps && !recentMovingConsistently(window, consistentSpeedMps)
+        ) {
             return Decision.Reject("implied_speed")
         }
         // 6. Degradado: accuracy > bad con un bueno (<= good) en TODA la ventana.

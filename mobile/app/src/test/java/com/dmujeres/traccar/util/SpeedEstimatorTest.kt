@@ -36,4 +36,18 @@ class SpeedEstimatorTest {
         val implied = SpeedEstimator.impliedMps(-2.20, -79.88, 0L, -2.19901, -79.88, 10_000L)
         assertEquals(11.0f, implied!!, 0.5f)
     }
+
+    @Test
+    fun impliedCappedByMaxDoesNotInventSpeed() {
+        // REGRESSION JOSEPH: salto de reloj/teleport con implícita absurda no
+        // debe inventar velocidad: con tope 45 m/s cae a desconocida.
+        assertNull(SpeedEstimator.effectiveMps(0f, 150f, 45f))
+        assertEquals("unknown", SpeedEstimator.speedSource(0f, 150f, 45f))
+        // Dentro del tope sí respalda al Doppler atascado.
+        assertEquals(25f, SpeedEstimator.effectiveMps(0f, 25f, 45f)!!, 0.001f)
+        assertEquals("implied", SpeedEstimator.speedSource(0f, 25f, 45f))
+        assertEquals("doppler", SpeedEstimator.speedSource(11f, 2f, 45f))
+        assertEquals("unknown", SpeedEstimator.speedSource(null, null, 45f))
+        assertEquals("unknown", SpeedEstimator.speedSource(0f, null, 45f))
+    }
 }

@@ -206,6 +206,47 @@ class EnvelopeTest {
     }
 
     @Test
+    fun positionCarriesSpeedSourceWhenKnown() {
+        val body = JSONObject(
+            Envelope.buildPosition(
+                messageId = "m", deviceId = "d", sequence = 5L,
+                latitude = 19.4326, longitude = -99.1332, accuracy = 10.0,
+                speed = 36.0, bearing = 90.0, altitude = 0.0,
+                observedAt = "2026-01-01T00:00:00Z", pending = 0, battery = 80,
+                network = "wifi", speedSource = "implied",
+            )
+        )
+        assertEquals("implied", body.getJSONObject("payload").getString("speedSource"))
+    }
+
+    @Test
+    fun positionOmitsSpeedSourceWhenAbsent() {
+        val body = JSONObject(
+            Envelope.buildPosition(
+                messageId = "m", deviceId = "d", sequence = 6L,
+                latitude = 19.4326, longitude = -99.1332, accuracy = 10.0,
+                speed = 0.0, bearing = 0.0, altitude = 0.0,
+                observedAt = "2026-01-01T00:00:00Z", pending = 0, battery = 80,
+                network = "wifi",
+            )
+        )
+        assertFalse(body.getJSONObject("payload").has("speedSource"))
+    }
+
+    @Test
+    fun presenceCarriesRejectBreakdownWhenKnown() {
+        val body = JSONObject(
+            Envelope.buildPresence(
+                messageId = "m", deviceId = "d", sequence = 7L,
+                pending = 3, battery = 80, network = "wifi", vendor = "v",
+                model = "m", appVersion = "1", gps = "on",
+                rejectBreakdown = "implied:10|rule:5",
+            )
+        )
+        assertEquals("implied:10|rule:5", body.getJSONObject("payload").getString("rejectBreakdown"))
+    }
+
+    @Test
     fun positionOmitsProviderAndFixAgeWhenAbsent() {
         val body = JSONObject(
             Envelope.buildPosition(

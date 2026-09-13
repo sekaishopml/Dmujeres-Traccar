@@ -232,6 +232,7 @@
     <string name="diag_last_fix">Último GPS válido: %1$s</string>
     <string name="diag_last_ack">Última confirmación: %1$s</string>
     <string name="diag_never">Todavía no</string>
+    <string name="diag_pipeline">Tubería RX:%1$d rechazados:%2$d (%3$s) encolados:%4$d · callback:%5$s ACK:%6$s HTTP:%7$s MQTT:%8$s</string>
     <string name="diag_update_never">Actualización: aún sin comprobar (abre inicio o pulsa Buscar actualización)</string>
     <string name="diag_update_ok">Actualización al día (%1$s) · comprobado %2$s</string>
     <string name="diag_update_available">Actualización disponible: tienes %1$s y hay %2$s · vuelve a inicio para instalarla</string>

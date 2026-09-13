@@ -211,6 +211,13 @@ class DiagnosticsActivity : ComponentActivity() {
                     DiagCell(text = rows.lastFix, modifier = Modifier.weight(1f))
                     DiagCell(text = rows.lastAck, modifier = Modifier.weight(1f))
                 }
+                // Tubería por capa (§12/§13): con estos relojes se sabe DÓNDE se
+                // rompió (callback vs filtro vs cola vs envío vs ACK).
+                DiagCell(
+                    text = rows.pipeline,
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 4,
+                )
                 DiagCell(
                     text = rows.update,
                     modifier = Modifier.fillMaxWidth(),
@@ -320,6 +327,7 @@ private data class DiagRows(
     val battery: String = "",
     val lastFix: String = "",
     val lastAck: String = "",
+    val pipeline: String = "",
     val update: String = "",
     val monitor: String = "",
     val device: String = "",
@@ -441,6 +449,20 @@ private suspend fun computeDiagRows(context: Context): DiagRows {
         config.lastAckAt.takeIf { it > 0L }?.let { agoText(context, it) }
             ?: context.getString(R.string.diag_never),
     )
+    fun agoOrNever(ts: Long): String =
+        ts.takeIf { it > 0L }?.let { agoText(context, it) } ?: context.getString(R.string.diag_never)
+    val breakdown = runCatching { config.rejectBreakdown() }.getOrDefault("")
+    val pipelineText = context.getString(
+        R.string.diag_pipeline,
+        config.fixReceived,
+        config.fixRejected,
+        if (breakdown.isBlank()) "—" else breakdown,
+        config.fixEnqueued,
+        agoOrNever(config.lastLocationCallbackAt),
+        agoOrNever(config.lastAckAt),
+        agoOrNever(config.lastHttpAt),
+        agoOrNever(config.lastMqttAt),
+    )
 
     val updateText = when {
         config.lastUpdateCheckAt <= 0L ->
@@ -500,6 +522,7 @@ private suspend fun computeDiagRows(context: Context): DiagRows {
         battery = batteryText,
         lastFix = lastFixText,
         lastAck = lastAckText,
+        pipeline = pipelineText,
         update = updateText,
         monitor = monitor,
         device = deviceText,

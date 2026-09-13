@@ -52,13 +52,32 @@ object SpeedEstimator {
      * llega a los 5 m/s que exige el modo MOVING), así que es seguro para la
      * detección de movimiento.
      */
-    fun effectiveMps(dopplerMps: Float?, impliedMps: Float?): Float? {
+    fun effectiveMps(dopplerMps: Float?, impliedMps: Float?): Float? =
+        effectiveMps(dopplerMps, impliedMps, Float.POSITIVE_INFINITY)
+
+    /**
+     * Igual, pero la implícita se acota a [maxImpliedMps]: con un salto de reloj
+     * (NTP) o un teleport, la geometría puede "inventar" 200 km/h; por encima
+     * del máximo se descarta y la velocidad queda desconocida (no inventada).
+     */
+    fun effectiveMps(dopplerMps: Float?, impliedMps: Float?, maxImpliedMps: Float): Float? {
         if (dopplerMps != null && dopplerMps.isFinite() && dopplerMps > DOPPLER_TRUST_MPS) {
             return dopplerMps
         }
-        if (impliedMps != null && impliedMps.isFinite() && impliedMps >= 0f) {
-            return impliedMps
-        }
-        return null
+        val capped = impliedMps?.takeIf { it.isFinite() && it >= 0f && it <= maxImpliedMps }
+        return capped
     }
+
+    /** Origen de la velocidad efectiva (trazabilidad; viaja en el payload). */
+    fun speedSource(dopplerMps: Float?, impliedMps: Float?, maxImpliedMps: Float): String {
+        if (dopplerMps != null && dopplerMps.isFinite() && dopplerMps > DOPPLER_TRUST_MPS) {
+            return SPEED_SOURCE_DOPPLER
+        }
+        val capped = impliedMps?.takeIf { it.isFinite() && it >= 0f && it <= maxImpliedMps }
+        return if (capped != null) SPEED_SOURCE_IMPLIED else SPEED_SOURCE_UNKNOWN
+    }
+
+    const val SPEED_SOURCE_DOPPLER = "doppler"
+    const val SPEED_SOURCE_IMPLIED = "implied"
+    const val SPEED_SOURCE_UNKNOWN = "unknown"
 }

@@ -147,10 +147,14 @@ class TrackingService : Service() {
      */
     @Volatile internal var emptyWindowRejects = 0
 
+    /** Última re-inicialización del motor de ubicación (escalera anti-hambruna). */
+    @Volatile private var lastEngineReinitAt = 0L
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             // FLP puede agrupar varios fixes mientras el proceso estaba ocupado o dormido.
-            // Observabilidad: cada fix crudo cuenta como recibido.
+            // Reloj por capa (§13): callback crudo, haya o no fix válido después.
+            runCatching { config.lastLocationCallbackAt = System.currentTimeMillis() }
             result.locations.forEach {
                 runCatching { config.incFixReceived() }
                 onNewLocation(it)
@@ -837,6 +841,9 @@ class TrackingService : Service() {
                 } while (com.dmujeres.traccar.db.BufferDrainPolicy.continueDraining(progress, batches))
                 Log.i(TAG, "Drenaje ($reason): $batches lotes, confirmed=$totalConfirmed "
                     + "quarantined=$totalQuarantined")
+                if (totalConfirmed > 0) {
+                    runCatching { config.lastHttpAt = System.currentTimeMillis() }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -848,6 +855,7 @@ class TrackingService : Service() {
     }
 
     private fun onMqttStateChanged() {
+        runCatching { config.lastMqttAt = System.currentTimeMillis() }
         val status = MqttStatus.status
         if (started.get()) {
             when (status) {
@@ -1145,6 +1153,8 @@ class TrackingService : Service() {
                     gnssUsed = telemetry.gnssUsed,
                     gnssTotal = telemetry.gnssTotal,
                     pollActive = telemetry.pollActive.takeIf { it },
+                    rejectBreakdown = runCatching { config.rejectBreakdown() }
+                        .getOrNull()?.takeIf { it.isNotBlank() },
                 )
                 val pending = PendingPosition(
                     messageId = messageId,
@@ -1418,8 +1428,12 @@ class TrackingService : Service() {
 
     private fun onNewLocation(location: Location) {
         if (!started.get() || stopping) return
-        if (!location.isValidLocation()) {
-            runCatching { config.incFixRejected() }
+        val invalidReason = FixFilter.invalidLocationReason(
+            location.latitude, location.longitude, location.accuracy,
+        )
+        if (invalidReason != null) {
+            Log.w(TAG, "POSITION_REJECTED reason=$invalidReason")
+            runCatching { config.incRejected(invalidReason) }
             return
         }
         val nowElapsed = SystemClock.elapsedRealtimeNanos()
@@ -1439,14 +1453,16 @@ class TrackingService : Service() {
                     emptyWindowRejects = 0
                     FixFilter.Decision.Accept(lowQuality = true)
                 } else {
-                    runCatching { config.incFixRejected() }
+                    Log.w(TAG, "POSITION_REJECTED reason=first_fix_bad")
+                    runCatching { config.incRejected("first_fix_bad") }
                     return
                 }
             } else {
                 // Ventana honesta: el rechazo también deja memoria, salvo el primer fix
                 // malo que no debe fundar la ventana (arranque sin referencia fiable).
                 if (recentFixes.isNotEmpty()) recordRecentFix(location)
-                runCatching { config.incFixRejected() }
+                Log.w(TAG, "POSITION_REJECTED reason=${rawDecision.reason}")
+                runCatching { config.incRejected(rawDecision.reason) }
                 return
             }
         } else {
@@ -1455,6 +1471,7 @@ class TrackingService : Service() {
         }
         val lowQuality = (decision as FixFilter.Decision.Accept).lowQuality
         recordRecentFix(location)
+        runCatching { config.lastAcceptedAt = System.currentTimeMillis() }
         // Fix válido aceptado por el filtro (misma vía para FLP pasivo y
         // polling activo): velocidad EFECTIVA para la distancia adaptativa.
         // El Doppler de algunos equipos (ZTE) se atasca en 0 en marcha: si no
@@ -1525,7 +1542,7 @@ class TrackingService : Service() {
                             lastJourneyLat, lastJourneyLon, location.latitude, location.longitude,
                         ) < 2.0
                     ) {
-                        runCatching { config.incFixRejected() }
+                        runCatching { config.incRejected("network_relay") }
                         return@withLock
                     }
                     // Regla OR Traccar (frecuencia/distancia 24 m/ángulo 15°):
@@ -1550,7 +1567,9 @@ class TrackingService : Service() {
                             frequencyMs = currentIntervalSeconds * 1000L,
                         )
                     ) {
-                        runCatching { config.incFixRejected() }
+                        // Regla OR: se difiere (no es un error, el próximo intervalo
+                        // lo toma); se cuenta aparte para no inflar "rechazos".
+                        runCatching { config.incRejected("rule_deferred") }
                         return@withLock
                     }
                     val currentCount = withContext(Dispatchers.IO) { dao.count() }
@@ -1584,6 +1603,18 @@ class TrackingService : Service() {
                     val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
                     val battery = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                     val network = currentNetworkLabel()
+                    // Velocidad EFECTIVA (nunca Doppler crudo): Doppler creíble,
+                    // si no implícita acotada (un salto de reloj no inventa
+                    // 200 km/h), si no 0 + source unknown ("no se sabe", NO
+                    // "detenido"). Ver SpeedEstimator + caso Joseph (0 km/h
+                    // en marcha por Doppler atascado).
+                    val effectiveMps = SpeedEstimator.effectiveMps(
+                        doppler, implied, config.maxImpliedSpeedMps,
+                    )
+                    val speedSource = SpeedEstimator.speedSource(
+                        doppler, implied, config.maxImpliedSpeedMps,
+                    )
+                    val speedKmh = ((effectiveMps ?: 0f).toDouble() * 3.6).coerceAtLeast(0.0)
                     val payload = Envelope.buildPosition(
                         messageId = messageId,
                         deviceId = deviceId,
@@ -1591,9 +1622,7 @@ class TrackingService : Service() {
                         latitude = location.latitude,
                         longitude = location.longitude,
                         accuracy = location.accuracy.toDouble(),
-                        speed = if (location.hasSpeed()) {
-                            (location.speed.toDouble() * 3.6).coerceAtLeast(0.0)
-                        } else 0.0,
+                        speed = speedKmh,
                         bearing = if (location.hasBearing()) location.bearing.toDouble() else 0.0,
                         altitude = if (location.hasAltitude()) location.altitude else 0.0,
                         observedAt = observedAt,
@@ -1603,6 +1632,7 @@ class TrackingService : Service() {
                         lowQuality = lowQuality,
                         provider = providerLabel(location),
                         fixAgeSec = fixAgeSeconds(location),
+                        speedSource = speedSource,
                     )
                     val enqueuedAt = System.currentTimeMillis()
                     val pending = PendingPosition(
@@ -1628,6 +1658,11 @@ class TrackingService : Service() {
                     lastFixElapsedNanos = SystemClock.elapsedRealtimeNanos()
                     pollFailures = 0
                     runCatching { config.incFixEnqueued() }
+                    // Traza estructurada por posición (§15): con esto + los
+                    // POSITION_REJECTED se reconstruye CAPTURE→PERSIST→SEND→ACK.
+                    Log.i(TAG, "POSITION_ACCEPTED+STORED provider=${providerLabel(location)} "
+                        + "acc=${location.accuracy} speed=${"%.1f".format(speedKmh)}kmh($speedSource) "
+                        + "seq=$sequence journey=${config.journeyStartAt}")
                     if (config.journeyHasLastLocation) {
                         config.journeyDistanceM += distanceMeters(
                             lastJourneyLat,
@@ -1804,6 +1839,26 @@ class TrackingService : Service() {
                     runCatching { fused?.removeLocationUpdates(locationCallback) }
                     requestLocationUpdates()
                 }
+                // Escalera anti-hambruna (caso Joseph: 28 callbacks en 7 h con cielo
+                // abierto): si NI SIQUIERA hay callbacks crudos del FLP en 10 min,
+                // el cliente fused puede estar atascado/muerto (Doze/OEM/Play). Se
+                // recrea el cliente y se re-solicita, como máximo 1 vez cada
+                // 15 min (sin loops: time-gated, con log y breadcrumb).
+                val lastCallback = config.lastLocationCallbackAt
+                if (lastCallback > 0L && now - lastCallback > 10 * 60_000L &&
+                    now - lastEngineReinitAt > 15 * 60_000L
+                ) {
+                    lastEngineReinitAt = now
+                    Log.w(TAG, "FLP sin callbacks en >10 min: re-inicializando motor de ubicación")
+                    runCatching {
+                        SentryLog.breadcrumb("gps", "engine_reinit", "Sin callbacks FLP >10 min, recreo cliente")
+                    }
+                    runCatching { fused?.removeLocationUpdates(locationCallback) }
+                    runCatching {
+                        fused = LocationServices.getFusedLocationProviderClient(this)
+                    }
+                    requestLocationUpdates()
+                }
             } else if (!gpsWithoutFix) {
                 lastGpsReregisterAt = 0L
             }
@@ -1925,6 +1980,9 @@ class TrackingService : Service() {
                     if (outcome.confirmed > 0 || outcome.quarantined > 0) {
                         Log.i(TAG, "Trickle HTTP confirmó ${outcome.confirmed} "
                             + "cuarentena ${outcome.quarantined}")
+                    }
+                    if (outcome.confirmed > 0) {
+                        runCatching { config.lastHttpAt = System.currentTimeMillis() }
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -2136,15 +2194,6 @@ class TrackingService : Service() {
     private fun persistJourneyElapsed() {
         config.journeyElapsedMs = elapsedNowMs()
         config.journeyElapsedWallMs = System.currentTimeMillis()
-    }
-
-    private fun Location.isValidLocation(): Boolean {
-        val reason = FixFilter.invalidLocationReason(latitude, longitude, accuracy)
-        if (reason != null) {
-            Log.w(TAG, "Fix descartado por inválido $reason")
-            return false
-        }
-        return true
     }
 
     private fun stopTracking() {

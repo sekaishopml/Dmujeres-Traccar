@@ -166,8 +166,7 @@ class OfflineRouteOrderTest {
     }
 
     @Test
-    fun purgaExpiradosPreservaOrdenDeSupervivientes() = runBlocking {
-        val dao = FakeDao()
+    fun purgaExpiradosPreservaOrdenDeSupervivientes() = runBlocking {        val dao = FakeDao()
         val now = System.currentTimeMillis()
         val old = now - OutboxRetentionPolicy.MAX_AGE_MS - 3_600_000L
         // 100 posiciones de hace >7 días (el servidor las rechazaría con
@@ -218,5 +217,38 @@ class OfflineRouteOrderTest {
         dao.insertWithinLimit(position(dao.nextSequence(0L), "2026-03-01T00:00:00Z", now), 5_000)
         assertEquals(2, dao.count())
         assertTrue(dao.allOrdered().any { it.messageId == "dmj-started" })
+    }
+
+    @Test
+    fun regressionAdminOutageLargoSinPerdidaSilenciosa() = runBlocking {
+        // REGRESSION ADMIN: outage de ~17 h a 5 s (≈12 000 fixes) con el default
+        // antiguo de 5 000 se perdía por DROP_OLDEST silencioso. Con la retención
+        // efectiva (100 000) todo se conserva y drena en orden.
+        val dao = FakeDao()
+        val base = Instant.parse("2026-03-01T08:00:00Z")
+        val enqueueBase = System.currentTimeMillis()
+        val n = 12_000
+        for (i in 0 until n) {
+            val seq = dao.nextSequence(0L)
+            val r = dao.insertWithinLimit(position(seq, base.plusSeconds(i * 5L).toString(), enqueueBase), 5_000)
+            assertTrue("inserción $i debe conservarse (r=$r)", r >= 0)
+        }
+        assertEquals(n, dao.count())
+        // Drenaje completo FIFO: primero y último intactos.
+        val now = System.currentTimeMillis()
+        var first = -1L
+        var last = -1L
+        var count = 0
+        while (dao.count() > 0) {
+            val batch = dao.allDue(now, 50)
+            assertTrue(batch.isNotEmpty())
+            if (first < 0) first = batch.first().sequence
+            last = batch.last().sequence
+            count += batch.size
+            batch.forEach { dao.delete(it.messageId) }
+        }
+        assertEquals(1L, first)
+        assertEquals(n.toLong(), last)
+        assertEquals(n, count)
     }
 }
