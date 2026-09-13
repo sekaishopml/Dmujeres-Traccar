@@ -230,6 +230,10 @@ object FixFilter {
         accuracyBadM: Float = 80f,
         accuracyGoodM: Float = 20f,
         consistentSpeedMps: Float = 30f,
+        // Dt real (s) entre el fix previo y este, calculado por el llamador con
+        // FixTime.dtSeconds (elapsedRealtime preferente sobre location.time).
+        // null = comportamiento por defecto (dt de wallTimeMs de ambos fixes).
+        dtSecondsOverride: Double? = null,
     ): Decision {
         // 1. Validez básica + techo (igual que TrackingService.isValidLocation).
         if (!lat.isFinite() || !lon.isFinite() ||
@@ -269,7 +273,7 @@ object FixFilter {
         // 5. Velocidad implícita (GPS loco). Con silencio prolongado NO se juzga:
         // la referencia es de hace horas y cualquier velocidad fue posible en
         // el hueco (re-adquisición tras Doze/túnel). Ver REACQUIRE_AFTER_MS.
-        val dt = (wallTimeMs - previous.timeMs) / 1000.0
+        val dt = dtSecondsOverride ?: ((wallTimeMs - previous.timeMs) / 1000.0)
         // dt > 0 garantizado por el bloque anterior.
         val implied = distanceMeters(previous.lat, previous.lon, lat, lon) / dt
         if (dt * 1000.0 <= REACQUIRE_AFTER_MS &&

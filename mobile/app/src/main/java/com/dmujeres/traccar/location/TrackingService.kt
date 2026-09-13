@@ -155,11 +155,25 @@ class TrackingService : Service() {
             // FLP puede agrupar varios fixes mientras el proceso estaba ocupado o dormido.
             // Reloj por capa (§13): callback crudo, haya o no fix válido después.
             runCatching { config.lastLocationCallbackAt = System.currentTimeMillis() }
-            result.locations.forEach {
+            orderFixes(result.locations).forEach {
                 runCatching { config.incFixReceived() }
                 onNewLocation(it)
             }
         }
+    }
+
+    /**
+     * Ordena un lote del FLP por tiempo de fix ASC para procesar cronológico:
+     * si TODOS traen elapsedRealtimeNanos > 0 se ordena por el monotónico
+     * (robusto a saltos NTP); si no, si todos traen time > 0 se ordena por wall
+     * del fix; si no, llega el orden original del proveedor. Ver FixTime.
+     */
+    private fun orderFixes(locations: List<Location>): List<Location> {
+        if (locations.size < 2) return locations
+        val elapsed = locations.map { runCatching { it.elapsedRealtimeNanos }.getOrDefault(0L) }
+        val times = locations.map { it.time }
+        val indices = FixTime.orderIndices(elapsed, times)
+        return if (indices == elapsed.indices.toList()) locations else indices.map { locations[it] }
     }
 
     /**
@@ -359,6 +373,10 @@ class TrackingService : Service() {
             0L
         }
         monoBaseElapsed = SystemClock.elapsedRealtime()
+        // Ejecución lógica nueva (incluso recuperando jornada): cada start es
+        // una corrida distinta para agrupar fixes en el servidor.
+        runCatching { config.newSessionId() }
+        runCatching { config.bootIdRefresh(SystemClock.elapsedRealtime()) }
         lastJourneyLat = if (recoveringJourney) config.journeyLastLat else 0.0
         lastJourneyLon = if (recoveringJourney) config.journeyLastLon else 0.0
         capturePausedForBuffer = false
@@ -455,6 +473,13 @@ class TrackingService : Service() {
         registerNetworkCallback()
         registerAirplaneReceiver()
         serviceScope.launch { watchdogLoop() }
+        // Microbatch online: mismo owner de DELETE (PositionOutboxDispatcher).
+        // El insert solo SEÑALA; el wake flush es el mismo flushOnce con
+        // DispatchLock.mutex, así microbatch y replay nunca compiten por Room.
+        PositionOutboxDispatcher.mqttReady = { mqtt?.ready == true }
+        PositionOutboxDispatcher.startWakeLoop(
+            serviceScope, dao, PositionOutboxDispatcher.HttpTransport, ::dispatchContext,
+        )
         refreshStateAndNotify()
     }
 
@@ -704,6 +729,8 @@ class TrackingService : Service() {
     private var lastSpeedRefLat = 0.0
     private var lastSpeedRefLon = 0.0
     private var lastSpeedRefTimeMs = 0L
+    /** elapsedRealtimeNanos del fix de referencia de velocidad (0 = desconocido). */
+    private var lastSpeedRefElapsedNanos = 0L
     private var consecDopplerStuck = 0
     @Volatile private var currentMinDistanceM = AdaptiveDistancePolicy.DISTANCE_STATIONARY_M
     @Volatile private var currentIntervalSeconds = 10L
@@ -1396,6 +1423,14 @@ class TrackingService : Service() {
 
     private fun Location.isPlausibleFix(nowElapsedNanos: Long = SystemClock.elapsedRealtimeNanos()): FixFilter.Decision {
         val elapsed = runCatching { elapsedRealtimeNanos }.getOrDefault(0L)
+        // Dt real ENTRE FIJOS: elapsedRealtime de ambos si existe (monotónico,
+        // robusto a saltos NTP); fallback location.time; null = default del filtro.
+        val prev = recentFixes.lastOrNull()
+        val dtOverride = if (prev != null) {
+            FixTime.dtSeconds(prev.elapsedNanos, prev.timeMs, elapsed, time)
+        } else {
+            null
+        }
         val decision = FixFilter.evaluate(
             lat = latitude,
             lon = longitude,
@@ -1408,26 +1443,58 @@ class TrackingService : Service() {
             accuracyBadM = config.accuracyBadM,
             accuracyGoodM = config.accuracyGoodM,
             consistentSpeedMps = config.consistentSpeedMps,
+            dtSecondsOverride = dtOverride,
         )
-        if (decision is FixFilter.Decision.Reject) {
-            val impliedHint = when (decision.reason) {
-                "implied_speed" -> {
-                    val prev = recentFixes.lastOrNull()
-                    if (prev != null) {
-                        val dt = (time - prev.timeMs) / 1000.0
-                        if (dt > 0) {
+        when (decision) {
+            is FixFilter.Decision.Reject -> {
+                val impliedHint = when (decision.reason) {
+                    "implied_speed" -> {
+                        if (prev != null && dtOverride != null && dtOverride > 0.0) {
                             " (implícita %.1f m/s)".format(
-                                FixFilter.distanceMeters(prev.lat, prev.lon, latitude, longitude) / dt,
+                                FixFilter.distanceMeters(prev.lat, prev.lon, latitude, longitude) / dtOverride,
                             )
                         } else ""
-                    } else ""
+                    }
+                    "degraded" -> " (accuracy %.0f m)".format(accuracy)
+                    else -> ""
                 }
-                "degraded" -> " (accuracy %.0f m)".format(accuracy)
-                else -> ""
+                Log.w(TAG, "Fix descartado por filtro ${decision.reason}$impliedHint")
+                Log.d(
+                    TAG,
+                    "POSITION_EVALUATED verdict=reject reason=${decision.reason} " +
+                        "confidence=${confidenceFor(this, elapsed, nowElapsedNanos)}",
+                )
             }
-            Log.w(TAG, "Fix descartado por filtro ${decision.reason}$impliedHint")
+            is FixFilter.Decision.Accept -> Log.d(
+                TAG,
+                "POSITION_EVALUATED verdict=accept reason=none " +
+                    "confidence=${confidenceFor(this, elapsed, nowElapsedNanos)}",
+            )
         }
         return decision
+    }
+
+    /** Score operacional del fix (0..100) con los datos GNSS/velocidad vigentes. */
+    private fun confidenceFor(
+        location: Location,
+        elapsedNanos: Long,
+        nowElapsedNanos: Long,
+    ): Int {
+        val gnssHasData = GnssState.hasData()
+        return LocationQuality.calculateConfidenceScore(
+            horizontalAccuracyM = location.accuracy.takeIf { it > 0f }?.toDouble(),
+            speedAccuracyMps = runCatching { location.speedAccuracyMetersPerSecond }.getOrNull()
+                ?.takeIf { it.isFinite() && it > 0f },
+            gnssUsableRatio = LocationQuality.usableRatio(
+                GnssState.satsUsed.takeIf { gnssHasData },
+                GnssState.satsTotal.takeIf { gnssHasData },
+            ),
+            fixAgeSec = FixTime.ageSeconds(
+                elapsedNanos, nowElapsedNanos, location.time, System.currentTimeMillis(),
+            ),
+            impliedSpeedMps = null,
+            dopplerValid = false,
+        )
     }
 
     private fun onNewLocation(location: Location) {
@@ -1441,6 +1508,17 @@ class TrackingService : Service() {
             return
         }
         val nowElapsed = SystemClock.elapsedRealtimeNanos()
+        // Tiempo del FIX (no de llegada): wall del fix con fallback al wall de
+        // llegada solo si el fix no trae time; elapsed del fix para dt/edad.
+        val fixWallMs = if (location.time > 0L) location.time else System.currentTimeMillis()
+        val fixElapsedNanos = runCatching { location.elapsedRealtimeNanos }.getOrDefault(0L)
+            .takeIf { it > 0L } ?: 0L
+        Log.d(
+            TAG,
+            "LOCATION_RECEIVED provider=${providerLabel(location)} " +
+                "fixAge=${FixTime.ageSeconds(fixElapsedNanos, nowElapsed, location.time, System.currentTimeMillis())?.toInt() ?: -1}s " +
+                "acc=${location.accuracy} elapsed=${fixElapsedNanos > 0L}",
+        )
         val rawDecision = location.isPlausibleFix(nowElapsed)
         val decision: FixFilter.Decision = if (rawDecision is FixFilter.Decision.Reject) {
             if (recentFixes.isEmpty() && rawDecision.reason == "first_fix_bad") {
@@ -1483,15 +1561,30 @@ class TrackingService : Service() {
         // también tiende a ~0 y no dispara MOVING por jitter.
         val nowMs = System.currentTimeMillis()
         val doppler = if (location.hasSpeed()) location.speed.coerceAtLeast(0f) else null
-        val implied = if (lastSpeedRefTimeMs > 0) {
-            SpeedEstimator.impliedMps(
-                lastSpeedRefLat, lastSpeedRefLon, lastSpeedRefTimeMs,
-                location.latitude, location.longitude, nowMs,
+        val dopplerAccuracy = runCatching { location.speedAccuracyMetersPerSecond }.getOrNull()
+            ?.takeIf { it.isFinite() && it > 0f }
+            ?.takeIf { it.isFinite() && it >= 0f }
+        val prevSpeedRefTimeMs = lastSpeedRefTimeMs
+        val speedRefElapsedNanos = lastSpeedRefElapsedNanos
+        val implied = if (prevSpeedRefTimeMs > 0) {
+            // Dt real entre fixes (elapsedRealtime preferente): un salto NTP no
+            // debe inventar (ni anular) la velocidad implícita.
+            val dt = FixTime.dtSeconds(
+                speedRefElapsedNanos, prevSpeedRefTimeMs, fixElapsedNanos, fixWallMs,
             )
+            if (dt != null) {
+                val dist = SpeedEstimator.haversineMeters(
+                    lastSpeedRefLat, lastSpeedRefLon,
+                    location.latitude, location.longitude,
+                )
+                (dist / dt).toFloat().takeIf { it.isFinite() }
+            } else {
+                null
+            }
         } else {
             null
         }
-        lastFixSpeedMps = SpeedEstimator.effectiveMps(doppler, implied)
+        lastFixSpeedMps = SpeedEstimator.choose(doppler, dopplerAccuracy, implied, config.maxImpliedSpeedMps)?.mps
         // Stop detection (perfil oculto, ON): hay movimiento si la efectiva
         // supera 1.5 m/s O la geometría se movió > 8 m desde el último fix
         // (el Doppler atascado en 0 no debe llamar a "quieto" un viaje real).
@@ -1508,7 +1601,8 @@ class TrackingService : Service() {
         }
         lastSpeedRefLat = location.latitude
         lastSpeedRefLon = location.longitude
-        lastSpeedRefTimeMs = nowMs
+        lastSpeedRefTimeMs = fixWallMs
+        lastSpeedRefElapsedNanos = fixElapsedNanos
         // Caza del Doppler atascado para Sentry/telemetría: Doppler en 0 con
         // implícita de marcha (>= 5 m/s) 3 fixes seguidos.
         if ((doppler ?: 0f) <= SpeedEstimator.DOPPLER_TRUST_MPS
@@ -1552,7 +1646,7 @@ class TrackingService : Service() {
                     // Regla OR Traccar (frecuencia/distancia 24 m/ángulo 15°):
                     // solo se encola lo que aporta geometría al trazo; lo demás
                     // se filtra sin tocar contadores, journey ni lastFixAt.
-                    val nowWallMs = System.currentTimeMillis()
+                    // Se juzga con el tiempo del FIX, no el de llegada.
                     val acceptedRef = when {
                         lastAcceptedTimeMs > 0 -> FixFilter.AcceptedRef(
                             lastAcceptedLat, lastAcceptedLon,
@@ -1567,7 +1661,7 @@ class TrackingService : Service() {
                             ref = acceptedRef,
                             lat = location.latitude,
                             lon = location.longitude,
-                            timeMs = nowWallMs,
+                            timeMs = fixWallMs,
                             frequencyMs = currentIntervalSeconds * 1000L,
                         )
                     ) {
@@ -1619,6 +1713,23 @@ class TrackingService : Service() {
                         doppler, implied, config.maxImpliedSpeedMps,
                     )
                     val speedKmh = ((effectiveMps ?: 0f).toDouble() * 3.6).coerceAtLeast(0.0)
+                    val gnssHasData = GnssState.hasData()
+                    val confidence = LocationQuality.calculateConfidenceScore(
+                        horizontalAccuracyM = location.accuracy.takeIf { it > 0f }?.toDouble(),
+                        speedAccuracyMps = dopplerAccuracy,
+                        gnssUsableRatio = LocationQuality.usableRatio(
+                            GnssState.satsUsed.takeIf { gnssHasData },
+                            GnssState.satsTotal.takeIf { gnssHasData },
+                        ),
+                        fixAgeSec = FixTime.ageSeconds(
+                            fixElapsedNanos,
+                            SystemClock.elapsedRealtimeNanos(),
+                            location.time,
+                            System.currentTimeMillis(),
+                        ),
+                        impliedSpeedMps = implied,
+                        dopplerValid = speedSource == SpeedEstimator.SPEED_SOURCE_DOPPLER,
+                    )
                     val payload = Envelope.buildPosition(
                         messageId = messageId,
                         deviceId = deviceId,
@@ -1637,6 +1748,12 @@ class TrackingService : Service() {
                         provider = providerLabel(location),
                         fixAgeSec = fixAgeSeconds(location),
                         speedSource = speedSource,
+                        sessionId = config.sessionId.takeIf { it.isNotBlank() },
+                        bootId = config.bootIdRefresh(SystemClock.elapsedRealtime()).takeIf { it.isNotBlank() },
+                        speedAccuracyMps = dopplerAccuracy,
+                        confidenceScore = confidence,
+                        gnssUsed = GnssState.satsUsed.takeIf { gnssHasData },
+                        gnssTotal = GnssState.satsTotal.takeIf { gnssHasData },
                     )
                     val enqueuedAt = System.currentTimeMillis()
                     val pending = PendingPosition(
@@ -1666,7 +1783,11 @@ class TrackingService : Service() {
                     // POSITION_REJECTED se reconstruye CAPTURE→PERSIST→SEND→ACK.
                     Log.i(TAG, "POSITION_ACCEPTED+STORED provider=${providerLabel(location)} "
                         + "acc=${location.accuracy} speed=${"%.1f".format(speedKmh)}kmh($speedSource) "
-                        + "seq=$sequence journey=${config.journeyStartAt}")
+                        + "seq=$sequence sessionId=${config.sessionId} journey=${config.journeyStartAt} "
+                        + "observed=$observedAt received=${Envelope.nowIso()} confidence=$confidence")
+                    // Señala microbatch online (single-owner: el wake usa el
+                    // mismo flushOnce/DispatchLock que el replay; nada compite).
+                    PositionOutboxDispatcher.requestFlush()
                     if (config.journeyHasLastLocation) {
                         config.journeyDistanceM += distanceMeters(
                             lastJourneyLat,
@@ -1705,7 +1826,7 @@ class TrackingService : Service() {
                     }
                     lastAcceptedLat = location.latitude
                     lastAcceptedLon = location.longitude
-                    lastAcceptedTimeMs = nowWallMs
+                    lastAcceptedTimeMs = fixWallMs
                     lastJourneyLat = location.latitude
                     lastJourneyLon = location.longitude
                     config.journeyLastLat = location.latitude

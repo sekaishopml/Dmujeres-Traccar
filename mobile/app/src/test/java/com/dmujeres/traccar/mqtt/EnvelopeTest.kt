@@ -263,6 +263,58 @@ class EnvelopeTest {
     }
 
     @Test
+    fun positionCarriesSessionBootConfidenceAndGnssWhenKnown() {
+        val payload = JSONObject(
+            Envelope.buildPosition(
+                messageId = "m", deviceId = "d", sequence = 8L,
+                latitude = 19.4326, longitude = -99.1332, accuracy = 10.0,
+                speed = 0.0, bearing = 0.0, altitude = 0.0,
+                observedAt = "2026-01-01T00:00:00Z", pending = 0, battery = 80,
+                network = "wifi",
+                sessionId = "sess1234",
+                bootId = "boot5678",
+                speedAccuracyMps = 1.5f,
+                confidenceScore = 85,
+                gnssUsed = 9,
+                gnssTotal = 12,
+            )
+        ).getJSONObject("payload")
+        assertEquals("sess1234", payload.getString("sessionId"))
+        assertEquals("boot5678", payload.getString("bootId"))
+        assertEquals(1.5, payload.getDouble("speedAccuracyMps"), 1e-9)
+        assertEquals(85, payload.getInt("confidence"))
+        assertEquals(9, payload.getInt("gnssUsed"))
+        assertEquals(12, payload.getInt("gnssTotal"))
+        assertEquals(1, JSONObject(Envelope.buildPosition(
+            messageId = "m", deviceId = "d", sequence = 8L,
+            latitude = 19.4326, longitude = -99.1332, accuracy = 10.0,
+            speed = 0.0, bearing = 0.0, altitude = 0.0,
+            observedAt = "2026-01-01T00:00:00Z", pending = 0, battery = 80,
+            network = "wifi",
+            sessionId = "sess1234",
+        )).getInt("schema"))
+    }
+
+    @Test
+    fun positionOmitsSessionBootConfidenceAndGnssWhenAbsent() {
+        val payload = JSONObject(
+            Envelope.buildPosition(
+                messageId = "m", deviceId = "d", sequence = 9L,
+                latitude = 19.4326, longitude = -99.1332, accuracy = 10.0,
+                speed = 0.0, bearing = 0.0, altitude = 0.0,
+                observedAt = "2026-01-01T00:00:00Z", pending = 0, battery = 80,
+                network = "wifi",
+            )
+        ).getJSONObject("payload")
+        assertFalse(payload.has("sessionId"))
+        assertFalse(payload.has("bootId"))
+        assertFalse(payload.has("speedAccuracyMps"))
+        assertFalse(payload.has("confidence"))
+        assertFalse(payload.has("gnssUsed"))
+        assertFalse(payload.has("gnssTotal"))
+    }
+
+    @Test
     fun messageIdKeepsSequenceAndDoesNotCollide() {
         val first = Envelope.newMessageId("worker-01", 18452)
         val second = Envelope.newMessageId("worker-01", 18453)

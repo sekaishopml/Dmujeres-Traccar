@@ -38,6 +38,17 @@ object Envelope {
         // Un 0 con source "unknown" es "no se sabe", NO "detenido": el mapa y
         // el servidor nunca deben leerlo como parado confirmado.
         speedSource: String? = null,
+        // Ejecución lógica del tracking (regenerado en cada startTracking).
+        sessionId: String? = null,
+        // Arranque lógico del proceso (detecta reboot vía elapsedRealtime).
+        bootId: String? = null,
+        // Accuracy del Doppler (m/s) del fix, si el teléfono la reporta.
+        speedAccuracyMps: Float? = null,
+        // Score de calidad del fix 0..100 (LocationQuality).
+        confidenceScore: Int? = null,
+        // GNSS real del fix (solo con eventos del callback de satélites).
+        gnssUsed: Int? = null,
+        gnssTotal: Int? = null,
     ): String {
         val payload = JSONObject()
         payload.put("latitude", latitude)
@@ -53,6 +64,14 @@ object Envelope {
         if (!provider.isNullOrBlank()) payload.put("provider", provider)
         if (fixAgeSec != null && fixAgeSec > 0L) payload.put("fixAgeSec", fixAgeSec)
         if (!speedSource.isNullOrBlank()) payload.put("speedSource", speedSource)
+        if (!sessionId.isNullOrBlank()) payload.put("sessionId", sessionId)
+        if (!bootId.isNullOrBlank()) payload.put("bootId", bootId)
+        if (speedAccuracyMps != null && speedAccuracyMps >= 0f) {
+            payload.put("speedAccuracyMps", speedAccuracyMps.toDouble())
+        }
+        if (confidenceScore != null) payload.put("confidence", confidenceScore)
+        if (gnssUsed != null) payload.put("gnssUsed", gnssUsed)
+        if (gnssTotal != null) payload.put("gnssTotal", gnssTotal)
 
         val body = JSONObject()
         body.put("schema", 1)

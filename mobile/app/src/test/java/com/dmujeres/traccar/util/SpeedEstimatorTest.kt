@@ -50,4 +50,46 @@ class SpeedEstimatorTest {
         assertEquals("unknown", SpeedEstimator.speedSource(null, null, 45f))
         assertEquals("unknown", SpeedEstimator.speedSource(0f, null, 45f))
     }
+
+    // ── choose() con accuracy del Doppler (quality-aware) ──
+
+    @Test
+    fun speed1_dopplerTrustedWithGoodAccuracy() {
+        val choice = SpeedEstimator.choose(11f, 1.5f, 9f, 45f)
+        assertEquals(11f, choice!!.mps, 0.001f)
+        assertEquals("doppler", choice.source)
+    }
+
+    @Test
+    fun speed2_stuckDopplerWithBadAccuracyFallsBackToImplied() {
+        // Doppler=0 atascado + accuracy mala: manda la geometría.
+        val choice = SpeedEstimator.choose(0f, 10f, 12f, 45f)
+        assertEquals(12f, choice!!.mps, 0.001f)
+        assertEquals("implied", choice.source)
+    }
+
+    @Test
+    fun speed3_bothNullGiveUnknown() {
+        assertNull(SpeedEstimator.choose(null, null, null, 45f))
+        assertNull(SpeedEstimator.choose(0f, 1f, null, 45f))
+        assertNull(SpeedEstimator.choose(0f, 1f, 150f, 45f))
+    }
+
+    @Test
+    fun speed4_nullAccuracyKeepsDopplerCompat() {
+        // Sin accuracy reportada: doppler > 0.1 sigue viajando como doppler.
+        val choice = SpeedEstimator.choose(11f, null, 9f, 45f)
+        assertEquals(11f, choice!!.mps, 0.001f)
+        assertEquals("doppler", choice.source)
+        // accuracy buena (<=4) también es doppler; mala con doppler>0.1 y sin
+        // implied cae al doppler solo si accuracy es null; con accuracy mala y
+        // implied inválida queda unknown.
+        assertNull(SpeedEstimator.choose(11f, 10f, 150f, 45f))
+    }
+
+    @Test
+    fun speed5_accuracyThresholdBoundary() {
+        assertEquals("doppler", SpeedEstimator.choose(3f, 4f, 0f, 45f)?.source)
+        assertEquals("implied", SpeedEstimator.choose(3f, 4.1f, 0f, 45f)?.source)
+    }
 }

@@ -3,6 +3,7 @@ package com.dmujeres.traccar.config
 import android.content.Context
 import android.content.SharedPreferences
 import com.dmujeres.traccar.mqtt.MqttServerNormalizer
+import com.dmujeres.traccar.util.BootId
 
 /**
  * Configuración persistida del dispositivo. El servidor viene preconfigurado con la IP del
@@ -294,6 +295,46 @@ class AppConfig(context: Context) {
     var lastUpdateLatest: String
         get() = prefs.getString(KEY_LAST_UPDATE_LATEST, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_LAST_UPDATE_LATEST, value).apply()
+
+    /**
+     * Ejecución lógica del tracking (regenerada en cada startTracking, incluso
+     * recuperando jornada). Viaja en cada position para que el servidor agrupe
+     * fixes de la misma corrida aunque el proceso muera y se recupere.
+     */
+    var sessionId: String
+        get() = prefs.getString(KEY_SESSION_ID, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_SESSION_ID, value).apply()
+
+    fun newSessionId(): String {
+        val id = BootId.newId()
+        sessionId = id
+        return id
+    }
+
+    /**
+     * Identificador del arranque del proceso (boot): estable mientras el reloj
+     * monotónico avanza; un elapsed menor que el persistido solo puede ser un
+     * reboot → nuevo bootId. Ver [BootId.refresh] (lógica pura testeable).
+     */
+    var bootId: String
+        get() = prefs.getString(KEY_BOOT_ID, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_BOOT_ID, value).apply()
+
+    /** ElapsedRealtime (ms) capturado al escribir el bootId actual. */
+    var bootElapsedMs: Long
+        get() = prefs.getLong(KEY_BOOT_ELAPSED, 0L)
+        set(value) = prefs.edit().putLong(KEY_BOOT_ELAPSED, value).apply()
+
+    /**
+     * Refresca el bootId contra el reloj monotónico actual y lo persiste con
+     * apply(). Devuelve el bootId vigente (para Envelope).
+     */
+    fun bootIdRefresh(nowElapsedMs: Long): String {
+        val (id, elapsed) = BootId.refresh(bootId, bootElapsedMs, nowElapsedMs)
+        bootId = id
+        bootElapsedMs = elapsed
+        return id
+    }
 
     /** Última causa de red detectada (NetCause.value; "ok" por defecto) para la UI. */
     var netCause: String
@@ -658,6 +699,9 @@ class AppConfig(context: Context) {
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check_at"
         private const val KEY_LAST_UPDATE_ERROR = "last_update_error"
         private const val KEY_LAST_UPDATE_LATEST = "last_update_latest"
+        private const val KEY_SESSION_ID = "session_id"
+        private const val KEY_BOOT_ID = "boot_id"
+        private const val KEY_BOOT_ELAPSED = "boot_elapsed_ms"
         private const val KEY_TRACKING_STATE = "tracking_state"
         private const val KEY_NET_CAUSE = "net_cause"
         private const val KEY_NET_LABEL = "net_label"
