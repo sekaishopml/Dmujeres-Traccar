@@ -2243,11 +2243,10 @@ class TrackingService : Service() {
                 Notifications.alert(this, getString(R.string.warning_title), state.label)
             }
         }
-        if (state == TrackingState.TRACKING_ACTIVE && previous != TrackingState.TRACKING_ACTIVE
-            && lastAlertedState != TrackingState.TRACKING_ACTIVE
-        ) {
+        // "Todo en orden" sin notificación: el estado se ve en la persistente y
+        // en el banner; sonar cada regreso a activo era spam silencioso-útil.
+        if (state == TrackingState.TRACKING_ACTIVE && previous != TrackingState.TRACKING_ACTIVE) {
             lastAlertedState = TrackingState.TRACKING_ACTIVE
-            Notifications.alert(this, getString(R.string.ok_title), getString(R.string.ok_body))
         }
         refreshStateAndNotify()
     }
