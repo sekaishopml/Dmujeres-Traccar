@@ -315,6 +315,34 @@ class EnvelopeTest {
     }
 
     @Test
+    fun positionCarriesQualityClassWhenKnown() {
+        val payload = JSONObject(
+            Envelope.buildPosition(
+                messageId = "m", deviceId = "d", sequence = 10L,
+                latitude = 19.4326, longitude = -99.1332, accuracy = 5.0,
+                speed = 0.0, bearing = 0.0, altitude = 0.0,
+                observedAt = "2026-01-01T00:00:00Z", pending = 0, battery = 80,
+                network = "wifi", qualityClass = "EXCELLENT",
+            )
+        ).getJSONObject("payload")
+        assertEquals("EXCELLENT", payload.getString("qualityClass"))
+    }
+
+    @Test
+    fun positionOmitsQualityClassWhenAbsent() {
+        val payload = JSONObject(
+            Envelope.buildPosition(
+                messageId = "m", deviceId = "d", sequence = 11L,
+                latitude = 19.4326, longitude = -99.1332, accuracy = 5.0,
+                speed = 0.0, bearing = 0.0, altitude = 0.0,
+                observedAt = "2026-01-01T00:00:00Z", pending = 0, battery = 80,
+                network = "wifi",
+            )
+        ).getJSONObject("payload")
+        assertFalse(payload.has("qualityClass"))
+    }
+
+    @Test
     fun messageIdKeepsSequenceAndDoesNotCollide() {
         val first = Envelope.newMessageId("worker-01", 18452)
         val second = Envelope.newMessageId("worker-01", 18453)

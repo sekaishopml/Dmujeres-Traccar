@@ -22,6 +22,7 @@ data class LocationQuality(
     val lowQuality: Boolean,
     val reason: String?,
     val confidenceScore: Int,
+    val qualityClass: QualityClass = QualityClass.GOOD,
 ) {
     companion object {
 
@@ -65,6 +66,12 @@ data class LocationQuality(
                     fixAgeSec = fixAgeSec,
                     impliedSpeedMps = null,
                     dopplerValid = false,
+                ),
+                qualityClass = classify(
+                    horizontalAccuracyM = horizontal,
+                    fixAgeSec = fixAgeSec,
+                    rejected = false,
+                    invalidCoords = false,
                 ),
             )
         }
@@ -130,4 +137,40 @@ data class LocationQuality(
             return score.coerceIn(0, 100)
         }
     }
+}
+
+/**
+ * Clasificación INFORMATIVA de la calidad del fix (no cambia decisiones del
+ * filtro). Ordenada de peor a mejor con jerarquía EXCELLENT ⊆ GOOD ⊆
+ * DEGRADED ⊆ POOR (todo EXCELLENT es también GOOD, etc.).
+ */
+enum class QualityClass { INVALID, POOR, DEGRADED, GOOD, EXCELLENT }
+
+/**
+ * Reglas (orden de evaluación: peor a mejor, primera que aplica):
+ * - INVALID: invalidCoords (fuera de lat/lon) || rejected (rechazado por el filtro).
+ * - POOR: accuracy null && fixAge > 120 s, o accuracy > 150 m, o fixAge > 300 s.
+ * - DEGRADED: accuracy > 30 m (31..150, la banda > 150 ya es POOR), o
+ *   fixAge > 120 s. Accuracy null con edad reciente (<= 120 s) = DEGRADED
+ *   (calidad DESCONOCIDA, no se asume buena).
+ * - GOOD: accuracy <= 30 m && fixAge <= 120 s.
+ * - EXCELLENT: accuracy <= 10 m && fixAge <= 30 s.
+ * Fronteras inclusivas por <= / >: accuracy 30 → GOOD, 31 → DEGRADED;
+ * fixAge 120 → GOOD/DEGRADED según accuracy, 121 → DEGRADED.
+ */
+fun classify(
+    horizontalAccuracyM: Double?,
+    fixAgeSec: Double?,
+    rejected: Boolean,
+    invalidCoords: Boolean,
+): QualityClass = when {
+    invalidCoords || rejected -> QualityClass.INVALID
+    horizontalAccuracyM == null && (fixAgeSec ?: 0.0) > 120.0 -> QualityClass.POOR
+    (horizontalAccuracyM ?: 0.0) > 150.0 -> QualityClass.POOR
+    (fixAgeSec ?: 0.0) > 300.0 -> QualityClass.POOR
+    (horizontalAccuracyM ?: 0.0) > 30.0 -> QualityClass.DEGRADED
+    (fixAgeSec ?: 0.0) > 120.0 -> QualityClass.DEGRADED
+    horizontalAccuracyM == null -> QualityClass.DEGRADED
+    horizontalAccuracyM <= 10.0 && (fixAgeSec ?: 0.0) <= 30.0 -> QualityClass.EXCELLENT
+    else -> QualityClass.GOOD
 }

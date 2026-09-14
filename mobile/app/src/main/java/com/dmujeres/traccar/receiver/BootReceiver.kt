@@ -71,6 +71,12 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     private fun resumeTracking(context: Context, config: AppConfig) {
+        // Red de seguridad Doze-proof: con jornada activa, programar el
+        // SessionKeeper SIEMPRE, incluso antes de intentar arrancar el FGS.
+        // Si el servicio no consolida (instalación/actualización con pantalla
+        // apagada, OEM agresivo), la alarma cada 15 min reviva el proceso.
+        runCatching { SessionKeeper.schedule(context) }
+            .onFailure { Log.w(TAG, "No se pudo programar el SessionKeeper en boot", it) }
         // Android 14+: sin FOREGROUND_SERVICE_LOCATION el startForeground con
         // tipo location lanza SecurityException. Degradar con aviso, no crashear.
         if (isMissingForegroundLocationPermission(context)) {

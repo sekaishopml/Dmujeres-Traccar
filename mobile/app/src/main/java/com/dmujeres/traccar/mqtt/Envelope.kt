@@ -49,6 +49,9 @@ object Envelope {
         // GNSS real del fix (solo con eventos del callback de satélites).
         gnssUsed: Int? = null,
         gnssTotal: Int? = null,
+        // Clase de calidad informativa (LocationQuality.QualityClass): solo
+        // viaja si conocida. No cambia decisiones del filtro ni del server.
+        qualityClass: String? = null,
     ): String {
         val payload = JSONObject()
         payload.put("latitude", latitude)
@@ -72,6 +75,7 @@ object Envelope {
         if (confidenceScore != null) payload.put("confidence", confidenceScore)
         if (gnssUsed != null) payload.put("gnssUsed", gnssUsed)
         if (gnssTotal != null) payload.put("gnssTotal", gnssTotal)
+        if (!qualityClass.isNullOrBlank()) payload.put("qualityClass", qualityClass)
 
         val body = JSONObject()
         body.put("schema", 1)

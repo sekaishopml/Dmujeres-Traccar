@@ -366,6 +366,11 @@ class TrackingService : Service() {
         runCatching {
             com.dmujeres.traccar.receiver.SessionKeeper.schedule(this)
         }
+        // Acelómetro auxiliar (solo telemetría, no decisiones): register con
+        // el ciclo de vida del tracking; unregister en stop/onDestroy.
+        runCatching {
+            com.dmujeres.traccar.util.MotionSensor.register(this)
+        }
         val recoveringJourney = config.journeyStartAt > 0L
         startedTrackingAt = if (recoveringJourney) config.journeyStartAt else System.currentTimeMillis()
         // El único reloj digno de confianza mientras el servicio vive es el
@@ -1493,12 +1498,14 @@ class TrackingService : Service() {
                 Log.d(
                     TAG,
                     "POSITION_EVALUATED verdict=reject reason=${decision.reason} " +
+                        "motion=${com.dmujeres.traccar.util.MotionSensor.currentState()} " +
                         "confidence=${confidenceFor(this, elapsed, nowElapsedNanos)}",
                 )
             }
             is FixFilter.Decision.Accept -> Log.d(
                 TAG,
                 "POSITION_EVALUATED verdict=accept reason=none " +
+                    "motion=${com.dmujeres.traccar.util.MotionSensor.currentState()} " +
                     "confidence=${confidenceFor(this, elapsed, nowElapsedNanos)}",
             )
         }
@@ -1761,6 +1768,14 @@ class TrackingService : Service() {
                         impliedSpeedMps = implied,
                         dopplerValid = speedSource == SpeedEstimator.SPEED_SOURCE_DOPPLER,
                     )
+                    val qualityClass = LocationQuality.run {
+                        classify(
+                            horizontalAccuracyM = location.accuracy.takeIf { it > 0f }?.toDouble(),
+                            fixAgeSec = fixAgeSeconds(location).toDouble(),
+                            rejected = false,
+                            invalidCoords = false,
+                        )
+                    }
                     val payload = Envelope.buildPosition(
                         messageId = messageId,
                         deviceId = deviceId,
@@ -1785,6 +1800,7 @@ class TrackingService : Service() {
                         confidenceScore = confidence,
                         gnssUsed = GnssState.satsUsed.takeIf { gnssHasData },
                         gnssTotal = GnssState.satsTotal.takeIf { gnssHasData },
+                        qualityClass = qualityClass.name,
                     )
                     val enqueuedAt = System.currentTimeMillis()
                     val pending = PendingPosition(
@@ -1814,8 +1830,15 @@ class TrackingService : Service() {
                     // POSITION_REJECTED se reconstruye CAPTURE→PERSIST→SEND→ACK.
                     Log.i(TAG, "POSITION_ACCEPTED+STORED provider=${providerLabel(location)} "
                         + "acc=${location.accuracy} speed=${"%.1f".format(speedKmh)}kmh($speedSource) "
+                        + "motion=${com.dmujeres.traccar.util.MotionSensor.currentState()} "
+                        + "quality=$qualityClass "
                         + "seq=$sequence sessionId=${config.sessionId} journey=${config.journeyStartAt} "
                         + "observed=$observedAt received=${Envelope.nowIso()} confidence=$confidence")
+                    // Fix aceptado: el acelerómetro vuelve a medir si estaba
+                    // en pausa por STATIONARY (re-register on fix).
+                    runCatching {
+                        com.dmujeres.traccar.util.MotionSensor.reRegisterOnFix(this@TrackingService)
+                    }
                     // Señala microbatch online (single-owner: el wake usa el
                     // mismo flushOnce/DispatchLock que el replay; nada compite).
                     PositionOutboxDispatcher.requestFlush()
@@ -1953,6 +1976,9 @@ class TrackingService : Service() {
             // Anti-pasos-de-reloj: compara wall vs monotónico en la ventana del
             // tick (30 s) y apunta el anclaje para el siguiente.
             runCatching { maybeDetectClockStep() }
+            // Acelerómetro: STATIONARY estable >= 5 min → desregistrar
+            // (batería); un fix aceptado lo re-registra (re-register on fix).
+            runCatching { com.dmujeres.traccar.util.MotionSensor.maybePauseIfStationary() }
             // Heartbeat ≥30 s: refresca el par (elapsed monotónico, ancla wall)
             // aunque no lleguen fixes (GPS muerto/nocturno) para que la UI y un
             // hipotético proc nuevo partan de un estado fresco e inmune a NTP.
@@ -2374,6 +2400,7 @@ class TrackingService : Service() {
         unregisterGnssCallback()
         unregisterGnssFallback()
         gnssForced = false
+        runCatching { com.dmujeres.traccar.util.MotionSensor.unregister() }
         publishState(TrackingState.TRACKING_DISABLED_BY_USER)
         Notifications.update(this, getString(R.string.app_name), getString(R.string.notif_journey_finished))
         // Drena primero las posiciones ya capturadas. Si MQTT está conectado pero no entrega
@@ -2507,6 +2534,7 @@ class TrackingService : Service() {
         super.onDestroy()
         isRunning = false
         unregisterAirplaneReceiver()
+        runCatching { com.dmujeres.traccar.util.MotionSensor.unregister() }
         runCatching {
             networkCallback?.let {
                 (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager)

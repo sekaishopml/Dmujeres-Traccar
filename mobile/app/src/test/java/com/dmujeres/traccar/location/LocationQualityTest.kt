@@ -135,4 +135,99 @@ class LocationQualityTest {
         assertFalse(q.lowQuality)
         assertEquals("fused", q.provider)
     }
+
+    @Test
+    fun quality8_classifyInvalidWhenRejectedOrInvalidCoords() {
+        assertEquals(
+            QualityClass.INVALID,
+            classify(5.0, 5.0, rejected = true, invalidCoords = false),
+        )
+        assertEquals(
+            QualityClass.INVALID,
+            classify(5.0, 5.0, rejected = false, invalidCoords = true),
+        )
+    }
+
+    @Test
+    fun quality9_classifyPoorThresholds() {
+        // accuracy > 150 m → POOR.
+        assertEquals(
+            QualityClass.POOR,
+            classify(151.0, 10.0, rejected = false, invalidCoords = false),
+        )
+        // fixAge > 300 s → POOR.
+        assertEquals(
+            QualityClass.POOR,
+            classify(10.0, 301.0, rejected = false, invalidCoords = false),
+        )
+        // accuracy null con edad vieja (> 120 s) → POOR.
+        assertEquals(
+            QualityClass.POOR,
+            classify(null, 121.0, rejected = false, invalidCoords = false),
+        )
+    }
+
+    @Test
+    fun quality10_classifyDegraded() {
+        // accuracy 100 m (<=150, >80) → DEGRADED.
+        assertEquals(
+            QualityClass.DEGRADED,
+            classify(100.0, 30.0, rejected = false, invalidCoords = false),
+        )
+        // fixAge > 120 s con accuracy buena → DEGRADED.
+        assertEquals(
+            QualityClass.DEGRADED,
+            classify(10.0, 130.0, rejected = false, invalidCoords = false),
+        )
+        // accuracy null con edad reciente → DEGRADED (desconocida, no GOOD).
+        assertEquals(
+            QualityClass.DEGRADED,
+            classify(null, 30.0, rejected = false, invalidCoords = false),
+        )
+    }
+
+    @Test
+    fun quality11_classifyGoodAndExcellent() {
+        // acc 20 / age 30 → GOOD.
+        assertEquals(
+            QualityClass.GOOD,
+            classify(20.0, 30.0, rejected = false, invalidCoords = false),
+        )
+        // acc 5 / age 5 → EXCELLENT.
+        assertEquals(
+            QualityClass.EXCELLENT,
+            classify(5.0, 5.0, rejected = false, invalidCoords = false),
+        )
+    }
+
+    @Test
+    fun quality12_classifyBoundaryHierarchy() {
+        // Frontera accuracy: 30 → GOOD, 31 → DEGRADED (jerarquía GOOD⊆DEGRADED).
+        assertEquals(
+            QualityClass.GOOD,
+            classify(30.0, 30.0, rejected = false, invalidCoords = false),
+        )
+        assertEquals(
+            QualityClass.DEGRADED,
+            classify(31.0, 30.0, rejected = false, invalidCoords = false),
+        )
+        // Frontera fixAge: 120 → GOOD (acc buena), 121 → DEGRADED.
+        assertEquals(
+            QualityClass.GOOD,
+            classify(10.0, 120.0, rejected = false, invalidCoords = false),
+        )
+        assertEquals(
+            QualityClass.DEGRADED,
+            classify(10.0, 121.0, rejected = false, invalidCoords = false),
+        )
+        // Frontera EXCELLENT⊆GOOD: acc 10 age 30 → EXCELLENT; acc 11 age 31 → GOOD.
+        assertEquals(
+            QualityClass.EXCELLENT,
+            classify(10.0, 30.0, rejected = false, invalidCoords = false),
+        )
+        assertEquals(
+            QualityClass.GOOD,
+            classify(11.0, 31.0, rejected = false, invalidCoords = false),
+        )
+    }
 }

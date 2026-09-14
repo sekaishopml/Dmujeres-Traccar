@@ -54,6 +54,7 @@ import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.UpdateManager
 import com.dmujeres.traccar.util.LocationState
 import com.dmujeres.traccar.util.DiagnosticsReporter
+import com.dmujeres.traccar.util.SilenceDiagnosis
 import com.dmujeres.traccar.ui.theme.DmujeresTheme
 import com.dmujeres.traccar.ui.theme.Ink
 import com.dmujeres.traccar.util.JourneyFormatter
@@ -463,6 +464,23 @@ private suspend fun computeDiagRows(context: Context): DiagRows {
         agoOrNever(config.lastHttpAt),
         agoOrNever(config.lastMqttAt),
     )
+    // Diagnóstico de silencio por capa (Fase 9): causa prioritaria derivada
+    // de los MISMOS relojes que lee la fila pipeline (pura, SilenceDiagnosis).
+    val silence = SilenceDiagnosis.diagnose(
+        SilenceDiagnosis.SilenceLayers(
+            callbackAt = config.lastLocationCallbackAt,
+            acceptedAt = config.lastAcceptedAt,
+            storedAt = config.lastEnqueuedAt,
+            ackAt = config.lastAckAt,
+            httpAt = config.lastHttpAt,
+            mqttAt = config.lastMqttAt,
+            fixReceived = config.fixReceived,
+            fixRejected = config.fixRejected,
+            journeyActive = config.trackingEnabled,
+            nowMs = nowMs,
+        ),
+    )
+    val pipelineFull = pipelineText + "\n" + context.getString(R.string.diag_silence, silence)
 
     val updateText = when {
         config.lastUpdateCheckAt <= 0L ->
@@ -522,7 +540,7 @@ private suspend fun computeDiagRows(context: Context): DiagRows {
         battery = batteryText,
         lastFix = lastFixText,
         lastAck = lastAckText,
-        pipeline = pipelineText,
+        pipeline = pipelineFull,
         update = updateText,
         monitor = monitor,
         device = deviceText,
