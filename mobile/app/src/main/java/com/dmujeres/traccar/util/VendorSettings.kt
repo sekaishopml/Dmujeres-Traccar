@@ -28,6 +28,7 @@ object VendorSettings {
                 || brand.contains("honor") -> "honor"
             manufacturer.contains("infinix") || brand.contains("infinix") -> "infinix"
             manufacturer.contains("tecno") || brand.contains("tecno") -> "tecno"
+            manufacturer.contains("zte") || brand.contains("zte") -> "zte"
             else -> null
         }
     }
@@ -79,6 +80,16 @@ object VendorSettings {
                 "1. Phone Master → Caja de herramientas → Gestión de auto-inicio → permite tu app.",
                 "2. Ajustes → Batería → desactiva 'Ahorro de energía para apps'.",
                 "3. Desactiva 'bloqueos con pantalla apagada' y bloquea la app en Recientes (candado).",
+            ),
+            settingsIntent = appDetailsIntent()
+        )
+        "zte" -> Guide(
+            vendorName = "ZTE",
+            title = "ZTE: saca la app del 'control de IA' y permite inicio automático",
+            steps = listOf(
+                "1. Ajustes → Batería → Aplicaciones → 'con control de IA' → quita DMujeres (o márcalo 'Sin control').",
+                "2. Ajustes → Aplicaciones → DMujeres Tracking → 'Inicio automático' → permitir.",
+                "3. Opcional: Mantén la app abierta y bloquéala en Recientes (candado).",
             ),
             settingsIntent = appDetailsIntent()
         )
