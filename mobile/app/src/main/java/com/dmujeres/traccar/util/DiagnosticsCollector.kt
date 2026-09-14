@@ -5,6 +5,7 @@ import android.os.BatteryManager
 import android.os.PowerManager
 import com.dmujeres.traccar.BuildConfig
 import com.dmujeres.traccar.config.AppConfig
+import com.dmujeres.traccar.db.OutboxRetentionPolicy
 import com.dmujeres.traccar.mqtt.MqttStatus
 import org.json.JSONArray
 import org.json.JSONObject
@@ -102,7 +103,9 @@ object DiagnosticsCollector {
         },
         "buffer" to buildMap {
             if (s.pendingCount >= 0) put("pending", s.pendingCount)
-            put("max", s.bufferMax)
+            // Tope EFECTIVO (el suelo de retención dura, no el configurado):
+            // "max: 5000" confundía con el default viejo cuando el tope real es 100k.
+            put("max", OutboxRetentionPolicy.effectiveMax(s.bufferMax))
             nonBlank(s.bufferPolicy)?.let { put("policy", it) }
         },
         "mqtt" to buildMap {

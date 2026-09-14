@@ -102,6 +102,13 @@
             </intent-filter>
         </receiver>
 
+        <!-- Guardián de sesión (alarma cada 15 min con jornada abierta):
+             canal anti-OEM para revivir el servicio si el fabricante mata
+             el FGS y congela el worker. exported=false, solo nuestras alarms. -->
+        <receiver
+            android:name=".receiver.SessionKeeperReceiver"
+            android:exported="false" />
+
         <!-- Widget de jornada en pantalla de inicio (RemoteViews puro: compatible
              con cualquier launcher/OEM). Solo ACTION_APPWIDGET_UPDATE: el refresco
              fino lo empuja TrackingService con JourneyWidget.updateAll(). -->

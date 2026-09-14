@@ -361,6 +361,11 @@ class TrackingService : Service() {
         if (started.getAndSet(true)) return
         serviceScope = newServiceScope()
         stopping = false
+        // Guardián de sesión (anti-OEM): con jornada activa, una alarma cada
+        // 15 min revive el servicio si el fabricante mató el proceso.
+        runCatching {
+            com.dmujeres.traccar.receiver.SessionKeeper.schedule(this)
+        }
         val recoveringJourney = config.journeyStartAt > 0L
         startedTrackingAt = if (recoveringJourney) config.journeyStartAt else System.currentTimeMillis()
         // El único reloj digno de confianza mientras el servicio vive es el
@@ -2457,6 +2462,10 @@ class TrackingService : Service() {
         val points = config.journeyPoints
         val confirmedPoints = config.journeyConfirmedPoints
         config.journeyStartAt = 0
+        // La jornada cerró: el guardián de sesión deja de revivir el proceso.
+        runCatching {
+            com.dmujeres.traccar.receiver.SessionKeeper.cancel(this)
+        }
         config.journeyElapsedMs = 0L
         config.journeyElapsedWallMs = 0L
         config.journeyDistanceM = 0.0

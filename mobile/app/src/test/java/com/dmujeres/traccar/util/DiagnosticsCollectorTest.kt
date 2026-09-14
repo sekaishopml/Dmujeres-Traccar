@@ -73,7 +73,7 @@ class DiagnosticsCollectorTest {
         assertEquals(true, group(report, "journey").getValue("active"))
         assertEquals(3_600_000L, group(report, "journey").getValue("elapsedMs"))
         assertEquals(7, group(report, "buffer").getValue("pending"))
-        assertEquals(5000, group(report, "buffer").getValue("max"))
+        assertEquals(100000, group(report, "buffer").getValue("max"))
         assertEquals("drop_oldest", group(report, "buffer").getValue("policy"))
         assertEquals(3, group(report, "mqtt").getValue("reconnects"))
         assertEquals(85, group(report, "power").getValue("battery"))
