@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.dmujeres.traccar.config.AppConfig
 import com.dmujeres.traccar.location.TrackingService
+import com.dmujeres.traccar.util.RecoveryJournal
 
 /**
  * Guardián de sesión por ALARMA (canal más fuerte que WorkManager frente a
@@ -65,15 +66,43 @@ class SessionKeeperReceiver : BroadcastReceiver() {
             if (config.trackingEnabled) {
                 SessionKeeper.schedule(context)
             }
+            val nowMs = System.currentTimeMillis()
+            val isRunning = TrackingService.isRunning
             val decision = SessionKeeperPolicy.decide(
                 trackingEnabled = config.trackingEnabled,
-                isRunning = TrackingService.isRunning,
+                isRunning = isRunning,
                 stopRequested = config.journeyStopRequested,
             )
+            // Verificación honesta del intento ANTERIOR (Fase 6): el start()
+            // del fire previo es asíncrono; recién aquí se sabe si consolidó.
+            when (
+                RecoveryJournal.verdictForPreviousAttempt(
+                    trackingEnabled = config.trackingEnabled,
+                    isRunning = isRunning,
+                    nowMs = nowMs,
+                    lastAttemptAtMs = config.lastRecoveryAt,
+                    lastResult = config.lastRecoveryResult,
+                )
+            ) {
+                RecoveryJournal.PreviousVerdict.SUCCESS -> {
+                    Log.i("SessionKeeper", "RECOVERY_SUCCESS")
+                    config.lastRecoveryResult = RecoveryJournal.RESULT_OK
+                    config.recoveryConfirmAt = nowMs
+                    config.attemptsSinceLastSuccess = 0
+                }
+                RecoveryJournal.PreviousVerdict.BLOCKED -> {
+                    Log.i("SessionKeeper", "RECOVERY_BLOCKED_OEM (posible OEM)")
+                    config.lastRecoveryResult = RecoveryJournal.RESULT_BLOCKED
+                }
+                RecoveryJournal.PreviousVerdict.NONE -> Unit
+            }
             when (decision) {
                 SessionKeeperPolicy.Decision.START -> {
-                    Log.i("SessionKeeper", "Jornada activa sin servicio: revivir")
+                    Log.i("SessionKeeper", "RECOVERY_ATTEMPT isRunning=false")
                     TrackingService.start(context)
+                    // El FGS consolidará (o no) de forma asíncrona: el
+                    // resultado queda pendiente hasta la verificación.
+                    config.incRecoveryAttempt(RecoveryJournal.RESULT_PENDING)
                 }
                 else -> Log.d("SessionKeeper", "Keeper: $decision (sin acción)")
             }

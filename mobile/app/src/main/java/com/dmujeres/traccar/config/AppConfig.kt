@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.dmujeres.traccar.mqtt.MqttServerNormalizer
 import com.dmujeres.traccar.util.BootId
+import com.dmujeres.traccar.util.RecoveryJournal
 
 /**
  * Configuración persistida del dispositivo. El servidor viene preconfigurado con la IP del
@@ -512,6 +513,49 @@ class AppConfig(context: Context) {
         get() = prefs.getString(KEY_DIAG_LAST_RESULT, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_DIAG_LAST_RESULT, value.take(120)).apply()
 
+    // ---- Diario de recuperación del guardián (RecoveryJournal, Fase 6) -------
+    /** Intentos de recuperación del guardián (bucket diario, reset por rollover). */
+    var recoveryAttempts: Int
+        get() = readDailyBucket(KEY_RECOVERY_ATTEMPTS_24H)
+        set(value) = writeDailyBucket(KEY_RECOVERY_ATTEMPTS_24H, value)
+
+    /** Epoch ms del último intento de recuperación lanzado por el guardián. */
+    var lastRecoveryAt: Long
+        get() = prefs.getLong(KEY_LAST_RECOVERY_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_RECOVERY_AT, value).apply()
+
+    /** Veredicto del último intento (RecoveryJournal.RESULT_*). */
+    var lastRecoveryResult: String
+        get() = prefs.getString(KEY_RECOVERY_RESULT, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_RECOVERY_RESULT, value.take(40)).apply()
+
+    /** Marker: epoch ms en que el servicio confirmó vivo el último intento. */
+    var recoveryConfirmAt: Long
+        get() = prefs.getLong(KEY_RECOVERY_CONFIRM_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_RECOVERY_CONFIRM_AT, value).apply()
+
+    /** Intentos lanzados desde la última confirmación de servicio vivo. */
+    var attemptsSinceLastSuccess: Int
+        get() = prefs.getInt(KEY_RECOVERY_ATTEMPTS_SINCE_SUCCESS, 0)
+        set(value) = prefs.edit().putInt(KEY_RECOVERY_ATTEMPTS_SINCE_SUCCESS, value.coerceAtLeast(0)).apply()
+
+    /**
+     * Registra un intento de recuperación: contador diario + timestamp +
+     * veredicto + racha desde la última confirmación. El arranque del FGS es
+     * asíncrono: el resultado queda pendiente ("ok-pending") hasta que el
+     * watchdog (servicio vivo) o el próximo fire del guardián (sigue muerto)
+     * lo verifiquen. Un veredicto "blocked" previo no se sobreescribe con el
+     * pendiente (ver [RecoveryJournal.resultAfterAttempt]).
+     */
+    @Synchronized
+    fun incRecoveryAttempt(result: String): Int {
+        val attempts = incDailyBucket(KEY_RECOVERY_ATTEMPTS_24H)
+        lastRecoveryAt = System.currentTimeMillis()
+        lastRecoveryResult = RecoveryJournal.resultAfterAttempt(lastRecoveryResult, result)
+        attemptsSinceLastSuccess = attemptsSinceLastSuccess + 1
+        return attempts
+    }
+
     private fun readDailyBucket(key: String): Int =
         decodeDailyBucket(prefs.getString(key, null), epochDayOf(System.currentTimeMillis()))
 
@@ -748,6 +792,11 @@ class AppConfig(context: Context) {
         private const val KEY_CLEAN_SHUTDOWN = "health_clean_shutdown"
         private const val KEY_DIAG_LAST_REPORT_AT = "diagnostics_last_report_at"
         private const val KEY_DIAG_LAST_RESULT = "diagnostics_last_result"
+        private const val KEY_LAST_RECOVERY_AT = "last_recovery_at"
+        private const val KEY_RECOVERY_RESULT = "last_recovery_result"
+        private const val KEY_RECOVERY_CONFIRM_AT = "recovery_confirm_at"
+        private const val KEY_RECOVERY_ATTEMPTS_24H = "health_recovery_attempts_24h"
+        private const val KEY_RECOVERY_ATTEMPTS_SINCE_SUCCESS = "recovery_attempts_since_success"
         private const val KEY_BACKGROUND_LOCATION_ASKED = "background_location_asked"
         private const val KEY_APP_VERSION_CODE = "app_version_code"
         private const val KEY_MAX_IMPLIED_SPEED = "filter_max_speed_mps"

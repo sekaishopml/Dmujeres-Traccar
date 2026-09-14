@@ -53,7 +53,10 @@ import com.dmujeres.traccar.mqtt.MqttManager
 import com.dmujeres.traccar.mqtt.MqttStatus
 import com.dmujeres.traccar.mqtt.UpdateManager
 import com.dmujeres.traccar.util.LocationState
+import com.dmujeres.traccar.util.DeviceCaps
 import com.dmujeres.traccar.util.DiagnosticsReporter
+import com.dmujeres.traccar.util.RecoveryJournal
+import com.dmujeres.traccar.util.RecoveryStatus
 import com.dmujeres.traccar.util.SilenceDiagnosis
 import com.dmujeres.traccar.ui.theme.DmujeresTheme
 import com.dmujeres.traccar.ui.theme.Ink
@@ -219,6 +222,18 @@ class DiagnosticsActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 4,
                 )
+                // Fase 9: recuperación honesta del guardián (RecoveryJournal) y
+                // capacidades de hardware (DeviceCaps), mismo estilo compacto.
+                DiagCell(
+                    text = rows.recovery,
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 2,
+                )
+                DiagCell(
+                    text = rows.caps,
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 2,
+                )
                 DiagCell(
                     text = rows.update,
                     modifier = Modifier.fillMaxWidth(),
@@ -329,6 +344,8 @@ private data class DiagRows(
     val lastFix: String = "",
     val lastAck: String = "",
     val pipeline: String = "",
+    val recovery: String = "",
+    val caps: String = "",
     val update: String = "",
     val monitor: String = "",
     val device: String = "",
@@ -482,6 +499,49 @@ private suspend fun computeDiagRows(context: Context): DiagRows {
     )
     val pipelineFull = pipelineText + "\n" + context.getString(R.string.diag_silence, silence)
 
+    // Fase 9: fila de recuperación (estado real del pipeline de recuperación
+    // del guardián + SessionKeeper + último intento + veredicto + contador).
+    val recoveryState = RecoveryJournal.classifyRecovery(
+        journeyActive = config.trackingEnabled,
+        isRunning = TrackingService.isRunning,
+        attempts24h = config.recoveryAttempts,
+        lastOutcome = config.lastRecoveryResult,
+        nowMs = nowMs,
+        lastRecoveryAtMs = config.lastRecoveryAt,
+    )
+    val recoveryResultText = when (config.lastRecoveryResult) {
+        RecoveryJournal.RESULT_OK -> context.getString(R.string.diag_recovery_result_ok)
+        RecoveryJournal.RESULT_BLOCKED -> context.getString(R.string.diag_recovery_result_blocked)
+        else -> context.getString(R.string.diag_recovery_result_unknown)
+    }
+    val recoveryText = context.getString(
+        R.string.diag_recovery,
+        recoveryStatusLabel(context, recoveryState.status),
+        if (config.trackingEnabled) context.getString(R.string.diag_keeper_scheduled)
+        else context.getString(R.string.diag_keeper_off),
+        config.lastRecoveryAt.takeIf { it > 0L }?.let { agoText(context, it) }
+            ?: context.getString(R.string.diag_never),
+        recoveryResultText,
+        config.recoveryAttempts,
+    )
+
+    // Fase 9: capacidades del equipo (DeviceCaps, lectura segura sin permisos).
+    val capsText = runCatching { DeviceCaps.from(context) }.getOrNull()?.let { caps ->
+        context.getString(
+            R.string.diag_caps,
+            (caps.manufacturer + " " + caps.model).trim(),
+            "Android " + caps.androidRelease,
+            context.getString(
+                if (caps.hasAccelerometer) R.string.diag_caps_available
+                else R.string.diag_caps_not_available,
+            ),
+            context.getString(
+                if (caps.hasGyroscope) R.string.diag_caps_available
+                else R.string.diag_caps_not_available,
+            ),
+        )
+    }.orEmpty()
+
     val updateText = when {
         config.lastUpdateCheckAt <= 0L ->
             context.getString(R.string.diag_update_never)
@@ -541,11 +601,20 @@ private suspend fun computeDiagRows(context: Context): DiagRows {
         lastFix = lastFixText,
         lastAck = lastAckText,
         pipeline = pipelineFull,
+        recovery = recoveryText,
+        caps = capsText,
         update = updateText,
         monitor = monitor,
         device = deviceText,
         recoverEnabled = recoverEnabled,
     )
+}
+
+private fun recoveryStatusLabel(context: Context, status: RecoveryStatus): String = when (status) {
+    RecoveryStatus.TRACKING_ACTIVE -> context.getString(R.string.diag_recovery_state_ok)
+    RecoveryStatus.SERVICE_MISSING -> context.getString(R.string.diag_recovery_state_missing)
+    RecoveryStatus.RECOVERY_PENDING -> context.getString(R.string.diag_recovery_state_pending)
+    RecoveryStatus.RECOVERY_BLOCKED_BY_OEM -> context.getString(R.string.diag_recovery_state_blocked)
 }
 
 private fun agoText(context: Context, timestamp: Long): String =

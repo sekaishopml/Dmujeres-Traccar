@@ -252,6 +252,21 @@
     <string name="diag_monitor_clean_no">no</string>
     <string name="diag_send_report">Enviar reporte ahora</string>
 
+    <!-- ============ DIAGNÓSTICO: RECUPERACIÓN + CAPACIDADES (Fase 9) ============ -->
+    <string name="diag_recovery">Recuperación: %1$s · SessionKeeper %2$s · último intento %3$s (%4$s) · intentos 24 h: %5$d</string>
+    <string name="diag_recovery_state_ok">OK</string>
+    <string name="diag_recovery_state_missing">SERVICIO AUSENTE</string>
+    <string name="diag_recovery_state_pending">EN RECUPERACIÓN</string>
+    <string name="diag_recovery_state_blocked">BLOQUEADO POR OEM</string>
+    <string name="diag_recovery_result_ok">OK</string>
+    <string name="diag_recovery_result_blocked">BLOCKED</string>
+    <string name="diag_recovery_result_unknown">UNKNOWN</string>
+    <string name="diag_keeper_scheduled">PROGRAMADO</string>
+    <string name="diag_keeper_off">—</string>
+    <string name="diag_caps">Dispositivo: %1$s · %2$s · ACCEL=%3$s · GYRO=%4$s</string>
+    <string name="diag_caps_available">AVAILABLE</string>
+    <string name="diag_caps_not_available">NOT_AVAILABLE</string>
+
     <!-- ============ TIEMPOS RELATIVOS ============ -->
     <string name="ago_now">recién</string>
     <string name="ago_minutes">hace %1$d min</string>

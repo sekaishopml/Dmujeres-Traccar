@@ -371,6 +371,11 @@ class TrackingService : Service() {
         runCatching {
             com.dmujeres.traccar.util.MotionSensor.register(this)
         }
+        // Giroscopio opcional (Fase 12): espejo del acelerómetro, solo el tag
+        // rot= de los POSITION_*; sin sensor queda available=false sin error.
+        runCatching {
+            com.dmujeres.traccar.util.GyroSensor.register(this)
+        }
         val recoveringJourney = config.journeyStartAt > 0L
         startedTrackingAt = if (recoveringJourney) config.journeyStartAt else System.currentTimeMillis()
         // El único reloj digno de confianza mientras el servicio vive es el
@@ -1499,6 +1504,7 @@ class TrackingService : Service() {
                     TAG,
                     "POSITION_EVALUATED verdict=reject reason=${decision.reason} " +
                         "motion=${com.dmujeres.traccar.util.MotionSensor.currentState()} " +
+                        gyroTag() +
                         "confidence=${confidenceFor(this, elapsed, nowElapsedNanos)}",
                 )
             }
@@ -1506,11 +1512,23 @@ class TrackingService : Service() {
                 TAG,
                 "POSITION_EVALUATED verdict=accept reason=none " +
                     "motion=${com.dmujeres.traccar.util.MotionSensor.currentState()} " +
+                    gyroTag() +
                     "confidence=${confidenceFor(this, elapsed, nowElapsedNanos)}",
             )
         }
         return decision
     }
+
+    /**
+     * Tag opcional del giroscopio (Fase 12): "rot=STEADY " cuando hay sensor;
+     * cadena vacía (nada) si no está disponible (p. ej. ZTE Z2450).
+     */
+    private fun gyroTag(): String =
+        if (com.dmujeres.traccar.util.GyroSensor.available) {
+            "rot=${com.dmujeres.traccar.util.GyroSensor.currentState()} "
+        } else {
+            ""
+        }
 
     /** Score operacional del fix (0..100) con los datos GNSS/velocidad vigentes. */
     private fun confidenceFor(
@@ -1831,6 +1849,7 @@ class TrackingService : Service() {
                     Log.i(TAG, "POSITION_ACCEPTED+STORED provider=${providerLabel(location)} "
                         + "acc=${location.accuracy} speed=${"%.1f".format(speedKmh)}kmh($speedSource) "
                         + "motion=${com.dmujeres.traccar.util.MotionSensor.currentState()} "
+                        + gyroTag()
                         + "quality=$qualityClass "
                         + "seq=$sequence sessionId=${config.sessionId} journey=${config.journeyStartAt} "
                         + "observed=$observedAt received=${Envelope.nowIso()} confidence=$confidence")
@@ -1976,6 +1995,24 @@ class TrackingService : Service() {
             // Anti-pasos-de-reloj: compara wall vs monotónico en la ventana del
             // tick (30 s) y apunta el anclaje para el siguiente.
             runCatching { maybeDetectClockStep() }
+            // Fase 6: verificación honesta del intento del guardián. Servicio
+            // vivo + intento sin confirmar → "ok" UNA vez (marker persistido
+            // KEY_RECOVERY_CONFIRM_AT evita repetir en cada tick).
+            runCatching {
+                if (com.dmujeres.traccar.util.RecoveryJournal.shouldConfirmOnServiceAlive(
+                        trackingEnabled = config.trackingEnabled,
+                        serviceRunning = started.get(),
+                        lastRecoveryAtMs = config.lastRecoveryAt,
+                        confirmAtMs = config.recoveryConfirmAt,
+                    )
+                ) {
+                    config.lastRecoveryResult =
+                        com.dmujeres.traccar.util.RecoveryJournal.RESULT_OK
+                    config.recoveryConfirmAt = System.currentTimeMillis()
+                    config.attemptsSinceLastSuccess = 0
+                    Log.i(TAG, "RECOVERY_SUCCESS (servicio vivo tras intento del guardián)")
+                }
+            }
             // Acelerómetro: STATIONARY estable >= 5 min → desregistrar
             // (batería); un fix aceptado lo re-registra (re-register on fix).
             runCatching { com.dmujeres.traccar.util.MotionSensor.maybePauseIfStationary() }
@@ -2401,6 +2438,7 @@ class TrackingService : Service() {
         unregisterGnssFallback()
         gnssForced = false
         runCatching { com.dmujeres.traccar.util.MotionSensor.unregister() }
+        runCatching { com.dmujeres.traccar.util.GyroSensor.unregister() }
         publishState(TrackingState.TRACKING_DISABLED_BY_USER)
         Notifications.update(this, getString(R.string.app_name), getString(R.string.notif_journey_finished))
         // Drena primero las posiciones ya capturadas. Si MQTT está conectado pero no entrega
@@ -2535,6 +2573,7 @@ class TrackingService : Service() {
         isRunning = false
         unregisterAirplaneReceiver()
         runCatching { com.dmujeres.traccar.util.MotionSensor.unregister() }
+        runCatching { com.dmujeres.traccar.util.GyroSensor.unregister() }
         runCatching {
             networkCallback?.let {
                 (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager)
