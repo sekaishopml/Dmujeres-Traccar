@@ -282,6 +282,11 @@ class AppConfig(context: Context) {
         }
     }
 
+    /** Guía del fabricante (control de IA / inicio automático) ya abierta. */
+    var vendorGuideDone: Boolean
+        get() = prefs.getBoolean(KEY_VENDOR_GUIDE_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_VENDOR_GUIDE_DONE, value).apply()
+
     /** Último punto guardado, para continuar la distancia tras una recuperación del servicio. */
     var journeyLastLat: Double
         get() = prefs.getString(KEY_JOURNEY_LAST_LAT, "0")?.toDoubleOrNull() ?: 0.0
@@ -715,6 +720,7 @@ class AppConfig(context: Context) {
         private const val KEY_JOURNEY_POINTS = "journey_points"
         private const val KEY_JOURNEY_CONFIRMED_POINTS = "journey_confirmed_points"
         private const val KEY_QUARANTINED_TOTAL = "quarantined_total"
+        private const val KEY_VENDOR_GUIDE_DONE = "vendor_guide_done"
         private const val KEY_ACK_TOTAL = "ack_total"
         private const val KEY_RETRY_TOTAL = "retry_total"
         private const val KEY_JOURNEY_LAST_LAT = "journey_last_lat"

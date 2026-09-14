@@ -100,18 +100,30 @@ class OnboardingActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // TEMPORAL debug de diseño (QA interno, disponible en todos los builds).
         val debugPreview = intent.getBooleanExtra(EXTRA_DEBUG_PREVIEW, false)
-        val debugStep = intent.getIntExtra(EXTRA_DEBUG_STEP, 0).coerceIn(0, 3)
+        val debugStep = intent.getIntExtra(EXTRA_DEBUG_STEP, 0).coerceIn(0, 4)
         // Reparación post-OTA: la auditoría de MainActivity manda los indices de
         // los pasos cuyos permisos fueron revocados. El preview debug gana.
         val repairSteps = if (
             intent.getBooleanExtra(EXTRA_REPAIR, false) && !debugPreview
         ) {
-            intent.getIntArrayExtra(EXTRA_REPAIR_STEPS)
+            val base = intent.getIntArrayExtra(EXTRA_REPAIR_STEPS)
                 ?.toList()?.filter { it in 0..2 }?.distinct()?.sorted()?.ifEmpty { null }
+            // El paso vendor (4) se ofrece en reparación si el fabricante
+            // aplica y el usuario aún no lo confirmó (persistido).
+            val vendorPending = VendorSettings.currentVendor() != null &&
+                !AppConfig(this).vendorGuideDone
+            if (vendorPending) {
+                (base ?: emptyList()) + listOf(4)
+            } else {
+                base
+            }?.distinct()?.sorted()?.ifEmpty { null }
         } else {
             null
         }
-        val allSteps = (0..3).toList()
+        // Paso 4 (guía del fabricante) solo si aplica y no está completado.
+        val vendorPendingInstall = VendorSettings.currentVendor() != null &&
+            !AppConfig(this).vendorGuideDone
+        val allSteps = (0..3).toList() + if (vendorPendingInstall) listOf(4) else emptyList()
         setContent {
             DmujeresTheme {
                 OnboardingContent(
@@ -141,6 +153,10 @@ class OnboardingActivity : ComponentActivity() {
         val vendor = VendorSettings.currentVendor() ?: return
         val guide = VendorSettings.guideFor(vendor) ?: return
         vendorPressed = true
+        // Persistido: la guía del fabricante se marca hecha al abrirla (el
+        // usuario vuelve del vendor manualmente). Si no la hizo, la puede
+        // relanzar desde "Permisos y batería".
+        AppConfig(this).vendorGuideDone = true
         val intent = guide.settingsIntent
         runCatching { startActivity(intent) }
             .onFailure {
@@ -269,6 +285,9 @@ class OnboardingActivity : ComponentActivity() {
         var index by remember { mutableIntStateOf(initialIndex.coerceIn(0, steps.lastIndex)) }
         val step = steps[index]
         val vendor = VendorSettings.guideFor(VendorSettings.currentVendor())
+        val vendorDone = remember(refreshKey) {
+            AppConfig(context).vendorGuideDone
+        }
         val allOk = states.locationOk && states.notificationsOk && states.batteryOk && states.gpsOk
         // Secuencia de activación: Siguiente NO alumbra hasta completar el paso
         // actual (ubicación → avisos → batería). Así se detecta qué falta.
@@ -277,6 +296,7 @@ class OnboardingActivity : ComponentActivity() {
             locationOk = states.locationOk,
             notificationsOk = states.notificationsOk,
             batteryOk = states.batteryOk,
+            vendorOk = vendorDone,
         )
 
         // Sin scroll: asistente de 4 pasos, cada paso cabe en pantalla.
@@ -387,23 +407,15 @@ class OnboardingActivity : ComponentActivity() {
                         done = states.batteryOk,
                         onClick = onBattery,
                     )
-                    else -> Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        StepButton(
-                            title = stringResource(R.string.step_gps),
-                            buttonText = stringResource(R.string.grant_gps),
-                            detail = stringResource(R.string.step_gps_detail),
-                            icon = Icons.Filled.MyLocation,
-                            done = states.gpsOk,
-                            onClick = onGps,
-                        )
-                        if (vendor != null) {
+                    4 -> if (vendor != null) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Text(
                                 text = stringResource(R.string.vendor_step_title, vendor.vendorName)
-                                    .let { if (vendorPressed) "✓ $it" else it },
+                                    .let { if (vendorDone) "✓ $it" else it },
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
@@ -422,7 +434,7 @@ class OnboardingActivity : ComponentActivity() {
                             )
                             Button(
                                 onClick = onVendorOpen,
-                                enabled = !vendorPressed,
+                                enabled = !vendorDone,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text(
@@ -432,6 +444,20 @@ class OnboardingActivity : ComponentActivity() {
                                 )
                             }
                         }
+                    }
+                    else -> Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        StepButton(
+                            title = stringResource(R.string.step_gps),
+                            buttonText = stringResource(R.string.grant_gps),
+                            detail = stringResource(R.string.step_gps_detail),
+                            icon = Icons.Filled.MyLocation,
+                            done = states.gpsOk,
+                            onClick = onGps,
+                        )
                     }
                 }
             }
@@ -641,10 +667,12 @@ object OnboardingPolicy {
         locationOk: Boolean,
         notificationsOk: Boolean,
         batteryOk: Boolean,
+        vendorOk: Boolean = true,
     ): Boolean = when (step) {
         0 -> locationOk
         1 -> notificationsOk
         2 -> batteryOk
+        4 -> vendorOk
         else -> true
     }
 }
