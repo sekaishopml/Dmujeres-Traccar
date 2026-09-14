@@ -136,6 +136,7 @@ class OnboardingActivity : ComponentActivity() {
                     onBattery = { requestIgnoreBatteryOptimizations() },
                     onGps = { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
                     onVendorOpen = { openVendorSettings() },
+                    onVendorSecondary = { openVendorSecondary() },
                     onFinish = { finishOnboarding() },
                 )
             }
@@ -158,6 +159,23 @@ class OnboardingActivity : ComponentActivity() {
         // relanzar desde "Permisos y batería".
         AppConfig(this).vendorGuideDone = true
         val intent = guide.settingsIntent
+        runCatching { startActivity(intent) }
+            .onFailure {
+                runCatching {
+                    startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+                    )
+                }
+            }
+        refreshKey++
+    }
+
+    private fun openVendorSecondary() {
+        val vendor = VendorSettings.currentVendor() ?: return
+        val guide = VendorSettings.guideFor(vendor) ?: return
+        val intent = guide.secondaryIntent ?: return
+        vendorPressed = true
+        AppConfig(this).vendorGuideDone = true
         runCatching { startActivity(intent) }
             .onFailure {
                 runCatching {
@@ -278,6 +296,7 @@ class OnboardingActivity : ComponentActivity() {
         onBattery: () -> Unit,
         onGps: () -> Unit,
         onVendorOpen: () -> Unit,
+        onVendorSecondary: () -> Unit,
         onFinish: () -> Unit,
     ) {
         val context = LocalContext.current
@@ -442,6 +461,19 @@ class OnboardingActivity : ComponentActivity() {
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                            }
+                            if (vendor.secondaryIntent != null) {
+                                Button(
+                                    onClick = onVendorSecondary,
+                                    enabled = !vendorDone,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        stringResource(R.string.vendor_open_app_page),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
                     }

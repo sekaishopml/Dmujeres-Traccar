@@ -14,7 +14,9 @@ object VendorSettings {
         val vendorName: String,
         val title: String,
         val steps: List<String>,
-        val settingsIntent: Intent?
+        val settingsIntent: Intent?,
+        /** Botón secundario opcional (página de la app, segundo ajuste del OEM). */
+        val secondaryIntent: Intent? = null,
     )
 
     fun currentVendor(): String? {
@@ -85,13 +87,16 @@ object VendorSettings {
         )
         "zte" -> Guide(
             vendorName = "ZTE",
-            title = "ZTE: saca la app del 'control de IA' y permite inicio automático",
+            title = "ZTE: saca la app del 'control de IA'",
+            // La pantalla "Gestión inteligente" (con control de IA) está
+            // protegida con permiso de sistema: ninguna app puede abrirla
+            // directo. La ruta sin asistencia son 2 toques desde Ajustes.
             steps = listOf(
-                "1. Ajustes → Batería → Aplicaciones → 'con control de IA' → quita DMujeres (o márcalo 'Sin control').",
-                "2. Ajustes → Aplicaciones → DMujeres Tracking → 'Inicio automático' → permitir.",
-                "3. Opcional: Mantén la app abierta y bloquéala en Recientes (candado).",
+                "1. Batería → Gestión inteligente → busca DMujeres → márcalo 'Sin control'.",
+                "2. En la página de la app: desactiva 'Pausar actividad en la app si no se usa'.",
             ),
-            settingsIntent = appDetailsIntent()
+            settingsIntent = Intent(Settings.ACTION_SETTINGS),
+            secondaryIntent = appDetailsIntent(),
         )
         else -> null
     }

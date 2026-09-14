@@ -19,8 +19,11 @@ class VendorSettingsZteTest {
         val guide = VendorSettings.guideFor("zte")
         requireNotNull(guide)
         assertEquals("ZTE", guide.vendorName)
-        assertTrue(guide.steps.any { it.contains("control de IA", ignoreCase = true) })
-        assertTrue(guide.steps.any { it.contains("Inicio automático", ignoreCase = true) })
+        assertTrue(guide.title.contains("control de IA", ignoreCase = true))
+        assertTrue(guide.steps.any { it.contains("Gestión inteligente", ignoreCase = true) })
+        assertTrue(guide.steps.any { it.contains("Pausar actividad", ignoreCase = true) })
+        // ZTE: doble botón (Batería/Gestión inteligente + página de la app).
+        assertTrue(guide.secondaryIntent != null)
         assertNotNull(guide.settingsIntent)
     }
 

@@ -63,6 +63,7 @@
     <string name="vendor_step_title">5. Protección de %1$s</string>
     <string name="vendor_step_body">%1$s puede detener la app en segundo plano. Sigue estos pasos una sola vez:</string>
     <string name="vendor_open_settings">Abrir ajustes de %1$s</string>
+    <string name="vendor_open_app_page">Abrir página de la app</string>
     <string name="vendor_done">Ya lo configuré</string>
 
     <!-- ============ PERMISOS (diálogos) ============ -->
