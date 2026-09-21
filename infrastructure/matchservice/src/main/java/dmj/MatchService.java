@@ -25,14 +25,22 @@ import java.util.List;
 /**
  * Mini-servicio de map-matching para DMujeres-Tracking.
  * Carga el grafo de Ecuador (GraphHopper 8.0, MMAP) y expone
- * POST /match {"points":[[lon,lat],...]} -> {"matched":[...], "distance":m, "time":ms}
- * Solo loopback (127.0.0.1:8991); lo consume el endpoint del servidor Traccar.
+ * POST /match {"points":[[lon,lat,accuracy?],...], "accuracy":m}
+ *   -> {"matched":[...], "distance":m, "snapped":n, "snappedRatio":0-1, ...}
+ * La accuracy por punto (3er elemento, opcional) alimenta el sigma del
+ * matcher: se usa la peor del track (tope 50 m); si falta, se usa "accuracy"
+ * global y, si tampoco viene, 30 m. Solo loopback (127.0.0.1:8991); lo consume
+ * el endpoint del servidor Traccar.
  */
 public class MatchService {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String PBF = "/opt/graphhopper/ecuador-latest.osm.pbf";
     private static final String GRAPH = "/opt/graphhopper/graph-cache-8";
+    /** Sigma (m) cuando el cliente no manda accuracy ni por punto ni global. */
+    private static final double DEFAULT_ACCURACY_M = 30.0;
+    /** Tope defensivo (m): una accuracy absurda rompería el Viterbi. */
+    private static final double MAX_ACCURACY_M = 50.0;
 
     private static GraphHopper buildHopper() {
         GraphHopperConfig cfg = new GraphHopperConfig();
@@ -81,18 +89,30 @@ public class MatchService {
             }
             ObjectNode body = JSON.readValue(ex.getRequestBody(), ObjectNode.class);
             ArrayNode points = (ArrayNode) body.get("points");
-            double accuracy = body.has("accuracy") ? body.get("accuracy").asDouble() : 30.0;
+            double globalAccuracy = body.has("accuracy") ? body.get("accuracy").asDouble() : 0;
             if (points == null || points.size() < 2) {
                 respond(ex, 400, "{\"error\":\"se requieren >=2 puntos\"}");
                 return;
             }
             List<Observation> observations = new ArrayList<>();
+            double worstAccuracy = 0;
             for (int i = 0; i < points.size(); i++) {
                 ArrayNode p = (ArrayNode) points.get(i);
                 double lon = p.get(0).asDouble();
                 double lat = p.get(1).asDouble();
                 observations.add(new Observation(new com.graphhopper.util.shapes.GHPoint(lat, lon)));
+                // Accuracy real por punto (tercer elemento opcional): se usa la
+                // peor del track para el sigma del Viterbi. Null/0 no aporta.
+                if (p.size() >= 3) {
+                    double pointAccuracy = p.get(2).asDouble();
+                    if (Double.isFinite(pointAccuracy) && pointAccuracy > 0) {
+                        worstAccuracy = Math.max(worstAccuracy, pointAccuracy);
+                    }
+                }
             }
+            double requested = worstAccuracy > 0 ? worstAccuracy : globalAccuracy;
+            double sigma = requested > 0 ? Math.min(requested, MAX_ACCURACY_M) : DEFAULT_ACCURACY_M;
+            mm.setMeasurementErrorSigma(sigma);
             List<Observation> filtered = mm.filterObservations(observations);
             HybridResult hybrid = new HybridResult();
             resilientMatch(mm, filtered, hybrid, 0);
@@ -108,6 +128,9 @@ public class MatchService {
             resp.put("distance", hybrid.distance);
             resp.put("raw", observations.size());
             resp.put("filtered", filtered.size());
+            resp.put("snapped", hybrid.snapped);
+            // Sigma (m) realmente aplicado al matcher en esta petición.
+            resp.put("accuracy", sigma);
             resp.put("snappedRatio", hybrid.coords.isEmpty() ? 0 : (double) hybrid.snapped / hybrid.coords.size());
             respond(ex, 200, JSON.writeValueAsString(resp));
         } catch (Exception e) {

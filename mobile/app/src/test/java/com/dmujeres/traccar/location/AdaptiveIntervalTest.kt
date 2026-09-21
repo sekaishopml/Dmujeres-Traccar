@@ -6,8 +6,10 @@ import org.junit.Test
 class AdaptiveIntervalTest {
 
     @Test
-    fun movingUsesDenseInterval() {
-        assertEquals(5L, AdaptiveDistancePolicy.intervalFor(AdaptiveDistancePolicy.Mode.MOVING, 10L))
+    fun movingUsesIndustryInterval() {
+        // R8: recomendación de muestreo = 10 s en movimiento (antes 5 s).
+        assertEquals(10L, AdaptiveDistancePolicy.intervalFor(AdaptiveDistancePolicy.Mode.MOVING, 60L))
+        assertEquals(10L, AdaptiveDistancePolicy.intervalFor(AdaptiveDistancePolicy.Mode.MOVING, 10L))
     }
 
     @Test

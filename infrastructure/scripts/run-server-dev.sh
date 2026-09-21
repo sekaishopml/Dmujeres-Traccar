@@ -28,7 +28,11 @@ export WEB_SECRET_TOKEN="${WEB_SECRET_TOKEN:-}"
 export MOBILE_MQTT_ENABLE="${MOBILE_MQTT_ENABLE:-true}"
 export MOBILE_MQTT_URL="${MOBILE_MQTT_URL:-mqtt://127.0.0.1:1883}"
 export MOBILE_HTTP_ENABLE="${MOBILE_HTTP_ENABLE:-true}"
-export MOBILE_HTTP_API_KEY="${MOBILE_HTTP_API_KEY:-dmj-dev-fallback-key}"
+# S1: SIN default dev. Si falta, el canal HTTP móvil queda deshabilitado de
+# facto (401); el operador debe definir la clave en .env (ver .env.example).
+export MOBILE_HTTP_API_KEY="${MOBILE_HTTP_API_KEY:-}"
+# S1: clave anterior aceptada en la ventana de rotación (vacía = estricto).
+export MOBILE_HTTP_API_KEY_PREVIOUS="${MOBILE_HTTP_API_KEY_PREVIOUS:-}"
 # Cliente MQTT del server en EMQX. Usuario dmj-consumer (ACL subscribe +/telemetry,
 # publish +/ack). El password default es solo dev; definir MOBILE_MQTT_PASSWORD en .env
 # si auth-file.csv se regenera con otro password.

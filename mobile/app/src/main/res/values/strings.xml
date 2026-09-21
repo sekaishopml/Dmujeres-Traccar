@@ -23,11 +23,34 @@
     <string name="checking">Comprobando…</string>
     <string name="checking_connection">Comprobando conexión con el servidor…</string>
     <string name="connect_success">Conectado correctamente al servidor</string>
-    <string name="app_version">@DMujeres Tracking %1$s beta</string>
+    <string name="refresh_button">ACTUALIZAR</string>
+    <string name="refresh_button_running">ACTUALIZANDO…</string>
+    <string name="refresh_msg_updated">Actualizado correctamente</string>
+    <string name="refresh_msg_syncing">Datos sincronizados. Hay datos pendientes de enviar</string>
+    <string name="refresh_msg_offline">Sin conexión. Se conservaron los datos pendientes.</string>
+    <string name="refresh_msg_no_journey">Listo para iniciar jornada.</string>
+    <string name="refresh_msg_gps">GPS buscando señal</string>
+    <string name="refresh_msg_already">Actualización en curso</string>
+    <string name="update_footer">Actualización · %1$s</string>
+    <string name="diag_advanced_toast">Diagnóstico avanzado</string>
+        <string name="app_version">@DMujeres Tracking %1$s beta</string>
     <string name="check_updates">Buscar actualizaciones</string>
 
     <!-- ============ SPLASH (pantalla de arranque) ============ -->
     <string name="splash_loading">Preparando aplicación de monitoreo…</string>
+    <string name="splash_subtitle_setup">Vamos a preparar tu teléfono para registrar tus rutas correctamente.</string>
+    <string name="splash_subtitle_ready">Todo está listo.</string>
+    <string name="splash_cta_setup">COMENZAR</string>
+    <string name="splash_cta_ready">CONTINUAR</string>
+    <string name="step_counter">Paso %1$d de %2$d</string>
+    <string name="ready_title">Todo está listo</string>
+    <string name="ready_body">Tu teléfono está preparado para registrar tus rutas.</string>
+    <string name="ready_item_location">Ubicación</string>
+    <string name="ready_item_permissions">Permisos</string>
+    <string name="ready_item_tracking">Seguimiento</string>
+    <string name="ready_item_connectivity">Conectividad</string>
+    <string name="ready_item_device">Configuración del dispositivo</string>
+    <string name="ready_continue">CONTINUAR</string>
 
     <!-- ============ BIENVENIDA (primera vez) ============ -->
     <string name="welcome_title">¡Hola, bienvenido!</string>
@@ -137,6 +160,8 @@
     <string name="finish_confirm_body">Las posiciones guardadas seguirán enviándose aunque no haya Internet ahora.</string>
     <string name="finish_confirm_button">Finalizar</string>
 
+    <!-- ============ FASE 2: JORNADA AUTOMÁTICA ============ -->
+
     <!-- ============ DASH: ERRORES Y AVISOS EN PANTALLA ============ -->
     <string name="state_gps">Sin señal de GPS</string>
     <string name="state_network">Sin conexión a Internet</string>
@@ -163,6 +188,28 @@
     <string name="storage_warning_body">No se pudo guardar tu ubicación. Revisa el espacio libre del dispositivo.</string>
     <string name="quarantine_warning_title">Posición apartada para diagnóstico</string>
     <string name="quarantine_warning_body">El servidor rechazó %1$d mensaje(s). Se conservaron para diagnóstico, tu ruta no se ve afectada.</string>
+
+    <!-- ============ GUARD DE FOREGROUND (anti-OEM) ============ -->
+    <string name="foreground_guard_block_title">El teléfono puede suspender la aplicación en segundo plano</string>
+    <string name="foreground_guard_block_body">Antes de iniciar la jornada, permite que DMujeres funcione siempre. Si no, el teléfono puede detener la app con la pantalla apagada y tu ruta quedaría con huecos.</string>
+    <string name="foreground_guard_open_settings">Abrir ajustes</string>
+    <string name="foreground_guard_warn_title">Revisa la optimización de batería</string>
+    <string name="foreground_guard_warn_body">Tu teléfono puede suspender la aplicación en segundo plano. Para que la jornada no se interrumpa, quita las restricciones para DMujeres.</string>
+    <string name="foreground_guard_review">Revisar</string>
+
+    <!-- ============ DEVICE READINESS GATE (paso de continuidad) ============ -->
+    <string name="readiness_continuity_title">Prueba de continuidad</string>
+    <string name="readiness_continuity_intro">Vamos a comprobar que tu teléfono puede seguir registrando con la pantalla apagada. La prueba dura ~90 segundos: cuando la app te lo pida, apaga la pantalla y vuelve a encenderla.</string>
+    <string name="readiness_continuity_start">Iniciar prueba</string>
+    <string name="readiness_continuity_step_off">Pantalla apagada… esperando que la enciendas</string>
+    <string name="readiness_continuity_pass">Continuidad verificada: tu teléfono sigue registrando con la pantalla apagada.</string>
+    <string name="readiness_continuity_fail_freeze">La captura se detiene con la pantalla apagada por un control del fabricante. Completa la configuración del fabricante y repite la prueba.</string>
+    <string name="readiness_continuity_fail_generic">El registro se detuvo con la pantalla apagada. Repite la prueba tras revisar la configuración.</string>
+    <string name="readiness_continuity_inconclusive">No se pudo comprobar (sin conexión durante la prueba). Repite con Internet activo.</string>
+    <string name="readiness_gate_locked">Completa la configuración para iniciar tu jornada.</string>
+    <string name="readiness_diag_section">DEVICE READINESS</string>
+    <string name="readiness_diag_continuity">CONTINUIDAD</string>
+    <string name="readiness_diag_recovery">RECOVERY</string>
     <string name="policy_label">Si se llena la memoria</string>
     <string name="policy_drop_oldest">Borrar las más antiguas</string>
     <string name="policy_stop_capture">Pausar hasta enviar</string>
@@ -186,6 +233,10 @@
     <string name="sin_gps_title">Sin señal GPS</string>
     <string name="sin_gps_body">El dispositivo no fija satélites. Las posiciones pueden ser de red y tu ruta no se dibujará en carretera. Camina unos segundos al aire libre o avisa a soporte.</string>
     <string name="notif_state">Estado · %1$s</string>
+    <string name="resume_title">El seguimiento está detenido</string>
+    <string name="resume_body">El sistema detuvo la app. Toca aquí para reanudar tu jornada.</string>
+    <string name="background_permission_title">Falta permiso de ubicación "Permitir siempre"</string>
+    <string name="background_permission_body">Sin "Permitir siempre" el seguimiento se corta al apagar la pantalla. Abre Ajustes → Ubicación → Permitir siempre.</string>
     <string name="journey_resumed_title">Jornada retomada</string>
     <string name="journey_resumed_body">Tu jornada sigue activa. El seguimiento continúa en segundo plano.</string>
     <string name="connected_title">Conectado al servidor</string>
@@ -218,6 +269,18 @@
     <!-- ============ DIAGNÓSTICO ============ -->
     <string name="diag_button">Diagnóstico</string>
     <string name="diag_title">Diagnóstico de la app</string>
+    <string name="diag_not_verifiable">NO VERIFICABLE</string>
+    <string name="diag_section_device">DEVICE</string>
+    <string name="diag_section_permissions">PERMISSIONS</string>
+    <string name="diag_section_location">LOCATION</string>
+    <string name="diag_section_tracking">TRACKING</string>
+    <string name="diag_section_network">NETWORK</string>
+    <string name="diag_section_outbox">OUTBOX</string>
+    <string name="diag_section_oem">OEM</string>
+    <string name="diag_section_recovery">RECOVERY</string>
+    <string name="diag_section_pipeline">PIPELINE</string>
+    <string name="diag_section_update">UPDATE</string>
+    <string name="diag_section_monitor">MONITOR</string>
     <string name="diag_gps_off">GPS apagado. Actívalo en los ajustes del teléfono.</string>
     <string name="diag_gps_ok">GPS con señal reciente</string>
     <string name="diag_gps_waiting">GPS encendido, esperando señal…</string>
@@ -302,4 +365,33 @@
 
     <!-- ============ DASH: FILA DE DIAGNÓSTICO EN VIVO ============ -->
     <string name="dash_diag_title">Diagnóstico en vivo</string>
+
+    <!-- Guía de activación en segundo plano (R7) -->
+    <string name="activation_guide_title">Guía de activación</string>
+    <string name="activation_guide_button">Guía de activación en segundo plano</string>
+    <string name="activation_guide_device">Tu teléfono</string>
+    <string name="activation_guide_status_title">Estado ahora</string>
+    <string name="activation_guide_steps_title">Pasos en tu teléfono</string>
+    <string name="activation_guide_open_vendor">Abrir ajuste del fabricante</string>
+    <string name="activation_guide_battery">Permitir batería sin restricciones</string>
+    <string name="activation_guide_background">Ubicación en segundo plano</string>
+    <string name="activation_guide_install">Permitir instalar actualizaciones</string>
+    <string name="activation_guide_appinfo">Abrir ficha de la app</string>
+    <string name="activation_state_verified">Verificado</string>
+    <string name="activation_state_action">Pendiente</string>
+    <string name="activation_state_guided">Guiado</string>
+    <string name="activation_step_location">Ubicación precisa</string>
+    <string name="activation_step_background">Ubicación en segundo plano</string>
+    <string name="activation_step_notifications">Notificaciones</string>
+    <string name="activation_step_battery">Batería sin restricciones</string>
+    <string name="activation_step_exact_alarms">Alarmas exactas del guardián</string>
+    <string name="activation_step_oem_screens">Ajustes del fabricante</string>
+    <string name="activation_step_install">Instalar actualizaciones</string>
+    <string name="activation_step_freeze">Sin congelados detectados</string>
+    <string name="debug_design_version">Versión %1$s</string>
+    <string name="debug_activation_guide">Guía de activación (diseño)</string>
+    <string name="notif_recovery_probe">Recuperando la jornada…</string>
+    <string name="state_gps_fallback">Usando GPS del sistema</string>
+    <string name="debug_wakelock_on">Wakelock de jornada (experimento): ACTIVADO</string>
+    <string name="debug_wakelock_off">Wakelock de jornada (experimento): apagado</string>
 </resources>

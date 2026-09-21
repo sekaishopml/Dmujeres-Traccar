@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.sp
 import com.dmujeres.traccar.R
 import com.dmujeres.traccar.ui.theme.Ink
 import com.dmujeres.traccar.ui.theme.JourneyColors
-import com.dmujeres.traccar.util.JourneyFormatter
+import com.dmujeres.traccar.core.JourneyFormatter
 import kotlinx.coroutines.delay
 
 // Suelos y techos de la fuente adaptativa: los valores grandes nunca bajan de 11 sp

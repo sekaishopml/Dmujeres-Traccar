@@ -1,0 +1,17 @@
+package com.dmujeres.traccar.core
+
+/** Estado MQTT visible desde el servicio, la UI y la notificación. */
+object MqttStatus {
+    const val DISCONNECTED = "Desconectado del servidor"
+    const val CONNECTING = "Conectando..."
+    const val CONNECTED = "Conectado al servidor"
+
+    @Volatile
+    var status: String = DISCONNECTED
+        internal set
+
+    /** Último error crudo reportado por Paho, conservado hasta una conexión exitosa. */
+    @Volatile
+    var lastError: String? = null
+        internal set
+}

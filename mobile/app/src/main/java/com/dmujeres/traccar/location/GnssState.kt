@@ -23,6 +23,25 @@ object GnssState {
     var lastEventAt: Long = 0L
         private set
 
+    /**
+     * R9: fallos del proveedor fused (Google) desde el arranque del servicio.
+     * Un valor alto indica ROM/chip donde el fused no es fiable → el motor
+     * pasa al GPS del sistema (AOSP) y la telemetría lo reporta al server.
+     */
+    @Volatile
+    var fusedFailures: Int = 0
+        private set
+
+    @Synchronized
+    fun noteFusedFailure() {
+        fusedFailures += 1
+    }
+
+    @Synchronized
+    fun resetFusedFailures() {
+        fusedFailures = 0
+    }
+
     @Synchronized
     fun update(used: Int, total: Int, eventAtMs: Long) {
         satsUsed = used

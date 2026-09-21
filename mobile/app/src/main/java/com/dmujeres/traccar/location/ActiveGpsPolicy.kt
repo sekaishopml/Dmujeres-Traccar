@@ -96,16 +96,29 @@ object AdaptiveDistancePolicy {
     val DISTANCE_MOVING_M: Float
         get() = FixFilter.MIN_UPDATE_DISTANCE_M
 
-    /** En movimiento se captura cada 5 s: trazo y flechas densos y reales
-     *  (cada flecha del replay es un fix recolectado, nunca interpolado). */
-    const val MOVING_INTERVAL_SECONDS = 5L
+    /** En movimiento se captura cada 10 s (R8, recomendación de muestreo de la
+     *  industria): con la regla OR (24 m / 15°) la fidelidad se mantiene y se
+     *  ahorra ~mitad de batería/datos frente a 5 s. */
+    const val MOVING_INTERVAL_SECONDS = 10L
+
+    /** Batería < 15 %: perfil de emergencia (R8) — movimiento 30 s. */
+    const val LOW_BATTERY_MOVING_INTERVAL_SECONDS = 30L
+
+    /** Batería < 15 %: quieto 300 s (solo seguimiento, no trazo fino). */
+    const val LOW_BATTERY_STATIONARY_INTERVAL_SECONDS = 300L
 
     /**
      * Intervalo de captura según modo: en marcha, denso (5 s, nunca por
      * encima de la base configurada); quieto, la base sin cambios.
      */
-    fun intervalFor(mode: Mode, baseSeconds: Long): Long {
+    fun intervalFor(mode: Mode, baseSeconds: Long, lowBattery: Boolean = false): Long {
         val base = baseSeconds.coerceAtLeast(1L)
+        if (lowBattery) {
+            return when (mode) {
+                Mode.MOVING -> LOW_BATTERY_MOVING_INTERVAL_SECONDS
+                Mode.STATIONARY -> LOW_BATTERY_STATIONARY_INTERVAL_SECONDS
+            }
+        }
         return when (mode) {
             Mode.MOVING -> minOf(base, MOVING_INTERVAL_SECONDS)
             Mode.STATIONARY -> base

@@ -65,9 +65,26 @@ class FixFilterTest {
     }
 
     @Test
-    fun staleFixRejects() {
+    fun staleRecoveredBatchIsAcceptedLowQuality() {
+        // R8.2 (H1): fixes entregados en lote tras congelado OEM (staleness
+        // >120 s pero <=30 min) se ACEPTAN lowQuality — es ruta ya medida.
         val w = windowOf(fix(timeMs = 1_000_000L, elapsed = 1_000_000_000_000L))
         val now = 1_000_000_000_000L + FixFilter.STALE_AFTER_NANOS + 1_000_000_000L
+        val decision = FixFilter.evaluate(
+            lat = 19.4326, lon = -99.1332, accuracyM = 10f,
+            wallTimeMs = 2_000_000L, elapsedNanos = 1_000_000_000_000L,
+            nowElapsedNanos = now,
+            window = w,
+        )
+        assertTrue(decision is FixFilter.Decision.Accept)
+        assertTrue((decision as FixFilter.Decision.Accept).lowQuality)
+    }
+
+    @Test
+    fun staleVeryOldStillRejects() {
+        // Techo defensivo: >30 min de edad monotónica = basura FLP vieja.
+        val w = windowOf(fix(timeMs = 1_000_000L, elapsed = 1_000_000_000_000L))
+        val now = 1_000_000_000_000L + FixFilter.STALE_RECOVER_MAX_NANOS + 1_000_000_000L
         val decision = FixFilter.evaluate(
             lat = 19.4326, lon = -99.1332, accuracyM = 10f,
             wallTimeMs = 2_000_000L, elapsedNanos = 1_000_000_000_000L,
@@ -128,14 +145,32 @@ class FixFilterTest {
 
     @Test
     fun degradedFixRejectedWhenGoodInWindow() {
+        // R8.2 (H2): sin evidencia de movimiento (implícita ~0.3 m/s) sigue
+        // rechazándose en quietud. (La pata anterior del test daba ~1.5 m/s:
+        // justo el umbral, ahora se acepta lowQuality en movimiento.)
         val w = windowOf(fix(acc = 10f))
+        val decision = FixFilter.evaluate(
+            lat = 19.43265, lon = -99.13320, accuracyM = 120f,
+            wallTimeMs = 1_010_000L, elapsedNanos = 1_010_000_000_000L,
+            nowElapsedNanos = 1_010_000_000_000L,
+            window = w,
+        )
+        assertEquals("degraded", (decision as FixFilter.Decision.Reject).reason)
+    }
+
+    @Test
+    fun degradedFixInMotionIsAcceptedLowQuality() {
+        // R8.2 (H2): en movimiento (implícita >=1.5 m/s) un fix degradado se
+        // encola lowQuality — el server lo marca HIDE conservando la fila.
+        val w = windowOf(fix(acc = 10f, timeMs = 1_000_000L, elapsed = 1_000_000_000_000L))
         val decision = FixFilter.evaluate(
             lat = 19.4327, lon = -99.1333, accuracyM = 120f,
             wallTimeMs = 1_010_000L, elapsedNanos = 1_010_000_000_000L,
             nowElapsedNanos = 1_010_000_000_000L,
             window = w,
         )
-        assertEquals("degraded", (decision as FixFilter.Decision.Reject).reason)
+        assertTrue(decision is FixFilter.Decision.Accept)
+        assertTrue((decision as FixFilter.Decision.Accept).lowQuality)
     }
 
     @Test

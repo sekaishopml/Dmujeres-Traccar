@@ -4,28 +4,48 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    // F2: google-services se aplica condicionalmente más abajo (sin JSON no rompe).
     id("io.sentry.android.gradle")
 }
 
+// R2 (SECURITY_BUILD): la firma de release se provisiona SIEMPRE desde
+// mobile/keystore.properties (0600, gitignored). Si falta el archivo o el
+// keystore no existe, el build release FALLA con error claro (preReleaseBuild,
+// abajo). NO hay fallback silencioso a la firma debug.
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
+// S1: la clave de flota del canal HTTP NUNCA vive en el repo. Se inyecta
+// desde mobile/secrets.properties (gitignored, 0600). En debug hay un fallback
+// de desarrollo; en release su ausencia rompe el build a propósito.
+val secretsProperties = Properties()
+val secretsPropertiesFile = rootProject.file("secrets.properties")
+if (secretsPropertiesFile.exists()) {
+    secretsPropertiesFile.inputStream().use { secretsProperties.load(it) }
+}
+val mobileApiKeyFromSecrets = secretsProperties.getProperty("MOBILE_HTTP_API_KEY").orEmpty()
+
 android {
     namespace = "com.dmujeres.traccar"
     compileSdk = 35
 
     defaultConfig {
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         applicationId = "com.dmujeres.traccar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 101
-        versionName = "1.0.101"
+        versionCode = 131
+        versionName = "1.1.21"
         // DSN de Sentry para reporte de crashes. Ver docs/SENTRY.md.
         // Se obtuvo de tu proyecto "DMujeres Tracking" (org sekaidev-w5).
         buildConfigField("String", "SENTRY_DSN", "\"https://1f47e345c56f117bf87d9221a403e53a@o4511839263064064.ingest.us.sentry.io/4512058795491328\"")
+        // S1: clave de flota inyectada en build. Si no hay secretos, el
+        // fallback dev SOLO se usa en builds debug; release lo valida abajo.
+        val injectedKey = mobileApiKeyFromSecrets.ifBlank { "dmj-dev-fallback-key" }
+        buildConfigField("String", "MOBILE_HTTP_API_KEY", "\"$injectedKey\"")
     }
 
     // Firma DEBUG compartida del equipo (keystore versionado en
@@ -38,24 +58,39 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // R2: la clave de release se define en keystore.properties (ver
+        // docs/SECURITY_BUILD.md). Sin el archivo no se crea esta config y el
+        // release falla en preReleaseBuild; nunca firma debug en silencio.
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.create("release").apply {
-                    keyAlias = keystoreProperties["keyAlias"] as String?
-                    keyPassword = keystoreProperties["keyPassword"] as String?
-                    storeFile = file(keystoreProperties["storeFile"] as String?)
-                    storePassword = keystoreProperties["storePassword"] as String?
-                }
-            } else {
-                signingConfigs.getByName("debug")
+            // Firma OTA (ver docs/SECURITY_BUILD.md): la flota instalada usa una
+            // única identidad de firma; Android rechaza el update si cambia
+            // (INSTALL_FAILED_UPDATE_INCOMPATIBLE: "no se instaló la app debido a
+            // un conflicto con un paquete"). La clave se provisiona en
+            // mobile/keystore.properties; sin ella el release NO firma debug en
+            // silencio: el build falla en preReleaseBuild.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+
+    // F0: schemas exportados de Room (MigrationTestHelper los lee)
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
     }
 
     compileOptions {
@@ -87,6 +122,13 @@ android {
 }
 
 dependencies {
+    // F2: SOLO mensajería FCM (sin analytics/crashlytics/firestore/auth).
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
@@ -130,9 +172,54 @@ sentry {
     org.set("sekaidev-w5")
     projectName.set("dmujeres-tracking")
     val sentryToken = System.getenv("SENTRY_AUTH_TOKEN")
+    // Sin token NO se intenta subir (antes rompía assembleRelease con
+    // "Auth token is required"); con token, sube mapping + contexto.
+    autoUploadProguardMapping.set(!sentryToken.isNullOrBlank())
+    includeProguardMapping.set(!sentryToken.isNullOrBlank())
     if (!sentryToken.isNullOrBlank()) {
         authToken.set(sentryToken)
     }
-    autoUploadProguardMapping.set(true)
-    includeProguardMapping.set(true)
+}
+
+// F2: aplica google-services SOLO si el operador colocó google-services.json
+// (mobile/app/google-services.json, fuera de git). Sin el archivo, el APK
+// compila y la app degrada honestamente: "FCM no configurado".
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
+// F0: schemas exportados de Room para MigrationTestHelper (assets del androidTest)
+android {
+    sourceSets {
+        getByName("androidTest").assets.srcDirs(files("$projectDir/schemas"))
+    }
+}
+
+
+// R2: un release SIN keystore provisionado no se genera (falla a propósito).
+// S1: un release SIN clave de flota real no se genera (falla a propósito).
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        if (!keystorePropertiesFile.exists()) {
+            throw GradleException(
+                "R2: falta mobile/keystore.properties (0600, gitignored). " +
+                    "Copia mobile/keystore.properties.example y apunta a la clave del " +
+                    "canal OTA antes de compilar release (ver docs/SECURITY_BUILD.md)."
+            )
+        }
+        val store = file(keystoreProperties["storeFile"] as String)
+        if (!store.exists()) {
+            throw GradleException(
+                "R2: no existe el keystore configurado en keystore.properties: " +
+                    store.absolutePath
+            )
+        }
+        if (mobileApiKeyFromSecrets.isBlank()) {
+            throw GradleException(
+                "S1: falta MOBILE_HTTP_API_KEY en mobile/secrets.properties. " +
+                    "Genera mobile/secrets.properties (0600) con la clave de flota " +
+                    "antes de compilar release (ver docs/SECURITY_BUILD.md)."
+            )
+        }
+    }
 }

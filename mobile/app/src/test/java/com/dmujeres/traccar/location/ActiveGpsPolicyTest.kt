@@ -135,13 +135,24 @@ class ActiveGpsPolicyTest {
     }
 
     @Test
-    fun movingUses24Meters() {
+    fun movingUsesZeroFltpDistanceFilteredInCode() {
         val mode = AdaptiveDistancePolicy.nextMode(
             AdaptiveDistancePolicy.Mode.STATIONARY, 6f, hasRecentFix = true,
         )
         assertEquals(AdaptiveDistancePolicy.Mode.MOVING, mode)
-        assertEquals(24f, AdaptiveDistancePolicy.distanceFor(mode))
+        // R8: al FLP se le pide 0 m; la regla OR (24 m) filtra en código.
+        assertEquals(0f, AdaptiveDistancePolicy.distanceFor(mode))
         assertEquals(FixFilter.MIN_UPDATE_DISTANCE_M, AdaptiveDistancePolicy.distanceFor(mode))
+    }
+
+    @Test
+    fun intervalosRecomendadosPorModoYBateria() {
+        // R8: movimiento 10 s; quieto = base; batería baja 30/300.
+        assertEquals(10L, AdaptiveDistancePolicy.intervalFor(AdaptiveDistancePolicy.Mode.MOVING, 60L))
+        assertEquals(10L, AdaptiveDistancePolicy.intervalFor(AdaptiveDistancePolicy.Mode.MOVING, 10L))
+        assertEquals(60L, AdaptiveDistancePolicy.intervalFor(AdaptiveDistancePolicy.Mode.STATIONARY, 60L))
+        assertEquals(30L, AdaptiveDistancePolicy.intervalFor(AdaptiveDistancePolicy.Mode.MOVING, 10L, lowBattery = true))
+        assertEquals(300L, AdaptiveDistancePolicy.intervalFor(AdaptiveDistancePolicy.Mode.STATIONARY, 10L, lowBattery = true))
     }
 
     @Test

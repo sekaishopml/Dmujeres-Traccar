@@ -3,7 +3,7 @@ package com.dmujeres.traccar.location
 /**
  * Filtro anti-drift puro (testeable en JVM, sin dependencias Android).
  *
- * Extrae la lógica de [com.dmujeres.traccar.location.TrackingService] para poder
+ * Extrae la lógica de [com.dmujeres.traccar.tracking.TrackingService] para poder
  * probarla con `testDebugUnitTest`:
  * - Techo de accuracy 500 m ([MAX_ACCURACY_M]).
  * - Primer fix tras arranque exige accuracy < 150 m ([FIRST_FIX_MAX_ACCURACY_M]),
@@ -24,7 +24,10 @@ object FixFilter {
      * nunca garantiza el valor exacto, es una sugerencia al FLP).
      * Se aplica con `LocationRequest.setMinUpdateDistanceMeters`.
      */
-    const val MIN_UPDATE_DISTANCE_M = 24f
+    // R8 (muestreo): el FLP recibe minUpdateDistance 0 y el filtro de distancia
+    // (24 m) vive en [acceptByRule] — pedirle distancia al FLP suprime fixes
+    // lentos/trafico lento. La regla OR decide en código.
+    const val MIN_UPDATE_DISTANCE_M = 0f
 
     /** Techo absoluto: accuracy >= 500 m se rechaza (igual que antes). */
     const val MAX_ACCURACY_M = 500f
@@ -69,6 +72,11 @@ object FixFilter {
     const val STOP_STILL_TIMEOUT_MS = 60_000L
 
     /** Cadencia del heartbeat en parada (Traccar: stationary heartbeat 60 s). */
+    // R8 (muestreo): heartbeat de quietud 120 s (clamp industria 60–600; 60 s
+    // gastaba el doble sin aportar trazo — en quietud no hay ruta que trazar).
+    // R8.1: heartbeat de quietud 60 s (con jornada activa). Antes eran 120 s y
+    // el arranque de ruta podía tardar 2-4 min en aparecer (heartbeat + doble
+    // confirmación de movimiento). 60 s: arranca a trazar en <=1 min.
     const val STOP_HEARTBEAT_SECONDS = 60L
 
     /**
@@ -102,6 +110,15 @@ object FixFilter {
      * Razón de invalidez para Log.w antes de descartar en silencio (par de
      * [isValidLocation]). null = válido.
      */
+    /** R8.2: umbral de movimiento para conservar fixes degradados en marcha. */
+    const val MOVING_FOR_DEGRADED_MPS = 1.5f
+
+    /** R8.2: fixes recuperados en lote tras congelado se aceptan hasta 30 min de edad. */
+    const val STALE_RECOVER_MAX_NANOS = 30L * 60_000L * 1_000_000L
+
+    /** R8: tolerancia de reloj futuro aceptada (2 min). */
+    const val CLOCK_FUTURE_TOLERANCE_MS = 2 * 60_000L
+
     fun invalidLocationReason(lat: Double, lon: Double, accuracyM: Float): String? {
         if (!lat.isFinite() || lat !in -90.0..90.0) return "invalid_lat=$lat"
         if (!lon.isFinite() || lon !in -180.0..180.0) return "invalid_lon=$lon"
@@ -234,6 +251,11 @@ object FixFilter {
         // FixTime.dtSeconds (elapsedRealtime preferente sobre location.time).
         // null = comportamiento por defecto (dt de wallTimeMs de ambos fixes).
         dtSecondsOverride: Double? = null,
+        // R8: "ahora" de pared para detectar relojes adelantados (test puro).
+        nowWallMs: Long = System.currentTimeMillis(),
+        // R8.2: velocidad efectiva del fix (Doppler o implícita) para decidir
+        // si "degraded" debe conservarse en movimiento (null = sin dato).
+        impliedMps: Float? = null,
     ): Decision {
         // 1. Validez básica + techo (igual que TrackingService.isValidLocation).
         if (!lat.isFinite() || !lon.isFinite() ||
@@ -242,10 +264,24 @@ object FixFilter {
         ) {
             return Decision.Reject(if (accuracyM.isFinite() && accuracyM >= MAX_ACCURACY_M) "accuracy_ceiling" else "invalid")
         }
+        // 1-bis (R8). Reloj adelantado: un fix con time futuro rompe el orden
+        // temporal y hace "viejo" al anterior (regla de frecuencia). Rechazo
+        // explícito con contador (caso típico: salto NTP o week rollover).
+        if (wallTimeMs > nowWallMs + CLOCK_FUTURE_TOLERANCE_MS) {
+            return Decision.Reject("clock_future")
+        }
         // 2. Staleness por elapsedRealtimeNanos (solo si ambos relojes conocidos).
+        // R8.2 (auditoría cobertura H1): cuando el proceso despierta de un
+        // congelamiento OEM, el FLP entrega el lote de fixes que el GPS SÍ midió
+        // durante el congelamiento. Descartarlos por edad tira minutos de ruta
+        // YA MEDIDA: se aceptan lowQuality con orden correcto (orderFixes) y
+        // techo defensivo de 30 min (más que eso es basura del FLP vieja).
         if (elapsedNanos > 0L && nowElapsedNanos > 0L) {
             val staleness = nowElapsedNanos - elapsedNanos
             if (staleness > STALE_AFTER_NANOS) {
+                if (staleness <= STALE_RECOVER_MAX_NANOS) {
+                    return Decision.Accept(lowQuality = true)
+                }
                 return Decision.Reject("stale")
             }
         }
@@ -282,10 +318,15 @@ object FixFilter {
             return Decision.Reject("implied_speed")
         }
         // 6. Degradado: accuracy > bad con un bueno (<= good) en TODA la ventana.
-        //    La ventana incluye rechazados (honesta), así la memoria del bueno persiste
-        //    mientras quede algún bueno en los últimos 6 evaluados.
+        //    R8.2 (auditoría H2): EN MOVIMIENTO no se descarta — se encola
+        //    lowQuality (el server lo marca HIDE conservando la fila). En
+        //    quietud se mantiene el rechazo (allí no hay ruta que perder).
         if (accuracyM > accuracyBadM && window.any { it.accuracyM <= accuracyGoodM }) {
-            return Decision.Reject("degraded")
+            val movingMps = impliedMps ?: implied.toFloat().takeIf { it.isFinite() }
+            if (movingMps == null || movingMps < MOVING_FOR_DEGRADED_MPS) {
+                return Decision.Reject("degraded")
+            }
+            return Decision.Accept(lowQuality = true)
         }
         return Decision.Accept(lowQuality = isLowQuality(accuracyM, accuracyBadM))
     }

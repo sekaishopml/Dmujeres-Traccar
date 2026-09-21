@@ -5,6 +5,6 @@
 -dontwarn io.sentry.**
 # Modelos y entry points propios que viajan por reflexión/intents.
 -keep class com.dmujeres.traccar.DmujeresApp { *; }
--keep class com.dmujeres.traccar.SplashActivity { *; }
--keep class com.dmujeres.traccar.MainActivity { *; }
+-keep class com.dmujeres.traccar.ui.SplashActivity { *; }
+-keep class com.dmujeres.traccar.ui.MainActivity { *; }
 -keep class com.dmujeres.traccar.BuildConfig { *; }

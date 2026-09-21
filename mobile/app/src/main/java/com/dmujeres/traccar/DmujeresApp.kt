@@ -14,11 +14,11 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.dmujeres.traccar.config.AppConfig
-import com.dmujeres.traccar.db.AppDatabase
-import com.dmujeres.traccar.util.Notifications
-import com.dmujeres.traccar.util.UpdateChecker
-import com.dmujeres.traccar.worker.RecoverySchedule
-import com.dmujeres.traccar.worker.TrackingRecoveryWorker
+import com.dmujeres.traccar.data.AppDatabase
+import com.dmujeres.traccar.platform.Notifications
+import com.dmujeres.traccar.platform.UpdateChecker
+import com.dmujeres.traccar.recovery.RecoverySchedule
+import com.dmujeres.traccar.recovery.TrackingRecoveryWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -129,6 +129,9 @@ class DmujeresApp : Application() {
             filter,
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+
+        // F2: registro de token FCM (no-op honesto si no hay google-services.json).
+        runCatching { com.dmujeres.traccar.recovery.FcmTokenRegistrar.registerIfConfigured(this) }
     }
 
     companion object {

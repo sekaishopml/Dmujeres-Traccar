@@ -2,3 +2,6 @@ local.properties
 build/
 .cxx/
 keystore.properties
+secrets.properties
+keystore/*.keystore
+# F0/seguridad: la clave de firma NUNCA se trackea (incidente 20-sep).

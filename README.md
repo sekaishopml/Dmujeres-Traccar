@@ -11,6 +11,22 @@ Sistema de tracking GPS para la empresa Dmujeres. Fork de Traccar v6.14.5.
 - App Android que manda GPS aunque la pantalla esté apagada
 - Docker Compose para levantar todo (TimescaleDB, Redis, EMQX)
 
+## Estado actual (2026-09)
+
+- App **1.1.3** (versionCode 113), firmada con clave de release, OTA en
+  `dashboard/build/latest.json` (ver `docs/PRODUCTION_RUNBOOK.md`).
+- Salud de flota E2E: la app sube snapshots a `tc_device_health` y el
+  dashboard tiene la página **/reports/dmujeres** (flota + continuidad).
+- Continuidad de jornada con denominadores explícitos
+  (`GET /api/devices/{id}/continuity`): `docs/TRACKING_RELIABILITY.md`.
+- Auditoría final y pendientes reales: `docs/FINAL_PRODUCTION_AUDIT.md`.
+- Seguridad (rotación de clave, NSC, keystore): `docs/SECURITY.md`.
+- OEM/ZTE cfreezer: `docs/OEM_COMPATIBILITY.md`; recovery:
+  `docs/RECOVERY.md`; diagnóstico: `docs/INCIDENT_DIAGNOSIS.md`; QA:
+  `docs/QA_MATRIX.md`.
+
+Suites: server **821/0**, mobile **549/0**, dashboard **80/0**.
+
 ## Prerrequisitos
 
 | Herramienta | Versión mínima | Para qué |

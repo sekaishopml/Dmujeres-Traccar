@@ -2,9 +2,10 @@ package com.dmujeres.traccar.config
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.dmujeres.traccar.mqtt.MqttServerNormalizer
-import com.dmujeres.traccar.util.BootId
-import com.dmujeres.traccar.util.RecoveryJournal
+import com.dmujeres.traccar.core.MobileProtocol
+import com.dmujeres.traccar.core.MqttServerNormalizer
+import com.dmujeres.traccar.core.BootId
+import com.dmujeres.traccar.core.RecoveryOutcome
 
 /**
  * Configuración persistida del dispositivo. El servidor viene preconfigurado con la IP del
@@ -63,11 +64,11 @@ class AppConfig(context: Context) {
     /** Intervalo de captura/envío de ubicación en segundos (frecuencia). */
     var intervalSeconds: Long
         get() = prefs.getLong(KEY_INTERVAL, 10L)
-        set(value) = prefs.edit().putLong(KEY_INTERVAL, value.coerceIn(3, 300)).apply()
+        set(value) = prefs.edit().putLong(KEY_INTERVAL, value.coerceIn(10, 600)).apply()
 
     /**
      * Tamaño configurado de la cola offline. La EVICCIÓN real la gobierna la
-     * retención dura ([com.dmujeres.traccar.db.OutboxRetentionPolicy], 100 000
+     * retención dura ([com.dmujeres.traccar.data.OutboxRetentionPolicy], 100 000
      * posiciones o 7 días): este valor es el umbral configurado por el admin y
      * el tope efectivo nunca baja de la retención
      * (`effectiveMax = max(configurado, 100 000)`), de modo que instalaciones
@@ -326,6 +327,23 @@ class AppConfig(context: Context) {
         get() = prefs.getString(KEY_LAST_UPDATE_LATEST, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_LAST_UPDATE_LATEST, value).apply()
 
+    // ── P1 (R3.5-A6): estado OTA persistente (sobrevive al proceso) ──
+    // NONE → CHECKING → AVAILABLE → DOWNLOADING → VERIFYING → UPDATE_READY
+    // → INSTALL_REQUESTED → FAILED
+    var otaState: String
+        get() = prefs.getString(KEY_OTA_STATE, "NONE").orEmpty().ifBlank { "NONE" }
+        set(value) = prefs.edit().putString(KEY_OTA_STATE, value.trim().uppercase()).apply()
+
+    /** Versión del APK verificado listo para instalar (UPDATE_READY). */
+    var otaReadyVersion: String
+        get() = prefs.getString(KEY_OTA_READY_VERSION, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_OTA_READY_VERSION, value).apply()
+
+    /** SHA-256 del APK verificado (no es un secreto: integridad pública). */
+    var otaReadySha256: String
+        get() = prefs.getString(KEY_OTA_READY_SHA, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_OTA_READY_SHA, value).apply()
+
     /**
      * Ejecución lógica del tracking (regenerada en cada startTracking, incluso
      * recuperando jornada). Viaja en cada position para que el servidor agrupe
@@ -513,7 +531,7 @@ class AppConfig(context: Context) {
         get() = prefs.getString(KEY_DIAG_LAST_RESULT, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_DIAG_LAST_RESULT, value.take(120)).apply()
 
-    // ---- Diario de recuperación del guardián (RecoveryJournal, Fase 6) -------
+    // ---- Diario de recuperación del guardián (RecoveryOutcome, Fase 6) ------
     /** Intentos de recuperación del guardián (bucket diario, reset por rollover). */
     var recoveryAttempts: Int
         get() = readDailyBucket(KEY_RECOVERY_ATTEMPTS_24H)
@@ -524,7 +542,7 @@ class AppConfig(context: Context) {
         get() = prefs.getLong(KEY_LAST_RECOVERY_AT, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_RECOVERY_AT, value).apply()
 
-    /** Veredicto del último intento (RecoveryJournal.RESULT_*). */
+    /** Veredicto del último intento (RecoveryOutcome.*). */
     var lastRecoveryResult: String
         get() = prefs.getString(KEY_RECOVERY_RESULT, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_RECOVERY_RESULT, value.take(40)).apply()
@@ -533,6 +551,91 @@ class AppConfig(context: Context) {
     var recoveryConfirmAt: Long
         get() = prefs.getLong(KEY_RECOVERY_CONFIRM_AT, 0L)
         set(value) = prefs.edit().putLong(KEY_RECOVERY_CONFIRM_AT, value).apply()
+
+    // ---- F2: FCM Recovery ----------------------------------------------------
+    var fcmConfigured: Boolean
+        get() = prefs.getBoolean(KEY_FCM_CONFIGURED, false)
+        set(value) = prefs.edit().putBoolean(KEY_FCM_CONFIGURED, value).apply()
+
+    var fcmTokenPrefix: String
+        get() = prefs.getString(KEY_FCM_TOKEN_PREFIX, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_FCM_TOKEN_PREFIX, value.take(16)).apply()
+
+    var fcmTokenRegistered: Boolean
+        get() = prefs.getBoolean(KEY_FCM_TOKEN_REGISTERED, false)
+        set(value) = prefs.edit().putBoolean(KEY_FCM_TOKEN_REGISTERED, value).apply()
+
+    var fcmTokenUpdatedAt: Long
+        get() = prefs.getLong(KEY_FCM_TOKEN_UPDATED_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_FCM_TOKEN_UPDATED_AT, value).apply()
+
+    /** Último recoveryAttemptId procesado (dedupe de probes duplicados). */
+    var fcmLastAttemptId: String
+        get() = prefs.getString(KEY_FCM_LAST_ATTEMPT_ID, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_FCM_LAST_ATTEMPT_ID, value.take(128)).apply()
+
+    /** Clasificación de entrega: HIGH | NORMAL | DEGRADED | UNKNOWN. */
+    var fcmLastPriority: String
+        get() = prefs.getString(KEY_FCM_LAST_PRIORITY, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_FCM_LAST_PRIORITY, value.take(16)).apply()
+
+    /** Prioridad ORIGINAL pedida por el emisor (RemoteMessage.getOriginalPriority). */
+    var fcmLastOriginalPriority: String
+        get() = prefs.getString(KEY_FCM_LAST_ORIGINAL_PRIORITY, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_FCM_LAST_ORIGINAL_PRIORITY, value.take(16)).apply()
+
+    var fcmLastResult: String
+        get() = prefs.getString(KEY_FCM_LAST_RESULT, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_FCM_LAST_RESULT, value.take(64)).apply()
+
+    var fcmLastAt: Long
+        get() = prefs.getLong(KEY_FCM_LAST_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_FCM_LAST_AT, value).apply()
+
+    // ---- DeviceReadiness / prueba de continuidad -----------------------------
+    //
+    // Estado persistido del DeviceReadinessGate: la prueba de CONTINUIDAD
+    // (captura con pantalla apagada) es el criterio principal; la recuperación
+    // (RecoveryJournal) es respaldo y NUNCA sustituye la continuidad.
+    // Valores vivos durante la ventana (escritos por TrackingService).
+    var continuityRunning: Boolean
+        get() = prefs.getBoolean(KEY_CONTINUITY_RUNNING, false)
+        set(value) = prefs.edit().putBoolean(KEY_CONTINUITY_RUNNING, value).apply()
+
+    /** Epoch ms del SCREEN_OFF que abrió la ventana (0 = ventana cerrada). */
+    var continuityScreenOffAt: Long
+        get() = prefs.getLong(KEY_CONTINUITY_SCREEN_OFF_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_CONTINUITY_SCREEN_OFF_AT, value).apply()
+
+    /** Fixes aceptados durante la ventana con pantalla apagada. */
+    var continuityFixesDuringOff: Int
+        get() = prefs.getInt(KEY_CONTINUITY_FIXES_OFF, 0)
+        set(value) = prefs.edit().putInt(KEY_CONTINUITY_FIXES_OFF, value.coerceAtLeast(0)).apply()
+
+    /** Evidencia in-app de congelamiento (segundos que el proceso dejó de correr). */
+    var continuityFrozenSeconds: Int
+        get() = prefs.getInt(KEY_CONTINUITY_FROZEN_S, 0)
+        set(value) = prefs.edit().putInt(KEY_CONTINUITY_FROZEN_S, value.coerceAtLeast(0)).apply()
+
+    /** Estado evaluado: "PASS" | "FAILED" | "INCONCLUSIVE" | "" (sin prueba). */
+    var continuityState: String
+        get() = prefs.getString(KEY_CONTINUITY_STATE, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_CONTINUITY_STATE, value.take(16)).apply()
+
+    /** Causa del fallo: "" | OEM_FREEZE | NO_CALLBACK | PROCESS_DEAD | FGS_DEAD. */
+    var continuityCause: String
+        get() = prefs.getString(KEY_CONTINUITY_CAUSE, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_CONTINUITY_CAUSE, value.take(16)).apply()
+
+    /** Epoch ms de la última evaluación de continuidad. */
+    var continuityAt: Long
+        get() = prefs.getLong(KEY_CONTINUITY_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_CONTINUITY_AT, value).apply()
+
+    /** trackingEnabled previo a la prueba (la prueba lo restaura al terminar). */
+    var continuityPrevTracking: Boolean
+        get() = prefs.getBoolean(KEY_CONTINUITY_PREV_TRACKING, false)
+        set(value) = prefs.edit().putBoolean(KEY_CONTINUITY_PREV_TRACKING, value).apply()
 
     /** Intentos lanzados desde la última confirmación de servicio vivo. */
     var attemptsSinceLastSuccess: Int
@@ -545,13 +648,13 @@ class AppConfig(context: Context) {
      * asíncrono: el resultado queda pendiente ("ok-pending") hasta que el
      * watchdog (servicio vivo) o el próximo fire del guardián (sigue muerto)
      * lo verifiquen. Un veredicto "blocked" previo no se sobreescribe con el
-     * pendiente (ver [RecoveryJournal.resultAfterAttempt]).
+     * pendiente (ver [RecoveryOutcome.afterAttempt]).
      */
     @Synchronized
     fun incRecoveryAttempt(result: String): Int {
         val attempts = incDailyBucket(KEY_RECOVERY_ATTEMPTS_24H)
         lastRecoveryAt = System.currentTimeMillis()
-        lastRecoveryResult = RecoveryJournal.resultAfterAttempt(lastRecoveryResult, result)
+        lastRecoveryResult = RecoveryOutcome.afterAttempt(lastRecoveryResult, result)
         attemptsSinceLastSuccess = attemptsSinceLastSuccess + 1
         return attempts
     }
@@ -577,6 +680,23 @@ class AppConfig(context: Context) {
         get() = prefs.getBoolean(KEY_BACKGROUND_LOCATION_ASKED, false)
         set(value) = prefs.edit().putBoolean(KEY_BACKGROUND_LOCATION_ASKED, value).apply()
 
+    /**
+     * R7 (experimento medible): wakelock parcial de jornada. Apagado por
+     * defecto; se enciende desde el menú oculto (5 toques en la versión dentro
+     * del diagnóstico) y sirve para medir batería vs densidad de ruta.
+     */
+    var wakeLockExperimentEnabled: Boolean
+        get() = prefs.getBoolean(KEY_WAKE_LOCK_EXPERIMENT, false)
+        set(value) = prefs.edit().putBoolean(KEY_WAKE_LOCK_EXPERIMENT, value).apply()
+
+    /**
+     * R9: el colaborador tocó el botón "Actualizar" (debajo de INICIAR).
+     * Viaja en el presence para que el server lo registre como evento.
+     */
+    var otaManualPressedAt: Long
+        get() = prefs.getLong(KEY_OTA_MANUAL_PRESSED, 0L)
+        set(value) = prefs.edit().putLong(KEY_OTA_MANUAL_PRESSED, value).apply()
+
     /** versionCode con el que se completó/revalidó el onboarding por última vez. */
     var appVersionCode: Int
         get() = prefs.getInt(KEY_APP_VERSION_CODE, 0)
@@ -598,7 +718,8 @@ class AppConfig(context: Context) {
         accuracyBadM: Float? = null,
         accuracyGoodM: Float? = null,
     ) {
-        if (interval != null) this.intervalSeconds = interval
+        // R8: clamp remoto (10..600 s) — un valor absurdo no debe romper la captura.
+        if (interval != null) this.intervalSeconds = interval.coerceIn(10L, 600L)
         // Mínimo operativo = default local (5000 ≈ 13.8 h a 10 s): con menos, una
         // jornada larga sin señal perdía trozos de ruta por drop_oldest.
         if (bufferMax != null) this.bufferMax = clampRemoteBufferMax(bufferMax)
@@ -615,11 +736,11 @@ class AppConfig(context: Context) {
         if (accuracyGoodM != null && accuracyGoodM > 0f) this.accuracyGoodM = accuracyGoodM
     }
 
-    /** Topic de subida: dmj/v1/devices/{deviceId}/telemetry */
-    fun telemetryTopic(): String = "dmj/v1/devices/$deviceId/telemetry"
+    /** Topic de subida: dmj/v1/devices/{deviceId}/telemetry (contrato en [MobileProtocol]). */
+    fun telemetryTopic(): String = MobileProtocol.telemetryTopic(deviceId)
 
-    /** Topic de ACK: dmj/v1/devices/{deviceId}/ack */
-    fun ackTopic(): String = "dmj/v1/devices/$deviceId/ack"
+    /** Topic de ACK: dmj/v1/devices/{deviceId}/ack (contrato en [MobileProtocol]). */
+    fun ackTopic(): String = MobileProtocol.ackTopic(deviceId)
 
     /**
      * Genera un ID estable para el messageId basado en el usuario (no expone el ID completo).
@@ -653,11 +774,12 @@ class AppConfig(context: Context) {
         /** Velocidad sostenida para tolerar picos rapidos legitimos (≈108 km/h). Fase A: 30 m/s. */
         const val DEFAULT_CONSISTENT_SPEED_MPS = 30f
 
-        /** Clave compartida del fallback HTTP (misma que el server; se reforzará en Fase 5). */
-        const val HTTP_API_KEY = "dmj-dev-fallback-key"
-
-        /** Puerto web del servidor para el fallback HTTP. */
-        const val WEB_PORT = 999
+        /**
+         * S1: clave de flota del canal HTTP. Ya NO es una constante hardcodeada:
+         * se inyecta en build desde mobile/secrets.properties (gitignored).
+         * Debug sin secretos usa el fallback dev; release exige la property.
+         */
+        val HTTP_API_KEY: String get() = com.dmujeres.traccar.BuildConfig.MOBILE_HTTP_API_KEY
 
         /** Ms de un día civil (UTC); base del bucket diario de los contadores de salud. */
         const val MILLIS_PER_DAY = 86_400_000L
@@ -765,6 +887,8 @@ class AppConfig(context: Context) {
         private const val KEY_JOURNEY_CONFIRMED_POINTS = "journey_confirmed_points"
         private const val KEY_QUARANTINED_TOTAL = "quarantined_total"
         private const val KEY_VENDOR_GUIDE_DONE = "vendor_guide_done"
+        private const val KEY_WAKE_LOCK_EXPERIMENT = "wake_lock_experiment"
+        private const val KEY_OTA_MANUAL_PRESSED = "ota_manual_pressed_at"
         private const val KEY_ACK_TOTAL = "ack_total"
         private const val KEY_RETRY_TOTAL = "retry_total"
         private const val KEY_JOURNEY_LAST_LAT = "journey_last_lat"
@@ -775,6 +899,10 @@ class AppConfig(context: Context) {
         private const val KEY_LAST_UPDATE_CHECK = "last_update_check_at"
         private const val KEY_LAST_UPDATE_ERROR = "last_update_error"
         private const val KEY_LAST_UPDATE_LATEST = "last_update_latest"
+        // P1: estado OTA persistente
+        private const val KEY_OTA_STATE = "ota_state"
+        private const val KEY_OTA_READY_VERSION = "ota_ready_version"
+        private const val KEY_OTA_READY_SHA = "ota_ready_sha256"
         private const val KEY_SESSION_ID = "session_id"
         private const val KEY_BOOT_ID = "boot_id"
         private const val KEY_BOOT_ELAPSED = "boot_elapsed_ms"
@@ -797,6 +925,23 @@ class AppConfig(context: Context) {
         private const val KEY_RECOVERY_CONFIRM_AT = "recovery_confirm_at"
         private const val KEY_RECOVERY_ATTEMPTS_24H = "health_recovery_attempts_24h"
         private const val KEY_RECOVERY_ATTEMPTS_SINCE_SUCCESS = "recovery_attempts_since_success"
+        private const val KEY_FCM_CONFIGURED = "fcm_configured"
+        private const val KEY_FCM_TOKEN_PREFIX = "fcm_token_prefix"
+        private const val KEY_FCM_TOKEN_REGISTERED = "fcm_token_registered"
+        private const val KEY_FCM_TOKEN_UPDATED_AT = "fcm_token_updated_at"
+        private const val KEY_FCM_LAST_ATTEMPT_ID = "fcm_last_attempt_id"
+        private const val KEY_FCM_LAST_PRIORITY = "fcm_last_priority"
+        private const val KEY_FCM_LAST_ORIGINAL_PRIORITY = "fcm_last_original_priority"
+        private const val KEY_FCM_LAST_RESULT = "fcm_last_result"
+        private const val KEY_FCM_LAST_AT = "fcm_last_at"
+        private const val KEY_CONTINUITY_RUNNING = "readiness_continuity_running"
+        private const val KEY_CONTINUITY_SCREEN_OFF_AT = "readiness_continuity_screen_off_at"
+        private const val KEY_CONTINUITY_FIXES_OFF = "readiness_continuity_fixes_off"
+        private const val KEY_CONTINUITY_FROZEN_S = "readiness_continuity_frozen_s"
+        private const val KEY_CONTINUITY_STATE = "readiness_continuity_state"
+        private const val KEY_CONTINUITY_CAUSE = "readiness_continuity_cause"
+        private const val KEY_CONTINUITY_AT = "readiness_continuity_at"
+        private const val KEY_CONTINUITY_PREV_TRACKING = "readiness_continuity_prev_tracking"
         private const val KEY_BACKGROUND_LOCATION_ASKED = "background_location_asked"
         private const val KEY_APP_VERSION_CODE = "app_version_code"
         private const val KEY_MAX_IMPLIED_SPEED = "filter_max_speed_mps"
