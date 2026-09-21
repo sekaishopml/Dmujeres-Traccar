@@ -331,5 +331,9 @@ class FixFilterTest {
         assertFalse(FixFilter.heartbeatDue(1_000L, 30_000L))
         assertFalse(FixFilter.heartbeatDue(1_000L, 61_000L))
         assertTrue(FixFilter.heartbeatDue(1_000L, 61_001L))
+        // F1-A: el sensor en movimiento bloquea el heartbeat de quietud
+        // (antes pisaba la ráfaga de 10 s con GNSS débil).
+        assertFalse(FixFilter.heartbeatDue(1_000L, 10 * 60_000L, sensorMoving = true))
+        assertTrue(FixFilter.heartbeatDue(1_000L, 10 * 60_000L, sensorMoving = false))
     }
 }

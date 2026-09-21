@@ -230,9 +230,14 @@ object FixFilter {
         return false
     }
 
-    /** Heartbeat de parada: quieto más de [STOP_STILL_TIMEOUT_MS] → cadencia larga. */
-    fun heartbeatDue(lastMovementMs: Long, nowMs: Long): Boolean =
-        nowMs - lastMovementMs > STOP_STILL_TIMEOUT_MS
+    /**
+     * Heartbeat de parada: quieto más de [STOP_STILL_TIMEOUT_MS] → cadencia larga.
+     * F1-A: con el sensor diciendo MOVING no aplica — de lo contrario pisaba la
+     * ráfaga de 10 s justo cuando el GNSS venía débil (sin fixes no se actualiza
+     * `lastMovementMs`) y la marcha quedaba muestreada a 60 s.
+     */
+    fun heartbeatDue(lastMovementMs: Long, nowMs: Long, sensorMoving: Boolean = false): Boolean =
+        !sensorMoving && nowMs - lastMovementMs > STOP_STILL_TIMEOUT_MS
 
     @Suppress("ReturnCount")
     fun evaluate(

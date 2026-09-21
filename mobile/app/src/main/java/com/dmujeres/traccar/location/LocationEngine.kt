@@ -304,16 +304,17 @@ class LocationEngine(
         val anchor = stationaryAnchor
         val last = lastAcceptedLocation
         val displacement = if (anchor != null && last != null) anchor.distanceTo(last) else null
+        // 1.1.8 / F1-A: el acelerómetro (histéresis propia, no flapea con un
+        // pico) autoriza adquisición densa cuando la velocidad GNSS no basta
+        // (tráfico lento, fixes fused con speed 0, GPS caído). Nunca produce
+        // coordenadas: solo cambia la estrategia de captura.
+        val sensorMoving = com.dmujeres.traccar.sensors.MotionSensor.isMoving() == true
         val decision = MovementStartPolicy.next(
             movementState,
             MovementStartPolicy.Evidence(
                 gnssSpeedMps = lastFixSpeedMps,
                 displacementFromAnchorM = displacement,
-                // 1.1.8: el acelerómetro (histéresis propia, no flapea con un
-                // pico) autoriza adquisición densa cuando la velocidad GNSS no
-                // basta (tráfico lento, fixes fused con speed 0). Nunca produce
-                // coordenadas: solo cambia la estrategia de captura.
-                sensorMovement = com.dmujeres.traccar.sensors.MotionSensor.isMoving() == true,
+                sensorMovement = sensorMoving,
                 hasFreshFix = hasRecentFix,
             ),
             movementCandidateStreak,
@@ -385,9 +386,16 @@ class LocationEngine(
                 callbacks.onAdaptiveModeChanged(adaptiveMoving)
             }
             changed = true
+            // F1-A: si el fallback AOSP está activo (fused no fiable), refrescar
+            // su cadencia con la del modo nuevo (10 s en marcha / 60 s quieto).
+            if (GnssFallbackPolicy.shouldUnregister(gnssFallbackState)) {
+                unregisterGnssFallback()
+                registerGnssFallback()
+            }
         }
-        // Heartbeat de parada: prima sobre la cadencia del modo.
-        if (FixFilter.heartbeatDue(lastMovementAtMs(), System.currentTimeMillis()) &&
+        // Heartbeat de parada: prima sobre la cadencia del modo, salvo que el
+        // sensor confirme marcha (F1-A: no pisar la ráfaga con GNSS débil).
+        if (FixFilter.heartbeatDue(lastMovementAtMs(), System.currentTimeMillis(), sensorMoving) &&
             currentIntervalSeconds != FixFilter.STOP_HEARTBEAT_SECONDS
         ) {
             currentIntervalSeconds = FixFilter.STOP_HEARTBEAT_SECONDS
@@ -600,7 +608,11 @@ class LocationEngine(
             @Suppress("DEPRECATION")
             lm.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
-                config.intervalSeconds * 1000L,
+                // F1-A: cadencia EFECTIVA (10 s en ráfaga, 60 s en quietud),
+                // no el valor base configurado: en equipos con fused roto el
+                // fallback AOSP es la única fuente y quedaba ralo si el panel
+                // había subido el intervalo.
+                effectiveIntervalSeconds() * 1000L,
                 0f,
                 gnssFallbackListener,
                 context.mainLooper,

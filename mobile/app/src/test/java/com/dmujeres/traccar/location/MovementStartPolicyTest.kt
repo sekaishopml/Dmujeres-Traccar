@@ -1,6 +1,7 @@
 package com.dmujeres.traccar.location
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -95,14 +96,40 @@ class MovementStartPolicyTest {
     }
 
     @Test
-    fun `perdida de fix no inventa movimiento`() {
+    fun `perdida de fix con sensor sostiene candidate sin inventar movimiento`() {
+        // F1-A: con el teléfono en movimiento y GNSS caído se mantiene la
+        // adquisición densa (candidate) para no perder la re-adquisición.
+        // Nunca MOVING: el sensor no confirma movimiento ni produce posición.
         val d = MovementStartPolicy.next(
             MovementStartPolicy.State.MOVEMENT_CANDIDATE,
             ev(speed = 8f, displacement = 40f, sensor = true, fresh = false),
             1,
         )
+        assertEquals(MovementStartPolicy.State.MOVEMENT_CANDIDATE, d.state)
+        assertTrue(MovementStartPolicy.usesBurstCapture(d.state))
+        assertNotEquals(MovementStartPolicy.State.MOVING, d.state)
+    }
+
+    @Test
+    fun `perdida de fix sin sensor queda stationary (honesto)`() {
+        val d = MovementStartPolicy.next(
+            MovementStartPolicy.State.MOVEMENT_CANDIDATE,
+            ev(speed = 8f, displacement = 40f, sensor = false, fresh = false),
+            1,
+        )
         assertEquals(MovementStartPolicy.State.STATIONARY, d.state)
         assertFalse(MovementStartPolicy.usesBurstCapture(d.state))
+    }
+
+    @Test
+    fun `moving con speed nula pero sensor sostiene queda candidate`() {
+        val d = MovementStartPolicy.next(
+            MovementStartPolicy.State.MOVING,
+            ev(speed = null, sensor = true),
+            0,
+        )
+        assertEquals(MovementStartPolicy.State.MOVEMENT_CANDIDATE, d.state)
+        assertTrue(MovementStartPolicy.usesBurstCapture(d.state))
     }
 
     @Test

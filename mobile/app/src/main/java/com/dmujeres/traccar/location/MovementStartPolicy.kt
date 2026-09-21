@@ -65,7 +65,16 @@ object MovementStartPolicy {
      */
     fun next(current: State, evidence: Evidence, candidateStreak: Int): Decision {
         if (!evidence.hasFreshFix) {
-            return Decision(State.STATIONARY, "sin-fix-fresco")
+            // F1-A: el sensor sostiene la adquisición densa cuando el GNSS
+            // falla. Antes, "sin fix fresco" degradaba a STATIONARY aunque el
+            // teléfono se moviera: menos fixes → cadencia lenta → menos fixes
+            // (bucle que producía huecos de 5-16 min en marcha). Sin sensor,
+            // el comportamiento honesto no cambia (STATIONARY).
+            return if (evidence.sensorMovement) {
+                Decision(State.MOVEMENT_CANDIDATE, "sensor-sin-fix")
+            } else {
+                Decision(State.STATIONARY, "sin-fix-fresco")
+            }
         }
         val speed = evidence.gnssSpeedMps?.takeIf { it.isFinite() && it >= 0f }
 
@@ -73,7 +82,14 @@ object MovementStartPolicy {
             // Histéresis (paridad con el legado): se mantiene solo con
             // velocidad clara; nulo o < 1 m/s vuelve a STATIONARY.
             if (speed == null || speed < STATIONARY_SPEED_MPS) {
-                return Decision(State.STATIONARY, "speed-null-o<${STATIONARY_SPEED_MPS}")
+                // F1-A: con evidencia del sensor no se cae a STATIONARY, se
+                // queda en CANDIDATE (sigue la ráfaga) para no perder la
+                // re-adquisición cuando el fix venga con speed nulo/0.
+                return if (evidence.sensorMovement) {
+                    Decision(State.MOVEMENT_CANDIDATE, "sensor-sostiene")
+                } else {
+                    Decision(State.STATIONARY, "speed-null-o<${STATIONARY_SPEED_MPS}")
+                }
             }
             return Decision(State.MOVING, "sigue-moving")
         }
