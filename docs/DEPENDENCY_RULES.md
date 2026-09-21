@@ -110,3 +110,13 @@ Movimientos R2 que habilitaron la regla `transport` sin `data`:
 - `diagnostics/RttMeter.kt` → `core/RttMeter.kt` (puro).
 - `transport/ControlQueue.kt` (puerto) + `outbox/RoomControlQueueStore.kt`
   (adaptador Room). `MqttManager` ya no importa `data`/`outbox`.
+
+## `capture` (F1-B/L1) — adaptador de captura por PendingIntent
+
+- **Puede** importar: `core`, `config`, `data`, `transport`.
+- **No puede** importar: `location`, `tracking`, `ui`, `health`, `recovery`,
+  `oem`, `sensors`, `outbox`, `diagnostics`, `platform`, `readiness`.
+- Motivo: el receptor de PendingIntent vive fuera del ciclo de vida del servicio
+  (puede despertar sin `TrackingService`); persiste en Room y formatea el payload
+  sin arrastrar lógica de dominio. `location` sí puede importar `capture` (para
+  referenciar la clase del receptor en el `PendingIntent`), nunca al revés.

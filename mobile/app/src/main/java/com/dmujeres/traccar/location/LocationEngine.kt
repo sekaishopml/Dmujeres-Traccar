@@ -1,6 +1,8 @@
 package com.dmujeres.traccar.location
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.GnssStatus
 import android.location.Location
@@ -10,6 +12,8 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.dmujeres.traccar.config.AppConfig
+import com.dmujeres.traccar.capture.L1LocationReceiver
+import com.dmujeres.traccar.core.L1CapturePolicy
 import com.dmujeres.traccar.core.TrackingState
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -72,6 +76,12 @@ class LocationEngine(
     val timeout = LocationTimeoutController()
 
     private var fused: FusedLocationProviderClient? = null
+    /**
+     * L1: request registrado por PendingIntent (receptor [L1LocationReceiver],
+     * captura sin callback de proceso). null cuando la captura va por
+     * [locationCallback] o está detenida.
+     */
+    private var pendingIntentRequest: PendingIntent? = null
     @Volatile private var gnssCallback: GnssStatus.Callback? = null
     /**
      * R9: tras varios fallos del fused (Google), se pasa al GPS del sistema
@@ -155,6 +165,19 @@ class LocationEngine(
         }
     }
 
+    /**
+     * F1-B/L1: fix entregado por PendingIntent con el proceso vivo (bridge del
+     * receiver). Misma contabilidad que [locationCallback] (reloj de callbacks y
+     * contador de recibidos) para no romper presencia ni heurísticas; el dedupe
+     * ya lo hizo el receiver.
+     */
+    fun onL1Fix(location: Location) {
+        if (!callbacks.shouldCapture()) return
+        runCatching { config.lastLocationCallbackAt = System.currentTimeMillis() }
+        runCatching { config.incFixReceived() }
+        callbacks.onFix(location)
+    }
+
     private fun orderFixes(locations: List<Location>): List<Location> {
         if (locations.size < 2) return locations
         val elapsed = locations.map { runCatching { it.elapsedRealtimeNanos }.getOrDefault(0L) }
@@ -203,14 +226,29 @@ class LocationEngine(
 
     /** Parada de jornada: quita todo registro de ubicación. */
     fun stop() {
-        try {
-            fused?.removeLocationUpdates(locationCallback)
-        } catch (e: Exception) {
-            // ignorar
-        }
+        removeAllUpdates()
         unregisterGnssCallback()
         unregisterGnssFallback()
         timeout.exitGnssForce()
+    }
+
+    /**
+     * L1: quita AMBAS vías de registro del cliente fused (callback y
+     * PendingIntent). `removeLocationUpdates(LocationCallback)` NO desregistra
+     * el request por PendingIntent: sin esto, la captura por receptor seguiría
+     * viva tras stop()/pausa. Idempotente y a prueba de fallos por vía.
+     *
+     * Se usa en TODOS los caminos que antes solo quitaban el callback: cada
+     * uno re-registra después (o queda pausado a propósito, como
+     * [pauseForBuffer]), así que quitar también el PendingIntent es seguro y
+     * evita que la vía vieja siga entregando.
+     */
+    private fun removeAllUpdates() {
+        runCatching { fused?.removeLocationUpdates(locationCallback) }
+        pendingIntentRequest?.let { request ->
+            runCatching { fused?.removeLocationUpdates(request) }
+        }
+        pendingIntentRequest = null
     }
 
     /**
@@ -223,7 +261,7 @@ class LocationEngine(
             if (timeout.shouldReregister(nowMs)) {
                 timeout.noteReregister(nowMs)
                 Log.i(TAG, "GPS sin fix: re-solicitando actualizaciones de ubicación")
-                runCatching { fused?.removeLocationUpdates(locationCallback) }
+                removeAllUpdates()
                 requestLocationUpdates()
             }
             // Escalera anti-hambruna (caso Joseph: 28 callbacks en 7 h con cielo
@@ -239,7 +277,7 @@ class LocationEngine(
                         "gps", "engine_reinit", "Sin callbacks FLP >10 min, recreo cliente",
                     )
                 }
-                runCatching { fused?.removeLocationUpdates(locationCallback) }
+                removeAllUpdates()
                 runCatching {
                     fused = LocationServices.getFusedLocationProviderClient(context)
                 }
@@ -255,7 +293,7 @@ class LocationEngine(
         if (gpsWithoutFix && captureOk) {
             if (timeout.enterGnssForce()) {
                 Log.i(TAG, "GNSS forzado: sin fix fresco >60 s")
-                runCatching { fused?.removeLocationUpdates(locationCallback) }
+                removeAllUpdates()
                 requestLocationUpdates()
             } else {
                 registerGnssFallback()
@@ -268,7 +306,7 @@ class LocationEngine(
         } else if (!gpsWithoutFix && timeout.exitGnssForce()) {
             unregisterGnssFallback()
             Log.i(TAG, "Fix fresco recuperado: se levanta el GNSS forzado")
-            runCatching { fused?.removeLocationUpdates(locationCallback) }
+            removeAllUpdates()
             requestLocationUpdates()
         }
 
@@ -405,7 +443,7 @@ class LocationEngine(
         if (!changed) return false
         if (!callbacks.shouldCapture()) return false
         Log.i(TAG, "Adaptativo → ${currentMinDistanceM}m cada ${currentIntervalSeconds}s (modo $next, speed=$lastFixSpeedMps)")
-        runCatching { fused?.removeLocationUpdates(locationCallback) }
+        removeAllUpdates()
         requestLocationUpdates()
         timeout.noteReregister(System.currentTimeMillis())
         return true
@@ -425,7 +463,7 @@ class LocationEngine(
      */
     fun nudgeRefresh() {
         if (!callbacks.shouldCapture()) return
-        runCatching { fused?.removeLocationUpdates(locationCallback) }
+        removeAllUpdates()
         requestLocationUpdates()
         timeout.noteReregister(System.currentTimeMillis())
     }
@@ -469,6 +507,19 @@ class LocationEngine(
             }
             return
         }
+        // L1: captura por PendingIntent con batching cuando el switch está ON,
+        // hay permiso fino y jornada activa. El receptor entrega al pipeline
+        // vivo o persiste sin servicio; en este camino NO se registra el
+        // locationCallback (una sola vía activa).
+        if (L1CapturePolicy.shouldUsePendingIntent(
+                config.l1PendingIntentEnabled,
+                hasFineLocation(),
+                config.journeyStartAt > 0L,
+            )
+        ) {
+            requestLocationUpdatesViaPendingIntent()
+            return
+        }
         val builder = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
             effectiveIntervalSeconds() * 1000L
@@ -507,6 +558,73 @@ class LocationEngine(
             callbacks.onState(TrackingState.PERMISSION_MISSING)
         } catch (e: Exception) {
             Log.e(TAG, "Error al solicitar actualizaciones de ubicación", e)
+            onFusedFailure()
+        }
+    }
+
+    /**
+     * L1: registra el request con PendingIntent (receptor [L1LocationReceiver])
+     * en vez del callback de proceso. El batching del FLP (`maxUpdateDelay`)
+     * retiene los fixes y los entrega en un solo broadcast, con lo que el
+     * proceso solo despierta cuando hay lote. El callback [locationCallback]
+     * NO se registra aquí: el receptor entrega al pipeline vivo vía
+     * [L1FixBridge] o persiste por su cuenta si el servicio murió.
+     */
+    private fun requestLocationUpdatesViaPendingIntent() {
+        // Piso remoto ([AppConfig.minIntervalSeconds]) aplicado a la cadencia
+        // adaptativa vigente: nunca acelera por debajo de lo configurado.
+        val intervalSeconds = L1CapturePolicy.effectiveIntervalSeconds(
+            effectiveIntervalSeconds(),
+            config.minIntervalSeconds,
+        )
+        val request = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            intervalSeconds * 1000L
+        ).setMinUpdateIntervalMillis(intervalSeconds * 500L)
+            .setMinUpdateDistanceMeters(currentMinDistanceM)
+            // Batching: retardo máximo antes de entregar el lote (clamp de la
+            // política para no quedarse sin capturas por un valor absurdo).
+            .setMaxUpdateDelayMillis(L1CapturePolicy.clampDelay(config.l1MaxUpdateDelayMs))
+            .build()
+        // FLAG_MUTABLE: el FLP necesita rellenar el Intent con el resultado;
+        // requestCode 0 fijo = un único PendingIntent vigente (UPDATE_CURRENT
+        // actualiza el request en re-registros).
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            0,
+            Intent(context, L1LocationReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+        )
+        pendingIntentRequest = pendingIntent
+        try {
+            val task = fused?.requestLocationUpdates(request, pendingIntent)
+            if (task == null) {
+                onFusedFailure()
+                return
+            }
+            task.addOnSuccessListener {
+                if (callbacks.isStarted()) {
+                    if (mqttReady()) {
+                        callbacks.onState(TrackingState.TRACKING_ACTIVE)
+                    } else if (mqttDisconnected()) {
+                        callbacks.onState(TrackingState.MQTT_DISCONNECTED)
+                    } else {
+                        callbacks.onSoftRecovery()
+                    }
+                }
+            }
+            task.addOnFailureListener { error ->
+                Log.e(TAG, "No se pudieron solicitar actualizaciones de ubicación (PendingIntent)", error)
+                if (callbacks.isStarted()) onFusedFailure()
+            }
+            task.addOnCanceledListener {
+                Log.w(TAG, "La solicitud de actualizaciones por PendingIntent fue cancelada")
+                if (callbacks.isStarted()) onFusedFailure()
+            }
+        } catch (e: SecurityException) {
+            callbacks.onState(TrackingState.PERMISSION_MISSING)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al solicitar actualizaciones por PendingIntent", e)
             onFusedFailure()
         }
     }
@@ -705,7 +823,7 @@ class LocationEngine(
 
     /** Pausa la captura por buffer lleno (STOP_CAPTURE): quita el request. */
     fun pauseForBuffer() {
-        runCatching { fused?.removeLocationUpdates(locationCallback) }
+        removeAllUpdates()
     }
 
     /** Reanuda la captura tras drenar el buffer. */

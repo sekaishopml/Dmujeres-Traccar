@@ -61,6 +61,15 @@ class ArchitectureDependencyTest {
         Rule("readiness", forbidden = setOf("ui")),
         Rule("recovery", forbidden = setOf("ui")),
         Rule(
+            // F1-B/L1: adaptador de captura por PendingIntent. Solo puede usar
+            // soporte (core/config/data/transport); no conoce dominios ni UI.
+            "capture",
+            forbidden = setOf(
+                "diagnostics", "health", "location", "oem", "outbox", "platform",
+                "readiness", "recovery", "sensors", "tracking", "ui",
+            ),
+        ),
+        Rule(
             "tracking",
             forbidden = setOf("ui"),
             // Única arista de presentación aceptada: refresco de la fachada del widget.

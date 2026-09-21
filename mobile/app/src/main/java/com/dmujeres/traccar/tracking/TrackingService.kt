@@ -29,6 +29,7 @@ import com.dmujeres.traccar.location.FixFilter
 import com.dmujeres.traccar.location.FixTime
 import com.dmujeres.traccar.location.FusedFailurePolicy
 import com.dmujeres.traccar.location.GnssState
+import com.dmujeres.traccar.capture.L1FixBridge
 import com.dmujeres.traccar.location.LocationEngine
 import com.dmujeres.traccar.location.MovementRescueController
 import com.dmujeres.traccar.location.MovementRescuePolicy
@@ -609,6 +610,11 @@ class TrackingService : Service() {
         if (started.getAndSet(true)) return
         serviceScope = newServiceScope()
         stopping = false
+        // L1: puente receptor→pipeline. Con la captura viva, los fixes que el
+        // FLP entrega por PendingIntent entran por el MISMO onNewLocation que
+        // el callback (una sola vía de procesamiento); sin listener (servicio
+        // muerto) el receptor persiste por su cuenta (ver L1LocationReceiver).
+        L1FixBridge.listener = { location -> engine.onL1Fix(location) }
         // Guardián de sesión (anti-OEM): con jornada activa, una alarma revive
         // el servicio si el fabricante mató el proceso. El periodo lo impone el
         // guard (2 min en marcha / 15 min quieto); el motor lo re-agenda solo
@@ -1538,6 +1544,10 @@ class TrackingService : Service() {
         if (stopping) return
         stopping = true
         started.set(false)
+        // L1: cortar el puente ANTES de parar el motor: un fix del receptor ya
+        // no entra al pipeline (el request por PendingIntent se retira en
+        // engine.stop()).
+        L1FixBridge.listener = null
         connectivity.stop()
         Notifications.alert(this, getString(R.string.jornada_finalizada), getString(R.string.jornada_finalizada_body))
         // FASE 3: el motor quita request FLP, GNSS status y fallback GPS.
@@ -1621,6 +1631,8 @@ class TrackingService : Service() {
         stopJob?.cancel()
         stopControllerScope.cancel()
         serviceScope.cancel()
+        // L1: por si el proceso muere sin pasar por stopTracking (defensivo).
+        L1FixBridge.listener = null
         runCatching { engine.stop() }
         runCatching { movementRescue.stop() }
         mqtt?.disconnect()

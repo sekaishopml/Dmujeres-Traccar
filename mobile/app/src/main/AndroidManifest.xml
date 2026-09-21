@@ -82,6 +82,13 @@
             android:name=".recovery.GeofenceWakeReceiver"
             android:exported="false" />
 
+        <!-- L1: fixes entregados por el FLP vía PendingIntent (captura con
+             batching sin mantener un callback de proceso). Solo lo dispara
+             nuestro propio PendingIntent. -->
+        <receiver
+            android:name=".capture.L1LocationReceiver"
+            android:exported="false" />
+
         <!-- F2: receptor del probe de recovery FCM (data message HIGH priority). -->
         <service
             android:name=".recovery.FcmRecoveryMessagingService"

@@ -67,6 +67,29 @@ class AppConfig(context: Context) {
         set(value) = prefs.edit().putLong(KEY_INTERVAL, value.coerceIn(10, 600)).apply()
 
     /**
+     * Fase L1: captura por PendingIntent (despierta el servicio aunque el
+     * proceso esté congelado). Remoto; default false (captura estándar).
+     */
+    var l1PendingIntentEnabled: Boolean
+        get() = prefs.getBoolean(KEY_L1_PENDING_INTENT, false)
+        set(value) = prefs.edit().putBoolean(KEY_L1_PENDING_INTENT, value).apply()
+
+    /** Fase L1: guarda TODAS las posiciones crudas (false = solo las aceptadas). Remoto. */
+    var storeAllEnabled: Boolean
+        get() = prefs.getBoolean(KEY_STORE_ALL, false)
+        set(value) = prefs.edit().putBoolean(KEY_STORE_ALL, value).apply()
+
+    /** Fase L1: retardo máximo del PendingIntent de actualización en ms (30 000..300 000). Remoto. */
+    var l1MaxUpdateDelayMs: Long
+        get() = prefs.getLong(KEY_L1_MAX_UPDATE_DELAY, 60_000L)
+        set(value) = prefs.edit().putLong(KEY_L1_MAX_UPDATE_DELAY, value.coerceIn(30_000, 300_000)).apply()
+
+    /** Fase L1: intervalo mínimo de captura en segundos (10..600). Remoto. */
+    var minIntervalSeconds: Long
+        get() = prefs.getLong(KEY_MIN_INTERVAL, 10L)
+        set(value) = prefs.edit().putLong(KEY_MIN_INTERVAL, value.coerceIn(10, 600)).apply()
+
+    /**
      * Tamaño configurado de la cola offline. La EVICCIÓN real la gobierna la
      * retención dura ([com.dmujeres.traccar.data.OutboxRetentionPolicy], 100 000
      * posiciones o 7 días): este valor es el umbral configurado por el admin y
@@ -717,6 +740,10 @@ class AppConfig(context: Context) {
         consistentSpeedMps: Float? = null,
         accuracyBadM: Float? = null,
         accuracyGoodM: Float? = null,
+        l1PendingIntentEnabled: Boolean? = null,
+        storeAllEnabled: Boolean? = null,
+        l1MaxUpdateDelayMs: Long? = null,
+        minIntervalSeconds: Long? = null,
     ) {
         // R8: clamp remoto (10..600 s) — un valor absurdo no debe romper la captura.
         if (interval != null) this.intervalSeconds = interval.coerceIn(10L, 600L)
@@ -734,6 +761,11 @@ class AppConfig(context: Context) {
         if (consistentSpeedMps != null && consistentSpeedMps > 0f) this.consistentSpeedMps = consistentSpeedMps
         if (accuracyBadM != null && accuracyBadM > 0f) this.accuracyBadM = accuracyBadM
         if (accuracyGoodM != null && accuracyGoodM > 0f) this.accuracyGoodM = accuracyGoodM
+        // Fase L1: switches de captura por dispositivo; los setters acotan los rangos.
+        if (l1PendingIntentEnabled != null) this.l1PendingIntentEnabled = l1PendingIntentEnabled
+        if (storeAllEnabled != null) this.storeAllEnabled = storeAllEnabled
+        if (l1MaxUpdateDelayMs != null) this.l1MaxUpdateDelayMs = l1MaxUpdateDelayMs
+        if (minIntervalSeconds != null) this.minIntervalSeconds = minIntervalSeconds
     }
 
     /** Topic de subida: dmj/v1/devices/{deviceId}/telemetry (contrato en [MobileProtocol]). */
@@ -824,6 +856,11 @@ class AppConfig(context: Context) {
          */
         fun clampRemoteBufferMax(requested: Int): Int = maxOf(requested, REMOTE_BUFFER_MIN)
         private const val KEY_INTERVAL = "interval_seconds"
+        // Fase L1: switches remotos de captura (nombres canónicos del JSON).
+        private const val KEY_L1_PENDING_INTENT = "l1_pending_intent_enabled"
+        private const val KEY_STORE_ALL = "store_all_enabled"
+        private const val KEY_L1_MAX_UPDATE_DELAY = "l1_max_update_delay_ms"
+        private const val KEY_MIN_INTERVAL = "min_interval_seconds"
         private const val KEY_BUFFER = "buffer_max"
         private const val KEY_ACK_TIMEOUT = "ack_timeout"
         private const val KEY_MAX_RETRIES = "max_retries"

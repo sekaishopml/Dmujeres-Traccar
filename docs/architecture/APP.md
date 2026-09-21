@@ -22,6 +22,7 @@ flowchart TD
         OEM[oem<br/>autostart, batería]
         RDY[readiness<br/>permisos, hechos del equipo]
         DIA[diagnostics<br/>reporte y logs]
+        CAP[capture<br/>receptor PendingIntent L1,<br/>bridge y dedupe]
     end
     subgraph Soporte
         DATA[data<br/>Room, RemoteConfig]
@@ -31,7 +32,8 @@ flowchart TD
     end
 
     UI --> TRK
-    TRK --> LOC & HLT & RCV & OBT & TRP & SEN & OEM & RDY & DATA & CFG & PLAT
+    TRK --> LOC & HLT & RCV & OBT & TRP & SEN & OEM & RDY & DATA & CFG & PLAT & CAP
+    LOC --> CAP
     LOC --> SEN & CFG & CORE
     HLT --> DATA & CFG
     RCV --> DATA & CFG

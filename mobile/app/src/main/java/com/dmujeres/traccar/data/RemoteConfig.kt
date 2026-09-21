@@ -59,6 +59,17 @@ object RemoteConfig {
                 accuracyGoodM = json.optDouble("filter_accuracy_good_m", -1.0).takeIf { it > 0 }?.toFloat()
                     ?: json.optDouble("filterAccuracyGoodM", -1.0).takeIf { it > 0 }?.toFloat()
                     ?: json.optDouble("accuracyGoodM", -1.0).takeIf { it > 0 }?.toFloat(),
+                // Fase L1: booleanos con patrón "ausente != false" y longs > 0.
+                l1PendingIntentEnabled = if (json.has("l1_pending_intent_enabled") || json.has("l1PendingIntentEnabled")) {
+                    json.optBoolean("l1_pending_intent_enabled", json.optBoolean("l1PendingIntentEnabled", false))
+                } else null,
+                storeAllEnabled = if (json.has("store_all_enabled") || json.has("storeAllEnabled")) {
+                    json.optBoolean("store_all_enabled", json.optBoolean("storeAllEnabled", false))
+                } else null,
+                l1MaxUpdateDelayMs = json.optLong("l1_max_update_delay_ms", -1).takeIf { it > 0 }
+                    ?: json.optLong("l1MaxUpdateDelayMs", -1).takeIf { it > 0 },
+                minIntervalSeconds = json.optLong("min_interval_seconds", -1).takeIf { it > 0 }
+                    ?: json.optLong("minIntervalSeconds", -1).takeIf { it > 0 },
             )
             Log.i(TAG, "Config remota aplicada para ${config.username}")
             true
