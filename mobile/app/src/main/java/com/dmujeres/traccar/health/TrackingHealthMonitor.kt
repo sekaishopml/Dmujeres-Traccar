@@ -63,8 +63,14 @@ class TrackingHealthMonitor(
     }
 
     /** Transición de estado del servicio (cambio real, no cada refresh). */
-    suspend fun persistTransition(state: TrackingState, motion: String, network: String, healthState: String) {
-        persistEvent(EVENT_STATE_CHANGE, state.name, motion, network, healthState)
+    suspend fun persistTransition(
+        state: TrackingState,
+        reason: String = state.name,
+        motion: String,
+        network: String,
+        healthState: String,
+    ) {
+        persistEvent(EVENT_STATE_CHANGE, reason, motion, network, healthState)
     }
 
     /** Evento crítico (recuperación confirmada, cuarentena, etc.). */

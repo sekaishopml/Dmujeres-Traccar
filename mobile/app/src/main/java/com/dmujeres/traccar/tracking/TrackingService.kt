@@ -27,6 +27,7 @@ import com.dmujeres.traccar.health.HealthStateProvider
 import com.dmujeres.traccar.health.TrackingHealthMonitor
 import com.dmujeres.traccar.location.FixFilter
 import com.dmujeres.traccar.location.FixTime
+import com.dmujeres.traccar.location.FusedFailurePolicy
 import com.dmujeres.traccar.location.GnssState
 import com.dmujeres.traccar.location.LocationEngine
 import com.dmujeres.traccar.location.MovementRescueController
@@ -204,9 +205,18 @@ class TrackingService : Service() {
                 // FASE 7: evidencia de transición (STATE_CHANGE) + subida async.
                 serviceScope.launch {
                     runCatching {
+                        val motion = sensors.motionStateName()
+                        // F0/E7: razón honesta del "sin fix fresco" (no inventa causa).
+                        val reason = NoFreshFixReasonPolicy.reasonFor(
+                            stateName = state.name,
+                            motion = motion,
+                            satsUsed = GnssState.satsUsed,
+                            providerFail = FusedFailurePolicy.shouldPreferPlatform(GnssState.fusedFailures),
+                        )
                         health.persistTransition(
                             state,
-                            motion = sensors.motionStateName(),
+                            reason = reason,
+                            motion = motion,
                             network = config.netLabel,
                             healthState = healthStateProvider.now(),
                         )
