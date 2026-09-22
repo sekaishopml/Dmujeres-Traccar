@@ -84,6 +84,10 @@ class MainActivity : AppCompatActivity() {
         val button = findViewById<Button>(R.id.journey_button)
         val version = findViewById<TextView>(R.id.version_label)
         val updateButton = findViewById<Button>(R.id.update_button)
+        // Consola de estado (1.1.x): arriba a la derecha.
+        findViewById<android.widget.ImageButton>(R.id.console_button).setOnClickListener {
+            startActivity(Intent(this, StatusActivity::class.java))
+        }
 
         button.setOnClickListener {
             if (DmujeresApi.isJourneyOpen(this)) {
