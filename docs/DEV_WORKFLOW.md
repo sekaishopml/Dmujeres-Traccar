@@ -3,6 +3,50 @@
 Todo lo de esta guía aplica a la app basada en el cliente oficial que vive en
 `fallback/`. El resto del monorepo (app nativa, servidor, panel) no se toca.
 
+
+## 0. Empezar de cero en tu PC (Windows / Android Studio)
+
+1. **Traer el código** (una vez):
+   ```bash
+   git clone https://github.com/sekaishopml/Dmujeres-Traccar.git
+   cd Dmujeres-Traccar
+   git submodule update --init --recursive
+   ```
+   Si ya tienes el repo clonado de antes: `git pull` (trae la carpeta `fallback/`).
+2. **Abrir en Android Studio**: `File → Open` y selecciona la carpeta **`fallback/`**
+   (no la raíz del monorepo). Espera el Gradle Sync.
+3. **Archivos locales que no vienen en git** (cópialos si los tienes):
+   - `fallback/local.properties` → lo crea Android Studio solo (ruta del SDK).
+   - `fallback/app/google-services.json` → cópialo de tu proyecto viejo
+     (`mobile/app/google-services.json`). Solo hace falta para el flavor
+     `google`; para trabajar la interfaz basta el flavor `regular`.
+   - Firma: `mobile/keystore.properties` y `mobile/keystore/debug.keystore`
+     (solo para compilar `Release`; el día a día usa `Debug`, que firma solo).
+4. **Ejecutar en el emulador**: Device Manager → Create Device (Pixel 6, API 34)
+   → elige la variante `regularDebug` → Run.
+5. **Credenciales de git** (para subir tus cambios): crea un token **nuevo** en
+   GitHub (Settings → Developer settings → Tokens) y úsalo como contraseña la
+   primera vez que hagas `git push` (Windows lo guarda en el Administrador de
+   credenciales). El token que compartiste en el chat queda comprometido:
+   rótalo.
+
+### Flujo diario (resumen)
+
+```bash
+git checkout -b mi-cambio          # rama para tu cambio
+# editar fallback/app/src/main/res/layout/activity_locked_home.xml (interfaz)
+#        fallback/app/src/main/res/values/strings.xml         (textos)
+#        fallback/app/src/main/java/org/traccar/client/*.kt   (lógica)
+bash infrastructure/scripts/build-pilot.sh --no-publish   # APK para tu teléfono
+adb install -r fallback/app/build/outputs/apk/google/release/app-google-release.apk
+bash infrastructure/scripts/build-pilot.sh                # publicar a macias
+git add -A && git commit -m "mi cambio" && git push -u origin mi-cambio
+```
+
+> En Windows los scripts `.sh` se ejecutan con **Git Bash** (viene con Git for
+> Windows) o con WSL. Si prefieres, también puedes compilar solo desde Android
+> Studio (botón Run) y pedir la publicación.
+
 ## 1. Build + publicación automática (solo macias)
 
 ```bash
