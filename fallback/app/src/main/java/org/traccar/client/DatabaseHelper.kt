@@ -106,6 +106,14 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
     }
 
     @SuppressLint("Range")
+    /** Número de ubicaciones en el buffer (cuadro "Pendientes por enviar"). */
+    fun countPositions(): Int {
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM position", null).use { cursor ->
+            if (cursor.moveToFirst()) return cursor.getInt(0)
+        }
+        return 0
+    }
+
     fun selectPosition(): Position? {
         db.rawQuery("SELECT * FROM position ORDER BY id LIMIT 1", null).use { cursor ->
             if (cursor.count > 0) {

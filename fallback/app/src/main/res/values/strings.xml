@@ -93,6 +93,14 @@
   <string name="journey_started_toast">Jornada iniciada</string>
   <string name="journey_ended_toast">Jornada finalizada</string>
   <string name="update_action">ACTUALIZAR</string>
+  <string name="pending_label">Pendientes por enviar</string>
+  <string name="battery_label">Batería</string>
+  <string name="duration_label">Duración</string>
+  <string name="journey_none_banner">Sin jornada</string>
+  <string name="journey_active_banner">Jornada activa</string>
+  <string name="journey_service_stopped_banner">Servicio detenido</string>
+  <string name="battery_value_fmt">%1$d%%</string>
+  <string name="journey_duration_fmt">%1$d h %2$d min</string>
   <string name="update_dialog_title">Actualización disponible</string>
   <string name="update_later">Más tarde</string>
   <string name="update_row_text">Actualización disponible: %1$s</string>

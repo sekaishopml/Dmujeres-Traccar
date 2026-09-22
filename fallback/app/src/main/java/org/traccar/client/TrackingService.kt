@@ -46,6 +46,7 @@ class TrackingService : Service() {
         try {
             startForeground(NOTIFICATION_ID, createNotification(this))
             Log.i(TAG, "service create")
+            isRunning = true
             sendBroadcast(Intent(ACTION_STARTED).setPackage(packageName))
             StatusActivity.addMessage(getString(R.string.status_service_create))
 
@@ -75,6 +76,7 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         Log.i(TAG, "service destroy")
         sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName))
@@ -87,7 +89,14 @@ class TrackingService : Service() {
 
     companion object {
 
+        /** Estado del FGS visible para la pantalla principal (home). */
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+
         // Explicit package name should be specified when broadcasting START/STOP notifications -
+        // it is required for manifest-declared receiver of the status widget (when running on Android 8+).
+        // Refer to https://developer.android.com/guide/components/broadcasts#manifest-declared-receivers -
         // it is required for manifest-declared receiver of the status widget (when running on Android 8+).
         // Refer to https://developer.android.com/guide/components/broadcasts#manifest-declared-receivers
         const val ACTION_STARTED = "org.traccar.action.SERVICE_STARTED"
