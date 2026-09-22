@@ -109,3 +109,11 @@ dependencies {
     googleImplementation 'com.google.android.gms:play-services-location:21.3.0'
     googleImplementation 'com.google.android.play:review:2.0.2'
 }
+
+// El flavor `regular` no usa Firebase (solo el `google`). Sin esto, Gradle
+// exige google-services.json incluso para `regularDebug` y el build local
+// falla en equipos que no tienen el archivo (que no se versiona).
+afterEvaluate {
+    tasks.matching { it.name.contains('GoogleServices') && it.name.contains('Regular') }
+        .configureEach { enabled = false }
+}
