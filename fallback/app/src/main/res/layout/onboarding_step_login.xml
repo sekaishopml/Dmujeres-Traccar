@@ -10,9 +10,17 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/onboarding_login_title"
-        android:textColor="@color/ink"
-        android:textSize="18sp"
+        android:textColor="@color/primary"
+        android:textSize="20sp"
         android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="@string/onboarding_login_subtitle"
+        android:textColor="@color/muted"
+        android:textSize="12sp" />
 
     <TextView
         android:layout_width="wrap_content"
@@ -30,6 +38,26 @@
         android:background="@drawable/bg_card"
         android:enabled="false"
         android:inputType="text"
+        android:padding="12dp"
+        android:textColor="@color/ink"
+        android:textSize="15sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="@string/onboarding_login_pass"
+        android:textColor="@color/muted"
+        android:textSize="12sp" />
+
+    <EditText
+        android:id="@+id/field_pass"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/bg_card"
+        android:enabled="false"
+        android:inputType="textPassword"
         android:padding="12dp"
         android:textColor="@color/ink"
         android:textSize="15sp" />

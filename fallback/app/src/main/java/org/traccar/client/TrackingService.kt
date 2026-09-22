@@ -47,8 +47,6 @@ class TrackingService : Service() {
             startForeground(NOTIFICATION_ID, createNotification(this))
             Log.i(TAG, "service create")
             sendBroadcast(Intent(ACTION_STARTED).setPackage(packageName))
-            // Plan B: la jornada del panel se abre/cierra con el servicio.
-            DmujeresApi.journeyStarted(this)
             StatusActivity.addMessage(getString(R.string.status_service_create))
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -77,7 +75,6 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
-        DmujeresApi.journeyEnded(this)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         Log.i(TAG, "service destroy")
         sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName))

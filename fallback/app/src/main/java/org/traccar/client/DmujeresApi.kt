@@ -23,6 +23,8 @@ object DmujeresApi {
 
     private const val TAG = "DmujeresApi"
     const val KEY_JOURNEY_ID = "journeyId"
+    const val KEY_PASSWORD = "password"
+    const val KEY_JOURNEY_STARTED_AT = "journeyStartedAt"
     const val KEY_JOURNEY_OPEN = "journeyOpen"
     private const val CLIENT = "dmujeres-traccar"
     private const val GITHUB_REPO = "sekaishopml/Dmujeres-Traccar"
@@ -32,6 +34,14 @@ object DmujeresApi {
 
     private fun deviceId(context: Context): String =
         prefs(context).getString(MainFragment.KEY_DEVICE, "").orEmpty()
+
+    /**
+     * Llave del canal móvil: la contraseña que CCTV entregó (si el técnico la
+     * cambió en modo avanzado) o la de fábrica embebida en el build.
+     */
+    fun apiKey(context: Context): String =
+        prefs(context).getString(KEY_PASSWORD, "").orEmpty()
+            .ifBlank { BuildConfig.MOBILE_HTTP_API_KEY }
 
     /** Base web (999) derivada de la URL OsmAnd configurada (5055). */
     fun webBase(context: Context): String {
@@ -56,7 +66,7 @@ object DmujeresApi {
                 connection.readTimeout = 8_000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
-                connection.setRequestProperty("X-Api-Key", BuildConfig.MOBILE_HTTP_API_KEY)
+                connection.setRequestProperty("X-Api-Key", apiKey(context))
                 connection.setRequestProperty("X-Device-Id", device)
                 connection.outputStream.use { it.write(body.toString().toByteArray()) }
                 ok = connection.responseCode in 200..299
@@ -84,6 +94,7 @@ object DmujeresApi {
         val journeyId = System.currentTimeMillis()
         prefs(context).edit()
             .putLong(KEY_JOURNEY_ID, journeyId)
+            .putLong(KEY_JOURNEY_STARTED_AT, System.currentTimeMillis())
             .putBoolean(KEY_JOURNEY_OPEN, true)
             .apply()
         post(
@@ -95,6 +106,16 @@ object DmujeresApi {
                 .put("journeyId", journeyId)
                 .put("client", CLIENT),
         )
+    }
+
+    fun isJourneyOpen(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_JOURNEY_OPEN, false)
+
+    /** Hora local del inicio de jornada, para el texto "desde las HH:MM". */
+    fun journeyStartedAtLabel(context: Context): String {
+        val startedAt = prefs(context).getLong(KEY_JOURNEY_STARTED_AT, 0L)
+        val format = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        return if (startedAt > 0L) format.format(java.util.Date(startedAt)) else "--:--"
     }
 
     /** Fin de jornada: cierra la jornada abierta (si la hay). */
@@ -140,7 +161,7 @@ object DmujeresApi {
         val device = deviceId(context)
         Thread {
             if (base.isNotBlank() && device.isNotBlank()) {
-                val server = tryServerOta(base, device)
+                val server = tryServerOta(base, device, apiKey(context))
                 if (server != null) {
                     onUpdate(server.first, server.second, server.third)
                     return@Thread
@@ -153,13 +174,13 @@ object DmujeresApi {
         }.start()
     }
 
-    private fun tryServerOta(base: String, device: String): Triple<String, String, String>? {
+    private fun tryServerOta(base: String, device: String, key: String): Triple<String, String, String>? {
         return try {
             val url = URL("$base/api/mobile/v1/ota?deviceId=$device&versionCode=${BuildConfig.VERSION_CODE}")
             val connection = url.openConnection() as HttpURLConnection
             connection.connectTimeout = 8_000
             connection.readTimeout = 8_000
-            connection.setRequestProperty("X-Api-Key", BuildConfig.MOBILE_HTTP_API_KEY)
+            connection.setRequestProperty("X-Api-Key", key)
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
             val json = JSONObject(body)

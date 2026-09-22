@@ -59,7 +59,10 @@ class OnboardingActivity : AppCompatActivity() {
 
         primary.setOnClickListener {
             when (step) {
-                0 -> showPermissions()
+                0 -> {
+                    persistLoginFields()
+                    showPermissions()
+                }
                 else -> if (requiredGranted()) finishOnboarding() else requestMissing()
             }
         }
@@ -81,16 +84,34 @@ class OnboardingActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val debug = prefs.getBoolean(MainFragment.KEY_DEBUG, false)
         val user = view.findViewById<EditText>(R.id.field_user)
+        val pass = view.findViewById<EditText>(R.id.field_pass)
         val url = view.findViewById<EditText>(R.id.field_url)
         val urlGroup = view.findViewById<LinearLayout>(R.id.url_group)
         user.setText(prefs.getString(MainFragment.KEY_DEVICE, ""))
+        // La contraseña es la llave del canal móvil: se muestra enmascarada y
+        // solo es editable en modo avanzado (5 toques en la versión).
+        pass.setText(DmujeresApi.apiKey(this))
         url.setText(prefs.getString(MainFragment.KEY_URL, ""))
         user.isEnabled = debug
+        pass.isEnabled = debug
         urlGroup.visibility = if (debug) LinearLayout.VISIBLE else LinearLayout.GONE
         primary.text = getString(R.string.onboarding_continue)
     }
 
     // ── Paso 2: permisos y batería ──────────────────────────────────────────
+
+    /** Guarda lo editado en modo avanzado (id, contraseña, servidor). */
+    private fun persistLoginFields() {
+        val view = container.getChildAt(0) ?: return
+        val user = view.findViewById<EditText>(R.id.field_user) ?: return
+        val pass = view.findViewById<EditText>(R.id.field_pass) ?: return
+        val url = view.findViewById<EditText>(R.id.field_url) ?: return
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+            .putString(MainFragment.KEY_DEVICE, user.text.toString().trim())
+            .putString(DmujeresApi.KEY_PASSWORD, pass.text.toString().trim())
+            .putString(MainFragment.KEY_URL, url.text.toString().trim())
+            .apply()
+    }
 
     private fun showPermissions() {
         step = 1
