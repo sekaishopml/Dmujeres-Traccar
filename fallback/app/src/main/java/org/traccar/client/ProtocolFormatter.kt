@@ -19,6 +19,13 @@ import android.net.Uri
 
 object ProtocolFormatter {
 
+    /** m/s → nudos (unidad del protocolo OsmAnd). */
+    private const val KNOTS_PER_MPS = 1.9438444924406
+
+    /** Velocidad a reportar: 0 si los sensores confirman quietud. */
+    private fun reportedSpeedKnots(position: Position): Double =
+        if (MotionMonitor.isMoving() == false) 0.0 else position.speed * KNOTS_PER_MPS
+
     fun formatRequest(url: String, position: Position, alarm: String? = null): String {
         val serverUrl = Uri.parse(url)
         val builder = serverUrl.buildUpon()
@@ -26,7 +33,11 @@ object ProtocolFormatter {
             .appendQueryParameter("timestamp", (position.time.time / 1000).toString())
             .appendQueryParameter("lat", position.latitude.toString())
             .appendQueryParameter("lon", position.longitude.toString())
-            .appendQueryParameter("speed", position.speed.toString())
+            // El protocolo OsmAnd/Traccar interpreta `speed` en NUDOS y el fix
+            // de Android viene en m/s. Además, con el equipo QUIETO la velocidad
+            // del GPS tiene ruido (0.4-4 nudos) y el panel lo marcaba EN LÍNEA:
+            // si el sensor de movimiento dice detenido, se reporta 0.
+            .appendQueryParameter("speed", reportedSpeedKnots(position).toString())
             .appendQueryParameter("bearing", position.course.toString())
             .appendQueryParameter("altitude", position.altitude.toString())
             .appendQueryParameter("accuracy", position.accuracy.toString())
