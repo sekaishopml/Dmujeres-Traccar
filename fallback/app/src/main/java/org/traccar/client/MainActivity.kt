@@ -163,7 +163,6 @@ class MainActivity : AppCompatActivity() {
                 anim.cancel()
                 skeleton.visibility = View.GONE
                 content.visibility = View.VISIBLE
-                pendingValue = pendingCount
                 refreshLockedHome()
             }
         }.start()
@@ -172,17 +171,24 @@ class MainActivity : AppCompatActivity() {
         durationTicker = object : Runnable {
             override fun run() {
                 if (isFinishing || isDestroyed) return
-                // Refresca todo (duración, ubicación, jornada) cada 30 s.
-                refreshLockedHome()
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, 30_000L)
+                // Reprogramar SIEMPRE primero y refrescar a prueba de fallos: si
+                // algo lanza, la cadena de refresco no se puede quedar muerta
+                // (pasó: los cuadros quedaron congelados).
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, 15_000L)
+                runCatching { refreshLockedHome() }
             }
         }
         refreshLockedHome()
     }
 
-    private var pendingValue = 0
 
     /** Banner de estado (3 colores), cuadros y botón con el estado real. */
+    override fun onResume() {
+        super.onResume()
+        // Al volver a la pantalla principal, refresco inmediato.
+        runCatching { refreshLockedHome() }
+    }
+
     private fun refreshLockedHome() {
         if (isFinishing || isDestroyed) return
         val open = DmujeresApi.isJourneyOpen(this)
@@ -250,7 +256,15 @@ class MainActivity : AppCompatActivity() {
                 },
             ),
         )
-        findViewById<TextView>(R.id.pending_value)?.text = pendingValue.toString()
+        // El búfer se relee en cada refresco (30 s): antes solo se leía al
+        // arrancar y la tarjeta quedaba congelada en 0.
+        Thread {
+            val pending = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                findViewById<TextView>(R.id.pending_value)?.text = pending.toString()
+            }
+        }.start()
         refreshDuration()
     }
 
