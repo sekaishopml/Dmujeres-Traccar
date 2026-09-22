@@ -17,6 +17,7 @@ package org.traccar.client
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import androidx.appcompat.app.AlertDialog
 import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
@@ -35,6 +36,21 @@ class MainActivity : AppCompatActivity() {
         // Plan B: el servicio queda siempre encendido (sin interruptor visible).
         prefs.edit().putBoolean(MainFragment.KEY_STATUS, true).apply()
         ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+        // Aviso emergente de actualización (además del banner de la pantalla
+        // principal): cubre el caso en que el usuario no ve la fila del banner.
+        DmujeresApi.checkOta(this) { label, url, sha256 ->
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.update_dialog_title))
+                    .setMessage(getString(R.string.update_row_text, label))
+                    .setPositiveButton(R.string.update_action) { _, _ ->
+                        OtaUpdater.downloadAndInstall(this, url, sha256)
+                    }
+                    .setNegativeButton(R.string.update_later, null)
+                    .show()
+            }
+        }
     }
 
 }

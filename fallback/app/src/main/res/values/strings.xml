@@ -93,6 +93,8 @@
   <string name="journey_started_toast">Jornada iniciada</string>
   <string name="journey_ended_toast">Jornada finalizada</string>
   <string name="update_action">ACTUALIZAR</string>
+  <string name="update_dialog_title">Actualización disponible</string>
+  <string name="update_later">Más tarde</string>
   <string name="update_row_text">Actualización disponible: %1$s</string>
   <string name="update_banner_title">Actualización disponible: %1$s</string>
   <string name="update_banner_summary">Toca para descargar e instalar</string>
