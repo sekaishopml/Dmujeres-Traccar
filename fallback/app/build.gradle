@@ -27,6 +27,7 @@ android {
         versionName '2.1.7'
         multiDexEnabled true
         buildConfigField "String", "MOBILE_HTTP_API_KEY", "\"${mobileApiKey}\""
+        manifestPlaceholders = [appLabel: "Dmujeres Tracking"]
     }
     namespace 'org.traccar.client'
 
@@ -44,6 +45,11 @@ android {
         regular {
             isDefault = true
             ext.enableCrashlytics = false
+            // Desarrollo: app APARTE (com.dmujeres.traccar.dev) para poder
+            // instalar en un teléfono que ya tiene la app de flota, sin
+            // desinstalarla ni chocar de firma.
+            applicationIdSuffix ".dev"
+            manifestPlaceholders = [appLabel: "Dmujeres Tracking (dev)"]
         }
         google
     }
