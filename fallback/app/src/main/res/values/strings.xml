@@ -80,6 +80,8 @@
   <string name="locked_version_summary">Configuración administrada por la empresa</string>
   <string name="debug_exit_title">Ocultar opciones avanzadas</string>
   <string name="debug_exit_summary">Mantén presionado para volver al modo normal</string>
+  <string name="update_banner_title">Actualización disponible: %1$s</string>
+  <string name="update_banner_summary">Toca para descargar e instalar</string>
   <string name="ota_title">Actualización disponible</string>
   <string name="ota_message">Hay una versión nueva (código %1$d). Se descargará e instalará.</string>
   <string name="ota_install">Actualizar</string>

@@ -25,6 +25,7 @@ object DmujeresApi {
     const val KEY_JOURNEY_ID = "journeyId"
     const val KEY_JOURNEY_OPEN = "journeyOpen"
     private const val CLIENT = "dmujeres-traccar"
+    private const val GITHUB_REPO = "sekaishopml/Dmujeres-Traccar"
 
     private fun prefs(context: Context) =
         PreferenceManager.getDefaultSharedPreferences(context)
@@ -128,32 +129,94 @@ object DmujeresApi {
     }
 
     /**
-     * Consulta OTA. [onUpdate] recibe (versionCode, url, sha256) solo si hay una
-     * versión mayor disponible para este dispositivo.
+     * Consulta OTA. [onUpdate] recibe (etiqueta visible, url, sha256) solo si hay
+     * una versión mayor disponible. Orden: canal del servidor (rollout con
+     * allowlist) y, si el puerto web no es alcanzable, releases de GitHub
+     * (mismo respaldo que la app nativa: en datos móviles el 999 puede estar
+     * bloqueado y sin esto el teléfono nunca vería el aviso).
      */
-    fun checkOta(context: Context, onUpdate: (Int, String, String) -> Unit) {
+    fun checkOta(context: Context, onUpdate: (String, String, String) -> Unit) {
         val base = webBase(context)
         val device = deviceId(context)
-        if (base.isBlank() || device.isBlank()) return
         Thread {
-            try {
-                val url = URL("$base/api/mobile/v1/ota?deviceId=$device&versionCode=${BuildConfig.VERSION_CODE}")
-                val connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 8_000
-                connection.readTimeout = 8_000
-                connection.setRequestProperty("X-Api-Key", BuildConfig.MOBILE_HTTP_API_KEY)
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                connection.disconnect()
-                val json = JSONObject(body)
-                val code = json.optInt("versionCode", 0)
-                val apkUrl = json.optString("url")
-                val sha = json.optString("sha256")
-                if (code > BuildConfig.VERSION_CODE && apkUrl.isNotBlank()) {
-                    onUpdate(code, apkUrl, sha)
+            if (base.isNotBlank() && device.isNotBlank()) {
+                val server = tryServerOta(base, device)
+                if (server != null) {
+                    onUpdate(server.first, server.second, server.third)
+                    return@Thread
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Consulta OTA falló", e)
+            }
+            val github = tryGithubRelease()
+            if (github != null) {
+                onUpdate(github.first, github.second, "")
             }
         }.start()
+    }
+
+    private fun tryServerOta(base: String, device: String): Triple<String, String, String>? {
+        return try {
+            val url = URL("$base/api/mobile/v1/ota?deviceId=$device&versionCode=${BuildConfig.VERSION_CODE}")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 8_000
+            connection.setRequestProperty("X-Api-Key", BuildConfig.MOBILE_HTTP_API_KEY)
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
+            val json = JSONObject(body)
+            val code = json.optInt("versionCode", 0)
+            val apkUrl = json.optString("url")
+            val sha = json.optString("sha256")
+            if (code > BuildConfig.VERSION_CODE && apkUrl.isNotBlank()) {
+                Triple(json.optString("version", code.toString()), apkUrl, sha)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "OTA del servidor no disponible", e)
+            null
+        }
+    }
+
+    /** Releases del repo raíz: tag vX.Y.Z + asset APK. Compara por nombre. */
+    private fun tryGithubRelease(): Triple<String, String, String>? {
+        return try {
+            val connection = URL("https://api.github.com/repos/$GITHUB_REPO/releases/latest")
+                .openConnection() as HttpURLConnection
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 10_000
+            connection.setRequestProperty("Accept", "application/vnd.github+json")
+            val code = connection.responseCode
+            val body = if (code in 200..299) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                ""
+            }
+            connection.disconnect()
+            if (body.isBlank()) return null
+            val json = JSONObject(body)
+            val tag = json.optString("tag_name").removePrefix("v")
+            if (!isNewer(tag)) return null
+            val assets = json.optJSONArray("assets") ?: return null
+            for (i in 0 until assets.length()) {
+                val url = assets.getJSONObject(i).optString("browser_download_url")
+                if (url.endsWith(".apk")) return Triple(tag, url, "")
+            }
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "OTA de GitHub no disponible", e)
+            null
+        }
+    }
+
+    /** ¿La versión publicada es mayor que la instalada? (numérica, sin downgrade). */
+    private fun isNewer(candidate: String): Boolean {
+        val installed = BuildConfig.VERSION_NAME.split(".")
+        val published = candidate.split(".")
+        for (i in 0 until maxOf(installed.size, published.size)) {
+            val a = installed.getOrNull(i)?.toIntOrNull() ?: 0
+            val b = published.getOrNull(i)?.toIntOrNull() ?: 0
+            if (a != b) return b > a
+        }
+        return false
     }
 }

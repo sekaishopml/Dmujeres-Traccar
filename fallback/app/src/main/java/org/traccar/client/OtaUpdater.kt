@@ -21,20 +21,7 @@ object OtaUpdater {
     private const val TAG = "OtaUpdater"
     private const val APK_NAME = "dmujeres-update.apk"
 
-    fun checkAndPrompt(activity: Activity) {
-        DmujeresApi.checkOta(activity) { versionCode, url, sha256 ->
-            activity.runOnUiThread {
-                AlertDialog.Builder(activity)
-                    .setTitle(R.string.ota_title)
-                    .setMessage(activity.getString(R.string.ota_message, versionCode))
-                    .setPositiveButton(R.string.ota_install) { _, _ -> downloadAndInstall(activity, url, sha256) }
-                    .setNegativeButton(R.string.ota_later, null)
-                    .show()
-            }
-        }
-    }
-
-    private fun downloadAndInstall(activity: Activity, url: String, sha256: String) {
+    fun downloadAndInstall(activity: Activity, url: String, sha256: String) {
         Thread {
             try {
                 val target = File(activity.cacheDir, APK_NAME)

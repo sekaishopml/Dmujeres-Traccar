@@ -143,6 +143,7 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
 
     override fun onResume() {
         super.onResume()
+        refreshUpdateBanner()
         sharedPreferences.registerOnSharedPreferenceChangeListener(this)
     }
 
@@ -230,6 +231,28 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
 
     private fun isDebug(): Boolean =
         sharedPreferences?.getBoolean(KEY_DEBUG, false) == true
+
+    /** Banner persistente: visible mientras haya una versión mayor publicada. */
+    private fun refreshUpdateBanner() {
+        val context = context ?: return
+        DmujeresApi.checkOta(context) { label, url, sha256 ->
+            activity?.runOnUiThread {
+                if (!isAdded || view == null) return@runOnUiThread
+                if (preferenceScreen.findPreference<Preference>(KEY_UPDATE_BANNER) != null) return@runOnUiThread
+                val banner = Preference(requireContext()).apply {
+                    key = KEY_UPDATE_BANNER
+                    title = getString(R.string.update_banner_title, label)
+                    summary = getString(R.string.update_banner_summary)
+                    setOnPreferenceClickListener {
+                        OtaUpdater.downloadAndInstall(requireActivity(), url, sha256)
+                        true
+                    }
+                }
+                preferenceScreen.addPreference(banner)
+                banner.order = 0
+            }
+        }
+    }
 
     /** Modo normal: sin configuración visible. Solo estado y versión (5 toques). */
     private fun applyLockedMode() {
@@ -379,6 +402,7 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
         const val KEY_STATUS = "status"
         const val KEY_DEBUG = "debugMode"
         const val KEY_ONBOARDED = "onboarded"
+        const val KEY_UPDATE_BANNER = "update_banner"
         const val KEY_BUFFER = "buffer"
         const val KEY_WAKELOCK = "wakelock"
         private const val PERMISSIONS_REQUEST_LOCATION = 2

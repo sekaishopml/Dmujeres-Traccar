@@ -35,7 +35,6 @@ class MainActivity : AppCompatActivity() {
         // Plan B: el servicio queda siempre encendido (sin interruptor visible).
         prefs.edit().putBoolean(MainFragment.KEY_STATUS, true).apply()
         ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
-        OtaUpdater.checkAndPrompt(this)
     }
 
 }
