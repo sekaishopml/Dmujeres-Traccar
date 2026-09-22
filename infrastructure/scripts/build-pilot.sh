@@ -65,7 +65,8 @@ fi
 # ── 3) publicar SOLO para macias ──────────────────────────────────────────────
 # Fail-closed: se fija la allowlist del piloto antes de publicar, para que
 # ninguna versión nueva llegue al resto de la flota por descuido.
-python3 - "$ROOT" <<'PY'
+DEST_ROOT="${DMJ_PUBLISH_ROOT:-$ROOT}"
+python3 - "$DEST_ROOT" <<'PY'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
 for directory in (root / "dashboard/public", root / "dashboard/build"):
@@ -80,6 +81,7 @@ PY
 NOTES="${NOTES:-Actualizar a la versión $NEXT_NAME}"
 OTA_PUBLIC_BASE_URL="${OTA_PUBLIC_BASE_URL:-http://68.168.20.219:999}" \
   OTA_ALLOW_HTTP="${OTA_ALLOW_HTTP:-1}" \
+  DMJ_PUBLISH_ROOT="$DEST_ROOT" \
   bash "$ROOT/infrastructure/scripts/publish-ota.sh" "$APK" "$NEXT_NAME" "$NOTES"
 
 echo ">> macias verá el aviso al abrir la app (banner + botón ACTUALIZAR)"

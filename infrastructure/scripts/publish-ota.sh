@@ -23,6 +23,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Clon de trabajo distinto al que sirve el panel: DMJ_PUBLISH_ROOT apunta a la
+# copia en vivo (/DMujeres-Tracking) para publicar APK y latest.json allí.
+DEST_ROOT="${DMJ_PUBLISH_ROOT:-$ROOT}"
 APK="${1:?Uso: publish-ota.sh <ruta-apk> <version> <notes>}"
 VERSION="${2:?Uso: publish-ota.sh <ruta-apk> <version> <notes>}"
 NOTES="${3:?Uso: publish-ota.sh <ruta-apk> <version> <notes>}"
@@ -51,7 +54,7 @@ AAPT="$(command -v aapt || true)"
 VERSION_CODE="$("$AAPT" dump badging "$APK" 2>/dev/null | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)"
 [[ -n "$VERSION_CODE" ]] || { echo "ERROR: no pude leer versionCode del APK" >&2; exit 1; }
 
-for dir in "$ROOT/dashboard/build" "$ROOT/dashboard/public"; do
+for dir in "$DEST_ROOT/dashboard/build" "$DEST_ROOT/dashboard/public"; do
   [[ -d "$dir" ]] || { echo "ERROR: falta $dir" >&2; exit 1; }
   cp "$APK" "$dir/$ASSET"
   SHA256="$(sha256sum "$dir/$ASSET" | cut -d' ' -f1)"
