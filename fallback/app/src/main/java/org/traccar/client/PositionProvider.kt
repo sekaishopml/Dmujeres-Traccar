@@ -38,7 +38,7 @@ abstract class PositionProvider(
     protected var preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
     protected var deviceId = preferences.getString(MainFragment.KEY_DEVICE, "undefined")!!
     protected var interval = preferences.getString(MainFragment.KEY_INTERVAL, "60")!!.toLong() * 1000
-    protected var distance: Double = preferences.getString(MainFragment.KEY_DISTANCE, "50")!!.toInt().toDouble()
+    protected var distance: Double = preferences.getString(MainFragment.KEY_DISTANCE, "10")!!.toInt().toDouble()
     protected var angle: Double = preferences.getString(MainFragment.KEY_ANGLE, "15")!!.toInt().toDouble()
     private var lastLocation: Location? = null
 
@@ -69,13 +69,12 @@ abstract class PositionProvider(
             0.0
         }
         val impliedSpeed = if (dtSeconds > 0) leg / dtSeconds else 0.0
-        // Consistencia velocidad/desplazamiento: descarta fixes "saltarines" de
-        // la ubicación por red (posición equivocada con precisión declarada buena).
-        if (location != null && lastLocation != null &&
-            !PositionConsistencyPolicy.isConsistent(leg, dtSeconds, location.speed.toDouble())
-        ) {
-            Log.i(TAG, "fix inconsistente descartado: ${leg.toInt()}m en ${dtSeconds.toInt()}s")
-            return
+        // Velocidad honesta: si el sensor confirma quietud Y no se movió ni 10 m
+        // desde el último punto aceptado, se reporta 0 (evita que el ruido del
+        // GPS marque "en línea" al equipo detenido). Si se movió, se reporta la
+        // velocidad real aunque el sensor no lo haya notado (caminatas cortas).
+        if (location != null && MotionMonitor.isMoving() == false && leg < MIN_LEG_FOR_SPEED_M) {
+            location.speed = 0f
         }
         if (location != null &&
             (lastLocation == null || location.time - lastLocation.time >= reportIntervalMs || distance > 0
@@ -114,6 +113,9 @@ abstract class PositionProvider(
 
         /** Velocidad implícita mínima (m/s) para que el giro cuente. */
         const val ANGLE_MIN_SPEED_MPS = 1.5
+
+        /** Bajo esta pata (m) el equipo se considera realmente quieto (velocidad 0). */
+        const val MIN_LEG_FOR_SPEED_M = 10.0
     }
 
 }

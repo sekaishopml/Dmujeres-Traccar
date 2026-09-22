@@ -37,7 +37,7 @@
         android:title="@string/settings_interval_title" />
 
     <EditTextPreference
-        android:defaultValue="50"
+        android:defaultValue="10"
         android:key="distance"
         android:inputType="number"
         android:summary="@string/settings_distance_summary"
