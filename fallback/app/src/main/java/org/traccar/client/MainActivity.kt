@@ -35,6 +35,10 @@ class MainActivity : AppCompatActivity() {
     private var tapFirstAt = 0L
     private var tapLastAt = 0L
 
+    /** Último número de posiciones en el búfer, leído por el refresco de la tarjeta. */
+    @Volatile
+    private var cachedPending = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -271,6 +275,8 @@ class MainActivity : AppCompatActivity() {
             val pending = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
+                // Guardamos el valor para que canSend() sepa si queda algo por enviar.
+                cachedPending = pending
                 findViewById<TextView>(R.id.pending_value)?.text = pending.toString()
             }
         }.start()
@@ -296,21 +302,11 @@ class MainActivity : AppCompatActivity() {
     private fun refreshLockedHomeDuration() = refreshDuration()
 
     /**
-     * ¿La app puede enviar ahora? Se usa la MISMA señal que el controlador
-     * (NetworkManager del cliente) más el resultado real de los envíos: así el
-     * estado "SIN CONEXIÓN" refleja lo que de verdad pasa, también con VPN.
+     * ¿La app puede enviar ahora? Usamos señales reales de la app (resultado de
+     * los envíos + búfer pendiente) y no las APIs del sistema (NetworkManager /
+     * ConnectivityManager), porque en algunas ROMs y con VPN activa mienten.
      */
-    private fun canSend(): Boolean {
-        val online = runCatching {
-            NetworkManager(
-                this,
-                object : NetworkManager.NetworkHandler {
-                    override fun onNetworkUpdate(isOnline: Boolean) = Unit
-                },
-            ).isOnline
-        }.getOrDefault(true)
-        return online && !ConnectionState.isFailing()
-    }
+    private fun canSend(): Boolean = !ConnectionState.isFailing() && cachedPending == 0
 
     private fun readBattery(): Pair<Int, Boolean> {
         val intent = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
