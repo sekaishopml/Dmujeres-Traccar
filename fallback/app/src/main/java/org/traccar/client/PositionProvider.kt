@@ -69,6 +69,14 @@ abstract class PositionProvider(
             0.0
         }
         val impliedSpeed = if (dtSeconds > 0) leg / dtSeconds else 0.0
+        // Consistencia velocidad/desplazamiento: descarta fixes "saltarines" de
+        // la ubicación por red (posición equivocada con precisión declarada buena).
+        if (location != null && lastLocation != null &&
+            !PositionConsistencyPolicy.isConsistent(leg, dtSeconds, location.speed.toDouble())
+        ) {
+            Log.i(TAG, "fix inconsistente descartado: ${leg.toInt()}m en ${dtSeconds.toInt()}s")
+            return
+        }
         if (location != null &&
             (lastLocation == null || location.time - lastLocation.time >= reportIntervalMs || distance > 0
                     && leg >= distance || angle > 0
