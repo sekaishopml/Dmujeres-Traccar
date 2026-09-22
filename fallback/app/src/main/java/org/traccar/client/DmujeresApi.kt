@@ -135,6 +135,32 @@ object DmujeresApi {
         )
     }
 
+    /**
+     * ¿El usuario existe en el servidor? null = no se pudo verificar (sin red).
+     * Se usa el endpoint de configuración: 200 = autorizado, 404 = desconocido.
+     */
+    fun userExists(context: Context, userId: String): Boolean? {
+        val base = webBase(context)
+        if (base.isBlank() || userId.isBlank()) return null
+        return try {
+            val connection = URL("$base/api/mobile/v1/config").openConnection() as HttpURLConnection
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 8_000
+            connection.setRequestProperty("X-Api-Key", apiKey(context))
+            connection.setRequestProperty("X-Device-Id", userId)
+            val code = connection.responseCode
+            connection.disconnect()
+            when (code) {
+                in 200..299 -> true
+                404 -> false
+                else -> null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo validar el usuario", e)
+            null
+        }
+    }
+
     /** Reporte al canal de diagnósticos (crashes incluidos; ver panel). */
     fun postDiagnostics(context: Context, body: JSONObject) {
         post(context, "/api/mobile/v1/diagnostics", body)

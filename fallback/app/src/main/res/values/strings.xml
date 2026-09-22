@@ -61,6 +61,9 @@
   <string name="onboarding_login_pass">Contraseña</string>
   <string name="onboarding_login_user">Usuario</string>
   <string name="onboarding_login_url">Servidor</string>
+  <string name="login_user_required">Escribe tu usuario para continuar</string>
+  <string name="login_user_unknown">Usuario no autorizado · revisa con CCTV</string>
+  <string name="login_checking">Validando…</string>
   <string name="onboarding_login_hint">Ingresa los datos que te entregó CCTV. El resto ya está configurado.</string>
   <string name="onboarding_perms_title">Permisos y batería</string>
   <string name="onboarding_perms_hint">Para trazar la ruta con la pantalla apagada, acepta cada permiso.</string>

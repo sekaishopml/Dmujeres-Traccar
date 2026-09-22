@@ -61,7 +61,7 @@ class OnboardingActivity : AppCompatActivity() {
             when (step) {
                 0 -> {
                     persistLoginFields()
-                    showPermissions()
+                    validateAndContinue()
                 }
                 else -> if (requiredGranted()) finishOnboarding() else requestMissing()
             }
@@ -88,12 +88,15 @@ class OnboardingActivity : AppCompatActivity() {
         val url = view.findViewById<EditText>(R.id.field_url)
         val urlGroup = view.findViewById<LinearLayout>(R.id.url_group)
         user.setText(prefs.getString(MainFragment.KEY_DEVICE, ""))
-        // La contraseña es la llave del canal móvil: se muestra enmascarada y
-        // solo es editable en modo avanzado (5 toques en la versión).
-        pass.setText(DmujeresApi.apiKey(this))
+        // La contraseña la escribe el colaborador (la que le entregó CCTV); el
+        // canal móvil se autentica aparte con la llave de la empresa.
+        pass.setText(prefs.getString(DmujeresApi.KEY_PASSWORD, ""))
         url.setText(prefs.getString(MainFragment.KEY_URL, ""))
-        user.isEnabled = debug
-        pass.isEnabled = debug
+        // Campos SIEMPRE editables: cada quien escribe su usuario y su clave
+        // (el servidor solo se muestra en modo avanzado).
+        user.isEnabled = true
+        pass.isEnabled = true
+        url.isEnabled = true
         urlGroup.visibility = if (debug) LinearLayout.VISIBLE else LinearLayout.GONE
         primary.text = getString(R.string.onboarding_continue)
     }
@@ -111,6 +114,33 @@ class OnboardingActivity : AppCompatActivity() {
             .putString(DmujeresApi.KEY_PASSWORD, pass.text.toString().trim())
             .putString(MainFragment.KEY_URL, url.text.toString().trim())
             .apply()
+    }
+
+    /**
+     * Antes de pasar a permisos: el usuario es obligatorio y, si hay red, se
+     * verifica contra el servidor (debe existir). Así nadie entra con una
+     * credencial que no está autorizada.
+     */
+    private fun validateAndContinue() {
+        val user = PreferenceManager.getDefaultSharedPreferences(this)
+            .getString(MainFragment.KEY_DEVICE, "").orEmpty().trim()
+        if (user.isEmpty()) {
+            Toast.makeText(this, R.string.login_user_required, Toast.LENGTH_LONG).show()
+            return
+        }
+        primary.isEnabled = false
+        primary.text = getString(R.string.login_checking)
+        Thread {
+            val exists = DmujeresApi.userExists(this, user)
+            runOnUiThread {
+                primary.isEnabled = true
+                primary.text = getString(R.string.onboarding_continue)
+                when (exists) {
+                    false -> Toast.makeText(this, R.string.login_user_unknown, Toast.LENGTH_LONG).show()
+                    else -> showPermissions()
+                }
+            }
+        }.start()
     }
 
     private fun showPermissions() {
