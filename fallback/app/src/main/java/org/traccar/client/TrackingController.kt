@@ -212,10 +212,12 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
         sendRequestAsync(request, object : RequestHandler {
             override fun onComplete(success: Boolean) {
                 if (success) {
+                    ConnectionState.noteSuccess(System.currentTimeMillis())
                     if (buffer) {
                         delete(position)
                     }
                 } else {
+                    ConnectionState.noteFailure(System.currentTimeMillis())
                     StatusActivity.addMessage(context.getString(R.string.status_send_fail))
                     if (buffer) {
                         retry()

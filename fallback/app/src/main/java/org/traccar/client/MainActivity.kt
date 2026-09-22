@@ -208,9 +208,11 @@ class MainActivity : AppCompatActivity() {
         val pillText = findViewById<TextView>(R.id.pill_text)
         val button = findViewById<Button>(R.id.journey_button)
 
+        // Estado visible (los mismos 4 del panel): deshabilitado (jornada
+        // apagada), sin conexión (no puede enviar), detenido (quieto) o en línea
+        // (en movimiento). Ubicación apagada tiene prioridad: impide trazar.
+        val motionState = MotionMonitor.isMoving()
         when {
-            // Primero lo que impide trazar: sin ubicación no hay ruta, aunque
-            // la jornada esté abierta.
             !locationOn -> {
                 pill.setBackgroundResource(R.drawable.bg_pill_red)
                 pillText.text = getString(R.string.pill_location_off)
@@ -222,26 +224,33 @@ class MainActivity : AppCompatActivity() {
                     if (open) R.string.journey_stop_upper else R.string.journey_start_upper,
                 )
             }
-            open && running -> {
-                pill.setBackgroundResource(R.drawable.bg_pill_green)
-                pillText.text = getString(R.string.pill_active)
+            !open -> {
+                pill.setBackgroundResource(R.drawable.bg_pill_gray)
+                pillText.text = getString(R.string.pill_disabled)
+                pillText.setTextColor(getColor(R.color.white))
+                button.setBackgroundResource(R.drawable.bg_button_green)
+                button.text = getString(R.string.journey_start_upper)
+            }
+            !canSend() -> {
+                pill.setBackgroundResource(R.drawable.bg_pill_orange)
+                pillText.text = getString(R.string.pill_no_connection)
                 pillText.setTextColor(getColor(R.color.white))
                 button.setBackgroundResource(R.drawable.bg_button_primary)
                 button.text = getString(R.string.journey_stop_upper)
             }
-            open && !running -> {
-                pill.setBackgroundResource(R.drawable.bg_pill_white)
-                pillText.text = getString(R.string.pill_stopped)
-                pillText.setTextColor(getColor(R.color.primary))
+            motionState == true -> {
+                pill.setBackgroundResource(R.drawable.bg_pill_green)
+                pillText.text = getString(R.string.pill_online)
+                pillText.setTextColor(getColor(R.color.white))
                 button.setBackgroundResource(R.drawable.bg_button_primary)
                 button.text = getString(R.string.journey_stop_upper)
             }
             else -> {
-                pill.setBackgroundResource(R.drawable.bg_pill_red)
-                pillText.text = getString(R.string.pill_none)
+                pill.setBackgroundResource(R.drawable.bg_pill_blue)
+                pillText.text = getString(R.string.pill_stopped)
                 pillText.setTextColor(getColor(R.color.white))
-                button.setBackgroundResource(R.drawable.bg_button_green)
-                button.text = getString(R.string.journey_start_upper)
+                button.setBackgroundResource(R.drawable.bg_button_primary)
+                button.text = getString(R.string.journey_stop_upper)
             }
         }
 
@@ -285,6 +294,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshLockedHomeDuration() = refreshDuration()
+
+    /**
+     * ¿La app puede enviar ahora? Se usa la MISMA señal que el controlador
+     * (NetworkManager del cliente) más el resultado real de los envíos: así el
+     * estado "SIN CONEXIÓN" refleja lo que de verdad pasa, también con VPN.
+     */
+    private fun canSend(): Boolean {
+        val online = runCatching {
+            NetworkManager(
+                this,
+                object : NetworkManager.NetworkHandler {
+                    override fun onNetworkUpdate(isOnline: Boolean) = Unit
+                },
+            ).isOnline
+        }.getOrDefault(true)
+        return online && !ConnectionState.isFailing()
+    }
 
     private fun readBattery(): Pair<Int, Boolean> {
         val intent = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
