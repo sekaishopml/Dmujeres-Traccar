@@ -20,10 +20,16 @@ import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.database.SQLException
+import android.database.DatabaseUtils
+import android.util.Log
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.os.AsyncTask
 import java.sql.Date
+
+private const val MAX_BUFFERED_POSITIONS = 5000L
+
+private const val TAG = "DatabaseHelper"
 
 class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
@@ -95,6 +101,28 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
         values.put("charging", if (position.charging) 1 else 0)
         values.put("mock", if (position.mock) 1 else 0)
         db.insertOrThrow("position", null, values)
+        enforceBufferLimit(db)
+    }
+
+    /**
+     * Tope del búfer offline (política drop_oldest, igual que la app nativa):
+     * si se supera [MAX_BUFFERED_POSITIONS] se descartan los más viejos para no
+     * crecer sin límite en cortes largos de red. 5.000 puntos ≈ 3 jornadas
+     * completas de 10 h (calculado con la cadencia real: 1/min quieto, 4/min en
+     * marcha) y ~1,2 MB de SQLite.
+     */
+    private fun enforceBufferLimit(db: SQLiteDatabase) {
+        runCatching {
+            val count = DatabaseUtils.queryNumEntries(db, "position")
+            if (count <= MAX_BUFFERED_POSITIONS) return
+            val excess = count - MAX_BUFFERED_POSITIONS
+            db.execSQL(
+                "DELETE FROM position WHERE id IN (SELECT id FROM position ORDER BY id ASC LIMIT ?)",
+                arrayOf(excess),
+            )
+            Log.w(TAG, "búfer al tope: descartados $excess puntos más viejos")
+            StatusActivity.addMessage("Búfer lleno: se descartaron $excess puntos más viejos")
+        }.onFailure { Log.w(TAG, "no se pudo aplicar el tope del búfer", it) }
     }
 
     fun insertPositionAsync(position: Position, handler: DatabaseHandler<Unit?>) {
