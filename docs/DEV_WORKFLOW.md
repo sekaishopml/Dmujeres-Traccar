@@ -156,3 +156,32 @@ Abre en el navegador del teléfono:
 4. Revisa el panel (Alertas) si algo falla: los crashes de la app llegan solos a
    `lastDiagnostics.crash` (capturador incluido en la app).
 5. `git add -A && git commit` cuando cierres un cambio.
+
+## 6. Todo desde Android Studio (sin terminal)
+
+Lo único que queda fuera de Studio es **publicar la OTA a macias** (necesita las
+llaves de flota y escribir en el panel); eso lo hace el agente en un minuto
+cuando lo pidas, o tú desde el clon del servidor.
+
+### Configuración una sola vez
+1. Abre el proyecto (`fallback/`) y espera el **Gradle Sync**.
+2. **Cuenta de GitHub en Studio**: `Settings → Version Control → GitHub → Add
+   account → Log In with Token` (pega tu token nuevo). Así el *push* funciona
+   desde el IDE sin escribir credenciales.
+3. **Tu teléfono**: ya está pareado por WiFi (*Device Manager → Pair Devices
+   Using Wi-Fi*). Aparece en la barra superior junto al emulador.
+
+### Día a día (todo en Studio)
+| Acción | Cómo |
+|---|---|
+| Correr tus cambios en el teléfono | selecciona el teléfono arriba → **Run ▶** (instala en segundos) |
+| Ver cambios de UI sin reinstalar | **Live Edit** activado (`Settings → Editor → Live Edit`) → guarda (Ctrl+S) |
+| Bajar los cambios del agente | **Ctrl+T** (*Update Project*) |
+| Guardar y subir tus cambios | **Ctrl+K** (Commit) → **Ctrl+Shift+K** (Push) |
+| Crear tu rama | abajo a la derecha: *Git → Branches → New Branch* (`santi/mi-cambio`) |
+| Compilar el APK release | panel **Gradle → app → Tasks → build → assembleGoogleRelease** (doble clic) |
+| Ver errores del teléfono | pestaña **Logcat** (filtra por `Dmujeres`) |
+
+### Publicar a macias (cuando estés conforme)
+Escribe al agente: **"publica la versión"** → se compila en el servidor, sube el
+`versionCode`, fija la allowlist a macias y deja el aviso en su teléfono.
