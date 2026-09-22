@@ -83,6 +83,7 @@ class MainActivity : AppCompatActivity() {
     private fun wireLockedHome() {
         val button = findViewById<Button>(R.id.journey_button)
         val version = findViewById<TextView>(R.id.version_label)
+        val updateButton = findViewById<Button>(R.id.update_button)
 
         button.setOnClickListener {
             if (DmujeresApi.isJourneyOpen(this)) {
@@ -103,24 +104,37 @@ class MainActivity : AppCompatActivity() {
                 refreshLockedHome()
             }
         }
-        version.text = getString(R.string.version_format, BuildConfig.VERSION_NAME)
+        // ACTUALIZAR (1.1.x): revisa el canal y si hay versión mayor la instala.
+        updateButton.setOnClickListener {
+            DmujeresApi.checkOta(this) { label, url, sha256 ->
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    if (label == null) {
+                        Toast.makeText(this, R.string.no_updates_toast, Toast.LENGTH_SHORT).show()
+                        return@runOnUiThread
+                    }
+                    AlertDialog.Builder(this)
+                        .setTitle(getString(R.string.update_dialog_title))
+                        .setMessage(getString(R.string.update_row_text, label))
+                        .setPositiveButton(R.string.update_action) { _, _ ->
+                            OtaUpdater.downloadAndInstall(this, url, sha256)
+                        }
+                        .setNegativeButton(R.string.update_later, null)
+                        .show()
+                }
+            }
+        }
+        version.text = getString(
+            R.string.version_footer_fmt,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE,
+        )
         version.setOnClickListener { onVersionTap() }
         version.setOnLongClickListener {
             PreferenceManager.getDefaultSharedPreferences(this)
                 .edit().putBoolean(MainFragment.KEY_DEBUG, false).apply()
             Toast.makeText(this, R.string.debug_disabled, Toast.LENGTH_SHORT).show()
             true
-        }
-        DmujeresApi.checkOta(this) { label, url, sha256 ->
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                findViewById<TextView>(R.id.update_text)?.text =
-                    getString(R.string.update_row_text, label)
-                findViewById<LinearLayout>(R.id.update_row)?.visibility = View.VISIBLE
-                findViewById<LinearLayout>(R.id.update_row)?.setOnClickListener {
-                    OtaUpdater.downloadAndInstall(this, url, sha256)
-                }
-            }
         }
         // Skeleton del dashboard (como en la app nativa): cubos que pulsan hasta
         // que los datos están listos (batería inmediata, buffer en segundo hilo).
@@ -166,33 +180,33 @@ class MainActivity : AppCompatActivity() {
         if (isFinishing || isDestroyed) return
         val open = DmujeresApi.isJourneyOpen(this)
         val running = TrackingService.isRunning
-        val banner = findViewById<LinearLayout>(R.id.status_banner)
-        val bannerText = findViewById<TextView>(R.id.banner_text)
-        val bannerDot = findViewById<ImageView>(R.id.banner_dot)
+        val pill = findViewById<LinearLayout>(R.id.status_pill)
+        val pillText = findViewById<TextView>(R.id.pill_text)
+        val pillDot = findViewById<ImageView>(R.id.pill_dot)
         val button = findViewById<Button>(R.id.journey_button)
 
         when {
             open && running -> {
-                banner.setBackgroundResource(R.drawable.bg_banner_green)
-                bannerText.text = getString(R.string.journey_active_banner)
-                bannerText.setTextColor(getColor(R.color.white))
-                bannerDot.setImageResource(R.drawable.ic_dot_ok)
+                pill.setBackgroundResource(R.drawable.bg_pill_green)
+                pillText.text = getString(R.string.journey_active_banner)
+                pillText.setTextColor(getColor(R.color.white))
+                pillDot.setImageResource(R.drawable.ic_dot_ok)
                 button.setBackgroundResource(R.drawable.bg_button_primary)
                 button.text = getString(R.string.journey_stop_upper)
             }
             open && !running -> {
-                banner.setBackgroundResource(R.drawable.bg_banner_white)
-                bannerText.text = getString(R.string.journey_service_stopped_banner)
-                bannerText.setTextColor(getColor(R.color.primary))
-                bannerDot.setImageResource(R.drawable.ic_dot_pending)
+                pill.setBackgroundResource(R.drawable.bg_pill_white)
+                pillText.text = getString(R.string.journey_service_stopped_banner)
+                pillText.setTextColor(getColor(R.color.primary))
+                pillDot.setImageResource(R.drawable.ic_dot_pending)
                 button.setBackgroundResource(R.drawable.bg_button_primary)
                 button.text = getString(R.string.journey_stop_upper)
             }
             else -> {
-                banner.setBackgroundResource(R.drawable.bg_banner_red)
-                bannerText.text = getString(R.string.journey_none_banner)
-                bannerText.setTextColor(getColor(R.color.white))
-                bannerDot.setImageResource(R.drawable.ic_dot_pending)
+                pill.setBackgroundResource(R.drawable.bg_pill_red)
+                pillText.text = getString(R.string.journey_none_banner)
+                pillText.setTextColor(getColor(R.color.white))
+                pillDot.setImageResource(R.drawable.ic_dot_pending)
                 button.setBackgroundResource(R.drawable.bg_button_green)
                 button.text = getString(R.string.journey_start_upper)
             }

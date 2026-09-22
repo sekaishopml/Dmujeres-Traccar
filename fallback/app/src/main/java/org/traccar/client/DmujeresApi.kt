@@ -155,13 +155,13 @@ object DmujeresApi {
     }
 
     /**
-     * Consulta OTA. [onUpdate] recibe (etiqueta visible, url, sha256) solo si hay
-     * una versión mayor disponible. Orden: canal del servidor (rollout con
-     * allowlist) y, si el puerto web no es alcanzable, releases de GitHub
+     * Consulta OTA. [onUpdate] recibe (etiqueta o null, url, sha256): etiqueta
+     * null = no hay versión mayor publicada. Orden: canal del servidor (rollout
+     * con allowlist) y, si el puerto web no es alcanzable, releases de GitHub
      * (mismo respaldo que la app nativa: en datos móviles el 999 puede estar
      * bloqueado y sin esto el teléfono nunca vería el aviso).
      */
-    fun checkOta(context: Context, onUpdate: (String, String, String) -> Unit) {
+    fun checkOta(context: Context, onUpdate: (String?, String, String) -> Unit) {
         val base = webBase(context)
         val device = deviceId(context)
         Thread {
@@ -175,6 +175,8 @@ object DmujeresApi {
             val github = tryGithubRelease()
             if (github != null) {
                 onUpdate(github.first, github.second, "")
+            } else {
+                onUpdate(null, "", "")
             }
         }.start()
     }

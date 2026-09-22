@@ -101,6 +101,11 @@
   <string name="journey_service_stopped_banner">Servicio detenido</string>
   <string name="battery_value_fmt">%1$d%%</string>
   <string name="journey_duration_fmt">%1$d h %2$d min</string>
+  <string name="refresh_button">ACTUALIZAR</string>
+  <string name="no_updates_toast">Ya tienes la última versión</string>
+  <string name="version_footer_fmt">Versión %1$s · código %2$d</string>
+  <string name="debug_info_title">Info y batería</string>
+  <string name="debug_info_summary">Estado del servicio y consejos de batería</string>
   <string name="update_dialog_title">Actualización disponible</string>
   <string name="update_later">Más tarde</string>
   <string name="update_row_text">Actualización disponible: %1$s</string>

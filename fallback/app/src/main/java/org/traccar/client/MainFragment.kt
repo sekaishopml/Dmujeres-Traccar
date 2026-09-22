@@ -231,8 +231,18 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
                 true
             }
         }
+        val info = Preference(requireContext()).apply {
+            key = "debug_info"
+            title = getString(R.string.debug_info_title)
+            summary = getString(R.string.debug_info_summary)
+            setOnPreferenceClickListener {
+                startActivity(android.content.Intent(requireContext(), StatusActivity::class.java))
+                true
+            }
+        }
         preferenceScreen.addPreference(start)
         preferenceScreen.addPreference(stop)
+        preferenceScreen.addPreference(info)
         preferenceScreen.addPreference(exit)
     }
 
