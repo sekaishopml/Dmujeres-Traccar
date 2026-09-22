@@ -33,7 +33,7 @@ object DmujeresApi {
         PreferenceManager.getDefaultSharedPreferences(context)
 
     private fun deviceId(context: Context): String =
-        prefs(context).getString(MainFragment.KEY_DEVICE, "").orEmpty()
+        prefs(context).getString(MainFragment.KEY_DEVICE, "").orEmpty().trim().lowercase()
 
     /**
      * Llave del canal móvil: la contraseña que CCTV entregó (si el técnico la

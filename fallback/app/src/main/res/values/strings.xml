@@ -62,6 +62,7 @@
   <string name="onboarding_login_user">Usuario</string>
   <string name="onboarding_login_url">Servidor</string>
   <string name="login_user_required">Escribe tu usuario para continuar</string>
+  <string name="login_password_required">Escribe tu contraseña (la entregó CCTV)</string>
   <string name="login_user_unknown">Usuario no autorizado · revisa con CCTV</string>
   <string name="login_checking">Validando…</string>
   <string name="onboarding_login_hint">Ingresa los datos que te entregó CCTV. El resto ya está configurado.</string>

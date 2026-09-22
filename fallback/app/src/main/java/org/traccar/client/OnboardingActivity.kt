@@ -110,7 +110,9 @@ class OnboardingActivity : AppCompatActivity() {
         val pass = view.findViewById<EditText>(R.id.field_pass) ?: return
         val url = view.findViewById<EditText>(R.id.field_url) ?: return
         PreferenceManager.getDefaultSharedPreferences(this).edit()
-            .putString(MainFragment.KEY_DEVICE, user.text.toString().trim())
+            // El usuario se guarda en minúsculas: el servidor busca por
+            // identificador exacto y "Jeremy" no es lo mismo que "jeremy".
+            .putString(MainFragment.KEY_DEVICE, user.text.toString().trim().lowercase())
             .putString(DmujeresApi.KEY_PASSWORD, pass.text.toString().trim())
             .putString(MainFragment.KEY_URL, url.text.toString().trim())
             .apply()
@@ -126,6 +128,12 @@ class OnboardingActivity : AppCompatActivity() {
             .getString(MainFragment.KEY_DEVICE, "").orEmpty().trim()
         if (user.isEmpty()) {
             Toast.makeText(this, R.string.login_user_required, Toast.LENGTH_LONG).show()
+            return
+        }
+        val password = PreferenceManager.getDefaultSharedPreferences(this)
+            .getString(DmujeresApi.KEY_PASSWORD, "").orEmpty().trim()
+        if (password.isEmpty()) {
+            Toast.makeText(this, R.string.login_password_required, Toast.LENGTH_LONG).show()
             return
         }
         primary.isEnabled = false
