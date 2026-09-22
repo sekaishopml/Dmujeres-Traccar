@@ -28,12 +28,15 @@ class DmujeresMessagingService : FirebaseMessagingService() {
             return
         }
         val attemptId = message.data["recoveryAttemptId"].orEmpty()
+        // Contrato del servidor: stages RECOVERY_RECEIVED → RECOVERY_STARTED
+        // (cualquier otro valor se rechaza como UNKNOWN_STAGE).
+        DmujeresApi.recoveryAck(this, attemptId, "RECOVERY_RECEIVED")
         // La recuperación enciende la captura aunque el usuario la hubiera apagado:
         // es una orden operativa auditada, no una decisión del teléfono.
         PreferenceManager.getDefaultSharedPreferences(this)
             .edit().putBoolean(MainFragment.KEY_STATUS, true).apply()
         ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
-        DmujeresApi.recoveryAck(this, attemptId, "WAKE")
+        DmujeresApi.recoveryAck(this, attemptId, "RECOVERY_STARTED")
         Log.i(TAG, "Recuperación FCM atendida (attempt=$attemptId)")
     }
 
