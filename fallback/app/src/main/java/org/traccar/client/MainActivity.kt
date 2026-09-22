@@ -61,21 +61,27 @@ class MainActivity : AppCompatActivity() {
         showUpdateDialogIfAvailable()
     }
 
-    /** Aviso emergente de actualización al abrir la app (además del banner). */
+    /**
+     * Banner superior de actualización (como la app nativa): al abrir, si hay
+     * versión nueva baja deslizándose y empuja todo el home (incluida la
+     * hamburguesa); al tocarlo descarga e instala. Sin versión nueva no
+     * aparece nada.
+     */
     private fun showUpdateDialogIfAvailable() {
+        val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
         DmujeresApi.checkOta(this) { label, url, sha256 ->
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                // Sin versión nueva no se muestra nada (antes salía "null").
                 if (label == null) return@runOnUiThread
-                AlertDialog.Builder(this)
-                    .setTitle(getString(R.string.update_dialog_title))
-                    .setMessage(getString(R.string.update_row_text, label))
-                    .setPositiveButton(R.string.update_action) { _, _ ->
-                        OtaUpdater.downloadAndInstall(this, url, sha256)
-                    }
-                    .setNegativeButton(R.string.update_later, null)
-                    .show()
+                if (banner.visibility == View.VISIBLE) return@runOnUiThread
+                banner.visibility = View.VISIBLE
+                val height = (46 * resources.displayMetrics.density).toInt()
+                val slide = android.view.animation.TranslateAnimation(0f, 0f, -height.toFloat(), 0f)
+                slide.duration = 350
+                banner.startAnimation(slide)
+                banner.setOnClickListener {
+                    OtaUpdater.downloadAndInstall(this, url, sha256)
+                }
             }
         }
     }
@@ -114,25 +120,20 @@ class MainActivity : AppCompatActivity() {
                 refreshLockedHome()
             }
         }
-        // ACTUALIZAR (1.1.x): revisa el canal y si hay versión mayor la instala.
+        // ACTUALIZAR: refresco manual de posición y servicio con el servidor
+        // (reenvía pendientes y pide un fix inmediato). La actualización de la
+        // APP es el banner superior.
         updateButton.setOnClickListener {
-            DmujeresApi.checkOta(this) { label, url, sha256 ->
-                runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    if (label == null) {
-                        Toast.makeText(this, R.string.no_updates_toast, Toast.LENGTH_SHORT).show()
-                        return@runOnUiThread
-                    }
-                    AlertDialog.Builder(this)
-                        .setTitle(getString(R.string.update_dialog_title))
-                        .setMessage(getString(R.string.update_row_text, label))
-                        .setPositiveButton(R.string.update_action) { _, _ ->
-                            OtaUpdater.downloadAndInstall(this, url, sha256)
-                        }
-                        .setNegativeButton(R.string.update_later, null)
-                        .show()
-                }
-            }
+            val active = TrackingService.refreshNow()
+            Toast.makeText(
+                this,
+                if (active) R.string.refresh_now_ok else R.string.refresh_now_off,
+                Toast.LENGTH_SHORT,
+            ).show()
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                { runCatching { refreshLockedHome() } },
+                2_500L,
+            )
         }
         version.text = getString(
             R.string.version_footer_fmt,

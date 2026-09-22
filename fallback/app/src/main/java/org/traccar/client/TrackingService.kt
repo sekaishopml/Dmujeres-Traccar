@@ -59,6 +59,7 @@ class TrackingService : Service() {
                     wakeLock?.acquire()
                 }
                 trackingController = TrackingController(this)
+                controllerRef = trackingController
                 trackingController?.start()
             }
         } catch (e: RuntimeException) {
@@ -79,6 +80,7 @@ class TrackingService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        controllerRef = null
         ServiceHeartbeat.stop()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         Log.i(TAG, "service destroy")
@@ -96,6 +98,16 @@ class TrackingService : Service() {
         @Volatile
         var isRunning: Boolean = false
             private set
+
+        @Volatile
+        private var controllerRef: TrackingController? = null
+
+        /** Refresco manual desde el home: true si el servicio está activo. */
+        fun refreshNow(): Boolean {
+            val controller = controllerRef ?: return false
+            controller.refreshNow()
+            return true
+        }
 
         // Explicit package name should be specified when broadcasting START/STOP notifications -
         // it is required for manifest-declared receiver of the status widget (when running on Android 8+).

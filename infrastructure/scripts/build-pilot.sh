@@ -73,9 +73,9 @@ for directory in (root / "dashboard/public", root / "dashboard/build"):
     if not directory.is_dir():
         continue
     (directory / "rollout.json").write_text(
-        json.dumps({"percent": 100, "paused": False, "allow": ["macias"]}, indent=2) + "\n"
+        json.dumps({"percent": 100, "paused": False, "allow": ["macias", "qa-f0"]}, indent=2) + "\n"
     )
-print(">> allowlist del piloto fijada: solo macias")
+print(">> allowlist del piloto fijada: macias + qa-f0")
 PY
 
 NOTES="${NOTES:-Actualizar a la versión $NEXT_NAME}"

@@ -111,6 +111,8 @@
   <string name="pill_none">SIN JORNADA</string>
   <string name="pill_active">JORNADA ACTIVA</string>
   <string name="refresh_button">ACTUALIZAR</string>
+  <string name="refresh_now_ok">Actualizando posición y pendientes con el servidor…</string>
+  <string name="refresh_now_off">El servicio no está activo</string>
   <string name="no_updates_toast">Ya tienes la última versión</string>
   <string name="version_footer_fmt">Versión %1$s · código %2$d</string>
   <string name="debug_info_title">Info y batería</string>
@@ -118,6 +120,11 @@
   <string name="update_dialog_title">Actualización disponible</string>
   <string name="update_later">Más tarde</string>
   <string name="update_row_text">Actualización disponible: %1$s</string>
+  <string name="update_downloading">Descargando actualización…</string>
+  <string name="update_downloaded">Descarga lista · abre el instalador</string>
+  <string name="update_download_failed">No se pudo descargar la actualización</string>
+  <string name="update_allow_installs">Permite "instalar apps desconocidas" para actualizar</string>
+  <string name="update_banner_text">Hay una versión disponible · Toca para actualizar</string>
   <string name="update_banner_title">Actualización disponible: %1$s</string>
   <string name="update_banner_summary">Toca para descargar e instalar</string>
   <string name="ota_title">Actualización disponible</string>

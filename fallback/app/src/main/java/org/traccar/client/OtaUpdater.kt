@@ -22,6 +22,24 @@ object OtaUpdater {
     private const val APK_NAME = "dmujeres-update.apk"
 
     fun downloadAndInstall(activity: Activity, url: String, sha256: String) {
+        // Android 8+: instalar requiere permiso explícito de "apps desconocidas".
+        // Si falta, se abre el ajuste en vez de fallar en silencio.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
+            !activity.packageManager.canRequestPackageInstalls()
+        ) {
+            runCatching {
+                activity.startActivity(
+                    Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        android.net.Uri.parse("package:${activity.packageName}"),
+                    ),
+                )
+            }
+            android.widget.Toast.makeText(
+                activity, R.string.update_allow_installs, android.widget.Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
         Thread {
             try {
                 val target = File(activity.cacheDir, APK_NAME)

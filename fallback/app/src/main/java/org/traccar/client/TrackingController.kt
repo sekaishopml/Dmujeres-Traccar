@@ -107,6 +107,20 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
         }.onFailure { Log.w(TAG, "no se pudo activar el GPS del sistema", it) }
     }
 
+    /**
+     * Refresco manual (botón ACTUALIZAR del home): reenvía los pendientes al
+     * servidor y pide un fix inmediato. Seguro: no reinicia nada.
+     */
+    fun refreshNow() {
+        runCatching {
+            if (isOnline) {
+                isWaiting = false
+                read()
+            }
+            positionProvider.requestSingleLocation()
+        }.onFailure { Log.w(TAG, "refresco manual falló", it) }
+    }
+
     fun stop() {
         networkManager.stop()
         try {
