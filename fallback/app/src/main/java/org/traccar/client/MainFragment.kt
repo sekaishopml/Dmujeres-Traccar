@@ -206,7 +206,8 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
             title = getString(R.string.journey_start_title)
             summary = getString(R.string.journey_start_summary)
             setOnPreferenceClickListener {
-                sharedPreferences?.edit()?.putBoolean(KEY_STATUS, true)?.apply()
+                DmujeresApi.journeyStarted(requireContext())
+                Toast.makeText(requireContext(), R.string.journey_started_toast, Toast.LENGTH_SHORT).show()
                 true
             }
         }
@@ -215,7 +216,8 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
             title = getString(R.string.journey_stop_title)
             summary = getString(R.string.journey_stop_summary)
             setOnPreferenceClickListener {
-                sharedPreferences?.edit()?.putBoolean(KEY_STATUS, false)?.apply()
+                DmujeresApi.journeyEnded(requireContext())
+                Toast.makeText(requireContext(), R.string.journey_ended_toast, Toast.LENGTH_SHORT).show()
                 true
             }
         }
