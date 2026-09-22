@@ -6,6 +6,10 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="$PROJECT_ROOT/.env"
 set -a; source "$ENV_FILE"; set +a
+# COMPOSE_FILE relativo del .env se resuelve contra la raíz del proyecto.
+if [[ -n "${COMPOSE_FILE:-}" && "$COMPOSE_FILE" != /* ]]; then
+  COMPOSE_FILE="$PROJECT_ROOT/$COMPOSE_FILE"
+fi
 COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/infrastructure/compose/docker-compose.yml}"
 SQL_FILE="$PROJECT_ROOT/infrastructure/database/timescale-compression.sql"
 

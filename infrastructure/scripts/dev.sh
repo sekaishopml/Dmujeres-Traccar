@@ -10,6 +10,10 @@ ENV_FILE="$PROJECT_ROOT/.env"
 if [[ -f "$ENV_FILE" ]]; then
   set -a; source "$ENV_FILE"; set +a
 fi
+# COMPOSE_FILE relativo del .env se resuelve contra la raíz del proyecto.
+if [[ -n "${COMPOSE_FILE:-}" && "$COMPOSE_FILE" != /* ]]; then
+  COMPOSE_FILE="$PROJECT_ROOT/$COMPOSE_FILE"
+fi
 COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/infrastructure/compose/docker-compose.yml}"
 
 # COMPOSE_FILE puede ser una lista separada por ':' (p. ej. compose dev + override).

@@ -6,6 +6,12 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="$PROJECT_ROOT/.env"
 set -a; source "$ENV_FILE"; set +a
+# El .env puede traer COMPOSE_FILE relativo: se resuelve contra la raíz del
+# proyecto (el cron corre desde el home y si no, docker compose falla y el
+# respaldo sale vacío).
+if [[ -n "${COMPOSE_FILE:-}" && "$COMPOSE_FILE" != /* ]]; then
+  COMPOSE_FILE="$PROJECT_ROOT/$COMPOSE_FILE"
+fi
 COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/infrastructure/compose/docker-compose.yml}"
 
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/dmj}"
