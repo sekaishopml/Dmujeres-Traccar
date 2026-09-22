@@ -186,7 +186,6 @@ class MainActivity : AppCompatActivity() {
         val running = TrackingService.isRunning
         val pill = findViewById<LinearLayout>(R.id.status_pill)
         val pillText = findViewById<TextView>(R.id.pill_text)
-        val pillDot = findViewById<ImageView>(R.id.pill_dot)
         val button = findViewById<Button>(R.id.journey_button)
 
         when {
@@ -194,7 +193,6 @@ class MainActivity : AppCompatActivity() {
                 pill.setBackgroundResource(R.drawable.bg_pill_green)
                 pillText.text = getString(R.string.pill_active)
                 pillText.setTextColor(getColor(R.color.white))
-                pillDot.setImageResource(R.drawable.ic_dot_ok)
                 button.setBackgroundResource(R.drawable.bg_button_primary)
                 button.text = getString(R.string.journey_stop_upper)
             }
@@ -202,7 +200,6 @@ class MainActivity : AppCompatActivity() {
                 pill.setBackgroundResource(R.drawable.bg_pill_white)
                 pillText.text = getString(R.string.pill_stopped)
                 pillText.setTextColor(getColor(R.color.primary))
-                pillDot.setImageResource(R.drawable.ic_dot_pending)
                 button.setBackgroundResource(R.drawable.bg_button_primary)
                 button.text = getString(R.string.journey_stop_upper)
             }
@@ -210,7 +207,6 @@ class MainActivity : AppCompatActivity() {
                 pill.setBackgroundResource(R.drawable.bg_pill_red)
                 pillText.text = getString(R.string.pill_none)
                 pillText.setTextColor(getColor(R.color.white))
-                pillDot.setImageResource(R.drawable.ic_dot_pending)
                 button.setBackgroundResource(R.drawable.bg_button_green)
                 button.text = getString(R.string.journey_start_upper)
             }

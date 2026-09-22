@@ -32,3 +32,5 @@ mobile/local.properties
 .DS_Store
 # Snapshots locales de refactor
 backups/
+# Volcados de memoria de la JVM (Gradle OOM): nunca versionar
+*.hprof
