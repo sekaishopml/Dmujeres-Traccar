@@ -324,3 +324,20 @@ Detalles del canal FCM reutilizado:
 | OEM y batería | `docs/OEM_COMPATIBILITY.md`, `docs/audit/OEM_BACKGROUND_AUDIT.md` |
 | Firma y secretos | `docs/SECURITY_BUILD.md`, `docs/security/INCIDENT_secretos_zip.md` |
 | OTA y rollout | `infrastructure/scripts/publish-ota.sh`, `dashboard/public/rollout.json` |
+
+## Onboarding y modo bloqueado (2.0.x)
+
+- **Primer arranque**: `OnboardingActivity` con dos pasos — login pre-rellenado
+  (usuario/servidor vienen de fábrica; solo editables en modo avanzado) y panel de
+  permisos (ubicación, ubicación siempre, notificaciones, batería sin restricción,
+  inicio automático del fabricante) con estado visual por fila.
+- **Modo normal**: la pantalla principal NO muestra configuración (ni URL, ni
+  precisión, ni intervalos): solo "Servicio activo" y la versión. La captura queda
+  siempre encendida (`KEY_STATUS=true` al terminar el onboarding y en cada arranque).
+- **Acceso avanzado**: 5 toques seguidos en la versión (misma política que la app
+  nativa: hueco máximo 1,2 s, ventana 4 s) habilitan la configuración real;
+  mantener presionada la versión lo vuelve a ocultar.
+- **Configuración de fábrica**: id `macias`, servidor `http://68.168.20.219:5055`,
+  intervalo 30 s, distancia 50 m, ángulo 15°, precisión alta, buffer y wake lock ON
+  (escrita por `PreferenceManager.setDefaultValues` al arrancar la app y con los
+  mismos valores como respaldo en el código del proveedor de ubicación).

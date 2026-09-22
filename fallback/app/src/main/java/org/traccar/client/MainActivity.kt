@@ -17,12 +17,24 @@ package org.traccar.client
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.content.Intent
+import androidx.core.content.ContextCompat
+import androidx.preference.PreferenceManager
 
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.main)
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        if (!prefs.getBoolean(MainFragment.KEY_ONBOARDED, false)) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+        // Plan B: el servicio queda siempre encendido (sin interruptor visible).
+        prefs.edit().putBoolean(MainFragment.KEY_STATUS, true).apply()
+        ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
         OtaUpdater.checkAndPrompt(this)
     }
 

@@ -29,6 +29,10 @@ open class MainApplication : MultiDexApplication() {
     override fun onCreate() {
         super.onCreate()
         System.setProperty("http.keepAliveDuration", (30 * 60 * 1000).toString())
+        // Configuración de fábrica (id, servidor, 30 s/50 m/15°, alta precisión)
+        // escrita antes de cualquier lectura: el onboarding muestra los campos
+        // ya rellenos y el servicio arranca con la config óptima.
+        androidx.preference.PreferenceManager.setDefaultValues(this, R.xml.preferences, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             registerChannel()
         }

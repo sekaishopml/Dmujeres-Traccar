@@ -27,6 +27,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.text.InputType
 import android.util.Log
 import android.view.Menu
@@ -211,8 +212,56 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
                 true
             }
         }
+        val exit = Preference(requireContext()).apply {
+            key = "debug_exit"
+            title = getString(R.string.debug_exit_title)
+            summary = getString(R.string.debug_exit_summary)
+            setOnPreferenceClickListener {
+                sharedPreferences?.edit()?.putBoolean(KEY_DEBUG, false)?.apply()
+                Toast.makeText(requireContext(), R.string.debug_disabled, Toast.LENGTH_SHORT).show()
+                requireActivity().recreate()
+                true
+            }
+        }
         preferenceScreen.addPreference(start)
         preferenceScreen.addPreference(stop)
+        preferenceScreen.addPreference(exit)
+    }
+
+    private fun isDebug(): Boolean =
+        sharedPreferences?.getBoolean(KEY_DEBUG, false) == true
+
+    /** Modo normal: sin configuración visible. Solo estado y versión (5 toques). */
+    private fun applyLockedMode() {
+        preferenceScreen.removeAll()
+        val status = Preference(requireContext()).apply {
+            title = getString(R.string.locked_status_title)
+            summary = getString(R.string.locked_status_summary)
+            isSelectable = false
+        }
+        val version = Preference(requireContext()).apply {
+            title = getString(R.string.version_format, BuildConfig.VERSION_NAME)
+            summary = getString(R.string.locked_version_summary)
+        }
+        var taps = 0
+        var firstAt = 0L
+        var lastAt = 0L
+        version.setOnPreferenceClickListener {
+            val now = SystemClock.elapsedRealtime()
+            val valid = taps > 0 && now - lastAt in 1..1_200L && now - firstAt <= 4_000L
+            taps = if (valid) taps + 1 else 1
+            if (!valid) firstAt = now
+            lastAt = now
+            if (taps >= 5) {
+                taps = 0
+                sharedPreferences?.edit()?.putBoolean(KEY_DEBUG, true)?.apply()
+                Toast.makeText(requireContext(), R.string.debug_enabled, Toast.LENGTH_LONG).show()
+                requireActivity().recreate()
+            }
+            true
+        }
+        preferenceScreen.addPreference(status)
+        preferenceScreen.addPreference(version)
     }
 
     private fun initPreferences() {
@@ -223,7 +272,11 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
             findPreference<EditTextPreference>(KEY_DEVICE)?.text = id
         }
         findPreference<Preference>(KEY_DEVICE)?.summary = sharedPreferences.getString(KEY_DEVICE, null)
-        addJourneyPreferences()
+        if (isDebug()) {
+            addJourneyPreferences()
+        } else {
+            applyLockedMode()
+        }
     }
 
     private fun showBackgroundLocationDialog(context: Context, onSuccess: () -> Unit) {
@@ -324,6 +377,8 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
         const val KEY_ANGLE = "angle"
         const val KEY_ACCURACY = "accuracy"
         const val KEY_STATUS = "status"
+        const val KEY_DEBUG = "debugMode"
+        const val KEY_ONBOARDED = "onboarded"
         const val KEY_BUFFER = "buffer"
         const val KEY_WAKELOCK = "wakelock"
         private const val PERMISSIONS_REQUEST_LOCATION = 2
