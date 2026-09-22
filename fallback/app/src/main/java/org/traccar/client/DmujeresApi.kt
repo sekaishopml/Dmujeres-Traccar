@@ -135,6 +135,11 @@ object DmujeresApi {
         )
     }
 
+    /** Reporte al canal de diagnósticos (crashes incluidos; ver panel). */
+    fun postDiagnostics(context: Context, body: JSONObject) {
+        post(context, "/api/mobile/v1/diagnostics", body)
+    }
+
     /** Acuse del push de recuperación (el servidor audita en tc_recovery_event). */
     fun recoveryAck(context: Context, attemptId: String, stage: String) {
         if (attemptId.isBlank()) return

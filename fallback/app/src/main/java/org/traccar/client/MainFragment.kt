@@ -148,7 +148,6 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
 
     override fun onResume() {
         super.onResume()
-        if (isDebug()) refreshUpdateBanner()
         sharedPreferences.registerOnSharedPreferenceChangeListener(this)
     }
 
@@ -239,122 +238,6 @@ class MainFragment : PreferenceFragmentCompat(), OnSharedPreferenceChangeListene
 
     private fun isDebug(): Boolean =
         sharedPreferences?.getBoolean(KEY_DEBUG, false) == true
-
-    /**
-     * Modo normal: pantalla propia (sin configuración). Servicio siempre activo;
-     * el botón grande solo abre/cierra la jornada, con el mismo lenguaje visual
-     * del panel (rojo DMujeres, texto en mayúsculas).
-     */
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?,
-    ): View {
-        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
-        if (isDebug()) {
-            return super.onCreateView(inflater, container, savedInstanceState)
-        }
-        val view = inflater.inflate(R.layout.fragment_locked_home, container, false)
-        val button = view.findViewById<Button>(R.id.journey_button)
-        val status = view.findViewById<TextView>(R.id.journey_status)
-        val version = view.findViewById<TextView>(R.id.version_label)
-        val updateRow = view.findViewById<LinearLayout>(R.id.update_row)
-        val updateText = view.findViewById<TextView>(R.id.update_text)
-
-        button.setOnClickListener {
-            if (DmujeresApi.isJourneyOpen(requireContext())) {
-                AlertDialog.Builder(requireContext())
-                    .setTitle(R.string.journey_confirm_title)
-                    .setMessage(R.string.journey_confirm_body)
-                    .setPositiveButton(R.string.journey_confirm_ok) { _, _ ->
-                        DmujeresApi.journeyEnded(requireContext())
-                        refreshJourneyUi(button, status)
-                    }
-                    .setNegativeButton(R.string.journey_confirm_cancel, null)
-                    .show()
-            } else {
-                // El servicio está siempre activo: si el sistema lo detuvo, se
-                // vuelve a levantar al iniciar la jornada (sin bloquear la UI).
-                ContextCompat.startForegroundService(
-                    requireContext(), Intent(requireContext(), TrackingService::class.java),
-                )
-                DmujeresApi.journeyStarted(requireContext())
-                refreshJourneyUi(button, status)
-            }
-        }
-        version.text = getString(R.string.version_format, BuildConfig.VERSION_NAME)
-        version.setOnClickListener { onVersionTap() }
-        version.setOnLongClickListener {
-            sharedPreferences.edit().putBoolean(KEY_DEBUG, false).apply()
-            Toast.makeText(requireContext(), R.string.debug_disabled, Toast.LENGTH_SHORT).show()
-            true
-        }
-        DmujeresApi.checkOta(requireContext()) { label, url, sha256 ->
-            activity?.runOnUiThread {
-                if (!isAdded || view.parent == null) return@runOnUiThread
-                updateText.text = getString(R.string.update_row_text, label)
-                updateRow.visibility = View.VISIBLE
-                updateRow.setOnClickListener { OtaUpdater.downloadAndInstall(requireActivity(), url, sha256) }
-            }
-        }
-        refreshJourneyUi(button, status)
-        return view
-    }
-
-    /** Estado del botón y del texto de jornada (se refresca al volver a la pantalla). */
-    private fun refreshJourneyUi(button: Button, status: TextView) {
-        if (DmujeresApi.isJourneyOpen(requireContext())) {
-            button.text = getString(R.string.journey_stop_upper)
-            status.text = getString(
-                R.string.journey_active_since,
-                DmujeresApi.journeyStartedAtLabel(requireContext()),
-            )
-        } else {
-            button.text = getString(R.string.journey_start_upper)
-            status.text = getString(R.string.journey_none)
-        }
-    }
-
-    private var tapCount = 0
-    private var tapFirstAt = 0L
-    private var tapLastAt = 0L
-
-    /** 5 toques seguidos en la versión: mismas reglas que la app nativa. */
-    private fun onVersionTap() {
-        val now = SystemClock.elapsedRealtime()
-        val valid = tapCount > 0 && now - tapLastAt in 1..1_200L && now - tapFirstAt <= 4_000L
-        tapCount = if (valid) tapCount + 1 else 1
-        if (!valid) tapFirstAt = now
-        tapLastAt = now
-        if (tapCount >= 5) {
-            tapCount = 0
-            sharedPreferences.edit().putBoolean(KEY_DEBUG, true).apply()
-            Toast.makeText(requireContext(), R.string.debug_enabled, Toast.LENGTH_LONG).show()
-            requireActivity().recreate()
-        }
-    }
-
-    /** Banner persistente: visible mientras haya una versión mayor publicada. */
-    private fun refreshUpdateBanner() {
-        val context = context ?: return
-        DmujeresApi.checkOta(context) { label, url, sha256 ->
-            activity?.runOnUiThread {
-                if (!isAdded || view == null) return@runOnUiThread
-                if (preferenceScreen.findPreference<Preference>(KEY_UPDATE_BANNER) != null) return@runOnUiThread
-                val banner = Preference(requireContext()).apply {
-                    key = KEY_UPDATE_BANNER
-                    title = getString(R.string.update_banner_title, label)
-                    summary = getString(R.string.update_banner_summary)
-                    setOnPreferenceClickListener {
-                        OtaUpdater.downloadAndInstall(requireActivity(), url, sha256)
-                        true
-                    }
-                }
-                preferenceScreen.addPreference(banner)
-                banner.order = 0
-            }
-        }
-    }
 
     private fun initPreferences() {
         PreferenceManager.setDefaultValues(requireActivity(), R.xml.preferences, false)

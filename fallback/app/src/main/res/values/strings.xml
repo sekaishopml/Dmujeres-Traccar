@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <resources>
-  <string name="app_name">DMujeres Tracking</string>
+  <string name="app_name">Dmujeres Tracking</string>
   <string name="app_logo">DMujeres</string>
   <string name="shortcut_start">Start service</string>
   <string name="shortcut_stop">Stop service</string>

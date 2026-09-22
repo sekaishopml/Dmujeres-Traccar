@@ -23,8 +23,8 @@ android {
         applicationId 'com.dmujeres.traccar'
         minSdkVersion 21
         targetSdkVersion 35
-        versionCode 207
-        versionName '2.0.7'
+        versionCode 208
+        versionName '2.0.8'
         multiDexEnabled true
         buildConfigField "String", "MOBILE_HTTP_API_KEY", "\"${mobileApiKey}\""
     }
