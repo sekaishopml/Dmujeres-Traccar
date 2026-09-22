@@ -31,7 +31,12 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
 
     private val handler = Handler(Looper.getMainLooper())
     private val preferences = PreferenceManager.getDefaultSharedPreferences(context)
-    private val positionProvider = PositionProviderFactory.create(context, this)
+    private var positionProvider = PositionProviderFactory.create(context, this)
+    private val watchdog = LocationWatchdog()
+
+    /** Cadencia adaptativa: fina en movimiento, base en quietud. */
+    private var moving = false
+    private var platformFallback = false
     private val databaseHelper = DatabaseHelper(context)
     private val networkManager = NetworkManager(context, this)
 
@@ -50,7 +55,56 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
         } catch (e: SecurityException) {
             Log.w(TAG, e)
         }
+        MotionMonitor.register(context)
+        watchdog.start(System.currentTimeMillis())
+        handler.postDelayed(watchdogTick, WATCHDOG_PERIOD_MS)
         networkManager.start()
+    }
+
+    /**
+     * Cada minuto: cadencia según sensores y vigilante de GPS (re-solicitar y,
+     * si sigue colgado, pasar al GPS del sistema). Nunca inventa posiciones.
+     */
+    private val watchdogTick = object : Runnable {
+        override fun run() {
+            val now = System.currentTimeMillis()
+            val motion = MotionMonitor.isMoving()
+            if (motion != null && motion != moving) {
+                moving = motion
+                positionProvider.reportIntervalMs =
+                    if (moving) MOVING_REPORT_MS else STATIONARY_REPORT_MS
+                Log.i(TAG, "cadencia adaptativa: moviendose=$moving")
+                if (moving) {
+                    // Arranque de ruta: un fix inmediato en vez de esperar la ventana.
+                    runCatching { positionProvider.requestSingleLocation() }
+                }
+            }
+            when (watchdog.tick(now)) {
+                LocationWatchdog.Action.RE_REQUEST -> {
+                    Log.w(TAG, "GPS sin fix: re-solicitando actualizaciones")
+                    runCatching {
+                        positionProvider.stopUpdates()
+                        positionProvider.startUpdates()
+                    }
+                }
+                LocationWatchdog.Action.FALLBACK -> switchToPlatformProvider()
+                LocationWatchdog.Action.NONE -> Unit
+            }
+            handler.postDelayed(this, WATCHDOG_PERIOD_MS)
+        }
+    }
+
+    /** Cambia al GPS del sistema (AOSP) cuando el fused no responde. */
+    private fun switchToPlatformProvider() {
+        if (platformFallback) return
+        platformFallback = true
+        Log.w(TAG, "GPS del sistema como respaldo (fused sin fixes)")
+        StatusActivity.addMessage(context.getString(R.string.status_platform_gps))
+        runCatching {
+            positionProvider.stopUpdates()
+            positionProvider = AndroidPositionProvider(context, this)
+            positionProvider.startUpdates()
+        }.onFailure { Log.w(TAG, "no se pudo activar el GPS del sistema", it) }
     }
 
     fun stop() {
@@ -60,10 +114,12 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
         } catch (e: SecurityException) {
             Log.w(TAG, e)
         }
+        MotionMonitor.unregister(context)
         handler.removeCallbacksAndMessages(null)
     }
 
     override fun onPositionUpdate(position: Position) {
+        watchdog.noteFix(System.currentTimeMillis())
         StatusActivity.addMessage(context.getString(R.string.status_location_update))
         if (buffer) {
             write(position)
@@ -181,6 +237,15 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
     companion object {
         private val TAG = TrackingController::class.java.simpleName
         private const val RETRY_DELAY = 30 * 1000
+
+        /** Revisión del vigilante de GPS (y de los sensores). */
+        private const val WATCHDOG_PERIOD_MS = 60_000L
+
+        /** Reporte fino mientras hay movimiento (el trazo sigue la vía). */
+        private const val MOVING_REPORT_MS = 15_000L
+
+        /** Reporte base en quietud (menos ruido y menos datos). */
+        private const val STATIONARY_REPORT_MS = 60_000L
     }
 
 }

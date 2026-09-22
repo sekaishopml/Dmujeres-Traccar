@@ -41,6 +41,7 @@
   <string name="status_service_destroy">Service stopped</string>
   <string name="status_send_success">Send successfully</string>
   <string name="status_send_fail">Send failed</string>
+  <string name="status_platform_gps">GPS del sistema activado (fused sin respuesta)</string>
   <string name="status_location_update">Location update</string>
   <string name="status_network_online">Network online</string>
   <string name="status_network_offline">Network offline</string>

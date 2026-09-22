@@ -42,6 +42,13 @@ abstract class PositionProvider(
     protected var angle: Double = preferences.getString(MainFragment.KEY_ANGLE, "15")!!.toInt().toDouble()
     private var lastLocation: Location? = null
 
+    /**
+     * Intervalo de reporte efectivo (ms). Lo ajusta la cadencia adaptativa:
+     * corto en movimiento (trazo fino) y el base en quietud (sin ruido).
+     */
+    @Volatile
+    var reportIntervalMs: Long = interval
+
     abstract fun startUpdates()
     abstract fun stopUpdates()
     abstract fun requestSingleLocation()
@@ -63,7 +70,7 @@ abstract class PositionProvider(
         }
         val impliedSpeed = if (dtSeconds > 0) leg / dtSeconds else 0.0
         if (location != null &&
-            (lastLocation == null || location.time - lastLocation.time >= interval || distance > 0
+            (lastLocation == null || location.time - lastLocation.time >= reportIntervalMs || distance > 0
                     && leg >= distance || angle > 0
                     && leg >= ANGLE_MIN_LEG_M && impliedSpeed >= ANGLE_MIN_SPEED_MPS
                     && abs(location.bearing - lastLocation.bearing) >= angle)
