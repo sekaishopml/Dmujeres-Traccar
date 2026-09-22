@@ -62,6 +62,8 @@ class MainActivity : AppCompatActivity() {
         DmujeresApi.checkOta(this) { label, url, sha256 ->
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
+                // Sin versión nueva no se muestra nada (antes salía "null").
+                if (label == null) return@runOnUiThread
                 AlertDialog.Builder(this)
                     .setTitle(getString(R.string.update_dialog_title))
                     .setMessage(getString(R.string.update_row_text, label))

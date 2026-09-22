@@ -152,8 +152,6 @@ class OnboardingActivity : AppCompatActivity() {
         row.findViewById<TextView>(R.id.row_status).setText(
             if (granted) R.string.onboarding_perms_ok else R.string.onboarding_perms_pending,
         )
-        row.findViewById<ImageView>(R.id.row_dot)
-            .setImageResource(if (granted) R.drawable.ic_dot_ok else R.drawable.ic_dot_pending)
         row.findViewById<Button>(R.id.row_action).setOnClickListener { action() }
         rows.addView(row)
     }
