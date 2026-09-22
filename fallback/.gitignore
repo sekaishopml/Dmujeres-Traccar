@@ -1,0 +1,7 @@
+# Build y artefactos
+.gradle/
+build/
+app/build/
+local.properties
+# Config de Firebase (se provisiona aparte, igual que en la app nativa)
+app/google-services.json
