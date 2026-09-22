@@ -36,7 +36,7 @@
         android:id="@+id/status_pill"
         android:layout_width="match_parent"
         android:layout_height="52dp"
-        android:layout_marginTop="46dp"
+        android:layout_marginTop="110dp"
         android:background="@drawable/bg_pill_red"
         android:gravity="center"
         android:orientation="horizontal"
