@@ -101,6 +101,9 @@
   <string name="journey_service_stopped_banner">Servicio detenido</string>
   <string name="battery_value_fmt">%1$d%%</string>
   <string name="journey_duration_fmt">%1$d h %2$d min</string>
+  <string name="pill_none">SIN JORNADA</string>
+  <string name="pill_active">JORNADA ACTIVA</string>
+  <string name="pill_stopped">SERVICIO DETENIDO</string>
   <string name="refresh_button">ACTUALIZAR</string>
   <string name="no_updates_toast">Ya tienes la última versión</string>
   <string name="version_footer_fmt">Versión %1$s · código %2$d</string>

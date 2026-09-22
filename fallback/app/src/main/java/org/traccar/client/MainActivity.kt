@@ -192,7 +192,7 @@ class MainActivity : AppCompatActivity() {
         when {
             open && running -> {
                 pill.setBackgroundResource(R.drawable.bg_pill_green)
-                pillText.text = getString(R.string.journey_active_banner)
+                pillText.text = getString(R.string.pill_active)
                 pillText.setTextColor(getColor(R.color.white))
                 pillDot.setImageResource(R.drawable.ic_dot_ok)
                 button.setBackgroundResource(R.drawable.bg_button_primary)
@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
             }
             open && !running -> {
                 pill.setBackgroundResource(R.drawable.bg_pill_white)
-                pillText.text = getString(R.string.journey_service_stopped_banner)
+                pillText.text = getString(R.string.pill_stopped)
                 pillText.setTextColor(getColor(R.color.primary))
                 pillDot.setImageResource(R.drawable.ic_dot_pending)
                 button.setBackgroundResource(R.drawable.bg_button_primary)
@@ -208,7 +208,7 @@ class MainActivity : AppCompatActivity() {
             }
             else -> {
                 pill.setBackgroundResource(R.drawable.bg_pill_red)
-                pillText.text = getString(R.string.journey_none_banner)
+                pillText.text = getString(R.string.pill_none)
                 pillText.setTextColor(getColor(R.color.white))
                 pillDot.setImageResource(R.drawable.ic_dot_pending)
                 button.setBackgroundResource(R.drawable.bg_button_green)
