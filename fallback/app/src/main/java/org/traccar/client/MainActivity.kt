@@ -172,7 +172,8 @@ class MainActivity : AppCompatActivity() {
         durationTicker = object : Runnable {
             override fun run() {
                 if (isFinishing || isDestroyed) return
-                refreshDuration()
+                // Refresca todo (duración, ubicación, jornada) cada 30 s.
+                refreshLockedHome()
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, 30_000L)
             }
         }
@@ -186,11 +187,35 @@ class MainActivity : AppCompatActivity() {
         if (isFinishing || isDestroyed) return
         val open = DmujeresApi.isJourneyOpen(this)
         val running = TrackingService.isRunning
+        // La causa real de "no hay ruta": ubicación del sistema apagada.
+        // Se avisa con la pill y una fila que abre los ajustes.
+        val locationOn = runCatching {
+            (getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager)
+                .isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+        }.getOrDefault(true)
+        findViewById<LinearLayout>(R.id.location_warning)?.visibility =
+            if (locationOn) View.GONE else View.VISIBLE
+        findViewById<LinearLayout>(R.id.location_warning)?.setOnClickListener {
+            startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        }
         val pill = findViewById<LinearLayout>(R.id.status_pill)
         val pillText = findViewById<TextView>(R.id.pill_text)
         val button = findViewById<Button>(R.id.journey_button)
 
         when {
+            // Primero lo que impide trazar: sin ubicación no hay ruta, aunque
+            // la jornada esté abierta.
+            !locationOn -> {
+                pill.setBackgroundResource(R.drawable.bg_pill_red)
+                pillText.text = getString(R.string.pill_location_off)
+                pillText.setTextColor(getColor(R.color.white))
+                button.setBackgroundResource(
+                    if (open) R.drawable.bg_button_primary else R.drawable.bg_button_green,
+                )
+                button.text = getString(
+                    if (open) R.string.journey_stop_upper else R.string.journey_start_upper,
+                )
+            }
             open && running -> {
                 pill.setBackgroundResource(R.drawable.bg_pill_green)
                 pillText.text = getString(R.string.pill_active)
