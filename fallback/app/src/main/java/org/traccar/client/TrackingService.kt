@@ -47,6 +47,8 @@ class TrackingService : Service() {
             startForeground(NOTIFICATION_ID, createNotification(this))
             Log.i(TAG, "service create")
             isRunning = true
+            // Estado del teléfono visible en el panel (lastDiagnostics).
+            ServiceHeartbeat.start(this)
             sendBroadcast(Intent(ACTION_STARTED).setPackage(packageName))
             StatusActivity.addMessage(getString(R.string.status_service_create))
 
@@ -77,6 +79,7 @@ class TrackingService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        ServiceHeartbeat.stop()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         Log.i(TAG, "service destroy")
         sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName))
