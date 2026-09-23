@@ -16,6 +16,7 @@
             android:src="@drawable/logo_banner" />
 
         <TextView
+            android:id="@+id/header_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -25,6 +26,7 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/header_subtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
@@ -48,14 +50,5 @@
             android:textAllCaps="false"
             android:textColor="@color/white"
             android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/version_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:padding="8dp"
-            android:textColor="@color/muted"
-            android:textSize="12sp" />
 
 </LinearLayout>

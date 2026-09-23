@@ -2,18 +2,18 @@ package org.traccar.client
 
 import android.Manifest
 import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
-import android.os.SystemClock
 import android.provider.Settings
 import android.view.LayoutInflater
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -23,11 +23,12 @@ import androidx.preference.PreferenceManager
 import com.judemanutd.autostarter.AutoStartPermissionHelper
 
 /**
- * Primer arranque DMujeres: login (pre-rellenado) + permisos + batería.
+ * Primer arranque DMujeres: bienvenida + login (pre-rellenado) + permisos.
  *
  * Reglas de diseño del plan B:
  * - La configuración viene de fábrica: el usuario NO ve URL ni precisión.
- * - El acceso avanzado (config real) se habilita con 5 toques en la versión.
+ * - El acceso a depuración es el menú que se abre con 5 toques en la versión
+ *   del home (aquí ya no hay pie de versión).
  * - El servicio queda SIEMPRE encendido: al terminar el asistente arranca la
  *   captura y no hay interruptor visible para apagarla.
  */
@@ -35,11 +36,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     private lateinit var container: FrameLayout
     private lateinit var primary: Button
-    private var step = 0
-
-    private var tapCount = 0
-    private var tapFirstAt = 0L
-    private var tapLastAt = 0L
+    private var step = STEP_WELCOME
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,13 +44,11 @@ class OnboardingActivity : AppCompatActivity() {
 
         container = findViewById(R.id.step_container)
         primary = findViewById(R.id.btn_primary)
-        val version = findViewById<TextView>(R.id.version_label)
-        version.text = getString(R.string.version_format, BuildConfig.VERSION_NAME)
-        version.setOnClickListener { onVersionTap() }
 
         primary.setOnClickListener {
             when (step) {
-                0 -> {
+                STEP_WELCOME -> showLogin()
+                STEP_LOGIN -> {
                     persistLoginFields()
                     validateAndContinue()
                 }
@@ -62,58 +57,78 @@ class OnboardingActivity : AppCompatActivity() {
         }
         // El menú de depuración puede abrir directamente un paso del asistente
         // para revisar el diseño sin recorrerlo entero.
-        if (intent.getStringExtra(EXTRA_STEP) == STEP_PERMISSIONS) {
-            showPermissions()
-        } else {
-            showLogin()
+        when (intent.getStringExtra(EXTRA_STEP)) {
+            STEP_LOGIN -> showLogin()
+            STEP_PERMISSIONS -> showPermissions()
+            else -> showWelcome()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        if (step == 1) showPermissions()
+        if (step == STEP_PERMISSIONS) showPermissions()
     }
 
-    // ── Paso 1: login pre-rellenado ─────────────────────────────────────────
+    /** La cabecera (logo, nombre y lema) solo se muestra donde pertenece. */
+    private fun setHeaderVisible(visible: Boolean) {
+        val visibility = if (visible) View.VISIBLE else View.GONE
+        findViewById<TextView>(R.id.header_title).visibility = visibility
+        findViewById<TextView>(R.id.header_subtitle).visibility = visibility
+    }
+
+    // ── Paso 1: bienvenida ──────────────────────────────────────────────────
+
+    private fun showWelcome() {
+        step = STEP_WELCOME
+        setHeaderVisible(true)
+        container.removeAllViews()
+        container.addView(LayoutInflater.from(this).inflate(R.layout.onboarding_step_welcome, container, false))
+        primary.text = getString(R.string.onboarding_continue)
+    }
+
+    // ── Paso 2: login (solo los datos que entregó CCTV) ─────────────────────
 
     private fun showLogin() {
-        step = 0
+        step = STEP_LOGIN
+        setHeaderVisible(false)
         container.removeAllViews()
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_login, container, false)
         container.addView(view)
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val user = view.findViewById<EditText>(R.id.field_user)
         val pass = view.findViewById<EditText>(R.id.field_pass)
-        val url = view.findViewById<EditText>(R.id.field_url)
-        val urlGroup = view.findViewById<LinearLayout>(R.id.url_group)
         user.setText(prefs.getString(Prefs.DEVICE, ""))
         // La contraseña la escribe el colaborador (la que le entregó CCTV); el
         // canal móvil se autentica aparte con la llave de la empresa.
         pass.setText(prefs.getString(DmujeresApi.KEY_PASSWORD, ""))
-        url.setText(prefs.getString(Prefs.URL, ""))
         // Campos editables para cada quien (usuario y clave). El servidor es
         // configuración interna: no se muestra aquí (ver menú de depuración).
         user.isEnabled = true
         pass.isEnabled = true
-        urlGroup.visibility = LinearLayout.GONE
-        primary.text = getString(R.string.onboarding_continue)
+        primary.text = getString(R.string.login_button)
     }
 
-    // ── Paso 2: permisos y batería ──────────────────────────────────────────
+    // ── Paso 3: permisos y batería ──────────────────────────────────────────
 
-    /** Guarda lo editado en modo avanzado (id, contraseña, servidor). */
+    /** Guarda lo editado (id y contraseña). */
     private fun persistLoginFields() {
         val view = container.getChildAt(0) ?: return
         val user = view.findViewById<EditText>(R.id.field_user) ?: return
         val pass = view.findViewById<EditText>(R.id.field_pass) ?: return
-        val url = view.findViewById<EditText>(R.id.field_url) ?: return
+        val url = view.findViewById<EditText>(R.id.field_url)
         PreferenceManager.getDefaultSharedPreferences(this).edit()
             // El usuario se guarda en minúsculas: el servidor busca por
             // identificador exacto y "Jeremy" no es lo mismo que "jeremy".
             .putString(Prefs.DEVICE, user.text.toString().trim().lowercase())
             .putString(DmujeresApi.KEY_PASSWORD, pass.text.toString().trim())
-            .putString(Prefs.URL, url.text.toString().trim())
             .apply()
+        // El campo de servidor ya no existe en el login (configuración interna);
+        // si el paso lo trae (flujo viejo en caché), lo conservamos sin editar.
+        if (url != null) {
+            PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putString(Prefs.URL, url.text.toString().trim())
+                .apply()
+        }
     }
 
     /**
@@ -140,7 +155,7 @@ class OnboardingActivity : AppCompatActivity() {
             val exists = DmujeresApi.userExists(this, user)
             runOnUiThread {
                 primary.isEnabled = true
-                primary.text = getString(R.string.onboarding_continue)
+                primary.text = getString(R.string.login_button)
                 when (exists) {
                     false -> Toast.makeText(this, R.string.login_user_unknown, Toast.LENGTH_LONG).show()
                     else -> showPermissions()
@@ -150,7 +165,8 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     private fun showPermissions() {
-        step = 1
+        step = STEP_PERMISSIONS
+        setHeaderVisible(true)
         container.removeAllViews()
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_permissions, container, false)
         container.addView(view)
@@ -271,22 +287,6 @@ class OnboardingActivity : AppCompatActivity() {
         finish()
     }
 
-    // ── Acceso oculto: 5 toques en la versión ───────────────────────────────
-
-    private fun onVersionTap() {
-        val now = SystemClock.elapsedRealtime()
-        val valid = tapCount > 0 && now - tapLastAt in 1..MAX_TAP_GAP_MS &&
-            now - tapFirstAt <= TAP_WINDOW_MS
-        tapCount = if (valid) tapCount + 1 else 1
-        if (!valid) tapFirstAt = now
-        tapLastAt = now
-        if (tapCount >= REQUIRED_TAPS) {
-            tapCount = 0
-            // Acceso oculto: menú de depuración (pantallas y backend).
-            startActivity(Intent(this, DebugActivity::class.java))
-        }
-    }
-
     private fun isGranted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
@@ -297,21 +297,20 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val EXTRA_STEP = "step"
         private const val REQUEST_LOCATION = 100
         private const val REQUEST_BACKGROUND = 101
         private const val REQUEST_NOTIFICATIONS = 102
-        private const val REQUIRED_TAPS = 5
-        private const val MAX_TAP_GAP_MS = 1_200L
-        private const val TAP_WINDOW_MS = 4_000L
-        private const val EXTRA_STEP = "step"
+
+        const val STEP_WELCOME = "welcome"
         const val STEP_LOGIN = "login"
         const val STEP_PERMISSIONS = "permissions"
 
         /** Abre el asistente, opcionalmente en un paso concreto (pruebas). */
-        fun start(context: android.content.Context, step: String? = null) {
+        fun start(context: Context, step: String? = null) {
             context.startActivity(
                 Intent(context, OnboardingActivity::class.java)
-                    .putExtra(EXTRA_STEP, step ?: STEP_LOGIN),
+                    .putExtra(EXTRA_STEP, step ?: STEP_WELCOME),
             )
         }
     }

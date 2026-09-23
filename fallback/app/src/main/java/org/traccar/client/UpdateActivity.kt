@@ -37,7 +37,12 @@ class UpdateActivity : AppCompatActivity() {
         detail = findViewById(R.id.update_detail)
         retry = findViewById(R.id.update_retry)
         retry.setOnClickListener { download() }
-        download()
+        if (intent.getBooleanExtra(EXTRA_DEMO, false)) {
+            // Menú de depuración: recorre el diseño sin descargar nada.
+            simulate()
+        } else {
+            download()
+        }
     }
 
     private fun download() {
@@ -52,6 +57,50 @@ class UpdateActivity : AppCompatActivity() {
         status.text = getString(R.string.update_downloading)
         detail.text = ""
         Thread { runCatching { downloadAndInstall(url, sha256) } }.start()
+    }
+
+    /**
+     * Recorrido simulado del diseño (menú de depuración): "Descargando… N%"
+     * con avance suave, luego "Actualizando…" y el cierre, sin descargar ni
+     * instalar nada.
+     */
+    private fun simulate() {
+        retry.visibility = Button.GONE
+        progress.visibility = ProgressBar.VISIBLE
+        progress.isIndeterminate = true
+        status.text = getString(R.string.update_downloading)
+        detail.text = ""
+        Thread {
+            try {
+                runOnUiThread {
+                    progress.isIndeterminate = false
+                    detail.text = "0%"
+                }
+                for (percent in 0..100 step 4) {
+                    Thread.sleep(120)
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        detail.text = "$percent%"
+                        progress.progress = percent
+                    }
+                }
+                Thread.sleep(400)
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    status.text = getString(R.string.update_installing)
+                    detail.text = ""
+                    progress.isIndeterminate = true
+                }
+                Thread.sleep(2_200)
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    progress.visibility = ProgressBar.GONE
+                    status.text = getString(R.string.update_demo_done)
+                }
+            } catch (e: InterruptedException) {
+                // La pantalla se cerró: nada más que hacer.
+            }
+        }.start()
     }
 
     private fun downloadAndInstall(url: String, sha256: String) {
@@ -138,6 +187,7 @@ class UpdateActivity : AppCompatActivity() {
         private const val APK_NAME = "dmujeres-update.apk"
         const val EXTRA_URL = "update_url"
         const val EXTRA_SHA256 = "update_sha256"
+        private const val EXTRA_DEMO = "update_demo"
 
         /** Abre la pantalla de carga; si falta el permiso, manda a Ajustes. */
         fun start(activity: Activity, url: String, sha256: String) {
@@ -159,6 +209,14 @@ class UpdateActivity : AppCompatActivity() {
                 Intent(activity, UpdateActivity::class.java)
                     .putExtra(EXTRA_URL, url)
                     .putExtra(EXTRA_SHA256, sha256),
+            )
+        }
+
+        /** Recorrido simulado del diseño, desde el menú de depuración. */
+        fun startDemo(activity: Activity) {
+            activity.startActivity(
+                Intent(activity, UpdateActivity::class.java)
+                    .putExtra(EXTRA_DEMO, true),
             )
         }
     }

@@ -33,6 +33,9 @@ class DebugActivity : AppCompatActivity() {
         addRow(rows, R.string.debug_home_title, R.string.debug_home_summary) {
             startActivity(android.content.Intent(this, MainActivity::class.java))
         }
+        addRow(rows, R.string.debug_welcome_title, R.string.debug_welcome_summary) {
+            OnboardingActivity.start(this, OnboardingActivity.STEP_WELCOME)
+        }
         addRow(rows, R.string.debug_login_title, R.string.debug_login_summary) {
             OnboardingActivity.start(this, OnboardingActivity.STEP_LOGIN)
         }
@@ -42,13 +45,13 @@ class DebugActivity : AppCompatActivity() {
         addRow(rows, R.string.debug_wizard_title, R.string.debug_wizard_summary) {
             PreferenceManager.getDefaultSharedPreferences(this).edit()
                 .putBoolean(Prefs.ONBOARDED, false).apply()
-            OnboardingActivity.start(this, OnboardingActivity.STEP_LOGIN)
+            OnboardingActivity.start(this, OnboardingActivity.STEP_WELCOME)
         }
         addRow(rows, R.string.debug_console_title, R.string.debug_console_summary) {
             startActivity(android.content.Intent(this, StatusActivity::class.java))
         }
         addRow(rows, R.string.debug_update_title, R.string.debug_update_summary) {
-            openUpdateScreen()
+            UpdateActivity.startDemo(this)
         }
         addRow(rows, R.string.debug_finish_title, R.string.debug_finish_summary) {
             showFinishJourneyDialog()
@@ -95,20 +98,6 @@ class DebugActivity : AppCompatActivity() {
     }
 
     // ── Pantallas ───────────────────────────────────────────────────────────
-
-    /** Abre la pantalla de descarga solo si hay una versión publicada nueva. */
-    private fun openUpdateScreen() {
-        DmujeresApi.checkOta(this) { label, url, sha256 ->
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                if (label == null) {
-                    toast(getString(R.string.debug_no_update))
-                } else {
-                    UpdateActivity.start(this, url, sha256)
-                }
-            }
-        }
-    }
 
     /** Mismo diálogo del home, con la duración real de la jornada. */
     private fun showFinishJourneyDialog() {

@@ -31,6 +31,9 @@ import androidx.preference.PreferenceManager
 /** Refresco en vivo del home (estado, pendientes, batería y duración). */
 private const val LIVE_REFRESH_MS = 5_000L
 
+/** Pasos visibles del refresco manual (para el relleno proporcional). */
+private const val REFRESH_STEPS = 7
+
 class MainActivity : AppCompatActivity() {
 
     private var tapCount = 0
@@ -123,10 +126,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         // ACTUALIZAR: refresco manual de posición y servicio con el servidor
-        // (reenvía pendientes y pide un fix inmediato). La actualización de la
-        // APP es el banner superior.
+        // (reenvía pendientes y pide un fix inmediato). El avance se ve DENTRO
+        // del botón: el texto de cada paso reemplaza la palabra y el relleno
+        // azul avanza de izquierda a derecha. La actualización de la APP es el
+        // banner superior.
         updateButton.setOnClickListener {
-            animateUpdateButton(updateButton)
             runProgressiveRefresh()
         }
         version.text = getString(
@@ -202,43 +206,6 @@ class MainActivity : AppCompatActivity() {
         }
         text.text = label
         text.setTextColor(getColor(textColorRes))
-    }
-
-    /**
-     * Animación del botón ACTUALIZAR: se rellena de azul marino de izquierda a
-     * derecha (con la letra pasando a blanco) y luego vuelve al fondo blanco.
-     */
-    private fun animateUpdateButton(button: Button) {
-        val border = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.bg_button_navy_border) ?: return
-        val solid = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.bg_button_navy_solid) ?: return
-        val clip = android.graphics.drawable.ClipDrawable(
-            solid, android.view.Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL,
-        )
-        button.background = android.graphics.drawable.LayerDrawable(arrayOf(border, clip))
-        val navy = getColor(R.color.navy)
-        val fill = android.animation.ValueAnimator.ofInt(0, 10_000).apply {
-            duration = 550
-            interpolator = android.view.animation.DecelerateInterpolator()
-        }
-        fill.addUpdateListener { value ->
-            clip.level = value.animatedValue as Int
-            val fraction = (value.animatedValue as Int) / 10_000f
-            button.setTextColor(
-                android.animation.ArgbEvaluator().evaluate(fraction, navy, android.graphics.Color.WHITE) as Int,
-            )
-        }
-        fill.start()
-        uiHandler.postDelayed({
-            val back = android.animation.ValueAnimator.ofInt(10_000, 0).apply { duration = 350 }
-            back.addUpdateListener { value ->
-                clip.level = value.animatedValue as Int
-                val fraction = (value.animatedValue as Int) / 10_000f
-                button.setTextColor(
-                    android.animation.ArgbEvaluator().evaluate(fraction, navy, android.graphics.Color.WHITE) as Int,
-                )
-            }
-            back.start()
-        }, 950)
     }
 
     override fun onResume() {
@@ -344,30 +311,59 @@ class MainActivity : AppCompatActivity() {
     private var refreshing = false
 
     /**
-     * Refresco progresivo (botón ACTUALIZAR): envía los pendientes y verifica
-     * GPS, datos, servidor y Firebase paso a paso, mostrando en pantalla (la
-     * misma fuente de la versión del footer) qué está haciendo.
+     * Refresco manual con el avance DENTRO del botón: el texto de cada paso
+     * reemplaza la palabra ACTUALIZAR y el relleno azul marino avanza de
+     * izquierda a derecha, proporcional a los pasos completados, con una
+     * animación continua y suave (no salta de golpe entre pasos).
      */
     private fun runProgressiveRefresh() {
         if (refreshing) return
         refreshing = true
-        val status = findViewById<TextView>(R.id.refresh_status)
-        Thread {
-            fun say(text: String) {
-                runOnUiThread { if (!isFinishing && !isDestroyed) status?.text = text }
+        val button = findViewById<Button>(R.id.update_button)
+        val fill = (button.background as android.graphics.drawable.LayerDrawable)
+            .findDrawableByLayerId(R.id.progress_fill) as android.graphics.drawable.ClipDrawable
+        var fillAnimator: android.animation.ValueAnimator? = null
+        val navy = androidx.core.content.ContextCompat.getColor(this, R.color.navy)
+
+        fun fillTo(step: Int, durationMs: Long) {
+            fillAnimator?.cancel()
+            val target = step * 10_000 / REFRESH_STEPS
+            fillAnimator = android.animation.ValueAnimator.ofInt(fill.level, target).apply {
+                duration = durationMs
+                interpolator = android.view.animation.LinearInterpolator()
+                addUpdateListener { value ->
+                    fill.level = value.animatedValue as Int
+                    // La letra pasa a blanco a medida que el relleno la cubre.
+                    val fraction = (value.animatedValue as Int) / 10_000f
+                    button.setTextColor(
+                        android.animation.ArgbEvaluator().evaluate(
+                            fraction, navy, android.graphics.Color.WHITE,
+                        ) as Int,
+                    )
+                }
+                start()
             }
+        }
+        fun say(text: String, step: Int, durationMs: Long = 1_100) {
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                button.text = text
+                fillTo(step, durationMs)
+            }
+        }
+        Thread {
             fun pause() = runCatching { Thread.sleep(900) }
             try {
                 // 1) puntos pendientes
                 val before = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
-                say(getString(R.string.refresh_step_pending, before))
+                say(getString(R.string.refresh_step_pending, before), 1)
                 TrackingService.refreshNow()
                 pause()
                 val after = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
-                say(getString(R.string.refresh_step_pending_ok, (before - after).coerceAtLeast(0)))
+                say(getString(R.string.refresh_step_pending_ok, (before - after).coerceAtLeast(0)), 2)
                 pause()
                 // 2) GPS
-                say(getString(R.string.refresh_step_gps))
+                say(getString(R.string.refresh_step_gps), 3)
                 val gpsOn = runCatching {
                     (getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager)
                         .isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
@@ -382,24 +378,25 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         getString(R.string.refresh_step_gps_off)
                     },
+                    3,
                 )
                 pause()
                 // 3) datos móviles / red
-                say(getString(R.string.refresh_step_net))
+                say(getString(R.string.refresh_step_net), 4)
                 val online = runCatching {
                     NetworkManager(this, object : NetworkManager.NetworkHandler {
                         override fun onNetworkUpdate(isOnline: Boolean) = Unit
                     }).isOnline
                 }.getOrDefault(false)
-                say(getString(if (online) R.string.refresh_step_net_ok else R.string.refresh_step_net_off))
+                say(getString(if (online) R.string.refresh_step_net_ok else R.string.refresh_step_net_off), 4)
                 pause()
                 // 4) servidor
-                say(getString(R.string.refresh_step_server))
+                say(getString(R.string.refresh_step_server), 5)
                 val serverOk = DmujeresApi.serverReachable(this)
-                say(getString(if (serverOk) R.string.refresh_step_server_ok else R.string.refresh_step_server_off))
+                say(getString(if (serverOk) R.string.refresh_step_server_ok else R.string.refresh_step_server_off), 5)
                 pause()
                 // 5) Firebase
-                say(getString(R.string.refresh_step_firebase))
+                say(getString(R.string.refresh_step_firebase), 6)
                 val firebase = FcmStatus.hasToken(this)
                 say(
                     when (firebase) {
@@ -407,12 +404,24 @@ class MainActivity : AppCompatActivity() {
                         false -> getString(R.string.refresh_step_firebase_off)
                         else -> getString(R.string.refresh_step_firebase_na)
                     },
+                    6,
                 )
                 pause()
-                say(getString(R.string.refresh_step_done))
+                say(getString(R.string.refresh_step_done), 7, 700)
                 runOnUiThread { runCatching { refreshLockedHome() } }
                 pause()
-                say("")
+                // Reposo: vuelve la palabra ACTUALIZAR y el fondo blanco.
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    fillAnimator?.cancel()
+                    button.text = getString(R.string.refresh_button)
+                    button.setTextColor(navy)
+                    android.animation.ValueAnimator.ofInt(10_000, 0).apply {
+                        duration = 350
+                        addUpdateListener { value -> fill.level = value.animatedValue as Int }
+                        start()
+                    }
+                }
             } finally {
                 refreshing = false
             }

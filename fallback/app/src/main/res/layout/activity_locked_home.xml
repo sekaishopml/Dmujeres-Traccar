@@ -253,25 +253,18 @@
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/refresh_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:gravity="center"
-                android:textColor="@color/muted"
-                android:textSize="12sp" />
-
             <Button
                 android:id="@+id/update_button"
                 android:layout_width="match_parent"
                 android:layout_height="46dp"
                 android:layout_marginTop="8dp"
-                android:background="@drawable/bg_button_navy_border"
+                android:background="@drawable/bg_update_progress"
+                android:ellipsize="end"
+                android:maxLines="1"
                 android:text="@string/refresh_button"
                 android:textAllCaps="false"
                 android:textColor="@color/navy"
-                android:textSize="14sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </FrameLayout>
