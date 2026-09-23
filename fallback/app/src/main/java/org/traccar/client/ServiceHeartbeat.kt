@@ -85,6 +85,8 @@ object ServiceHeartbeat {
                     ),
                 )
             }
+            // Configuración remota: cada 10 min, y solo reinicia si cambió.
+            RemoteConfig.applyAndRestartIfChanged(context)
         }.start()
     }
 }

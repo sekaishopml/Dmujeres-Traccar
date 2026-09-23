@@ -272,10 +272,14 @@ class OnboardingActivity : AppCompatActivity() {
             .putBoolean(Prefs.STATUS, true)
             .apply()
         // Reinicio limpio: si el servicio venía corriendo con la configuración
-        // vieja (p. ej. arrancó por el sistema antes del login), se detiene y
-        // vuelve a arrancar para que tome el usuario y el servidor guardados.
-        stopService(Intent(this, TrackingService::class.java))
-        ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+        // vieja (p. ej. arrancó por el sistema antes del login), se reinicia
+        // para que tome el usuario y el servidor guardados (con guardas de
+        // arranque: ver RemoteConfig.restartService).
+        if (TrackingService.isRunning) {
+            RemoteConfig.restartService(this)
+        } else {
+            ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+        }
         startActivity(Intent(this, MainActivity::class.java))
         finish()
     }

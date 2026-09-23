@@ -16,11 +16,15 @@
 package org.traccar.client
 
 import androidx.appcompat.app.AppCompatActivity
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.TextView
 import android.widget.LinearLayout
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.Toast
 import android.view.View
 import android.os.SystemClock
 import androidx.appcompat.app.AlertDialog
@@ -32,7 +36,7 @@ import androidx.preference.PreferenceManager
 private const val LIVE_REFRESH_MS = 5_000L
 
 /** Pasos visibles del refresco manual (para el relleno proporcional). */
-private const val REFRESH_STEPS = 7
+private const val REFRESH_STEPS = 8
 
 class MainActivity : AppCompatActivity() {
 
@@ -55,6 +59,9 @@ class MainActivity : AppCompatActivity() {
         // Plan B: el servicio queda siempre encendido (sin interruptor visible).
         prefs.edit().putBoolean(Prefs.STATUS, true).apply()
         ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+        // Config remota al abrir: si cambió y el servicio ya corre, se reinicia
+        // una sola vez (con guardas: ver RemoteConfig.restartService).
+        RemoteConfig.applyAndRestartIfChanged(this)
         // Pantalla propia, sin ninguna configuración visible: toda la
         // configuración es interna y el menú de depuración se abre con
         // 5 toques en la versión (ya no existe el panel de ajustes de Traccar).
@@ -118,6 +125,13 @@ class MainActivity : AppCompatActivity() {
                     .setNegativeButton(R.string.journey_confirm_cancel, null)
                     .show()
             } else {
+                // Sin los permisos que mantienen la captura y las notificaciones
+                // la jornada no arranca: se avisa y se abre el paso de permisos.
+                if (!journeyPermissionsGranted()) {
+                    Toast.makeText(this, R.string.journey_missing_permissions, Toast.LENGTH_LONG).show()
+                    OnboardingActivity.start(this, OnboardingActivity.STEP_PERMISSIONS)
+                    return@setOnClickListener
+                }
                 ContextCompat.startForegroundService(
                     this, Intent(this, TrackingService::class.java),
                 )
@@ -395,8 +409,24 @@ class MainActivity : AppCompatActivity() {
                 val serverOk = DmujeresApi.serverReachable(this)
                 say(getString(if (serverOk) R.string.refresh_step_server_ok else R.string.refresh_step_server_off), 5)
                 pause()
-                // 5) Firebase
-                say(getString(R.string.refresh_step_firebase), 6)
+                // 5) configuración remota
+                say(getString(R.string.refresh_step_config), 6)
+                val configChanged = requestRemoteConfig()
+                say(
+                    getString(
+                        if (configChanged) R.string.refresh_step_config_updated
+                        else R.string.refresh_step_config_ok,
+                    ),
+                    6,
+                )
+                if (configChanged) {
+                    // Mismo reinicio que RemoteConfig.applyAndRestartIfChanged.
+                    stopService(Intent(this, TrackingService::class.java))
+                    ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+                }
+                pause()
+                // 6) Firebase
+                say(getString(R.string.refresh_step_firebase), 7)
                 val firebase = FcmStatus.hasToken(this)
                 say(
                     when (firebase) {
@@ -404,10 +434,10 @@ class MainActivity : AppCompatActivity() {
                         false -> getString(R.string.refresh_step_firebase_off)
                         else -> getString(R.string.refresh_step_firebase_na)
                     },
-                    6,
+                    7,
                 )
                 pause()
-                say(getString(R.string.refresh_step_done), 7, 700)
+                say(getString(R.string.refresh_step_done), 8, 700)
                 runOnUiThread { runCatching { refreshLockedHome() } }
                 pause()
                 // Reposo: vuelve la palabra ACTUALIZAR y el fondo blanco.
@@ -429,6 +459,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun canSend(): Boolean = !ConnectionState.isFailing() && cachedPending == 0
+
+    /** Espera la config remota (con tope) para completar el paso del refresco. */
+    private fun requestRemoteConfig(): Boolean {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val changed = java.util.concurrent.atomic.AtomicBoolean(false)
+        RemoteConfig.refresh(this) {
+            changed.set(it)
+            latch.countDown()
+        }
+        // La consulta tiene timeouts de 5 s; el tope evita que el refresco se
+        // quede pegado si el callback no llega.
+        runCatching { latch.await(8, java.util.concurrent.TimeUnit.SECONDS) }
+        return changed.get()
+    }
+
+    /** Permisos mínimos para iniciar jornada (los mismos del asistente). */
+    private fun journeyPermissionsGranted(): Boolean {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    }
 
     private fun readBattery(): Pair<Int, Boolean> {
         val intent = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))

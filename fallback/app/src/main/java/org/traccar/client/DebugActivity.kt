@@ -146,11 +146,10 @@ class DebugActivity : AppCompatActivity() {
             .setPositiveButton(R.string.debug_save) { _, _ ->
                 prefs.edit().putString(Prefs.URL, field.text.toString().trim()).apply()
                 // El servicio toma la URL al arrancar: se reinicia para que el
-                // cambio se aplique ya.
-                stopService(android.content.Intent(this, TrackingService::class.java))
-                androidx.core.content.ContextCompat.startForegroundService(
-                    this, android.content.Intent(this, TrackingService::class.java),
-                )
+                // cambio se aplique ya (con guardas de arranque).
+                if (TrackingService.isRunning) {
+                    RemoteConfig.restartService(this)
+                }
                 toast(getString(R.string.debug_server_saved))
             }
             .setNegativeButton(R.string.debug_close, null)
@@ -209,6 +208,13 @@ class DebugActivity : AppCompatActivity() {
             getString(
                 R.string.debug_diag_connection_fmt,
                 getString(if (ConnectionState.isFailing()) R.string.debug_failing else R.string.debug_ok),
+            ),
+            getString(
+                R.string.debug_diag_config_fmt,
+                prefs.getString(Prefs.INTERVAL, "60"),
+                prefs.getString(Prefs.DISTANCE, "10"),
+                prefs.getString(Prefs.ANGLE, "15"),
+                prefs.getString(Prefs.ACCURACY, "medium"),
             ),
             getString(R.string.debug_diag_user_fmt, prefs.getString(Prefs.DEVICE, "")),
             getString(R.string.debug_diag_server_fmt, prefs.getString(Prefs.URL, "")),
