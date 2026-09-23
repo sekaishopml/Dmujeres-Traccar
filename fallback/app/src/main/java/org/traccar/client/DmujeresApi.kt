@@ -97,6 +97,7 @@ object DmujeresApi {
             .putLong(KEY_JOURNEY_STARTED_AT, System.currentTimeMillis())
             .putBoolean(KEY_JOURNEY_OPEN, true)
             .apply()
+        StatusActivity.addMessage(context.getString(R.string.journey_started_toast))
         post(
             context,
             "/api/mobile/v1/journey",
@@ -124,6 +125,7 @@ object DmujeresApi {
         val journeyId = prefs(context).getLong(KEY_JOURNEY_ID, System.currentTimeMillis())
         prefs(context).edit().putBoolean(KEY_JOURNEY_OPEN, false).apply()
         if (!open) return
+        StatusActivity.addMessage(context.getString(R.string.journey_ended_toast))
         post(
             context,
             "/api/mobile/v1/journey",
@@ -158,6 +160,25 @@ object DmujeresApi {
         } catch (e: Exception) {
             Log.w(TAG, "No se pudo validar el usuario", e)
             null
+        }
+    }
+
+    /** ¿El servidor responde ahora? (sonda corta al canal de configuración). */
+    fun serverReachable(context: Context): Boolean {
+        val base = webBase(context)
+        val device = deviceId(context)
+        if (base.isBlank() || device.isBlank()) return false
+        return try {
+            val connection = URL("$base/api/mobile/v1/config").openConnection() as HttpURLConnection
+            connection.connectTimeout = 5_000
+            connection.readTimeout = 5_000
+            connection.setRequestProperty("X-Api-Key", apiKey(context))
+            connection.setRequestProperty("X-Device-Id", device)
+            val code = connection.responseCode
+            connection.disconnect()
+            code in 200..499 // 404 también prueba que el servidor responde
+        } catch (e: Exception) {
+            false
         }
     }
 

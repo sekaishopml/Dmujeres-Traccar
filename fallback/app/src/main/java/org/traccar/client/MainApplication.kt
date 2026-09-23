@@ -31,6 +31,8 @@ open class MainApplication : MultiDexApplication() {
         System.setProperty("http.keepAliveDuration", (30 * 60 * 1000).toString())
         // Los crashes del plan B se ven en el panel (lastDiagnostics.crash).
         CrashReporter.install(this)
+        // Consola de estado persistente entre arranques.
+        StatusActivity.attach(this)
         // Configuración de fábrica (id, servidor, 30 s/50 m/15°, alta precisión)
         // escrita antes de cualquier lectura: el onboarding muestra los campos
         // ya rellenos y el servicio arranca con la config óptima.

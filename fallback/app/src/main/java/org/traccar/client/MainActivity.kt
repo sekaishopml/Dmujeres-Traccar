@@ -131,16 +131,7 @@ class MainActivity : AppCompatActivity() {
         // APP es el banner superior.
         updateButton.setOnClickListener {
             animateUpdateButton(updateButton)
-            val active = TrackingService.refreshNow()
-            Toast.makeText(
-                this,
-                if (active) R.string.refresh_now_ok else R.string.refresh_now_off,
-                Toast.LENGTH_SHORT,
-            ).show()
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                { runCatching { refreshLockedHome() } },
-                2_500L,
-            )
+            runProgressiveRefresh()
         }
         version.text = getString(
             R.string.version_footer_fmt,
@@ -360,6 +351,84 @@ class MainActivity : AppCompatActivity() {
      * los envíos + búfer pendiente) y no las APIs del sistema (NetworkManager /
      * ConnectivityManager), porque en algunas ROMs y con VPN activa mienten.
      */
+    private var refreshing = false
+
+    /**
+     * Refresco progresivo (botón ACTUALIZAR): envía los pendientes y verifica
+     * GPS, datos, servidor y Firebase paso a paso, mostrando en pantalla (la
+     * misma fuente de la versión del footer) qué está haciendo.
+     */
+    private fun runProgressiveRefresh() {
+        if (refreshing) return
+        refreshing = true
+        val status = findViewById<TextView>(R.id.refresh_status)
+        Thread {
+            fun say(text: String) {
+                runOnUiThread { if (!isFinishing && !isDestroyed) status?.text = text }
+            }
+            fun pause() = runCatching { Thread.sleep(900) }
+            try {
+                // 1) puntos pendientes
+                val before = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
+                say(getString(R.string.refresh_step_pending, before))
+                TrackingService.refreshNow()
+                pause()
+                val after = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
+                say(getString(R.string.refresh_step_pending_ok, (before - after).coerceAtLeast(0)))
+                pause()
+                // 2) GPS
+                say(getString(R.string.refresh_step_gps))
+                val gpsOn = runCatching {
+                    (getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager)
+                        .isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+                }.getOrDefault(false)
+                val lastFixAt = PreferenceManager.getDefaultSharedPreferences(this)
+                    .getLong(PositionProvider.KEY_LAST_FIX_AT, 0L)
+                val fixAge = if (lastFixAt > 0) (System.currentTimeMillis() - lastFixAt) / 1000 else -1
+                say(
+                    if (gpsOn) {
+                        if (fixAge in 0..3600) getString(R.string.refresh_step_gps_ok, fixAge)
+                        else getString(R.string.refresh_step_gps_wait)
+                    } else {
+                        getString(R.string.refresh_step_gps_off)
+                    },
+                )
+                pause()
+                // 3) datos móviles / red
+                say(getString(R.string.refresh_step_net))
+                val online = runCatching {
+                    NetworkManager(this, object : NetworkManager.NetworkHandler {
+                        override fun onNetworkUpdate(isOnline: Boolean) = Unit
+                    }).isOnline
+                }.getOrDefault(false)
+                say(getString(if (online) R.string.refresh_step_net_ok else R.string.refresh_step_net_off))
+                pause()
+                // 4) servidor
+                say(getString(R.string.refresh_step_server))
+                val serverOk = DmujeresApi.serverReachable(this)
+                say(getString(if (serverOk) R.string.refresh_step_server_ok else R.string.refresh_step_server_off))
+                pause()
+                // 5) Firebase
+                say(getString(R.string.refresh_step_firebase))
+                val firebase = FcmStatus.hasToken(this)
+                say(
+                    when (firebase) {
+                        true -> getString(R.string.refresh_step_firebase_ok)
+                        false -> getString(R.string.refresh_step_firebase_off)
+                        else -> getString(R.string.refresh_step_firebase_na)
+                    },
+                )
+                pause()
+                say(getString(R.string.refresh_step_done))
+                runOnUiThread { runCatching { refreshLockedHome() } }
+                pause()
+                say("")
+            } finally {
+                refreshing = false
+            }
+        }.start()
+    }
+
     private fun canSend(): Boolean = !ConnectionState.isFailing() && cachedPending == 0
 
     private fun readBattery(): Pair<Int, Boolean> {

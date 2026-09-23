@@ -83,6 +83,7 @@ abstract class PositionProvider(
                     && abs(location.bearing - lastLocation.bearing) >= angle)
         ) {
             Log.i(TAG, "location new")
+            preferences.edit().putLong(KEY_LAST_FIX_AT, System.currentTimeMillis()).apply()
             this.lastLocation = location
             listener.onPositionUpdate(Position(deviceId, location, getBatteryStatus(context)))
         } else {
@@ -107,6 +108,9 @@ abstract class PositionProvider(
     companion object {
         private val TAG = PositionProvider::class.java.simpleName
         const val MINIMUM_INTERVAL: Long = 1000
+
+        /** Hora del último fix aceptado (para el refresco progresivo). */
+        const val KEY_LAST_FIX_AT = "lastFixAt"
 
         /** Pata mínima (m) para que un giro cuente como reporte (filtra jitter). */
         const val ANGLE_MIN_LEG_M = 12.0

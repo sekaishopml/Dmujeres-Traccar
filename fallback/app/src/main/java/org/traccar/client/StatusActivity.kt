@@ -33,7 +33,9 @@ class StatusActivity : AppCompatActivity() {
         // Nuevo diseño: logo arriba, estado actual y los últimos movimientos
         // desde el tope (antes era una lista pelada y el contenido se veía abajo).
         setContentView(R.layout.activity_status)
-        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, android.R.id.text1, messages)
+        // Ítem propio con color explícito: el teléfono en modo oscuro pintaba
+        // el texto blanco de simple_list_item_1 sobre el fondo blanco de la app.
+        adapter = ArrayAdapter(this, R.layout.item_console, R.id.console_text, messages)
         val listView = findViewById<ListView>(android.R.id.list)
         listView.adapter = adapter
         adapter?.let { adapters.add(it) }
@@ -84,8 +86,44 @@ class StatusActivity : AppCompatActivity() {
 
     companion object {
         private const val LIMIT = 20
+        private const val PREFS = "statusConsole"
+        private const val KEY = "messages"
         private val messages = LinkedList<String>()
         private val adapters: MutableSet<ArrayAdapter<String>> = HashSet()
+
+        /** Contexto de aplicación para persistir la consola entre arranques. */
+        private var appContext: android.content.Context? = null
+
+        /** Se llama una vez desde la app: carga lo guardado y queda listo para
+         *  guardar cada mensaje (antes la consola se vaciaba al reiniciar y
+         *  parecía que "no mostraba nada"). */
+        fun attach(context: android.content.Context) {
+            appContext = context.applicationContext
+            load()
+        }
+
+        private fun load() {
+            val context = appContext ?: return
+            val raw = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+                .getString(KEY, null) ?: return
+            runCatching {
+                val array = org.json.JSONArray(raw)
+                messages.clear()
+                for (index in 0 until array.length()) {
+                    messages.add(array.getString(index))
+                }
+            }
+        }
+
+        private fun persist() {
+            val context = appContext ?: return
+            runCatching {
+                val array = org.json.JSONArray()
+                messages.forEach { array.put(it) }
+                context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+                    .edit().putString(KEY, array.toString()).apply()
+            }
+        }
 
         private fun notifyAdapters() {
             for (adapter in adapters) {
@@ -101,11 +139,13 @@ class StatusActivity : AppCompatActivity() {
             while (messages.size > LIMIT) {
                 messages.removeFirst()
             }
+            persist()
             notifyAdapters()
         }
 
         fun clearMessages() {
             messages.clear()
+            persist()
             notifyAdapters()
         }
     }
