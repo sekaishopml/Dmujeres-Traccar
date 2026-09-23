@@ -124,6 +124,9 @@
   <string name="update_dialog_title">Actualización disponible</string>
   <string name="update_later">Más tarde</string>
   <string name="update_row_text">Actualización disponible: %1$s</string>
+  <string name="update_installing">Actualizando…</string>
+  <string name="update_retry">Tocar para reintentar</string>
+  <string name="update_ready">Descarga lista</string>
   <string name="update_downloading">Descargando actualización…</string>
   <string name="update_downloaded">Descarga lista · abre el instalador</string>
   <string name="update_download_failed">No se pudo descargar la actualización</string>

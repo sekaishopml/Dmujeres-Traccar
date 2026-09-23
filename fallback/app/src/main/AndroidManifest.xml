@@ -55,6 +55,11 @@
         </activity-alias>
 
         <activity
+            android:name=".UpdateActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity
             android:name=".OnboardingActivity"
             android:exported="false"
             android:theme="@style/AppTheme" />

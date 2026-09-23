@@ -83,7 +83,7 @@ class MainActivity : AppCompatActivity() {
                 slide.duration = 350
                 banner.startAnimation(slide)
                 banner.setOnClickListener {
-                    OtaUpdater.downloadAndInstall(this, url, sha256)
+                    UpdateActivity.start(this, url, sha256)
                 }
             }
         }
