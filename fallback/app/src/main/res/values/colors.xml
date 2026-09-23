@@ -11,5 +11,7 @@
     <color name="ink">#181818</color>
     <color name="muted">#8A8A8A</color>
     <color name="status_ok">#2E7D32</color>
+    <!-- Azul marino intenso (botón ACTUALIZAR y consola) -->
+    <color name="navy">#0B2545</color>
 
 </resources>

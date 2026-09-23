@@ -50,6 +50,8 @@
   <string name="request_exception">To continuously collect location data please turn off battery optimization for the app.</string>
   <string name="request_background">To continuously collect location data please enable \"%s\" permission.</string>
   <string name="request_background_option">Allow all the time</string>
+  <string name="status_title">Estado del servicio</string>
+  <string name="status_recent_events">ÚLTIMOS MOVIMIENTOS</string>
   <string name="journey_start_title">Iniciar jornada</string>
   <string name="journey_start_summary">Registra el inicio en el panel</string>
   <string name="journey_stop_title">Detener jornada</string>
@@ -92,7 +94,11 @@
   <string name="journey_none">Sin jornada activa</string>
   <string name="journey_active_since">Jornada activa desde las %1$s</string>
   <string name="journey_confirm_title">¿Finalizar la jornada?</string>
-  <string name="journey_confirm_body">Se cierra la jornada en el panel. El servicio de ubicación sigue activo.</string>
+  <string name="journey_confirm_body">Toca para finalizar la jornada.
+
+Lleva activa %1\$d h %2\$d min.
+
+Se registrará el cierre en el panel.</string>
   <string name="journey_confirm_ok">Finalizar</string>
   <string name="journey_confirm_cancel">Cancelar</string>
   <string name="journey_started_toast">Jornada iniciada</string>

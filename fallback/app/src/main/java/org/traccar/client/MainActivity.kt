@@ -106,9 +106,12 @@ class MainActivity : AppCompatActivity() {
 
         button.setOnClickListener {
             if (DmujeresApi.isJourneyOpen(this)) {
+                val startedAt = PreferenceManager.getDefaultSharedPreferences(this)
+                    .getLong(DmujeresApi.KEY_JOURNEY_STARTED_AT, 0L)
+                val minutes = if (startedAt > 0L) ((System.currentTimeMillis() - startedAt) / 60_000L).toInt() else 0
                 AlertDialog.Builder(this)
                     .setTitle(R.string.journey_confirm_title)
-                    .setMessage(R.string.journey_confirm_body)
+                    .setMessage(getString(R.string.journey_confirm_body, minutes / 60, minutes % 60))
                     .setPositiveButton(R.string.journey_confirm_ok) { _, _ ->
                         DmujeresApi.journeyEnded(this)
                         refreshLockedHome()
@@ -127,6 +130,7 @@ class MainActivity : AppCompatActivity() {
         // (reenvía pendientes y pide un fix inmediato). La actualización de la
         // APP es el banner superior.
         updateButton.setOnClickListener {
+            animateUpdateButton(updateButton)
             val active = TrackingService.refreshNow()
             Toast.makeText(
                 this,
@@ -196,6 +200,66 @@ class MainActivity : AppCompatActivity() {
     /** Banner de estado (3 colores), cuadros y botón con el estado real. */
     private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** Último estado de la pill (para no re-animar en cada refresco). */
+    private var pillStateRes = 0
+
+    /** Cambia el estado de la pill con una transición suave de color. */
+    private fun applyPillState(pill: LinearLayout, text: TextView, bgRes: Int, label: String, textColorRes: Int) {
+        if (pillStateRes != bgRes) {
+            val newBg = androidx.core.content.ContextCompat.getDrawable(this, bgRes)
+            val oldBg = (pill.background as? android.graphics.drawable.DrawableWrapper)?.drawable
+                ?: pill.background
+            if (oldBg != null && newBg != null) {
+                val transition = android.graphics.drawable.TransitionDrawable(arrayOf(oldBg, newBg))
+                transition.isCrossFadeEnabled = true
+                pill.background = transition
+                transition.startTransition(400)
+            } else {
+                pill.setBackgroundResource(bgRes)
+            }
+            pillStateRes = bgRes
+        }
+        text.text = label
+        text.setTextColor(getColor(textColorRes))
+    }
+
+    /**
+     * Animación del botón ACTUALIZAR: se rellena de azul marino de izquierda a
+     * derecha (con la letra pasando a blanco) y luego vuelve al fondo blanco.
+     */
+    private fun animateUpdateButton(button: Button) {
+        val border = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.bg_button_navy_border) ?: return
+        val solid = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.bg_button_navy_solid) ?: return
+        val clip = android.graphics.drawable.ClipDrawable(
+            solid, android.view.Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL,
+        )
+        button.background = android.graphics.drawable.LayerDrawable(arrayOf(border, clip))
+        val navy = getColor(R.color.navy)
+        val fill = android.animation.ValueAnimator.ofInt(0, 10_000).apply {
+            duration = 550
+            interpolator = android.view.animation.DecelerateInterpolator()
+        }
+        fill.addUpdateListener { value ->
+            clip.level = value.animatedValue as Int
+            val fraction = (value.animatedValue as Int) / 10_000f
+            button.setTextColor(
+                android.animation.ArgbEvaluator().evaluate(fraction, navy, android.graphics.Color.WHITE) as Int,
+            )
+        }
+        fill.start()
+        uiHandler.postDelayed({
+            val back = android.animation.ValueAnimator.ofInt(10_000, 0).apply { duration = 350 }
+            back.addUpdateListener { value ->
+                clip.level = value.animatedValue as Int
+                val fraction = (value.animatedValue as Int) / 10_000f
+                button.setTextColor(
+                    android.animation.ArgbEvaluator().evaluate(fraction, navy, android.graphics.Color.WHITE) as Int,
+                )
+            }
+            back.start()
+        }, 950)
+    }
+
     override fun onResume() {
         super.onResume()
         // Refresco inmediato + vivo cada 5 s mientras la pantalla esté abierta.
@@ -231,48 +295,22 @@ class MainActivity : AppCompatActivity() {
         // Estado visible (los mismos 4 del panel): deshabilitado (jornada
         // apagada), sin conexión (no puede enviar), detenido (quieto) o en línea
         // (en movimiento). Ubicación apagada tiene prioridad: impide trazar.
-        val motionState = MotionMonitor.isMoving()
-        when {
-            !locationOn -> {
-                pill.setBackgroundResource(R.drawable.bg_pill_red)
-                pillText.text = getString(R.string.pill_location_off)
-                pillText.setTextColor(getColor(R.color.white))
-                button.setBackgroundResource(
-                    if (open) R.drawable.bg_button_primary else R.drawable.bg_button_green,
-                )
-                button.text = getString(
-                    if (open) R.string.journey_stop_upper else R.string.journey_start_upper,
-                )
-            }
-            !open -> {
-                pill.setBackgroundResource(R.drawable.bg_pill_gray)
-                pillText.text = getString(R.string.pill_disabled)
-                pillText.setTextColor(getColor(R.color.white))
-                button.setBackgroundResource(R.drawable.bg_button_green)
-                button.text = getString(R.string.journey_start_upper)
-            }
-            !canSend() -> {
-                pill.setBackgroundResource(R.drawable.bg_pill_orange)
-                pillText.text = getString(R.string.pill_no_connection)
-                pillText.setTextColor(getColor(R.color.white))
-                button.setBackgroundResource(R.drawable.bg_button_primary)
-                button.text = getString(R.string.journey_stop_upper)
-            }
-            motionState == true -> {
-                pill.setBackgroundResource(R.drawable.bg_pill_green)
-                pillText.text = getString(R.string.pill_online)
-                pillText.setTextColor(getColor(R.color.white))
-                button.setBackgroundResource(R.drawable.bg_button_primary)
-                button.text = getString(R.string.journey_stop_upper)
-            }
-            else -> {
-                pill.setBackgroundResource(R.drawable.bg_pill_blue)
-                pillText.text = getString(R.string.pill_stopped)
-                pillText.setTextColor(getColor(R.color.white))
-                button.setBackgroundResource(R.drawable.bg_button_primary)
-                button.text = getString(R.string.journey_stop_upper)
-            }
+        // Estados visibles en el TELÉFONO: EN LÍNEA (verde), SIN CONEXIÓN
+        // (naranja), DESHABILITADO (gris) y UBICACIÓN APAGADA (rojo). El
+        // "Detenido" es solo del panel/dash, aquí no se muestra.
+        val target = when {
+            !locationOn -> Triple(R.drawable.bg_pill_red, getString(R.string.pill_location_off), R.color.white)
+            !open -> Triple(R.drawable.bg_pill_gray, getString(R.string.pill_disabled), R.color.white)
+            !canSend() -> Triple(R.drawable.bg_pill_orange, getString(R.string.pill_no_connection), R.color.white)
+            else -> Triple(R.drawable.bg_pill_green, getString(R.string.pill_online), R.color.white)
         }
+        applyPillState(pill, pillText, target.first, target.second, target.third)
+        button.setBackgroundResource(
+            if (open) R.drawable.bg_button_primary else R.drawable.bg_button_green,
+        )
+        button.text = getString(
+            if (open) R.string.journey_stop_upper else R.string.journey_start_upper,
+        )
 
         val battery = readBattery()
         findViewById<TextView>(R.id.battery_value)?.text = getString(R.string.battery_value_fmt, battery.first)

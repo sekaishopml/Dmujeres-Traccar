@@ -35,7 +35,7 @@
             android:layout_width="180dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="100dp"
+            android:layout_marginTop="84dp"
             android:adjustViewBounds="true"
             android:contentDescription="@string/app_logo"
             android:src="@drawable/logo_banner" />
@@ -53,8 +53,8 @@
     <LinearLayout
         android:id="@+id/status_pill"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginTop="160dp"
+        android:layout_height="44dp"
+        android:layout_marginTop="96dp"
         android:background="@drawable/bg_pill_red"
         android:gravity="center"
         android:orientation="horizontal"
@@ -69,7 +69,7 @@
                 android:layout_marginStart="6dp"
                 android:text="@string/pill_none"
                 android:textColor="@color/white"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -106,7 +106,7 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="84dp"
+                android:layout_height="78dp"
                 android:orientation="horizontal">
 
                 <View
@@ -241,7 +241,7 @@
             <Button
                 android:id="@+id/journey_button"
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
+                android:layout_height="50dp"
                 android:layout_marginTop="8dp"
                 android:background="@drawable/bg_button_green"
                 android:text="@string/journey_start_upper"
@@ -253,13 +253,13 @@
             <Button
                 android:id="@+id/update_button"
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
+                android:layout_height="46dp"
                 android:layout_marginTop="8dp"
-                android:background="@drawable/bg_button_soft"
+                android:background="@drawable/bg_button_navy_border"
                 android:text="@string/refresh_button"
                 android:textAllCaps="false"
-                android:textColor="@color/primary"
-                android:textSize="15sp"
+                android:textColor="@color/navy"
+                android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </FrameLayout>
