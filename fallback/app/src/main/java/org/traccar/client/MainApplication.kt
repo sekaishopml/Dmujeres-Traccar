@@ -37,6 +37,13 @@ open class MainApplication : MultiDexApplication() {
         // escrita antes de cualquier lectura: el onboarding muestra los campos
         // ya rellenos y el servicio arranca con la config óptima.
         androidx.preference.PreferenceManager.setDefaultValues(this, R.xml.preferences, false)
+        // Saneamiento: si el servidor quedó vacío (ajustes de versiones viejas
+        // que guardaban el campo oculto), se restaura la URL de fábrica; sin
+        // ella el teléfono no puede enviar ni validar el acceso.
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        if (prefs.getString(Prefs.URL, "").isNullOrBlank()) {
+            prefs.edit().putString(Prefs.URL, getString(R.string.settings_url_default_value)).apply()
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             registerChannel()
         }

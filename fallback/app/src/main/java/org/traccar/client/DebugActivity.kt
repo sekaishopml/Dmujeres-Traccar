@@ -145,6 +145,12 @@ class DebugActivity : AppCompatActivity() {
             .setView(container)
             .setPositiveButton(R.string.debug_save) { _, _ ->
                 prefs.edit().putString(Prefs.URL, field.text.toString().trim()).apply()
+                // El servicio toma la URL al arrancar: se reinicia para que el
+                // cambio se aplique ya.
+                stopService(android.content.Intent(this, TrackingService::class.java))
+                androidx.core.content.ContextCompat.startForegroundService(
+                    this, android.content.Intent(this, TrackingService::class.java),
+                )
                 toast(getString(R.string.debug_server_saved))
             }
             .setNegativeButton(R.string.debug_close, null)

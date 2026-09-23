@@ -60,10 +60,10 @@
   <string name="onboarding_continue">Continuar</string>
   <string name="login_button">Login</string>
   <string name="welcome_title">Bienvenida/o</string>
-  <string name="welcome_body">En este teléfono registrarás tu jornada y tu ruta.</string>
+  <string name="welcome_body">En este dispositivo registrarás tu jornada y tu ruta.</string>
   <string name="welcome_body_pill">Solo verás una pantalla para iniciar y finalizar la jornada.</string>
-  <string name="welcome_body_config">El resto ya está configurado.</string>
   <string name="welcome_body_cctv">Los datos de acceso te los entregó el departamento de CCTV.</string>
+  <string name="welcome_body_perms">Continúa aceptando los permisos para un perfecto funcionamiento.</string>
   <string name="onboarding_login_title">Inicia sesión</string>
   <string name="onboarding_login_pass">Contraseña</string>
   <string name="onboarding_login_user">Usuario</string>
@@ -73,6 +73,11 @@
   <string name="login_user_unknown">Usuario no autorizado · revisa con CCTV</string>
   <string name="login_checking">Validando…</string>
   <string name="onboarding_login_hint">Los datos de acceso te los entregó el departamento de CCTV.</string>
+  <string name="login_error_user">Escribe tu usuario.</string>
+  <string name="login_error_password">Escribe tu contraseña.</string>
+  <string name="login_error_unknown">Usuario no autorizado · revisa con CCTV.</string>
+  <string name="login_error_bad_key">Contraseña incorrecta · revisa con CCTV.</string>
+  <string name="login_error_offline">Sin conexión · revisa tus datos móviles.</string>
   <string name="onboarding_perms_title">Permisos y batería</string>
   <string name="onboarding_perms_hint">Para trazar la ruta con la pantalla apagada, acepta cada permiso.</string>
   <string name="onboarding_perms_allow">Permitir</string>

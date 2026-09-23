@@ -46,6 +46,7 @@ object DmujeresApi {
     /** Base web (999) derivada de la URL OsmAnd configurada (5055). */
     fun webBase(context: Context): String {
         val url = prefs(context).getString(Prefs.URL, "").orEmpty()
+            .ifBlank { context.getString(R.string.settings_url_default_value) }
         return url.replace(":5055", ":999").trimEnd('/')
     }
 
@@ -135,6 +136,37 @@ object DmujeresApi {
                 .put("journeyId", journeyId)
                 .put("client", CLIENT),
         )
+    }
+
+    /** Resultado de validar el acceso del colaborador en el servidor. */
+    enum class LoginResult { AUTHORIZED, UNKNOWN_USER, BAD_CREDENTIALS, OFFLINE }
+
+    /**
+     * Validación completa del login: 200 = autorizado, 404 = usuario
+     * desconocido, 401/403 = la clave no es la del canal (contraseña
+     * incorrecta) y cualquier otro caso se informa como sin conexión.
+     */
+    fun checkLogin(context: Context, userId: String, key: String): LoginResult {
+        val base = webBase(context)
+        if (base.isBlank() || userId.isBlank()) return LoginResult.OFFLINE
+        return try {
+            val connection = URL("$base/api/mobile/v1/config").openConnection() as HttpURLConnection
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 8_000
+            connection.setRequestProperty("X-Api-Key", key)
+            connection.setRequestProperty("X-Device-Id", userId)
+            val code = connection.responseCode
+            connection.disconnect()
+            when (code) {
+                in 200..299 -> LoginResult.AUTHORIZED
+                404 -> LoginResult.UNKNOWN_USER
+                401, 403 -> LoginResult.BAD_CREDENTIALS
+                else -> LoginResult.OFFLINE
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo validar el acceso", e)
+            LoginResult.OFFLINE
+        }
     }
 
     /**

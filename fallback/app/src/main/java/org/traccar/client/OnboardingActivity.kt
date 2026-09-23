@@ -48,10 +48,7 @@ class OnboardingActivity : AppCompatActivity() {
         primary.setOnClickListener {
             when (step) {
                 STEP_WELCOME -> showLogin()
-                STEP_LOGIN -> {
-                    persistLoginFields()
-                    validateAndContinue()
-                }
+                STEP_LOGIN -> validateAndContinue()
                 else -> if (requiredGranted()) finishOnboarding() else requestMissing()
             }
         }
@@ -69,104 +66,96 @@ class OnboardingActivity : AppCompatActivity() {
         if (step == STEP_PERMISSIONS) showPermissions()
     }
 
-    /** La cabecera (logo, nombre y lema) solo se muestra donde pertenece. */
-    private fun setHeaderVisible(visible: Boolean) {
-        val visibility = if (visible) View.VISIBLE else View.GONE
-        findViewById<TextView>(R.id.header_title).visibility = visibility
-        findViewById<TextView>(R.id.header_subtitle).visibility = visibility
+    /**
+     * Cierra el teclado al tocar fuera del campo activo (antes quedaba abierto
+     * y bloqueaba la pantalla del asistente).
+     */
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        val focus = currentFocus
+        if (focus is EditText) {
+            val rect = android.graphics.Rect()
+            focus.getGlobalVisibleRect(rect)
+            if (!rect.contains(event.x.toInt(), event.y.toInt())) {
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                    .hideSoftInputFromWindow(focus.windowToken, 0)
+                focus.clearFocus()
+            }
+        }
+        return super.dispatchTouchEvent(event)
     }
 
     // ── Paso 1: bienvenida ──────────────────────────────────────────────────
 
     private fun showWelcome() {
         step = STEP_WELCOME
-        setHeaderVisible(true)
         container.removeAllViews()
         container.addView(LayoutInflater.from(this).inflate(R.layout.onboarding_step_welcome, container, false))
         primary.text = getString(R.string.onboarding_continue)
     }
 
-    // ── Paso 2: login (solo los datos que entregó CCTV) ─────────────────────
+    // ── Paso 2: login (cada quien escribe sus datos) ────────────────────────
 
     private fun showLogin() {
         step = STEP_LOGIN
-        setHeaderVisible(false)
         container.removeAllViews()
-        val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_login, container, false)
-        container.addView(view)
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val user = view.findViewById<EditText>(R.id.field_user)
-        val pass = view.findViewById<EditText>(R.id.field_pass)
-        user.setText(prefs.getString(Prefs.DEVICE, ""))
-        // La contraseña la escribe el colaborador (la que le entregó CCTV); el
-        // canal móvil se autentica aparte con la llave de la empresa.
-        pass.setText(prefs.getString(DmujeresApi.KEY_PASSWORD, ""))
-        // Campos editables para cada quien (usuario y clave). El servidor es
-        // configuración interna: no se muestra aquí (ver menú de depuración).
-        user.isEnabled = true
-        pass.isEnabled = true
+        container.addView(LayoutInflater.from(this).inflate(R.layout.onboarding_step_login, container, false))
         primary.text = getString(R.string.login_button)
     }
 
-    // ── Paso 3: permisos y batería ──────────────────────────────────────────
-
-    /** Guarda lo editado (id y contraseña). */
-    private fun persistLoginFields() {
-        val view = container.getChildAt(0) ?: return
-        val user = view.findViewById<EditText>(R.id.field_user) ?: return
-        val pass = view.findViewById<EditText>(R.id.field_pass) ?: return
-        val url = view.findViewById<EditText>(R.id.field_url)
-        PreferenceManager.getDefaultSharedPreferences(this).edit()
-            // El usuario se guarda en minúsculas: el servidor busca por
-            // identificador exacto y "Jeremy" no es lo mismo que "jeremy".
-            .putString(Prefs.DEVICE, user.text.toString().trim().lowercase())
-            .putString(DmujeresApi.KEY_PASSWORD, pass.text.toString().trim())
-            .apply()
-        // El campo de servidor ya no existe en el login (configuración interna);
-        // si el paso lo trae (flujo viejo en caché), lo conservamos sin editar.
-        if (url != null) {
-            PreferenceManager.getDefaultSharedPreferences(this).edit()
-                .putString(Prefs.URL, url.text.toString().trim())
-                .apply()
-        }
-    }
-
     /**
-     * Antes de pasar a permisos: el usuario es obligatorio y, si hay red, se
-     * verifica contra el servidor (debe existir). Así nadie entra con una
-     * credencial que no está autorizada.
+     * Validación completa del login, con el error EN LÍNEA (debajo del título
+     * "Inicia sesión", sin pop-up): campos vacíos, usuario no autorizado,
+     * contraseña incorrecta o sin conexión. Solo si todo pasa se guardan los
+     * datos y se avanza a permisos.
      */
     private fun validateAndContinue() {
-        val user = PreferenceManager.getDefaultSharedPreferences(this)
-            .getString(Prefs.DEVICE, "").orEmpty().trim()
-        if (user.isEmpty()) {
-            Toast.makeText(this, R.string.login_user_required, Toast.LENGTH_LONG).show()
+        val view = container.getChildAt(0) ?: return
+        val userField = view.findViewById<EditText>(R.id.field_user) ?: return
+        val passField = view.findViewById<EditText>(R.id.field_pass) ?: return
+        val error = view.findViewById<TextView>(R.id.login_error) ?: return
+
+        fun showError(messageRes: Int) {
+            error.setText(messageRes)
+            error.visibility = View.VISIBLE
+        }
+        val userId = userField.text.toString().trim().lowercase()
+        if (userId.isEmpty()) {
+            showError(R.string.login_error_user)
             return
         }
-        val password = PreferenceManager.getDefaultSharedPreferences(this)
-            .getString(DmujeresApi.KEY_PASSWORD, "").orEmpty().trim()
+        val password = passField.text.toString().trim()
         if (password.isEmpty()) {
-            Toast.makeText(this, R.string.login_password_required, Toast.LENGTH_LONG).show()
+            showError(R.string.login_error_password)
             return
         }
+        error.visibility = View.GONE
         primary.isEnabled = false
         primary.text = getString(R.string.login_checking)
         Thread {
-            val exists = DmujeresApi.userExists(this, user)
+            val result = DmujeresApi.checkLogin(this, userId, password)
             runOnUiThread {
                 primary.isEnabled = true
                 primary.text = getString(R.string.login_button)
-                when (exists) {
-                    false -> Toast.makeText(this, R.string.login_user_unknown, Toast.LENGTH_LONG).show()
-                    else -> showPermissions()
+                when (result) {
+                    DmujeresApi.LoginResult.AUTHORIZED -> {
+                        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                            .putString(Prefs.DEVICE, userId)
+                            .putString(DmujeresApi.KEY_PASSWORD, password)
+                            .apply()
+                        showPermissions()
+                    }
+                    DmujeresApi.LoginResult.UNKNOWN_USER -> showError(R.string.login_error_unknown)
+                    DmujeresApi.LoginResult.BAD_CREDENTIALS -> showError(R.string.login_error_bad_key)
+                    else -> showError(R.string.login_error_offline)
                 }
             }
         }.start()
     }
 
+    // ── Paso 3: permisos y batería ──────────────────────────────────────────
+
     private fun showPermissions() {
         step = STEP_PERMISSIONS
-        setHeaderVisible(true)
         container.removeAllViews()
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_permissions, container, false)
         container.addView(view)
@@ -282,6 +271,10 @@ class OnboardingActivity : AppCompatActivity() {
             .putBoolean(Prefs.ONBOARDED, true)
             .putBoolean(Prefs.STATUS, true)
             .apply()
+        // Reinicio limpio: si el servicio venía corriendo con la configuración
+        // vieja (p. ej. arrancó por el sistema antes del login), se detiene y
+        // vuelve a arrancar para que tome el usuario y el servidor guardados.
+        stopService(Intent(this, TrackingService::class.java))
         ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
         startActivity(Intent(this, MainActivity::class.java))
         finish()
