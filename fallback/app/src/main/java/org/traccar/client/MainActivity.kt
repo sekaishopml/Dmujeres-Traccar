@@ -29,6 +29,9 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 
+/** Refresco en vivo del home (estado, pendientes, batería y duración). */
+private const val LIVE_REFRESH_MS = 5_000L
+
 class MainActivity : AppCompatActivity() {
 
     private var tapCount = 0
@@ -173,25 +176,37 @@ class MainActivity : AppCompatActivity() {
         }.start()
 
         // El tiempo de jornada avanza cada 30 s mientras la pantalla esté abierta.
+        // Refresco vivo: estado, pendientes, batería y duración cada 5 s.
         durationTicker = object : Runnable {
             override fun run() {
                 if (isFinishing || isDestroyed) return
                 // Reprogramar SIEMPRE primero y refrescar a prueba de fallos: si
-                // algo lanza, la cadena de refresco no se puede quedar muerta
-                // (pasó: los cuadros quedaron congelados).
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, 15_000L)
+                // algo lanza, la cadena no se puede quedar muerta.
+                uiHandler.postDelayed(this, LIVE_REFRESH_MS)
                 runCatching { refreshLockedHome() }
             }
         }
         refreshLockedHome()
+        // Antes el ticker se creaba pero NUNCA se lanzaba: por eso los cuadros
+        // solo cambiaban al salir y volver a entrar.
+        uiHandler.postDelayed(durationTicker!!, LIVE_REFRESH_MS)
     }
 
 
     /** Banner de estado (3 colores), cuadros y botón con el estado real. */
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
     override fun onResume() {
         super.onResume()
-        // Al volver a la pantalla principal, refresco inmediato.
+        // Refresco inmediato + vivo cada 5 s mientras la pantalla esté abierta.
         runCatching { refreshLockedHome() }
+        durationTicker?.let { uiHandler.postDelayed(it, LIVE_REFRESH_MS) }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // En segundo plano no se refresca (ahorra batería); al volver, sigue.
+        durationTicker?.let { uiHandler.removeCallbacks(it) }
     }
 
     private fun refreshLockedHome() {
