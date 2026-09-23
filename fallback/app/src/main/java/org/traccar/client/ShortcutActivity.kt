@@ -79,7 +79,7 @@ class ShortcutActivity : AppCompatActivity() {
         PositionProviderFactory.create(this, object : PositionListener {
             override fun onPositionUpdate(position: Position) {
                 val preferences = PreferenceManager.getDefaultSharedPreferences(this@ShortcutActivity)
-                val request = formatRequest(preferences.getString(MainFragment.KEY_URL, null)!!, position, ALARM_SOS)
+                val request = formatRequest(preferences.getString(Prefs.URL, null)!!, position, ALARM_SOS)
                 sendRequestAsync(request, object : RequestHandler {
                     override fun onComplete(success: Boolean) {
                         if (success) {
@@ -106,12 +106,12 @@ class ShortcutActivity : AppCompatActivity() {
         if (action != null) {
             when (action) {
                 ACTION_START -> {
-                    PreferenceManager.getDefaultSharedPreferences(this).edit().putBoolean(MainFragment.KEY_STATUS, true).apply()
+                    PreferenceManager.getDefaultSharedPreferences(this).edit().putBoolean(Prefs.STATUS, true).apply()
                     ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
                     Toast.makeText(this, R.string.status_service_create, Toast.LENGTH_SHORT).show()
                 }
                 ACTION_STOP -> {
-                    PreferenceManager.getDefaultSharedPreferences(this).edit().putBoolean(MainFragment.KEY_STATUS, false).apply()
+                    PreferenceManager.getDefaultSharedPreferences(this).edit().putBoolean(Prefs.STATUS, false).apply()
                     stopService(Intent(this, TrackingService::class.java))
                     Toast.makeText(this, R.string.status_service_destroy, Toast.LENGTH_SHORT).show()
                 }

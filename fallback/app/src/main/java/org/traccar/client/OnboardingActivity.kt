@@ -50,12 +50,6 @@ class OnboardingActivity : AppCompatActivity() {
         val version = findViewById<TextView>(R.id.version_label)
         version.text = getString(R.string.version_format, BuildConfig.VERSION_NAME)
         version.setOnClickListener { onVersionTap() }
-        version.setOnLongClickListener {
-            PreferenceManager.getDefaultSharedPreferences(this)
-                .edit().putBoolean(MainFragment.KEY_DEBUG, false).apply()
-            Toast.makeText(this, R.string.debug_disabled, Toast.LENGTH_SHORT).show()
-            true
-        }
 
         primary.setOnClickListener {
             when (step) {
@@ -66,7 +60,13 @@ class OnboardingActivity : AppCompatActivity() {
                 else -> if (requiredGranted()) finishOnboarding() else requestMissing()
             }
         }
-        showLogin()
+        // El menú de depuración puede abrir directamente un paso del asistente
+        // para revisar el diseño sin recorrerlo entero.
+        if (intent.getStringExtra(EXTRA_STEP) == STEP_PERMISSIONS) {
+            showPermissions()
+        } else {
+            showLogin()
+        }
     }
 
     override fun onResume() {
@@ -82,22 +82,20 @@ class OnboardingActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_login, container, false)
         container.addView(view)
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val debug = prefs.getBoolean(MainFragment.KEY_DEBUG, false)
         val user = view.findViewById<EditText>(R.id.field_user)
         val pass = view.findViewById<EditText>(R.id.field_pass)
         val url = view.findViewById<EditText>(R.id.field_url)
         val urlGroup = view.findViewById<LinearLayout>(R.id.url_group)
-        user.setText(prefs.getString(MainFragment.KEY_DEVICE, ""))
+        user.setText(prefs.getString(Prefs.DEVICE, ""))
         // La contraseña la escribe el colaborador (la que le entregó CCTV); el
         // canal móvil se autentica aparte con la llave de la empresa.
         pass.setText(prefs.getString(DmujeresApi.KEY_PASSWORD, ""))
-        url.setText(prefs.getString(MainFragment.KEY_URL, ""))
-        // Campos SIEMPRE editables: cada quien escribe su usuario y su clave
-        // (el servidor solo se muestra en modo avanzado).
+        url.setText(prefs.getString(Prefs.URL, ""))
+        // Campos editables para cada quien (usuario y clave). El servidor es
+        // configuración interna: no se muestra aquí (ver menú de depuración).
         user.isEnabled = true
         pass.isEnabled = true
-        url.isEnabled = true
-        urlGroup.visibility = if (debug) LinearLayout.VISIBLE else LinearLayout.GONE
+        urlGroup.visibility = LinearLayout.GONE
         primary.text = getString(R.string.onboarding_continue)
     }
 
@@ -112,9 +110,9 @@ class OnboardingActivity : AppCompatActivity() {
         PreferenceManager.getDefaultSharedPreferences(this).edit()
             // El usuario se guarda en minúsculas: el servidor busca por
             // identificador exacto y "Jeremy" no es lo mismo que "jeremy".
-            .putString(MainFragment.KEY_DEVICE, user.text.toString().trim().lowercase())
+            .putString(Prefs.DEVICE, user.text.toString().trim().lowercase())
             .putString(DmujeresApi.KEY_PASSWORD, pass.text.toString().trim())
-            .putString(MainFragment.KEY_URL, url.text.toString().trim())
+            .putString(Prefs.URL, url.text.toString().trim())
             .apply()
     }
 
@@ -125,7 +123,7 @@ class OnboardingActivity : AppCompatActivity() {
      */
     private fun validateAndContinue() {
         val user = PreferenceManager.getDefaultSharedPreferences(this)
-            .getString(MainFragment.KEY_DEVICE, "").orEmpty().trim()
+            .getString(Prefs.DEVICE, "").orEmpty().trim()
         if (user.isEmpty()) {
             Toast.makeText(this, R.string.login_user_required, Toast.LENGTH_LONG).show()
             return
@@ -265,8 +263,8 @@ class OnboardingActivity : AppCompatActivity() {
 
     private fun finishOnboarding() {
         PreferenceManager.getDefaultSharedPreferences(this).edit()
-            .putBoolean(MainFragment.KEY_ONBOARDED, true)
-            .putBoolean(MainFragment.KEY_STATUS, true)
+            .putBoolean(Prefs.ONBOARDED, true)
+            .putBoolean(Prefs.STATUS, true)
             .apply()
         ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
         startActivity(Intent(this, MainActivity::class.java))
@@ -284,10 +282,8 @@ class OnboardingActivity : AppCompatActivity() {
         tapLastAt = now
         if (tapCount >= REQUIRED_TAPS) {
             tapCount = 0
-            PreferenceManager.getDefaultSharedPreferences(this)
-                .edit().putBoolean(MainFragment.KEY_DEBUG, true).apply()
-            Toast.makeText(this, R.string.debug_enabled, Toast.LENGTH_LONG).show()
-            if (step == 0) showLogin()
+            // Acceso oculto: menú de depuración (pantallas y backend).
+            startActivity(Intent(this, DebugActivity::class.java))
         }
     }
 
@@ -300,12 +296,23 @@ class OnboardingActivity : AppCompatActivity() {
         return powerManager.isIgnoringBatteryOptimizations(packageName)
     }
 
-    private companion object {
-        const val REQUEST_LOCATION = 100
-        const val REQUEST_BACKGROUND = 101
-        const val REQUEST_NOTIFICATIONS = 102
-        const val REQUIRED_TAPS = 5
-        const val MAX_TAP_GAP_MS = 1_200L
-        const val TAP_WINDOW_MS = 4_000L
+    companion object {
+        private const val REQUEST_LOCATION = 100
+        private const val REQUEST_BACKGROUND = 101
+        private const val REQUEST_NOTIFICATIONS = 102
+        private const val REQUIRED_TAPS = 5
+        private const val MAX_TAP_GAP_MS = 1_200L
+        private const val TAP_WINDOW_MS = 4_000L
+        private const val EXTRA_STEP = "step"
+        const val STEP_LOGIN = "login"
+        const val STEP_PERMISSIONS = "permissions"
+
+        /** Abre el asistente, opcionalmente en un paso concreto (pruebas). */
+        fun start(context: android.content.Context, step: String? = null) {
+            context.startActivity(
+                Intent(context, OnboardingActivity::class.java)
+                    .putExtra(EXTRA_STEP, step ?: STEP_LOGIN),
+            )
+        }
     }
 }

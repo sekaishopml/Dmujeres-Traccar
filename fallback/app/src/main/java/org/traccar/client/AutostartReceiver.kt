@@ -24,7 +24,7 @@ class AutostartReceiver : WakefulBroadcastReceiver() {
     @Suppress("UnsafeProtectedBroadcastReceiver")
     override fun onReceive(context: Context, intent: Intent) {
         val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
-        if (sharedPreferences.getBoolean(MainFragment.KEY_STATUS, false)) {
+        if (sharedPreferences.getBoolean(Prefs.STATUS, false)) {
             startWakefulForegroundService(context, Intent(context, TrackingService::class.java))
         }
     }

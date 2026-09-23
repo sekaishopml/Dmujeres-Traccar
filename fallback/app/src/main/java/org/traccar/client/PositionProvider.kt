@@ -36,10 +36,10 @@ abstract class PositionProvider(
     }
 
     protected var preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
-    protected var deviceId = preferences.getString(MainFragment.KEY_DEVICE, "undefined")!!.lowercase()
-    protected var interval = preferences.getString(MainFragment.KEY_INTERVAL, "60")!!.toLong() * 1000
-    protected var distance: Double = preferences.getString(MainFragment.KEY_DISTANCE, "10")!!.toInt().toDouble()
-    protected var angle: Double = preferences.getString(MainFragment.KEY_ANGLE, "15")!!.toInt().toDouble()
+    protected var deviceId = preferences.getString(Prefs.DEVICE, "undefined")!!.lowercase()
+    protected var interval = preferences.getString(Prefs.INTERVAL, "60")!!.toLong() * 1000
+    protected var distance: Double = preferences.getString(Prefs.DISTANCE, "10")!!.toInt().toDouble()
+    protected var angle: Double = preferences.getString(Prefs.ANGLE, "15")!!.toInt().toDouble()
     private var lastLocation: Location? = null
 
     /**

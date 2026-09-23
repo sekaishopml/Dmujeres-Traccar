@@ -40,8 +40,8 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
     private val databaseHelper = DatabaseHelper(context)
     private val networkManager = NetworkManager(context, this)
 
-    private val url: String = preferences.getString(MainFragment.KEY_URL, context.getString(R.string.settings_url_default_value))!!
-    private val buffer: Boolean = preferences.getBoolean(MainFragment.KEY_BUFFER, true)
+    private val url: String = preferences.getString(Prefs.URL, context.getString(R.string.settings_url_default_value))!!
+    private val buffer: Boolean = preferences.getBoolean(Prefs.BUFFER, true)
 
     private var isOnline = networkManager.isOnline
     private var isWaiting = false
@@ -192,7 +192,7 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
             override fun onComplete(success: Boolean, result: Position?) {
                 if (success) {
                     if (result != null) {
-                        if (result.deviceId == preferences.getString(MainFragment.KEY_DEVICE, null)) {
+                        if (result.deviceId == preferences.getString(Prefs.DEVICE, null)) {
                             send(result)
                         } else {
                             delete(result)

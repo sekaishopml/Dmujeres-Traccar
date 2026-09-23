@@ -135,9 +135,10 @@ class StatusActivity : AppCompatActivity() {
             var message = originalMessage
             val format = DateFormat.getTimeInstance(DateFormat.MEDIUM)
             message = format.format(Date()) + " - " + message
-            messages.add(message)
+            // Lo más reciente va arriba (la consola abre por el último evento).
+            messages.addFirst(message)
             while (messages.size > LIMIT) {
-                messages.removeFirst()
+                messages.removeLast()
             }
             persist()
             notifyAdapters()

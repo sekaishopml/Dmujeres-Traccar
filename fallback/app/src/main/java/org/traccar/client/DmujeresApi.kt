@@ -33,7 +33,7 @@ object DmujeresApi {
         PreferenceManager.getDefaultSharedPreferences(context)
 
     private fun deviceId(context: Context): String =
-        prefs(context).getString(MainFragment.KEY_DEVICE, "").orEmpty().trim().lowercase()
+        prefs(context).getString(Prefs.DEVICE, "").orEmpty().trim().lowercase()
 
     /**
      * Llave del canal móvil: la contraseña que CCTV entregó (si el técnico la
@@ -45,7 +45,7 @@ object DmujeresApi {
 
     /** Base web (999) derivada de la URL OsmAnd configurada (5055). */
     fun webBase(context: Context): String {
-        val url = prefs(context).getString(MainFragment.KEY_URL, "").orEmpty()
+        val url = prefs(context).getString(Prefs.URL, "").orEmpty()
         return url.replace(":5055", ":999").trimEnd('/')
     }
 

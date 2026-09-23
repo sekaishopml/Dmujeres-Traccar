@@ -17,7 +17,6 @@ package org.traccar.client
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.widget.Toast
 import android.widget.TextView
 import android.widget.LinearLayout
 import android.widget.Button
@@ -45,22 +44,19 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        if (!prefs.getBoolean(MainFragment.KEY_ONBOARDED, false)) {
+        if (!prefs.getBoolean(Prefs.ONBOARDED, false)) {
             startActivity(Intent(this, OnboardingActivity::class.java))
             finish()
             return
         }
         // Plan B: el servicio queda siempre encendido (sin interruptor visible).
-        prefs.edit().putBoolean(MainFragment.KEY_STATUS, true).apply()
+        prefs.edit().putBoolean(Prefs.STATUS, true).apply()
         ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
-        if (prefs.getBoolean(MainFragment.KEY_DEBUG, false)) {
-            // Modo avanzado: lista de ajustes (MainFragment, solo para soporte).
-            setContentView(R.layout.main)
-        } else {
-            // Modo normal: pantalla propia, sin ninguna configuración visible.
-            setContentView(R.layout.activity_locked_home)
-            wireLockedHome()
-        }
+        // Pantalla propia, sin ninguna configuración visible: toda la
+        // configuración es interna y el menú de depuración se abre con
+        // 5 toques en la versión (ya no existe el panel de ajustes de Traccar).
+        setContentView(R.layout.activity_locked_home)
+        wireLockedHome()
         showUpdateDialogIfAvailable()
     }
 
@@ -139,12 +135,6 @@ class MainActivity : AppCompatActivity() {
             BuildConfig.VERSION_CODE,
         )
         version.setOnClickListener { onVersionTap() }
-        version.setOnLongClickListener {
-            PreferenceManager.getDefaultSharedPreferences(this)
-                .edit().putBoolean(MainFragment.KEY_DEBUG, false).apply()
-            Toast.makeText(this, R.string.debug_disabled, Toast.LENGTH_SHORT).show()
-            true
-        }
         // Skeleton del dashboard (como en la app nativa): cubos que pulsan hasta
         // que los datos están listos (batería inmediata, buffer en segundo hilo).
         val skeleton = findViewById<View>(R.id.skeleton_group)
@@ -450,10 +440,8 @@ class MainActivity : AppCompatActivity() {
         tapLastAt = now
         if (tapCount >= 5) {
             tapCount = 0
-            PreferenceManager.getDefaultSharedPreferences(this)
-                .edit().putBoolean(MainFragment.KEY_DEBUG, true).apply()
-            Toast.makeText(this, R.string.debug_enabled, Toast.LENGTH_LONG).show()
-            recreate()
+            // Acceso oculto: menú de depuración (pantallas y backend).
+            startActivity(Intent(this, DebugActivity::class.java))
         }
     }
 

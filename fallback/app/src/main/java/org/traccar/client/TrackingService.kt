@@ -53,7 +53,7 @@ class TrackingService : Service() {
             StatusActivity.addMessage(getString(R.string.status_service_create))
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                if (sharedPreferences.getBoolean(MainFragment.KEY_WAKELOCK, true)) {
+                if (sharedPreferences.getBoolean(Prefs.WAKELOCK, true)) {
                     val powerManager = getSystemService(POWER_SERVICE) as PowerManager
                     wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, javaClass.name)
                     wakeLock?.acquire()
@@ -64,7 +64,7 @@ class TrackingService : Service() {
             }
         } catch (e: RuntimeException) {
             Log.w(TAG, e)
-            sharedPreferences.edit().putBoolean(MainFragment.KEY_STATUS, false).apply()
+            sharedPreferences.edit().putBoolean(Prefs.STATUS, false).apply()
             stopSelf()
         }
     }

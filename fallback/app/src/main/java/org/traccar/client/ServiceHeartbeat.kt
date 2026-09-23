@@ -81,7 +81,7 @@ object ServiceHeartbeat {
                             )
                             .put("buffer", JSONObject().put("pending", pending))
                             .put("journeyOpen", prefs.getBoolean(DmujeresApi.KEY_JOURNEY_OPEN, false))
-                            .put("serverUrl", prefs.getString(MainFragment.KEY_URL, "")),
+                            .put("serverUrl", prefs.getString(Prefs.URL, "")),
                     ),
                 )
             }

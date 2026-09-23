@@ -34,7 +34,7 @@ class DmujeresMessagingService : FirebaseMessagingService() {
         // La recuperación enciende la captura aunque el usuario la hubiera apagado:
         // es una orden operativa auditada, no una decisión del teléfono.
         PreferenceManager.getDefaultSharedPreferences(this)
-            .edit().putBoolean(MainFragment.KEY_STATUS, true).apply()
+            .edit().putBoolean(Prefs.STATUS, true).apply()
         ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
         DmujeresApi.recoveryAck(this, attemptId, "RECOVERY_STARTED")
         Log.i(TAG, "Recuperación FCM atendida (attempt=$attemptId)")

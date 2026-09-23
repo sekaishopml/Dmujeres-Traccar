@@ -38,7 +38,7 @@ class StatusWidget : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-        val enabled = prefs.getBoolean(MainFragment.KEY_STATUS, false)
+        val enabled = prefs.getBoolean(Prefs.STATUS, false)
         update(context, appWidgetManager, appWidgetIds, enabled)
     }
 
