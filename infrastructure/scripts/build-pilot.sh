@@ -62,20 +62,21 @@ if [[ "$PUBLISH" -eq 0 ]]; then
   exit 0
 fi
 
-# ── 3) publicar SOLO para macias ──────────────────────────────────────────────
-# Fail-closed: se fija la allowlist del piloto antes de publicar, para que
-# ninguna versión nueva llegue al resto de la flota por descuido.
+# ── 3) publicar para la flota ────────────────────────────────────────────────
+# Fail-closed: se fija la allowlist antes de publicar, para que ninguna versión
+# nueva llegue a un teléfono que no esté dado de alta.
 DEST_ROOT="${DMJ_PUBLISH_ROOT:-$ROOT}"
 python3 - "$DEST_ROOT" <<'PY'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
+allow = ["qa-f0", "macias", "jeremy", "kevin", "joseph", "david", "pilay"]
 for directory in (root / "dashboard/public", root / "dashboard/build"):
     if not directory.is_dir():
         continue
     (directory / "rollout.json").write_text(
-        json.dumps({"percent": 100, "paused": False, "allow": ["macias", "qa-f0"]}, indent=2) + "\n"
+        json.dumps({"percent": 100, "paused": False, "allow": allow}, indent=2) + "\n"
     )
-print(">> allowlist del piloto fijada: macias + qa-f0")
+print(">> allowlist fijada: " + ", ".join(allow))
 PY
 
 NOTES="${NOTES:-Actualizar a la versión $NEXT_NAME}"
