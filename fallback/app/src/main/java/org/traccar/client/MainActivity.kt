@@ -83,17 +83,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Chequeo de actualización con freno: al abrir la app y también al VOLVER
-     * a ella. Antes solo corría en onCreate y, como el servicio mantiene viva
-     * la actividad, el banner no aparecía nunca en equipos ya abiertos.
+     * Chequeo de actualización con freno: al abrir la app, al volver a ella y
+     * cada minuto con la app abierta. El freno se marca al TERMINAR el chequeo
+     * (no antes): si la actividad se cierra a mitad, el próximo intento vuelve
+     * enseguida en vez de quedar a ciegas.
      */
     private fun maybeCheckOta() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val now = System.currentTimeMillis()
         val last = prefs.getLong(KEY_LAST_OTA_CHECK, 0L)
         if (now - last < OTA_CHECK_MIN_GAP_MS) return
-        prefs.edit().putLong(KEY_LAST_OTA_CHECK, now).apply()
-        showUpdateDialogIfAvailable()
+        showUpdateDialogIfAvailable {
+            prefs.edit().putLong(KEY_LAST_OTA_CHECK, System.currentTimeMillis()).apply()
+        }
     }
 
     /**
@@ -101,10 +103,11 @@ class MainActivity : AppCompatActivity() {
      * deslizándose y empuja el home; al tocarlo descarga e instala. Se revisa
      * en vivo (al abrir, al volver y cada minuto con la app abierta).
      */
-    private fun showUpdateDialogIfAvailable() {
+    private fun showUpdateDialogIfAvailable(onDone: (() -> Unit)? = null) {
         val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
         DmujeresApi.checkOta(this) { label, url, sha256 ->
             runOnUiThread {
+                onDone?.invoke()
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (label == null) return@runOnUiThread
                 if (banner.visibility == View.VISIBLE) return@runOnUiThread
