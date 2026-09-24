@@ -170,7 +170,7 @@ Se registrará el cierre en el panel.</string>
   <string name="update_download_failed">No se pudo descargar la actualización</string>
   <string name="update_allow_installs">Permite "instalar apps desconocidas" para actualizar</string>
   <string name="update_banner_text">Hay una versión disponible · Toca para actualizar</string>
-  <string name="update_banner_title">Actualización disponible: %1$s</string>
+  <string name="update_banner_title">Actualización %1$s disponible</string>
   <string name="update_banner_summary">Toca para descargar e instalar</string>
   <string name="ota_title">Actualización disponible</string>
   <string name="ota_message">Hay una versión nueva (código %1$d). Se descargará e instalará.</string>

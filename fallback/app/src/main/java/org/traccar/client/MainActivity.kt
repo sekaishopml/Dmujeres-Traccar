@@ -35,8 +35,8 @@ import androidx.preference.PreferenceManager
 /** Refresco en vivo del home (estado, pendientes, batería y duración). */
 private const val LIVE_REFRESH_MS = 5_000L
 
-/** Freno entre chequeos de actualización al abrir/volver a la app. */
-private const val OTA_CHECK_MIN_GAP_MS = 5 * 60_000L
+/** Freno entre chequeos de actualización (banner en vivo con la app abierta). */
+private const val OTA_CHECK_MIN_GAP_MS = 60_000L
 
 /** Marca del último chequeo de actualización (para el freno). */
 private const val KEY_LAST_OTA_CHECK = "lastOtaCheckApp"
@@ -97,10 +97,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Banner superior de actualización (como la app nativa): al abrir, si hay
-     * versión nueva baja deslizándose y empuja todo el home (incluida la
-     * hamburguesa); al tocarlo descarga e instala. Sin versión nueva no
-     * aparece nada.
+     * Banner superior de actualización: pegado al borde de arriba, baja
+     * deslizándose y empuja el home; al tocarlo descarga e instala. Se revisa
+     * en vivo (al abrir, al volver y cada minuto con la app abierta).
      */
     private fun showUpdateDialogIfAvailable() {
         val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
@@ -109,8 +108,10 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (label == null) return@runOnUiThread
                 if (banner.visibility == View.VISIBLE) return@runOnUiThread
+                banner.findViewById<TextView>(R.id.update_banner_title)?.text =
+                    getString(R.string.update_banner_title, label)
                 banner.visibility = View.VISIBLE
-                val height = (46 * resources.displayMetrics.density).toInt()
+                val height = (58 * resources.displayMetrics.density).toInt()
                 val slide = android.view.animation.TranslateAnimation(0f, 0f, -height.toFloat(), 0f)
                 slide.duration = 350
                 banner.startAnimation(slide)
@@ -218,6 +219,8 @@ class MainActivity : AppCompatActivity() {
                 // algo lanza, la cadena no se puede quedar muerta.
                 uiHandler.postDelayed(this, LIVE_REFRESH_MS)
                 runCatching { refreshLockedHome() }
+                // Banner en vivo: con la app abierta se revisa cada minuto.
+                runCatching { maybeCheckOta() }
             }
         }
         refreshLockedHome()
