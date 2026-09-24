@@ -413,6 +413,39 @@ class MainActivity : AppCompatActivity() {
         var fillAnimator: android.animation.ValueAnimator? = null
         val navy = androidx.core.content.ContextCompat.getColor(this, R.color.navy)
 
+        // Tinte del relleno: azul marino normal y naranja de aviso si un paso
+        // crítico falla. Se anima SIEMPRE (nada de saltos) y al reintentar
+        // vuelve a azul, para que no se quede pegado el color de un error
+        // anterior (era el bug: quedaba naranja aunque ya hubiera conexión).
+        var fillTint = navy
+        var warningShown = false
+        fun animateFillTint(to: Int, durationMs: Long) {
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                android.animation.ValueAnimator.ofArgb(fillTint, to).apply {
+                    duration = durationMs
+                    addUpdateListener { value ->
+                        fillTint = value.animatedValue as Int
+                        fill.setTint(fillTint)
+                    }
+                    start()
+                }
+            }
+        }
+        fun markWarning() {
+            if (warningShown) return
+            warningShown = true
+            animateFillTint(REFRESH_WARNING_COLOR, 700)
+        }
+        // Arranque limpio: el relleno nuevo empieza azul (aunque el anterior
+        // hubiera terminado en naranja).
+        runOnUiThread {
+            if (!isFinishing && !isDestroyed) {
+                fillTint = navy
+                fill.setTint(navy)
+            }
+        }
+
         fun fillTo(step: Int, durationMs: Long) {
             fillAnimator?.cancel()
             val target = step * 10_000 / REFRESH_STEPS
@@ -449,6 +482,7 @@ class MainActivity : AppCompatActivity() {
                 pause()
                 val after = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
                 say(getString(R.string.refresh_step_pending_ok, (before - after).coerceAtLeast(0)), 2)
+                if (after > 0) markWarning()
                 pause()
                 // 2) GPS
                 say(getString(R.string.refresh_step_gps), 3)
@@ -468,6 +502,7 @@ class MainActivity : AppCompatActivity() {
                     },
                     3,
                 )
+                if (!gpsOn) markWarning()
                 pause()
                 // 3) datos móviles / red
                 say(getString(R.string.refresh_step_net), 4)
@@ -477,11 +512,13 @@ class MainActivity : AppCompatActivity() {
                     }).isOnline
                 }.getOrDefault(false)
                 say(getString(if (online) R.string.refresh_step_net_ok else R.string.refresh_step_net_off), 4)
+                if (!online) markWarning()
                 pause()
                 // 4) servidor
                 say(getString(R.string.refresh_step_server), 5)
                 val serverOk = DmujeresApi.serverReachable(this)
                 say(getString(if (serverOk) R.string.refresh_step_server_ok else R.string.refresh_step_server_off), 5)
+                if (!serverOk) markWarning()
                 pause()
                 // 5) configuración remota
                 say(getString(R.string.refresh_step_config), 6)
@@ -528,11 +565,9 @@ class MainActivity : AppCompatActivity() {
                     firebase = firebase,
                     config = config,
                 ).summary()
-                runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    // El relleno termina en naranja de aviso si algo falló.
-                    if (summary.allGood) fill.setTintList(null) else fill.setTint(REFRESH_WARNING_COLOR)
-                }
+                // El color final del relleno sigue el resultado real: azul si
+                // todo está bien, naranja de aviso si algo falló.
+                if (summary.allGood) animateFillTint(navy, 400) else markWarning()
                 say(getString(summary.textRes), 8, 700)
                 runOnUiThread { runCatching { refreshLockedHome() } }
                 pause()
