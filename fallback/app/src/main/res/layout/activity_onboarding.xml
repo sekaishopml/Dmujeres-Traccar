@@ -32,4 +32,19 @@
             android:textColor="@color/white"
             android:textSize="16sp" />
 
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/version_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="18dp"
+            android:padding="8dp"
+            android:textColor="@color/muted"
+            android:textSize="12sp" />
+
 </LinearLayout>

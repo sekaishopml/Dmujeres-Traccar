@@ -111,10 +111,8 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (label == null) return@runOnUiThread
                 if (banner.visibility == View.VISIBLE) return@runOnUiThread
-                banner.findViewById<TextView>(R.id.update_banner_title)?.text =
-                    getString(R.string.update_banner_title, label)
                 banner.visibility = View.VISIBLE
-                val height = (58 * resources.displayMetrics.density).toInt()
+                val height = (46 * resources.displayMetrics.density).toInt()
                 val slide = android.view.animation.TranslateAnimation(0f, 0f, -height.toFloat(), 0f)
                 slide.duration = 350
                 banner.startAnimation(slide)

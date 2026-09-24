@@ -44,6 +44,10 @@ class OnboardingActivity : AppCompatActivity() {
 
         container = findViewById(R.id.step_container)
         primary = findViewById(R.id.btn_primary)
+        // La versión se muestra en el pie de las tres pantallas del asistente
+        // (bienvenida, login y permisos).
+        findViewById<TextView>(R.id.version_label).text =
+            getString(R.string.version_format, BuildConfig.VERSION_NAME)
 
         primary.setOnClickListener {
             when (step) {
