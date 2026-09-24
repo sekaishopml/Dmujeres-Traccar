@@ -35,6 +35,12 @@ import androidx.preference.PreferenceManager
 /** Refresco en vivo del home (estado, pendientes, batería y duración). */
 private const val LIVE_REFRESH_MS = 5_000L
 
+/** Freno entre chequeos de actualización al abrir/volver a la app. */
+private const val OTA_CHECK_MIN_GAP_MS = 5 * 60_000L
+
+/** Marca del último chequeo de actualización (para el freno). */
+private const val KEY_LAST_OTA_CHECK = "lastOtaCheckApp"
+
 /** Pasos visibles del refresco manual (para el relleno proporcional). */
 private const val REFRESH_STEPS = 8
 
@@ -73,6 +79,20 @@ class MainActivity : AppCompatActivity() {
         // 5 toques en la versión (ya no existe el panel de ajustes de Traccar).
         setContentView(R.layout.activity_locked_home)
         wireLockedHome()
+        maybeCheckOta()
+    }
+
+    /**
+     * Chequeo de actualización con freno: al abrir la app y también al VOLVER
+     * a ella. Antes solo corría en onCreate y, como el servicio mantiene viva
+     * la actividad, el banner no aparecía nunca en equipos ya abiertos.
+     */
+    private fun maybeCheckOta() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong(KEY_LAST_OTA_CHECK, 0L)
+        if (now - last < OTA_CHECK_MIN_GAP_MS) return
+        prefs.edit().putLong(KEY_LAST_OTA_CHECK, now).apply()
         showUpdateDialogIfAvailable()
     }
 
@@ -238,6 +258,8 @@ class MainActivity : AppCompatActivity() {
         // Refresco inmediato + vivo cada 5 s mientras la pantalla esté abierta.
         runCatching { refreshLockedHome() }
         durationTicker?.let { uiHandler.postDelayed(it, LIVE_REFRESH_MS) }
+        // Y chequeo de actualización (con freno) al volver a la app.
+        maybeCheckOta()
     }
 
     override fun onPause() {
