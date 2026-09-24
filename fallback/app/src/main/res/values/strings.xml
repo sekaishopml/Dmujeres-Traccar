@@ -60,6 +60,7 @@
   <string name="onboarding_continue">Continuar</string>
   <string name="login_button">Login</string>
   <string name="welcome_title">Bienvenida/o</string>
+  <string name="welcome_subtitle">Asistente de instalación</string>
   <string name="welcome_body">En este dispositivo registrarás tu jornada y tu ruta.</string>
   <string name="welcome_body_pill">Solo verás una pantalla para iniciar y finalizar la jornada.</string>
   <string name="welcome_body_cctv">Los datos de acceso te los entregó el departamento de CCTV.</string>

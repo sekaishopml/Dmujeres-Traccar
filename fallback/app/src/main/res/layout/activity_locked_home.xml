@@ -5,15 +5,14 @@
     android:background="@color/white"
     android:orientation="vertical">
 
-    <!-- Pegado al borde superior (sin separacion arriba) pero con el diseno
-         de antes: tarjeta roja redondeada separada de los bordes laterales. -->
+    <!-- Pegado al borde superior, con esquinas redondeadas SOLO abajo. -->
     <LinearLayout
         android:id="@+id/update_banner"
         android:layout_width="match_parent"
         android:layout_height="46dp"
         android:layout_marginStart="14dp"
         android:layout_marginEnd="14dp"
-        android:background="@drawable/bg_pill_red"
+        android:background="@drawable/bg_banner_update"
         android:clickable="true"
         android:focusable="true"
         android:gravity="center"
