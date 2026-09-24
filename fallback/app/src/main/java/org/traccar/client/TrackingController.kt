@@ -38,6 +38,12 @@ class TrackingController(private val context: Context) :
     /** Cadencia adaptativa: fina en movimiento, gruesa en quietud. */
     private var moving = true
     private var platformFallback = false
+
+    /** Fin del forzado por velocidad (red de seguridad del sensor). */
+    private var holdMovingUntilMs = 0L
+    private var lastFixLat = 0.0
+    private var lastFixLon = 0.0
+    private var lastFixAtMs = 0L
     private val databaseHelper = DatabaseHelper(context)
     private val networkManager = NetworkManager(context, this)
 
@@ -73,8 +79,11 @@ class TrackingController(private val context: Context) :
      */
     private val motionTick = object : Runnable {
         override fun run() {
+            // Mientras dure el forzado por velocidad manda la velocidad, no el
+            // sensor (si no, un soporte que amortigua deja la cadencia en 120 s).
+            val holdActive = System.currentTimeMillis() < holdMovingUntilMs
             val motion = MotionMonitor.isMoving()
-            if (motion != null && motion != moving) {
+            if (!holdActive && motion != null && motion != moving) {
                 moving = motion
                 positionProvider.applyMotionState(moving)
                 Log.i(TAG, "cadencia adaptativa: moviendose=$moving")
@@ -151,13 +160,46 @@ class TrackingController(private val context: Context) :
     override fun onPositionUpdate(position: Position) {
         // La velocidad reportada (nudos) alimenta el detector de giros.
         MotionMonitor.lastSpeedKnots = position.speed
-        watchdog.noteFix(System.currentTimeMillis())
+        // Red de seguridad por velocidad real: si el GPS o la distancia entre
+        // fixes dicen que el equipo se mueve, se pasa a la cadencia fina ya y
+        // se mantiene un rato (el sensor puede no notarlo).
+        val now = System.currentTimeMillis()
+        val impliedKn = if (lastFixAtMs > 0) {
+            val seconds = (now - lastFixAtMs) / 1000.0
+            if (seconds > 0) {
+                legMeters(lastFixLat, lastFixLon, position.latitude, position.longitude) /
+                    seconds * 1.943844
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        }
+        lastFixLat = position.latitude
+        lastFixLon = position.longitude
+        lastFixAtMs = now
+        if (MotionSignal.shouldMove(position.speed, impliedKn)) {
+            holdMovingUntilMs = now + SPEED_MOVING_HOLD_MS
+            if (!moving) {
+                moving = true
+                positionProvider.applyMotionState(true)
+                Log.i(TAG, "movimiento por velocidad (${position.speed} kn / $impliedKn impl)")
+            }
+        }
+        watchdog.noteFix(now)
         StatusActivity.addMessage(context.getString(R.string.status_location_update))
         if (buffer) {
             write(position)
         } else {
             send(position)
         }
+    }
+
+    /** Distancia (m) entre dos coordenadas, para la velocidad implícita. */
+    private fun legMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val result = FloatArray(1)
+        android.location.Location.distanceBetween(lat1, lon1, lat2, lon2, result)
+        return result[0].toDouble()
     }
 
     /** Giro fuerte (giroscopio): captura la esquina sin subir la cadencia base. */
@@ -299,6 +341,9 @@ class TrackingController(private val context: Context) :
 
         /** Revisión del estado de sensores para ajustar la cadencia. */
         private const val MOTION_CHECK_PERIOD_MS = 10_000L
+
+        /** Cuánto se mantiene la cadencia fina tras detectar velocidad real. */
+        private const val SPEED_MOVING_HOLD_MS = 3 * 60_000L
 
         /** Refuerzo del fix por giro: uno solo, 3 s después del giro. */
         private const val TURN_REINFORCE_DELAY_MS = 3_000L
