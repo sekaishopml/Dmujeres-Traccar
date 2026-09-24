@@ -26,8 +26,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
-import android.os.PowerManager.WakeLock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -37,10 +35,8 @@ import java.lang.RuntimeException
 
 class TrackingService : Service() {
 
-    private var wakeLock: WakeLock? = null
     private var trackingController: TrackingController? = null
 
-    @SuppressLint("WakelockTimeout")
     override fun onCreate() {
         val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
         try {
@@ -53,11 +49,8 @@ class TrackingService : Service() {
             StatusActivity.addMessage(getString(R.string.status_service_create))
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                if (sharedPreferences.getBoolean(Prefs.WAKELOCK, true)) {
-                    val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-                    wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, javaClass.name)
-                    wakeLock?.acquire()
-                }
+                // El wake lock ya no es permanente: TrackingController lo toma
+                // solo durante cada envío (Prefs.WAKELOCK sigue siendo el interruptor).
                 trackingController = TrackingController(this)
                 controllerRef = trackingController
                 trackingController?.start()
@@ -86,9 +79,6 @@ class TrackingService : Service() {
         Log.i(TAG, "service destroy")
         sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName))
         StatusActivity.addMessage(getString(R.string.status_service_destroy))
-        if (wakeLock?.isHeld == true) {
-            wakeLock?.release()
-        }
         trackingController?.stop()
     }
 

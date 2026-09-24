@@ -38,6 +38,12 @@ private const val LIVE_REFRESH_MS = 5_000L
 /** Pasos visibles del refresco manual (para el relleno proporcional). */
 private const val REFRESH_STEPS = 8
 
+/** Aviso "inicia la jornada" en el botón ACTUALIZAR (luego vuelve solo). */
+private const val JOURNEY_NOTICE_MS = 2_500L
+
+/** Naranja de aviso: el refresco terminó con algo fallando. */
+private val REFRESH_WARNING_COLOR = 0xFFE65100.toInt()
+
 class MainActivity : AppCompatActivity() {
 
     private var tapCount = 0
@@ -145,7 +151,12 @@ class MainActivity : AppCompatActivity() {
         // azul avanza de izquierda a derecha. La actualización de la APP es el
         // banner superior.
         updateButton.setOnClickListener {
-            runProgressiveRefresh()
+            // Sin jornada abierta no se refresca: el botón lo explica y vuelve.
+            if (DmujeresApi.isJourneyOpen(this)) {
+                runProgressiveRefresh()
+            } else {
+                showJourneyClosedNotice()
+            }
         }
         version.text = getString(
             R.string.version_footer_fmt,
@@ -253,6 +264,7 @@ class MainActivity : AppCompatActivity() {
         val pill = findViewById<LinearLayout>(R.id.status_pill)
         val pillText = findViewById<TextView>(R.id.pill_text)
         val button = findViewById<Button>(R.id.journey_button)
+        val updateButton = findViewById<Button>(R.id.update_button)
 
         // Estado visible (los mismos 4 del panel): deshabilitado (jornada
         // apagada), sin conexión (no puede enviar), detenido (quieto) o en línea
@@ -273,6 +285,12 @@ class MainActivity : AppCompatActivity() {
         button.text = getString(
             if (open) R.string.journey_stop_upper else R.string.journey_start_upper,
         )
+        // ACTUALIZAR se ve apagado (texto gris) sin jornada abierta; un refresco
+        // o el aviso en curso mandan sobre este estado de reposo.
+        if (!refreshing && !journeyNotice) {
+            updateButton.text = getString(R.string.refresh_button)
+            updateButton.setTextColor(updateButtonIdleColor())
+        }
 
         val battery = readBattery()
         findViewById<TextView>(R.id.battery_value)?.text = getString(R.string.battery_value_fmt, battery.first)
@@ -323,6 +341,36 @@ class MainActivity : AppCompatActivity() {
      * ConnectivityManager), porque en algunas ROMs y con VPN activa mienten.
      */
     private var refreshing = false
+
+    /** Aviso "inicia la jornada" visible ahora en el botón ACTUALIZAR. */
+    private var journeyNotice = false
+
+    /** Color de reposo del botón ACTUALIZAR: navy con jornada, gris sin ella. */
+    private fun updateButtonIdleColor(): Int = androidx.core.content.ContextCompat.getColor(
+        this,
+        if (DmujeresApi.isJourneyOpen(this)) R.color.navy else R.color.muted,
+    )
+
+    /**
+     * Sin jornada no hay refresco: el botón muestra el aviso ~2.5 s (relleno
+     * en 0) y luego vuelve solo a "ACTUALIZAR".
+     */
+    private fun showJourneyClosedNotice() {
+        if (journeyNotice || refreshing) return
+        journeyNotice = true
+        val button = findViewById<Button>(R.id.update_button)
+        val fill = (button.background as android.graphics.drawable.LayerDrawable)
+            .findDrawableByLayerId(R.id.progress_fill) as android.graphics.drawable.ClipDrawable
+        fill.level = 0
+        button.text = getString(R.string.refresh_summary_journey_closed)
+        button.setTextColor(getColor(R.color.muted))
+        uiHandler.postDelayed({
+            journeyNotice = false
+            if (isFinishing || isDestroyed) return@postDelayed
+            button.text = getString(R.string.refresh_button)
+            button.setTextColor(updateButtonIdleColor())
+        }, JOURNEY_NOTICE_MS)
+    }
 
     /**
      * Refresco manual con el avance DENTRO del botón: el texto de cada paso
@@ -411,15 +459,15 @@ class MainActivity : AppCompatActivity() {
                 pause()
                 // 5) configuración remota
                 say(getString(R.string.refresh_step_config), 6)
-                val configChanged = requestRemoteConfig()
+                val config = requestRemoteConfig()
                 say(
                     getString(
-                        if (configChanged) R.string.refresh_step_config_updated
+                        if (config == ConfigState.UPDATED) R.string.refresh_step_config_updated
                         else R.string.refresh_step_config_ok,
                     ),
                     6,
                 )
-                if (configChanged) {
+                if (config == ConfigState.UPDATED) {
                     // Mismo reinicio que RemoteConfig.applyAndRestartIfChanged.
                     stopService(Intent(this, TrackingService::class.java))
                     ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
@@ -427,17 +475,39 @@ class MainActivity : AppCompatActivity() {
                 pause()
                 // 6) Firebase
                 say(getString(R.string.refresh_step_firebase), 7)
-                val firebase = FcmStatus.hasToken(this)
+                val firebase = when (FcmStatus.hasToken(this)) {
+                    true -> FirebaseState.OK
+                    false -> FirebaseState.FAIL
+                    else -> FirebaseState.NA
+                }
                 say(
-                    when (firebase) {
-                        true -> getString(R.string.refresh_step_firebase_ok)
-                        false -> getString(R.string.refresh_step_firebase_off)
-                        else -> getString(R.string.refresh_step_firebase_na)
-                    },
+                    getString(
+                        when (firebase) {
+                            FirebaseState.OK -> R.string.refresh_step_firebase_ok
+                            FirebaseState.FAIL -> R.string.refresh_step_firebase_off
+                            FirebaseState.NA -> R.string.refresh_step_firebase_na
+                        },
+                    ),
                     7,
                 )
                 pause()
-                say(getString(R.string.refresh_step_done), 8, 700)
+                // Resumen honesto: los fallos reales mandan sobre el "Todo listo".
+                val summary = RefreshOutcome(
+                    journeyOpen = DmujeresApi.isJourneyOpen(this),
+                    pendingBefore = before,
+                    pendingAfter = after,
+                    gpsOn = gpsOn,
+                    online = online,
+                    serverOk = serverOk,
+                    firebase = firebase,
+                    config = config,
+                ).summary()
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    // El relleno termina en naranja de aviso si algo falló.
+                    if (summary.allGood) fill.setTintList(null) else fill.setTint(REFRESH_WARNING_COLOR)
+                }
+                say(getString(summary.textRes), 8, 700)
                 runOnUiThread { runCatching { refreshLockedHome() } }
                 pause()
                 // Reposo: vuelve la palabra ACTUALIZAR y el fondo blanco.
@@ -445,7 +515,7 @@ class MainActivity : AppCompatActivity() {
                     if (isFinishing || isDestroyed) return@runOnUiThread
                     fillAnimator?.cancel()
                     button.text = getString(R.string.refresh_button)
-                    button.setTextColor(navy)
+                    button.setTextColor(updateButtonIdleColor())
                     android.animation.ValueAnimator.ofInt(10_000, 0).apply {
                         duration = 350
                         addUpdateListener { value -> fill.level = value.animatedValue as Int }
@@ -460,8 +530,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun canSend(): Boolean = !ConnectionState.isFailing() && cachedPending == 0
 
-    /** Espera la config remota (con tope) para completar el paso del refresco. */
-    private fun requestRemoteConfig(): Boolean {
+    /** Espera la config remota (con tope). NA = no llegó a consultarse. */
+    private fun requestRemoteConfig(): ConfigState {
         val latch = java.util.concurrent.CountDownLatch(1)
         val changed = java.util.concurrent.atomic.AtomicBoolean(false)
         RemoteConfig.refresh(this) {
@@ -470,8 +540,14 @@ class MainActivity : AppCompatActivity() {
         }
         // La consulta tiene timeouts de 5 s; el tope evita que el refresco se
         // quede pegado si el callback no llega.
-        runCatching { latch.await(8, java.util.concurrent.TimeUnit.SECONDS) }
-        return changed.get()
+        val answered = runCatching {
+            latch.await(8, java.util.concurrent.TimeUnit.SECONDS)
+        }.getOrDefault(false)
+        return when {
+            !answered -> ConfigState.NA
+            changed.get() -> ConfigState.UPDATED
+            else -> ConfigState.OK
+        }
     }
 
     /** Permisos mínimos para iniciar jornada (los mismos del asistente). */

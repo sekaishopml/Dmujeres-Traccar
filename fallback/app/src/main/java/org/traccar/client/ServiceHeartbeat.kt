@@ -62,6 +62,7 @@ object ServiceHeartbeat {
                     manager.isProviderEnabled(LocationManager.GPS_PROVIDER)
                 }.getOrDefault(false)
                 val pending = runCatching { DatabaseHelper(context).countPositions() }.getOrDefault(-1)
+                val battery = readBatteryStatus(context)
                 DmujeresApi.postDiagnostics(
                     context,
                     JSONObject().put(
@@ -80,6 +81,15 @@ object ServiceHeartbeat {
                                     .put("provider", "fused"),
                             )
                             .put("buffer", JSONObject().put("pending", pending))
+                            // Telemetría de batería del panel: `battery` sigue el
+                            // esquema del servidor (0..100); `charging` viaja
+                            // extra por si el whitelist lo habilita después.
+                            .put(
+                                "power",
+                                JSONObject()
+                                    .put("battery", battery.level.toInt().coerceIn(0, 100))
+                                    .put("charging", battery.charging),
+                            )
                             .put("journeyOpen", prefs.getBoolean(DmujeresApi.KEY_JOURNEY_OPEN, false))
                             .put("serverUrl", prefs.getString(Prefs.URL, "")),
                     ),

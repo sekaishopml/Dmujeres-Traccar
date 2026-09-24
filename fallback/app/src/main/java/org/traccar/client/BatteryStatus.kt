@@ -15,7 +15,28 @@
  */
 package org.traccar.client
 
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+
 data class BatteryStatus(
     val level: Double = 0.0,
     val charging: Boolean = false,
 )
+
+/** Lee el estado de batería del sticky broadcast (sin receptor propio). */
+fun readBatteryStatus(context: Context): BatteryStatus {
+    val batteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    if (batteryIntent != null) {
+        val level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0)
+        val scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, 1)
+        val status = batteryIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        return BatteryStatus(
+            level = level * 100.0 / scale,
+            charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL,
+        )
+    }
+    return BatteryStatus()
+}

@@ -27,21 +27,25 @@ import android.util.Log
 import org.traccar.client.DatabaseHelper.DatabaseHandler
 import org.traccar.client.RequestManager.RequestHandler
 
-class TrackingController(private val context: Context) : PositionListener, NetworkHandler {
+class TrackingController(private val context: Context) :
+    PositionListener, NetworkHandler, MotionMonitor.TurnListener {
 
     private val handler = Handler(Looper.getMainLooper())
     private val preferences = PreferenceManager.getDefaultSharedPreferences(context)
     private var positionProvider = PositionProviderFactory.create(context, this)
     private val watchdog = LocationWatchdog()
 
-    /** Cadencia adaptativa: fina en movimiento, base en quietud. */
-    private var moving = false
+    /** Cadencia adaptativa: fina en movimiento, gruesa en quietud. */
+    private var moving = true
     private var platformFallback = false
     private val databaseHelper = DatabaseHelper(context)
     private val networkManager = NetworkManager(context, this)
 
     private val url: String = preferences.getString(Prefs.URL, context.getString(R.string.settings_url_default_value))!!
     private val buffer: Boolean = preferences.getBoolean(Prefs.BUFFER, true)
+
+    /** Interruptor del wake lock por envío (la preferencia sigue mandando). */
+    private val wakeLockEnabled: Boolean = preferences.getBoolean(Prefs.WAKELOCK, true)
 
     private var isOnline = networkManager.isOnline
     private var isWaiting = false
@@ -56,30 +60,40 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
             Log.w(TAG, e)
         }
         MotionMonitor.register(context)
+        MotionMonitor.setTurnListener(this)
         watchdog.start(System.currentTimeMillis())
         handler.postDelayed(watchdogTick, WATCHDOG_PERIOD_MS)
+        handler.postDelayed(motionTick, MOTION_CHECK_PERIOD_MS)
         networkManager.start()
     }
 
     /**
-     * Cada minuto: cadencia según sensores y vigilante de GPS (re-solicitar y,
-     * si sigue colgado, pasar al GPS del sistema). Nunca inventa posiciones.
+     * Cada pocos segundos: al cambiar el estado de movimiento ajusta la
+     * petición de ubicaciones (y pide un fix ya al arrancar la ruta).
      */
-    private val watchdogTick = object : Runnable {
+    private val motionTick = object : Runnable {
         override fun run() {
-            val now = System.currentTimeMillis()
             val motion = MotionMonitor.isMoving()
             if (motion != null && motion != moving) {
                 moving = motion
-                positionProvider.reportIntervalMs =
-                    if (moving) MOVING_REPORT_MS else STATIONARY_REPORT_MS
+                positionProvider.applyMotionState(moving)
                 Log.i(TAG, "cadencia adaptativa: moviendose=$moving")
                 if (moving) {
                     // Arranque de ruta: un fix inmediato en vez de esperar la ventana.
                     runCatching { positionProvider.requestSingleLocation() }
                 }
             }
-            when (watchdog.tick(now)) {
+            handler.postDelayed(this, MOTION_CHECK_PERIOD_MS)
+        }
+    }
+
+    /**
+     * Cada minuto: vigilante de GPS (re-solicitar y, si sigue colgado, pasar al
+     * GPS del sistema). Nunca inventa posiciones.
+     */
+    private val watchdogTick = object : Runnable {
+        override fun run() {
+            when (watchdog.tick(System.currentTimeMillis())) {
                 LocationWatchdog.Action.RE_REQUEST -> {
                     Log.w(TAG, "GPS sin fix: re-solicitando actualizaciones")
                     runCatching {
@@ -103,6 +117,7 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
         runCatching {
             positionProvider.stopUpdates()
             positionProvider = AndroidPositionProvider(context, this)
+            positionProvider.applyMotionState(moving)
             positionProvider.startUpdates()
         }.onFailure { Log.w(TAG, "no se pudo activar el GPS del sistema", it) }
     }
@@ -128,11 +143,14 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
         } catch (e: SecurityException) {
             Log.w(TAG, e)
         }
+        MotionMonitor.setTurnListener(null)
         MotionMonitor.unregister(context)
         handler.removeCallbacksAndMessages(null)
     }
 
     override fun onPositionUpdate(position: Position) {
+        // La velocidad reportada (nudos) alimenta el detector de giros.
+        MotionMonitor.lastSpeedKnots = position.speed
         watchdog.noteFix(System.currentTimeMillis())
         StatusActivity.addMessage(context.getString(R.string.status_location_update))
         if (buffer) {
@@ -140,6 +158,18 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
         } else {
             send(position)
         }
+    }
+
+    /** Giro fuerte (giroscopio): captura la esquina sin subir la cadencia base. */
+    override fun onTurn() {
+        Log.i(TAG, "giro fuerte: fix inmediato y refuerzo a los $TURN_REINFORCE_DELAY_MS ms")
+        runCatching { positionProvider.requestSingleLocation() }
+        handler.removeCallbacks(turnReinforce)
+        handler.postDelayed(turnReinforce, TURN_REINFORCE_DELAY_MS)
+    }
+
+    private val turnReinforce = Runnable {
+        runCatching { positionProvider.requestSingleLocation() }
     }
 
     override fun onPositionError(error: Throwable) {}
@@ -223,22 +253,32 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
     private fun send(position: Position) {
         log("send", position)
         val request = formatRequest(url, position)
-        sendRequestAsync(request, object : RequestHandler {
-            override fun onComplete(success: Boolean) {
-                if (success) {
-                    ConnectionState.noteSuccess(System.currentTimeMillis())
-                    if (buffer) {
-                        delete(position)
-                    }
-                } else {
-                    ConnectionState.noteFailure(System.currentTimeMillis())
-                    StatusActivity.addMessage(context.getString(R.string.status_send_fail))
-                    if (buffer) {
-                        retry()
+        // Wake lock SOLO durante el envío: antes era permanente y gastaba
+        // 834 mAh/24 h; ahora la CPU se despierta para el POST y se suelta en
+        // el callback (éxito o error), con timeout de seguridad de 60 s.
+        if (wakeLockEnabled) SendWakeLock.acquire(context)
+        runCatching {
+            sendRequestAsync(request, object : RequestHandler {
+                override fun onComplete(success: Boolean) {
+                    if (wakeLockEnabled) SendWakeLock.release()
+                    if (success) {
+                        ConnectionState.noteSuccess(System.currentTimeMillis())
+                        if (buffer) {
+                            delete(position)
+                        }
+                    } else {
+                        ConnectionState.noteFailure(System.currentTimeMillis())
+                        StatusActivity.addMessage(context.getString(R.string.status_send_fail))
+                        if (buffer) {
+                            retry()
+                        }
                     }
                 }
-            }
-        })
+            })
+        }.onFailure {
+            if (wakeLockEnabled) SendWakeLock.release()
+            Log.w(TAG, "no se pudo encolar el envío", it)
+        }
     }
 
     private fun retry() {
@@ -254,14 +294,14 @@ class TrackingController(private val context: Context) : PositionListener, Netwo
         private val TAG = TrackingController::class.java.simpleName
         private const val RETRY_DELAY = 30 * 1000
 
-        /** Revisión del vigilante de GPS (y de los sensores). */
+        /** Revisión del vigilante de GPS (re-solicitud / respaldo AOSP). */
         private const val WATCHDOG_PERIOD_MS = 60_000L
 
-        /** Reporte fino mientras hay movimiento (el trazo sigue la vía). */
-        private const val MOVING_REPORT_MS = 15_000L
+        /** Revisión del estado de sensores para ajustar la cadencia. */
+        private const val MOTION_CHECK_PERIOD_MS = 10_000L
 
-        /** Reporte base en quietud (menos ruido y menos datos). */
-        private const val STATIONARY_REPORT_MS = 60_000L
+        /** Refuerzo del fix por giro: uno solo, 3 s después del giro. */
+        private const val TURN_REINFORCE_DELAY_MS = 3_000L
     }
 
 }

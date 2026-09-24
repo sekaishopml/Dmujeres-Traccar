@@ -22,30 +22,72 @@ import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 
 class GooglePositionProvider(context: Context, listener: PositionListener) : PositionProvider(context, listener) {
 
     private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
 
-    @Suppress("DEPRECATION", "MissingPermission")
+    @Volatile
+    private var started = false
+
+    /** Estado asumido al arrancar: movimiento (no perder la salida de ruta). */
+    @Volatile
+    private var moving = true
+
     override fun startUpdates() {
-        val locationRequest = LocationRequest()
-        locationRequest.priority = getPriority(preferences.getString(Prefs.ACCURACY, "high"))
-        locationRequest.interval = if (distance > 0 || angle > 0) MINIMUM_INTERVAL else interval
-        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+        started = true
+        updateReportInterval(moving)
+        requestUpdates()
     }
 
     override fun stopUpdates() {
+        started = false
         fusedLocationClient.removeLocationUpdates(locationCallback)
+    }
+
+    /**
+     * Recrea la petición al cambiar el estado: fina y HIGH en movimiento (sin
+     * batching, vista fresca), gruesa, BALANCED y con batching en quietud.
+     */
+    override fun applyMotionState(moving: Boolean) {
+        this.moving = moving
+        updateReportInterval(moving)
+        if (started) requestUpdates()
     }
 
     @SuppressLint("MissingPermission")
     override fun requestSingleLocation() {
-        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-            if (location != null) {
-                listener.onPositionUpdate(Position(deviceId, location, getBatteryStatus(context)))
+        // Fix FRESCO (no el cacheado): el disparo por giro debe capturar la
+        // esquina en el momento, no un punto viejo de hasta 2 minutos.
+        fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+            .addOnSuccessListener { location ->
+                val fix = location
+                if (fix != null) {
+                    listener.onPositionUpdate(Position(deviceId, fix, getBatteryStatus(context)))
+                } else {
+                    fusedLocationClient.lastLocation.addOnSuccessListener { last ->
+                        if (last != null) {
+                            listener.onPositionUpdate(Position(deviceId, last, getBatteryStatus(context)))
+                        }
+                    }
+                }
             }
-        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun requestUpdates() {
+        val cadence = AdaptiveCadence.request(
+            moving,
+            preferences.getString(Prefs.ACCURACY, "high"),
+            configuredIntervalSeconds(),
+        )
+        val locationRequest = LocationRequest.Builder(priorityOf(cadence.accuracy), cadence.intervalMs)
+            .setMinUpdateDistanceMeters(cadence.minDistanceM)
+            .setMaxUpdateDelayMillis(cadence.maxUpdateDelayMs)
+            .setWaitForAccurateLocation(false)
+            .build()
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
     }
 
     private val locationCallback: LocationCallback = object : LocationCallback() {
@@ -56,11 +98,11 @@ class GooglePositionProvider(context: Context, listener: PositionListener) : Pos
         }
     }
 
-    private fun getPriority(accuracy: String?): Int {
+    private fun priorityOf(accuracy: AdaptiveCadence.Accuracy): Int {
         return when (accuracy) {
-            "high" -> LocationRequest.PRIORITY_HIGH_ACCURACY
-            "low"  -> LocationRequest.PRIORITY_LOW_POWER
-            else   -> LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
+            AdaptiveCadence.Accuracy.HIGH -> Priority.PRIORITY_HIGH_ACCURACY
+            AdaptiveCadence.Accuracy.BALANCED -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
+            AdaptiveCadence.Accuracy.LOW -> Priority.PRIORITY_LOW_POWER
         }
     }
 }

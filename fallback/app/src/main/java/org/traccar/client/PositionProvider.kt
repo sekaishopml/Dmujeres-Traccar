@@ -16,11 +16,8 @@
 package org.traccar.client
 
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.location.Location
-import android.os.BatteryManager
 import androidx.preference.PreferenceManager
 import android.util.Log
 import kotlin.math.abs
@@ -37,21 +34,39 @@ abstract class PositionProvider(
 
     protected var preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
     protected var deviceId = preferences.getString(Prefs.DEVICE, "undefined")!!.lowercase()
-    protected var interval = preferences.getString(Prefs.INTERVAL, "60")!!.toLong() * 1000
     protected var distance: Double = preferences.getString(Prefs.DISTANCE, "10")!!.toInt().toDouble()
     protected var angle: Double = preferences.getString(Prefs.ANGLE, "15")!!.toInt().toDouble()
     private var lastLocation: Location? = null
 
     /**
      * Intervalo de reporte efectivo (ms). Lo ajusta la cadencia adaptativa:
-     * corto en movimiento (trazo fino) y el base en quietud (sin ruido).
+     * corto en movimiento (trazo fino) y largo en quietud (sin ruido).
      */
     @Volatile
-    var reportIntervalMs: Long = interval
+    var reportIntervalMs: Long = AdaptiveCadence.MOVING_INTERVAL_MS
 
     abstract fun startUpdates()
     abstract fun stopUpdates()
     abstract fun requestSingleLocation()
+
+    /**
+     * Reconfigura la petición de ubicaciones al cambiar el estado de movimiento
+     * (lo llama TrackingController). Cada proveedor recrea su petición.
+     */
+    abstract fun applyMotionState(moving: Boolean)
+
+    /** Alinea el filtro temporal del reporte con la cadencia del estado. */
+    protected fun updateReportInterval(moving: Boolean) {
+        reportIntervalMs = if (moving) {
+            AdaptiveCadence.movingIntervalMs(configuredIntervalSeconds())
+        } else {
+            AdaptiveCadence.STATIONARY_INTERVAL_MS
+        }
+    }
+
+    /** "Frecuencia" del panel (`mobile.intervalSeconds`) o null si no es válida. */
+    protected fun configuredIntervalSeconds(): Long? =
+        preferences.getString(Prefs.INTERVAL, null)?.toLongOrNull()
 
     protected fun processLocation(location: Location?) {
         val lastLocation = this.lastLocation
@@ -91,29 +106,20 @@ abstract class PositionProvider(
         }
     }
 
-    protected fun getBatteryStatus(context: Context): BatteryStatus {
-        val batteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        if (batteryIntent != null) {
-            val level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, 0)
-            val scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, 1)
-            val status = batteryIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-            return BatteryStatus(
-                level = level * 100.0 / scale,
-                charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL,
-            )
-        }
-        return BatteryStatus()
-    }
+    protected fun getBatteryStatus(context: Context): BatteryStatus = readBatteryStatus(context)
 
     companion object {
         private val TAG = PositionProvider::class.java.simpleName
-        const val MINIMUM_INTERVAL: Long = 1000
 
         /** Hora del último fix aceptado (para el refresco progresivo). */
         const val KEY_LAST_FIX_AT = "lastFixAt"
 
-        /** Pata mínima (m) para que un giro cuente como reporte (filtra jitter). */
-        const val ANGLE_MIN_LEG_M = 12.0
+        /**
+         * Pata mínima (m) para que un giro cuente como reporte (filtra jitter).
+         * Bajada de 12 a 8 m: captura esquinas de 90° antes de la distancia de
+         * filtro (10 m), sin disparar telaraña con el equipo detenido.
+         */
+        const val ANGLE_MIN_LEG_M = 8.0
 
         /** Velocidad implícita mínima (m/s) para que el giro cuente. */
         const val ANGLE_MIN_SPEED_MPS = 1.5

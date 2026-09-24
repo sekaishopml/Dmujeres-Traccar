@@ -26,20 +26,49 @@ import android.os.Looper
 class AndroidPositionProvider(context: Context, listener: PositionListener) : PositionProvider(context, listener), LocationListener {
 
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-    private val provider = getProvider(preferences.getString(Prefs.ACCURACY, "medium"))
 
-    @SuppressLint("MissingPermission")
+    @Volatile
+    private var started = false
+
+    /** Estado asumido al arrancar: movimiento (no perder la salida de ruta). */
+    @Volatile
+    private var moving = true
+
+    /** Proveedor vigente: GPS en movimiento, red parado (ahorro). */
+    @Volatile
+    private var provider = LocationManager.GPS_PROVIDER
+
     override fun startUpdates() {
-        try {
-            locationManager.requestLocationUpdates(
-                    provider, if (distance > 0 || angle > 0) MINIMUM_INTERVAL else interval, 0f, this)
-        } catch (e: RuntimeException) {
-            listener.onPositionError(e)
-        }
+        started = true
+        updateReportInterval(moving)
+        requestUpdates()
     }
 
     override fun stopUpdates() {
+        started = false
         locationManager.removeUpdates(this)
+    }
+
+    /**
+     * Recrea la petición al cambiar el estado: GPS fino en movimiento,
+     * NETWORK/BALANCED con 120 s parado. `mobile.accuracy` ya no decide el
+     * proveedor (decisión del dueño: GPS en movimiento siempre).
+     */
+    override fun applyMotionState(moving: Boolean) {
+        this.moving = moving
+        updateReportInterval(moving)
+        if (started) requestUpdates()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun requestUpdates() {
+        val cadence = AdaptiveCadence.request(moving, null, configuredIntervalSeconds())
+        provider = if (moving) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
+        try {
+            locationManager.requestLocationUpdates(provider, cadence.intervalMs, cadence.minDistanceM, this)
+        } catch (e: RuntimeException) {
+            listener.onPositionError(e)
+        }
     }
 
     @Suppress("DEPRECATION", "MissingPermission")
@@ -71,13 +100,5 @@ class AndroidPositionProvider(context: Context, listener: PositionListener) : Po
     override fun onStatusChanged(provider: String, status: Int, extras: Bundle) {}
     override fun onProviderEnabled(provider: String) {}
     override fun onProviderDisabled(provider: String) {}
-
-    private fun getProvider(accuracy: String?): String {
-        return when (accuracy) {
-            "high" -> LocationManager.GPS_PROVIDER
-            "low"  -> LocationManager.PASSIVE_PROVIDER
-            else   -> LocationManager.NETWORK_PROVIDER
-        }
-    }
 
 }

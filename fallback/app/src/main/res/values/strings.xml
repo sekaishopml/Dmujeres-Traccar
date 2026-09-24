@@ -148,6 +148,13 @@ Se registrará el cierre en el panel.</string>
   <string name="refresh_step_firebase_off">Avisos sin token</string>
   <string name="refresh_step_firebase_na">Avisos no disponibles en esta versión</string>
   <string name="refresh_step_done">Todo listo</string>
+  <string name="refresh_summary_journey_closed">Inicia la jornada para actualizar</string>
+  <string name="refresh_summary_no_net">Sin datos móviles · revisa la conexión</string>
+  <string name="refresh_summary_server_off">Servidor no responde · se reintentará</string>
+  <string name="refresh_summary_gps_off">GPS apagado · actívalo para trazar</string>
+  <string name="refresh_summary_pending">Pendientes sin enviar · se reintentará</string>
+  <string name="refresh_summary_all_good_warnings">Todo listo · avisos pendientes</string>
+  <string name="refresh_summary_all_good_config">Todo listo · config sin revisar</string>
   <string name="refresh_now_ok">Actualizando posición y pendientes con el servidor…</string>
   <string name="refresh_now_off">El servicio no está activo</string>
   <string name="no_updates_toast">Ya tienes la última versión</string>

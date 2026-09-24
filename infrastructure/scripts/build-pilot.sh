@@ -64,18 +64,27 @@ fi
 
 # ── 3) publicar para la flota ────────────────────────────────────────────────
 # Fail-closed: se fija la allowlist antes de publicar, para que ninguna versión
-# nueva llegue a un teléfono que no esté dado de alta.
+# nueva llegue a un teléfono que no esté dado de alta. Es ADITIVA: respeta los
+# usuarios que agregarusuario.sh haya sumado (p. ej. manzaba).
 DEST_ROOT="${DMJ_PUBLISH_ROOT:-$ROOT}"
 python3 - "$DEST_ROOT" <<'PY'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
-allow = ["qa-f0", "macias", "jeremy", "kevin", "joseph", "david", "pilay"]
+base = ["qa-f0", "macias", "jeremy", "kevin", "joseph", "david", "pilay"]
 for directory in (root / "dashboard/public", root / "dashboard/build"):
     if not directory.is_dir():
         continue
-    (directory / "rollout.json").write_text(
-        json.dumps({"percent": 100, "paused": False, "allow": allow}, indent=2) + "\n"
-    )
+    path = directory / "rollout.json"
+    allow = list(base)
+    if path.is_file():
+        try:
+            current = json.loads(path.read_text()).get("allow", [])
+            for user in current:
+                if user not in allow:
+                    allow.append(user)
+        except Exception:
+            pass
+    path.write_text(json.dumps({"percent": 100, "paused": False, "allow": allow}, indent=2) + "\n")
 print(">> allowlist fijada: " + ", ".join(allow))
 PY
 
