@@ -99,15 +99,18 @@ class OnboardingActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_welcome, container, false)
         container.addView(view)
         primary.text = getString(R.string.onboarding_continue)
-        // Entrada escalonada con desenfoque suave: cabecera y los tres pasos.
+        // Entrada escalonada: fade + desplazamiento corto + zoom mínimo, con un
+        // desenfoque de UN tiro por bloque (sin blur por frame, que causaba lag).
         listOf(
             R.id.welcome_header to 0L,
-            R.id.welcome_step1 to 90L,
-            R.id.welcome_step2 to 180L,
-            R.id.welcome_step3 to 270L,
-            R.id.welcome_footer to 360L,
+            R.id.welcome_step1 to 80L,
+            R.id.welcome_step2 to 160L,
+            R.id.welcome_step3 to 240L,
+            R.id.welcome_footer to 320L,
         ).forEach { (id, delay) ->
-            view.findViewById<View>(id)?.let { SoftEntrance.animate(it, delayMs = delay) }
+            view.findViewById<View>(id)?.let {
+                SoftEntrance.animate(it, delayMs = delay, withBlur = true)
+            }
         }
     }
 

@@ -5,59 +5,80 @@ import android.graphics.Shader
 import android.os.Build
 import android.view.View
 import android.view.animation.DecelerateInterpolator
-import androidx.core.animation.doOnEnd
 
 /**
- * Entrada suave de las pantallas del asistente: aparece con un desvanecido,
- * un desplazamiento corto y un desenfoque que se disuelve (blur real desde
- * Android 12). Al terminar se retira el efecto para no dejar trabajo extra a
- * la GPU: es una animación corta y de un solo tiro, no cuesta batería.
+ * Entrada suave de las pantallas del asistente.
+ *
+ * Optimización: el desenfoque se aplica UNA sola vez (un único RenderEffect) y
+ * se retira pasado un instante; animarlo por frame disparaba una pasada de blur
+ * de GPU en cada frame (varios bloques a la vez) y en los equipos de la flota se
+ * sentía el lag. La entrada normal es desvanecido + desplazamiento corto + un
+ * zoom mínimo, todo con ViewPropertyAnimator (barato y a 60 fps).
  */
 object SoftEntrance {
 
-    private const val BLUR_START = 16f
+    /** Ventana del desenfoque de un solo tiro (ms); después se retira. */
+    private const val BLUR_WINDOW_MS = 160L
+
+    private const val BLUR_RADIUS = 10f
 
     fun animate(
         view: View,
         delayMs: Long = 0L,
-        durationMs: Long = 520L,
+        durationMs: Long = 420L,
         slideDp: Float = 16f,
-        withBlur: Boolean = true,
+        withBlur: Boolean = false,
     ) {
+        if (animationsDisabled(view)) {
+            // Accesibilidad o rendimiento: sin animación, contenido visible ya.
+            view.alpha = 1f
+            view.translationY = 0f
+            view.scaleX = 1f
+            view.scaleY = 1f
+            return
+        }
         val density = view.resources.displayMetrics.density
         view.alpha = 0f
         view.translationY = slideDp * density
+        // Zoom mínimo: da la sensación de "aparecer" sin mover el layout.
+        view.scaleX = 0.985f
+        view.scaleY = 0.985f
         view.animate()
             .alpha(1f)
             .translationY(0f)
+            .scaleX(1f)
+            .scaleY(1f)
             .setStartDelay(delayMs)
             .setDuration(durationMs)
             .setInterpolator(DecelerateInterpolator())
             .start()
-        animateBlur(view, delayMs, durationMs, withBlur)
+        if (withBlur) applySingleShotBlur(view, delayMs)
     }
 
-    /** Transición entre pasos: entra con un desenfoque más corto y leve. */
-    fun transition(view: View, durationMs: Long = 300L) {
-        animate(view, delayMs = 0L, durationMs = durationMs, slideDp = 10f, withBlur = true)
+    /** Transición entre pasos: misma entrada, un poco más corta. */
+    fun transition(view: View, durationMs: Long = 260L) {
+        animate(view, delayMs = 0L, durationMs = durationMs, slideDp = 10f)
     }
 
-    private fun animateBlur(view: View, delayMs: Long, durationMs: Long, enabled: Boolean) {
-        if (!enabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        val animator = android.animation.ValueAnimator.ofFloat(BLUR_START, 0f)
-        animator.duration = durationMs
-        animator.startDelay = delayMs
-        animator.addUpdateListener { value ->
-            val radius = value.animatedValue as Float
+    /**
+     * Desenfoque de un tiro: se aplica una vez al arrancar la entrada y se
+     * retira a los [BLUR_WINDOW_MS]. Sin animadores de blur por frame.
+     */
+    private fun applySingleShotBlur(view: View, delayMs: Long) {        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        view.postDelayed({
             view.setRenderEffect(
-                if (radius > 0.5f) {
-                    RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP)
-                } else {
-                    null
-                },
+                RenderEffect.createBlurEffect(BLUR_RADIUS, BLUR_RADIUS, Shader.TileMode.CLAMP),
             )
-        }
-        animator.doOnEnd { view.setRenderEffect(null) }
-        animator.start()
+            view.postDelayed({ view.setRenderEffect(null) }, BLUR_WINDOW_MS)
+        }, delayMs)
     }
+
+    /** ¿El usuario desactivó las animaciones (accesibilidad) o el sistema las escala a 0? */
+    private fun animationsDisabled(view: View): Boolean = runCatching {
+        android.provider.Settings.Global.getFloat(
+            view.context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }.getOrDefault(false)
 }
