@@ -4,70 +4,126 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bg_card"
     android:orientation="vertical"
-    android:padding="20dp">
+    android:padding="22dp">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/welcome_title"
+        android:letterSpacing="0.18"
+        android:text="@string/welcome_overline"
         android:textColor="@color/primary"
-        android:textSize="20sp"
+        android:textSize="10sp"
         android:textStyle="bold" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:text="@string/welcome_subtitle"
-        android:textColor="@color/muted"
-        android:textSize="12sp" />
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="14dp"
-        android:background="#ECECEC" />
+        android:layout_marginTop="8dp"
+        android:text="@string/welcome_title"
+        android:textColor="@color/ink"
+        android:textSize="30sp"
+        android:textStyle="bold" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:lineSpacingExtra="4dp"
+        android:layout_marginTop="10dp"
+        android:lineSpacingExtra="5dp"
         android:text="@string/welcome_body"
         android:textColor="@color/ink"
-        android:textSize="14sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:lineSpacingExtra="4dp"
-        android:text="@string/welcome_body_pill"
-        android:textColor="@color/ink"
-        android:textSize="14sp" />
+        android:textSize="15sp" />
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
+        android:layout_marginTop="18dp"
+        android:background="#ECECEC" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="92dp"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.12"
+            android:text="@string/welcome_use_label"
+            android:textColor="@color/muted"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/welcome_use_value"
+            android:textColor="@color/ink"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="92dp"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.12"
+            android:text="@string/welcome_journey_label"
+            android:textColor="@color/muted"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/welcome_journey_value"
+            android:textColor="@color/ink"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="92dp"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.12"
+            android:text="@string/welcome_access_label"
+            android:textColor="@color/muted"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/welcome_access_value"
+            android:textColor="@color/ink"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="16dp"
         android:background="#ECECEC" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:lineSpacingExtra="4dp"
-        android:text="@string/welcome_body_cctv"
-        android:textColor="@color/navy"
-        android:textSize="13sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:lineSpacingExtra="4dp"
+        android:layout_marginTop="12dp"
+        android:lineSpacingExtra="3dp"
         android:text="@string/welcome_body_perms"
         android:textColor="@color/muted"
-        android:textSize="13sp" />
+        android:textSize="12sp" />
 
 </LinearLayout>
