@@ -38,6 +38,9 @@ private const val LIVE_REFRESH_MS = 5_000L
 /** Freno entre chequeos de actualización (banner en vivo con la app abierta). */
 private const val OTA_CHECK_MIN_GAP_MS = 60_000L
 
+/** Extra del menú de depuración para probar la animación del banner. */
+const val EXTRA_BANNER_DEMO = "bannerDemo"
+
 /** Marca del último chequeo de actualización (para el freno). */
 private const val KEY_LAST_OTA_CHECK = "lastOtaCheckApp"
 
@@ -80,6 +83,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_locked_home)
         wireLockedHome()
         maybeCheckOta()
+        if (intent.getBooleanExtra(EXTRA_BANNER_DEMO, false)) {
+            showBannerDemo()
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_BANNER_DEMO, false)) {
+            showBannerDemo()
+        }
     }
 
     /**
@@ -104,23 +118,65 @@ class MainActivity : AppCompatActivity() {
      * en vivo (al abrir, al volver y cada minuto con la app abierta).
      */
     private fun showUpdateDialogIfAvailable(onDone: (() -> Unit)? = null) {
-        val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
         DmujeresApi.checkOta(this) { label, url, sha256 ->
             runOnUiThread {
                 onDone?.invoke()
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (label == null) return@runOnUiThread
-                if (banner.visibility == View.VISIBLE) return@runOnUiThread
-                banner.visibility = View.VISIBLE
-                val height = (46 * resources.displayMetrics.density).toInt()
-                val slide = android.view.animation.TranslateAnimation(0f, 0f, -height.toFloat(), 0f)
-                slide.duration = 350
-                banner.startAnimation(slide)
-                banner.setOnClickListener {
-                    UpdateActivity.start(this, url, sha256)
-                }
+                showUpdateBanner(url, sha256)
             }
         }
+    }
+
+    /**
+     * Banner de actualización: baja deslizándose desde arriba y, como es
+     * flotante, SOLO desplaza la hamburguesa (el resto del contenido no se
+     * mueve). Animación suave con desaceleración.
+     */
+    private fun showUpdateBanner(url: String, sha256: String, demo: Boolean = false) {
+        if (isFinishing || isDestroyed) return
+        val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
+        if (banner.visibility == View.VISIBLE) return
+        val console = findViewById<android.widget.ImageButton>(R.id.console_button)
+        val height = (46 * resources.displayMetrics.density).toInt()
+        val slide = android.view.animation.DecelerateInterpolator()
+        banner.visibility = View.VISIBLE
+        banner.translationY = -height.toFloat()
+        banner.animate().translationY(0f).setDuration(420).setInterpolator(slide).start()
+        // La hamburguesa acompaña la bajada para quedar visible debajo.
+        console?.animate()?.translationY(height.toFloat())?.setDuration(420)?.setInterpolator(slide)?.start()
+        banner.setOnClickListener {
+            if (demo) {
+                hideUpdateBanner()
+                Toast.makeText(this, getString(R.string.debug_banner_demo_done), Toast.LENGTH_SHORT).show()
+            } else {
+                UpdateActivity.start(this, url, sha256)
+            }
+        }
+    }
+
+    /** Sube el banner y devuelve la hamburguesa a su sitio (misma suavidad). */
+    private fun hideUpdateBanner() {
+        val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
+        val console = findViewById<android.widget.ImageButton>(R.id.console_button)
+        val height = (46 * resources.displayMetrics.density).toInt()
+        val slide = android.view.animation.DecelerateInterpolator()
+        banner.animate().translationY(-height.toFloat()).setDuration(320).setInterpolator(slide)
+            .withEndAction { banner.visibility = View.GONE }
+            .start()
+        console?.animate()?.translationY(0f)?.setDuration(320)?.setInterpolator(slide)?.start()
+    }
+
+    /** Menú de depuración: muestra la animación del banner sin tocar la OTA. */
+    private fun showBannerDemo() {
+        val banner = findViewById<LinearLayout>(R.id.update_banner)
+        if (banner?.visibility == View.VISIBLE) {
+            // Reinicia para poder repetir la animación las veces que haga falta.
+            banner.visibility = View.GONE
+            banner.translationY = 0f
+            findViewById<android.widget.ImageButton>(R.id.console_button)?.translationY = 0f
+        }
+        showUpdateBanner("", "", demo = true)
     }
 
     private var durationTicker: Runnable? = null

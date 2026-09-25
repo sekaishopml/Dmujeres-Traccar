@@ -53,6 +53,16 @@ class DebugActivity : AppCompatActivity() {
         addRow(rows, R.string.debug_update_title, R.string.debug_update_summary) {
             UpdateActivity.startDemo(this)
         }
+        addRow(rows, R.string.debug_banner_title, R.string.debug_banner_summary) {
+            startActivity(
+                android.content.Intent(this, MainActivity::class.java)
+                    .addFlags(
+                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                    )
+                    .putExtra(EXTRA_BANNER_DEMO, true),
+            )
+        }
         addRow(rows, R.string.debug_finish_title, R.string.debug_finish_summary) {
             showFinishJourneyDialog()
         }

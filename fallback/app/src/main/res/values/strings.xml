@@ -199,6 +199,9 @@ Se registrará el cierre en el panel.</string>
   <string name="debug_console_summary">Últimos movimientos del servicio</string>
   <string name="debug_update_title">Actualización (simulado)</string>
   <string name="debug_update_summary">Diseño de la pantalla de descarga</string>
+  <string name="debug_banner_title">Banner de actualización (animación)</string>
+  <string name="debug_banner_summary">Baja deslizándose y solo mueve la hamburguesa</string>
+  <string name="debug_banner_demo_done">Animación de prueba completada</string>
   <string name="debug_finish_title">Finalizar jornada (diálogo)</string>
   <string name="debug_finish_summary">Confirmación con la duración real</string>
   <string name="debug_server_title">Servidor</string>
