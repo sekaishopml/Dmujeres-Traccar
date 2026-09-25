@@ -38,6 +38,9 @@ class OnboardingActivity : AppCompatActivity() {
     private lateinit var primary: Button
     private var step = STEP_WELCOME
 
+    /** La transición de permisos se anima una sola vez por visita. */
+    private var permissionsTransitionDone = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_onboarding)
@@ -93,8 +96,19 @@ class OnboardingActivity : AppCompatActivity() {
     private fun showWelcome() {
         step = STEP_WELCOME
         container.removeAllViews()
-        container.addView(LayoutInflater.from(this).inflate(R.layout.onboarding_step_welcome, container, false))
+        val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_welcome, container, false)
+        container.addView(view)
         primary.text = getString(R.string.onboarding_continue)
+        // Entrada escalonada con desenfoque suave: título, párrafo, panel y notas.
+        listOf(
+            R.id.welcome_title to 0L,
+            R.id.welcome_body to 70L,
+            R.id.welcome_panel to 140L,
+            R.id.welcome_perms to 210L,
+            R.id.welcome_cctv to 280L,
+        ).forEach { (id, delay) ->
+            view.findViewById<View>(id)?.let { SoftEntrance.animate(it, delayMs = delay) }
+        }
     }
 
     // ── Paso 2: login (cada quien escribe sus datos) ────────────────────────
@@ -104,6 +118,8 @@ class OnboardingActivity : AppCompatActivity() {
         container.removeAllViews()
         container.addView(LayoutInflater.from(this).inflate(R.layout.onboarding_step_login, container, false))
         primary.text = getString(R.string.login_button)
+        // Transición suave al cambiar de paso.
+        SoftEntrance.transition(container)
     }
 
     /**
@@ -164,6 +180,11 @@ class OnboardingActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_permissions, container, false)
         container.addView(view)
         val rows = view.findViewById<LinearLayout>(R.id.permissions_container)
+        // Transición suave solo la primera vez: al volver de Ajustes no se repite.
+        if (!permissionsTransitionDone) {
+            permissionsTransitionDone = true
+            SoftEntrance.transition(container)
+        }
 
         addRow(rows, R.string.perm_location, isGranted(Manifest.permission.ACCESS_FINE_LOCATION)) {
             requestPermissions(
