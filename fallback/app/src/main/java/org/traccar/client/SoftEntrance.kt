@@ -1,33 +1,20 @@
 package org.traccar.client
 
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.os.Build
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 
 /**
- * Entrada suave de las pantallas del asistente.
- *
- * Optimización: el desenfoque se aplica UNA sola vez (un único RenderEffect) y
- * se retira pasado un instante; animarlo por frame disparaba una pasada de blur
- * de GPU en cada frame (varios bloques a la vez) y en los equipos de la flota se
- * sentía el lag. La entrada normal es desvanecido + desplazamiento corto + un
- * zoom mínimo, todo con ViewPropertyAnimator (barato y a 60 fps).
+ * Entrada suave de las pantallas del asistente: desvanecido + desplazamiento
+ * corto + un zoom mínimo, con ViewPropertyAnimator (barato y a 60 fps).
+ * Sin desenfoque: el blur por GPU causaba lag en los equipos de la flota.
  */
 object SoftEntrance {
-
-    /** Ventana del desenfoque de un solo tiro (ms); después se retira. */
-    private const val BLUR_WINDOW_MS = 160L
-
-    private const val BLUR_RADIUS = 10f
 
     fun animate(
         view: View,
         delayMs: Long = 0L,
         durationMs: Long = 420L,
         slideDp: Float = 16f,
-        withBlur: Boolean = false,
     ) {
         if (animationsDisabled(view)) {
             // Accesibilidad o rendimiento: sin animación, contenido visible ya.
@@ -52,25 +39,11 @@ object SoftEntrance {
             .setDuration(durationMs)
             .setInterpolator(DecelerateInterpolator())
             .start()
-        if (withBlur) applySingleShotBlur(view, delayMs)
     }
 
     /** Transición entre pasos: misma entrada, un poco más corta. */
     fun transition(view: View, durationMs: Long = 260L) {
         animate(view, delayMs = 0L, durationMs = durationMs, slideDp = 10f)
-    }
-
-    /**
-     * Desenfoque de un tiro: se aplica una vez al arrancar la entrada y se
-     * retira a los [BLUR_WINDOW_MS]. Sin animadores de blur por frame.
-     */
-    private fun applySingleShotBlur(view: View, delayMs: Long) {        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        view.postDelayed({
-            view.setRenderEffect(
-                RenderEffect.createBlurEffect(BLUR_RADIUS, BLUR_RADIUS, Shader.TileMode.CLAMP),
-            )
-            view.postDelayed({ view.setRenderEffect(null) }, BLUR_WINDOW_MS)
-        }, delayMs)
     }
 
     /** ¿El usuario desactivó las animaciones (accesibilidad) o el sistema las escala a 0? */
