@@ -68,6 +68,12 @@
   <string name="welcome_journey_value">Se inicia y finaliza con un toque</string>
   <string name="welcome_access_label">ACCESO</string>
   <string name="welcome_access_value">Datos entregados por CCTV</string>
+  <string name="welcome_step_login_title">Inicia sesión</string>
+  <string name="welcome_step_login_text">Con el usuario y la clave que entregó CCTV</string>
+  <string name="welcome_step_perms_title">Acepta los permisos</string>
+  <string name="welcome_step_perms_text">Ubicación, notificaciones y batería sin restricción</string>
+  <string name="welcome_step_ready_title">Listo</string>
+  <string name="welcome_step_ready_text">Inicia y finaliza tu jornada con un toque</string>
   <string name="welcome_body">En este dispositivo registrarás tu jornada y tu ruta.</string>
   <string name="welcome_body_pill">Solo verás una pantalla para iniciar y finalizar la jornada.</string>
   <string name="welcome_body_cctv">Los datos de acceso te los entregó el departamento de CCTV.</string>

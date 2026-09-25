@@ -99,13 +99,13 @@ class OnboardingActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_welcome, container, false)
         container.addView(view)
         primary.text = getString(R.string.onboarding_continue)
-        // Entrada escalonada con desenfoque suave: título, párrafo, panel y notas.
+        // Entrada escalonada con desenfoque suave: cabecera y los tres pasos.
         listOf(
-            R.id.welcome_title to 0L,
-            R.id.welcome_body to 70L,
-            R.id.welcome_panel to 140L,
-            R.id.welcome_perms to 210L,
-            R.id.welcome_cctv to 280L,
+            R.id.welcome_header to 0L,
+            R.id.welcome_step1 to 90L,
+            R.id.welcome_step2 to 180L,
+            R.id.welcome_step3 to 270L,
+            R.id.welcome_footer to 360L,
         ).forEach { (id, delay) ->
             view.findViewById<View>(id)?.let { SoftEntrance.animate(it, delayMs = delay) }
         }
