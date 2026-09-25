@@ -220,6 +220,9 @@ Se registrará el cierre en el panel.</string>
   <string name="debug_diag_journey_fmt">Jornada: %1$s</string>
   <string name="debug_diag_connection_fmt">Conexión: %1$s</string>
   <string name="debug_diag_config_fmt">Config: cada %1$s s · %2$s m · %3$s° · %4$s</string>
+  <string name="debug_diag_perms_fmt">Permisos: fina %1$s · fondo %2$s · avisos %3$s · batería libre %4$s</string>
+  <string name="debug_yes">sí</string>
+  <string name="debug_no">no</string>
   <string name="debug_diag_user_fmt">Usuario: %1$s</string>
   <string name="debug_diag_server_fmt">Servidor: %1$s</string>
   <string name="debug_diag_version_fmt">Versión: %1$s (%2$d)</string>

@@ -2,9 +2,11 @@ package org.traccar.client
 
 import android.content.Context
 import android.location.LocationManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import org.json.JSONObject
 
@@ -63,6 +65,23 @@ object ServiceHeartbeat {
                 }.getOrDefault(false)
                 val pending = runCatching { DatabaseHelper(context).countPositions() }.getOrDefault(-1)
                 val battery = readBatteryStatus(context)
+                val fixAt = prefs.getLong(PositionProvider.KEY_LAST_FIX_AT, 0L)
+                val fixAgeSec = if (fixAt > 0) (System.currentTimeMillis() - fixAt) / 1000 else -1
+                val exempt = runCatching {
+                    (context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+                        .isIgnoringBatteryOptimizations(context.packageName)
+                }.getOrDefault(false)
+                val permFine = ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION,
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                val permBackground = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                    ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                val permNotifications = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.POST_NOTIFICATIONS,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 DmujeresApi.postDiagnostics(
                     context,
                     JSONObject().put(
@@ -78,19 +97,43 @@ object ServiceHeartbeat {
                                 "gps",
                                 JSONObject()
                                     .put("enabled", locationEnabled)
-                                    .put("provider", "fused"),
+                                    .put("provider", "fused")
+                                    .put("fixAgeSec", fixAgeSec)
+                                    .put("mock", prefs.getBoolean(Prefs.LAST_MOCK, false)),
                             )
                             .put("buffer", JSONObject().put("pending", pending))
-                            // Telemetría de batería del panel: `battery` sigue el
-                            // esquema del servidor (0..100); `charging` viaja
-                            // extra por si el whitelist lo habilita después.
+                            // Batería + exención: el panel puede ver quién está
+                            // restringido (causa real de que la captura se corte).
                             .put(
                                 "power",
                                 JSONObject()
                                     .put("battery", battery.level.toInt().coerceIn(0, 100))
-                                    .put("charging", battery.charging),
+                                    .put("charging", battery.charging)
+                                    .put("exempt", exempt),
                             )
-                            .put("journeyOpen", prefs.getBoolean(DmujeresApi.KEY_JOURNEY_OPEN, false))
+                            // Cadencia efectiva: permite detectar desde el panel
+                            // un equipo que traza con huecos.
+                            .put(
+                                "cadence",
+                                JSONObject()
+                                    .put("movingMs", AdaptiveCadence.movingIntervalMs(null))
+                                    .put("stationaryMs", AdaptiveCadence.STATIONARY_INTERVAL_MS),
+                            )
+                            // Permisos que deciden si la captura aguanta en segundo plano.
+                            .put(
+                                "perms",
+                                JSONObject()
+                                    .put("fine", permFine)
+                                    .put("background", permBackground)
+                                    .put("notifications", permNotifications),
+                            )
+                            .put(
+                                "journey",
+                                JSONObject().put(
+                                    "active",
+                                    prefs.getBoolean(DmujeresApi.KEY_JOURNEY_OPEN, false),
+                                ),
+                            )
                             .put("serverUrl", prefs.getString(Prefs.URL, "")),
                     ),
                 )

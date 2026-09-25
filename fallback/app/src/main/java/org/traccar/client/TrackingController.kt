@@ -67,6 +67,7 @@ class TrackingController(private val context: Context) :
         }
         MotionMonitor.register(context)
         MotionMonitor.setTurnListener(this)
+        MotionMonitor.setSignificantMotionListener { onSignificantMotion() }
         watchdog.start(System.currentTimeMillis())
         handler.postDelayed(watchdogTick, WATCHDOG_PERIOD_MS)
         handler.postDelayed(motionTick, MOTION_CHECK_PERIOD_MS)
@@ -153,6 +154,7 @@ class TrackingController(private val context: Context) :
             Log.w(TAG, e)
         }
         MotionMonitor.setTurnListener(null)
+        MotionMonitor.setSignificantMotionListener(null)
         MotionMonitor.unregister(context)
         handler.removeCallbacksAndMessages(null)
     }
@@ -178,6 +180,10 @@ class TrackingController(private val context: Context) :
         lastFixLat = position.latitude
         lastFixLon = position.longitude
         lastFixAtMs = now
+        // El último fix con GPS falso (mock) queda para el diagnostico.
+        runCatching {
+            preferences.edit().putBoolean(Prefs.LAST_MOCK, position.mock).apply()
+        }
         if (MotionSignal.shouldMove(position.speed, impliedKn)) {
             holdMovingUntilMs = now + SPEED_MOVING_HOLD_MS
             if (!moving) {
@@ -200,6 +206,20 @@ class TrackingController(private val context: Context) :
         val result = FloatArray(1)
         android.location.Location.distanceBetween(lat1, lon1, lat2, lon2, result)
         return result[0].toDouble()
+    }
+
+    /**
+     * Arranque de movimiento por el sensor de bajo consumo (significant motion):
+     * adelanta la cadencia fina y pide un fix ya, sin esperar al acelerómetro.
+     */
+    fun onSignificantMotion() {
+        holdMovingUntilMs = System.currentTimeMillis() + SPEED_MOVING_HOLD_MS
+        Log.i(TAG, "movimiento por sensor significativo")
+        if (!moving) {
+            moving = true
+            positionProvider.applyMotionState(true)
+        }
+        runCatching { positionProvider.requestSingleLocation() }
     }
 
     /** Giro fuerte (giroscopio): captura la esquina sin subir la cadencia base. */

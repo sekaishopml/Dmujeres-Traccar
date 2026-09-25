@@ -10,11 +10,11 @@ package org.traccar.client
  */
 object AdaptiveCadence {
 
-    /** Petición en movimiento: nunca más 1 Hz (el consumo era 834 mAh/24 h). */
-    const val MOVING_INTERVAL_MS = 15_000L
+    /** Petición en movimiento: trazo denso sin volver a 1 Hz (834 mAh/24 h). */
+    const val MOVING_INTERVAL_MS = 10_000L
 
     /** Límites del control remoto "Frecuencia" para la cadencia en movimiento. */
-    const val MIN_MOVING_S = 15L
+    const val MIN_MOVING_S = 10L
     const val MAX_MOVING_S = 60L
 
     /** Petición en quietud: sin cambios reales no hace falta más. */
@@ -23,8 +23,12 @@ object AdaptiveCadence {
     /** Desplazamiento mínimo entre fixes (m): filtra jitter sin cortar esquinas. */
     const val MIN_DISTANCE_M = 10f
 
-    /** Agrupación máxima parado (igual a la cadencia, un solo lote por ventana). */
-    const val STATIONARY_MAX_UPDATE_DELAY_MS = 120_000L
+    /**
+     * Sin batching: el batching en parado estiraba los puntos de 2 min a 10-60 min
+     * cuando el teléfono entraba en doze (ruta con huecos aunque estuviera quieto
+     * y, peor, al arrancar de nuevo). El ahorro de parado se mantiene con los 120 s.
+     */
+    const val STATIONARY_MAX_UPDATE_DELAY_MS = 0L
 
     enum class Accuracy { HIGH, BALANCED, LOW }
 

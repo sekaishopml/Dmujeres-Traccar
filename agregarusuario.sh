@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-USUARIO="manzaba"
+USUARIO="Fernando"
 CLAVE="cctv2026"
 
 DB="dmj-db"

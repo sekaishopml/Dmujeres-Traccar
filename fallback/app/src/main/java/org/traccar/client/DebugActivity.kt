@@ -216,6 +216,31 @@ class DebugActivity : AppCompatActivity() {
                 prefs.getString(Prefs.ANGLE, "15"),
                 prefs.getString(Prefs.ACCURACY, "medium"),
             ),
+            getString(
+                R.string.debug_diag_perms_fmt,
+                yesNo(
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        this, android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED,
+                ),
+                yesNo(
+                    android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q ||
+                        androidx.core.content.ContextCompat.checkSelfPermission(
+                            this, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED,
+                ),
+                yesNo(
+                    android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+                        androidx.core.content.ContextCompat.checkSelfPermission(
+                            this, android.Manifest.permission.POST_NOTIFICATIONS,
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED,
+                ),
+                yesNo(
+                    android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M ||
+                        (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+                            .isIgnoringBatteryOptimizations(packageName),
+                ),
+            ),
             getString(R.string.debug_diag_user_fmt, prefs.getString(Prefs.DEVICE, "")),
             getString(R.string.debug_diag_server_fmt, prefs.getString(Prefs.URL, "")),
             getString(
@@ -244,4 +269,7 @@ class DebugActivity : AppCompatActivity() {
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
+
+    private fun yesNo(value: Boolean): String =
+        getString(if (value) R.string.debug_yes else R.string.debug_no)
 }

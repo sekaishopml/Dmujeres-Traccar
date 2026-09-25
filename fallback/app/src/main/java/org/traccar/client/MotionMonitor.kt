@@ -5,6 +5,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.util.Log
 import kotlin.math.sqrt
 
@@ -57,6 +58,20 @@ object MotionMonitor : SensorEventListener {
     @Volatile
     private var turnListener: TurnListener? = null
 
+    /** Aviso de arranque de movimiento (sensor significant motion, bajo consumo). */
+    fun interface SignificantMotionListener {
+        fun onSignificantMotion()
+    }
+
+    @Volatile
+    private var significantMotionListener: SignificantMotionListener? = null
+
+    private var significantMotionTrigger: android.hardware.TriggerEventListener? = null
+
+    fun setSignificantMotionListener(listener: SignificantMotionListener?) {
+        significantMotionListener = listener
+    }
+
     /** true/false conocidos; null = sin datos suficientes (honesto). */
     fun isMoving(): Boolean? = when (state) {
         State.MOVING -> true
@@ -76,6 +91,7 @@ object MotionMonitor : SensorEventListener {
             manager.registerListener(this, manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL)
             registered = true
             updateGyroscope()
+            armSignificantMotion()
             Log.i(TAG, "acelerómetro registrado")
         }.onFailure { Log.w(TAG, "no se pudieron registrar los sensores", it) }
     }
@@ -83,8 +99,12 @@ object MotionMonitor : SensorEventListener {
     fun unregister(context: Context) {
         if (!registered) return
         runCatching {
-            (context.getSystemService(Context.SENSOR_SERVICE) as SensorManager).unregisterListener(this)
+            val manager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            significantMotionTrigger?.let { manager.cancelTriggerSensor(it, manager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)) }
+            manager.unregisterListener(this)
         }
+        significantMotionTrigger = null
+        significantMotionListener = null
         registered = false
         gyroRegistered = false
         sensorManager = null
@@ -93,6 +113,35 @@ object MotionMonitor : SensorEventListener {
         turnDetector.reset()
         turnListener = null
         lastSpeedKnots = 0.0
+    }
+
+    /**
+     * Sensor de "movimiento significativo" (one-shot, costo casi nulo): avisa en
+     * cuanto el equipo arranca a moverse, aunque el acelerómetro no lo note
+     * (soporte que amortigua). Se re-arma tras cada aviso.
+     */
+    private fun armSignificantMotion() {
+        if (!registered) return
+        // El trigger cambió de firma en Android 14 (TriggerEvent); en equipos
+        // anteriores el acelerómetro + la red de velocidad ya cubren el arranque.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        val manager = sensorManager ?: return
+        val sensor = manager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION) ?: return
+        val trigger = object : android.hardware.TriggerEventListener() {
+            override fun onTrigger(event: android.hardware.TriggerEvent) {
+                significantMotionTrigger = null
+                val callback = significantMotionListener
+                if (callback != null) {
+                    callback.onSignificantMotion()
+                    armSignificantMotion()
+                }
+            }
+        }
+        runCatching {
+            if (manager.requestTriggerSensor(trigger, sensor)) {
+                significantMotionTrigger = trigger
+            }
+        }.onFailure { Log.w(TAG, "sin sensor de movimiento significativo", it) }
     }
 
     /** El giroscopio solo se enciende con el equipo en movimiento (ahorro). */

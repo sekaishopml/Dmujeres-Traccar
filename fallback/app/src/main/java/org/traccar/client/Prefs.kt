@@ -19,4 +19,7 @@ object Prefs {
     const val ONBOARDED = "onboarded"
     const val BUFFER = "buffer"
     const val WAKELOCK = "wakelock"
+
+    /** Último fix marcado como GPS falso (mock), para el diagnóstico. */
+    const val LAST_MOCK = "lastMock"
 }
