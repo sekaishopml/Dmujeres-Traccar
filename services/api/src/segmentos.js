@@ -5,6 +5,30 @@
 
 export const UMBRAL_MOVIMIENTO_KMH = 5;
 export const MIN_PARADA_SEGUNDOS = 180;
+// Una parada real (el equipo horas en la base) llegaba fragmentada en decenas
+// de registros: cada micro-movimiento de jitter o cada hueco sin cobertura
+// partía la presencia en paradas sueltas del mismo sitio. Por eso la fusión
+// ocurre ANTES del umbral: se emiten candidatas desde 30 s, se fusionan las
+// del mismo lugar y solo la parada fusionada debe durar >= 180 s.
+export const MIN_EMISION_PARADA_SEGUNDOS = 30;
+// Puente: micro-viaje absorbible dentro de una parada (reposicionar el equipo
+// en el mismo patio). Un viaje real (>= 150 m) siempre rompe la fusión: irse
+// y volver son dos visitas, no una parada.
+export const MAX_PUENTE_KM = 0.15;
+export const MAX_PUENTE_SEGUNDOS = 600;
+// Para unir fragmentos del mismo sitio: hueco temporal máximo y radio.
+// El hueco largo (teléfono apagado) se une solo en el mismo lugar; la
+// duración reportada suma solo tiempo observado, nunca el hueco.
+export const VENTANA_FUSION_SEGUNDOS = 1800;
+export const RADIO_FUSION_KM = 0.15;
+// Área operativa (Ecuador continental + Galápagos con margen): un grupo de
+// fixes fuera de este cuadro es error de GPS (se vieron latitudes de México
+// y de la sede de Google por fixes sin posición). Solo afecta a la
+// clasificación de paradas; el crudo no se toca y los viajes no se filtran.
+export const LAT_MIN_OP = -5;
+export const LAT_MAX_OP = 2;
+export const LON_MIN_OP = -93;
+export const LON_MAX_OP = -74;
 export const MIN_VIAJE_SEGUNDOS = 60;
 export const MAX_SALTO_SEGUNDOS = 900;
 export const MIN_DISTANCIA_VIAJE_KM = 0.05;
@@ -158,17 +182,107 @@ export function sqlSegmentos() {
       LEFT JOIN distancias2 d
         ON d.dispositivo_id = g.dispositivo_id AND d.isla = g.isla AND d.grupo2 = g.grupo2
       GROUP BY g.dispositivo_id, g.isla, g.grupo2, d.km
+    ),
+    -- Candidatos a fusión: paradas desde 30 s (el umbral de 180 s se exige a
+    -- la parada fusionada, no al fragmento) y puentes (micro-viajes dentro
+    -- del mismo sitio). Los viajes reales no son fusionables.
+    candidatos AS (
+      SELECT t.*,
+             (NOT t.movimiento AND t.segundos >= ${MIN_EMISION_PARADA_SEGUNDOS}
+              AND t.lat_inicio BETWEEN ${LAT_MIN_OP} AND ${LAT_MAX_OP}
+              AND t.lat_fin BETWEEN ${LAT_MIN_OP} AND ${LAT_MAX_OP}
+              AND t.lon_inicio BETWEEN ${LON_MIN_OP} AND ${LON_MAX_OP}
+              AND t.lon_fin BETWEEN ${LON_MIN_OP} AND ${LON_MAX_OP}) AS es_parada,
+             (t.movimiento AND t.km < ${MAX_PUENTE_KM}
+              AND t.segundos < ${MAX_PUENTE_SEGUNDOS}) AS es_puente
+      FROM tramos t
+    ),
+    -- Cadenas de fusión (gap-and-island): se corta en viaje real, en hueco
+    -- mayor a la ventana o en salto de lugar. Solo importan las filas
+    -- fusionables; el resto se emite por su vía normal.
+    bordes AS (
+      SELECT c.*,
+             CASE WHEN NOT (c.es_parada OR c.es_puente) THEN 1
+                  WHEN lag(c.id) OVER w IS NULL THEN 1
+                  WHEN NOT (lag(c.es_parada) OVER w OR lag(c.es_puente) OVER w) THEN 1
+                  WHEN extract(epoch FROM (c.inicio - lag(c.fin) OVER w)) > ${VENTANA_FUSION_SEGUNDOS} THEN 1
+                  WHEN 6371 * 2 * asin(sqrt(
+                         power(sin(radians(c.lat_inicio - lag(c.lat_fin) OVER w) / 2), 2)
+                         + cos(radians(lag(c.lat_fin) OVER w)) * cos(radians(c.lat_inicio))
+                           * power(sin(radians(c.lon_inicio - lag(c.lon_fin) OVER w) / 2), 2)
+                       )) > ${RADIO_FUSION_KM} THEN 1
+                  ELSE 0 END AS corte
+      FROM candidatos c
+      WINDOW w AS (PARTITION BY c.dispositivo_id ORDER BY c.inicio)
+    ),
+    cadenas AS (
+      SELECT b.*, sum(b.corte) OVER (PARTITION BY b.dispositivo_id ORDER BY b.inicio) AS cadena
+      FROM bordes b
+      WHERE b.es_parada OR b.es_puente
+    ),
+    -- Solo califica la cadena con al menos una parada y 180 s observados.
+    -- La duración suma fragmentos (tiempo con evidencia), nunca el hueco.
+    calificadas AS (
+      SELECT dispositivo_id, cadena
+      FROM cadenas
+      GROUP BY dispositivo_id, cadena
+      HAVING count(*) FILTER (WHERE es_parada) >= 1
+         AND sum(CASE WHEN es_parada THEN segundos ELSE 0 END) >= ${MIN_PARADA_SEGUNDOS}
+    ),
+    fusionadas AS (
+      SELECT c.dispositivo_id, false AS movimiento,
+             min(c.inicio) AS inicio, max(c.fin) AS fin,
+             sum(CASE WHEN c.es_parada THEN c.segundos ELSE 0 END) AS segundos,
+             sum(c.puntos) AS puntos,
+             (array_agg(c.id ORDER BY c.inicio))[1] AS id,
+             (array_agg(c.id_publico ORDER BY c.inicio))[1] AS id_publico,
+             (array_agg(c.lat_inicio ORDER BY c.inicio))[1] AS lat_inicio,
+             (array_agg(c.lon_inicio ORDER BY c.inicio))[1] AS lon_inicio,
+             (array_agg(c.lat_fin ORDER BY c.inicio DESC))[1] AS lat_fin,
+             (array_agg(c.lon_fin ORDER BY c.inicio DESC))[1] AS lon_fin,
+             (array_agg(c.direccion ORDER BY c.inicio))[1] AS direccion,
+             max(c.velocidad_maxima) AS velocidad_maxima,
+             sum(c.km) AS km,
+             count(*) FILTER (WHERE c.es_parada) AS fragmentos,
+             round(avg((c.lat_inicio + c.lat_fin) / 2)::numeric, 3)::text || ','
+               || round(avg((c.lon_inicio + c.lon_fin) / 2)::numeric, 3)::text AS lugar
+      FROM cadenas c
+      JOIN calificadas q USING (dispositivo_id, cadena)
+      GROUP BY c.dispositivo_id, c.cadena
+    ),
+    -- Emisión final: paradas fusionadas + viajes reales no absorbidos. Las
+    -- paradas sueltas solo existen vía fusión (una cadena de un fragmento
+    -- califica igual si dura >= 180 s).
+    final AS (
+      SELECT t.dispositivo_id, t.movimiento, t.inicio, t.fin, t.segundos,
+             t.puntos, t.id, t.id_publico, t.lat_inicio, t.lon_inicio,
+             t.lat_fin, t.lon_fin, t.direccion, t.velocidad_maxima, t.km,
+             1 AS fragmentos,
+             round(t.lat_inicio::numeric, 3)::text || ','
+               || round(t.lon_inicio::numeric, 3)::text AS lugar
+      FROM tramos t
+      WHERE t.movimiento
+        AND t.segundos >= ${MIN_VIAJE_SEGUNDOS}
+        AND t.puntos >= 2
+        AND t.km >= ${MIN_DISTANCIA_VIAJE_KM}
+        AND NOT EXISTS (
+          SELECT 1 FROM cadenas c
+          JOIN calificadas q USING (dispositivo_id, cadena)
+          WHERE c.id = t.id AND c.dispositivo_id = t.dispositivo_id
+        )
+      UNION ALL
+      SELECT f.dispositivo_id, f.movimiento, f.inicio, f.fin, f.segundos,
+             f.puntos, f.id, f.id_publico, f.lat_inicio, f.lon_inicio,
+             f.lat_fin, f.lon_fin, f.direccion, f.velocidad_maxima, f.km,
+             f.fragmentos, f.lugar
+      FROM fusionadas f
     )
     SELECT 'viaje' AS tipo, t.*
-    FROM tramos t
+    FROM final t
     WHERE t.movimiento
-      AND t.segundos >= ${MIN_VIAJE_SEGUNDOS}
-      AND t.puntos >= 2
-      AND t.km >= ${MIN_DISTANCIA_VIAJE_KM}
     UNION ALL
     SELECT 'parada' AS tipo, t.*
-    FROM tramos t
+    FROM final t
     WHERE NOT t.movimiento
-      AND t.segundos >= ${MIN_PARADA_SEGUNDOS}
   `;
 }

@@ -49,6 +49,10 @@ function aParada(fila) {
     latitud,
     longitud,
     direccion: direccionEnCache(latitud, longitud),
+    // Fusión inteligente: cuántos fragmentos del mismo sitio se unieron y
+    // la clave del lugar (visitas repetidas comparten lugar).
+    fragmentos: Number(fila.fragmentos ?? 1),
+    lugar: fila.lugar ?? null,
   };
 }
 
