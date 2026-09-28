@@ -7,3 +7,7 @@ build/
 *.log
 *.dump
 ota/proyecto-dmujeres-*.zip
+
+# Secretos locales de firma/build (nunca en git; ver docs/deployment/SECRETOS-FUERA-DEL-REPO.md)
+/mobile/keystore.properties
+/mobile/keystore/

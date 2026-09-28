@@ -410,6 +410,13 @@ RELEASE y únicamente con todos los gates verdes.
   pendiente revisar el teléfono. Hallazgo: duplicado real en producción
   (fixes 93992/93993 idénticos, reintento sin dedupe). Registro en
   `docs/operations/PRUEBAS-FISICAS.md`.
+- 2026-09-28: **APK 2.1.74 compilado y listo para instalar** (pedido del
+  dueño: verdadera prueba con la arquitectura pulida). Build
+  `assembleGoogleRelease` en 52 s con el SDK local; claves restauradas de la
+  copia fría a `/opt/dmj-keys/` (600, fuera de git) y `google-services.json`
+  temporal para el build. APK 9,1 MB, vc 284, misma firma de flota que 2.1.73
+  (SHA-256 idéntico) → actualiza sin borrar datos. Pendiente: puerto ADB
+  nuevo del teléfono (el 46641 dejó de responder) para instalar y probar.
 - 2026-09-28: **implementación ejecutada con subagentes** (encargo del dueño,
   FASE 1-11). Servidor: migración 002 aplicada (idempotencia, guardas de viva,
   validación de fechas, purga 2037), lote `/positions`, `GET /journey`,

@@ -49,3 +49,14 @@ Fecha / equipo / Android / OEM / app (versión+código) / batería inicial /
 jornada (abierta/cerrada, duración) / objetivo / comandos con hora /
 resultado (fixes antes/después, hueco máximo, duplicados, recovery) /
 conclusión (1 línea).
+
+## Build 2.1.74 listo para instalar (2026-09-28)
+
+APK `fallback/app/build/outputs/apk/google/release/app-google-release.apk`
+(9,1 MB, `com.dmujeres.traccar`, vc **284**, 2.1.74), firmado con la misma
+clave de flota que producción (SHA-256 idéntico al 2.1.73) → se instala
+encima con `adb install -r` **sin borrar datos ni configuración**. Incluye el
+motor nuevo (máquina de movimiento, store v5, cola con backoff, recovery con
+alarma, JourneyManager, diagnóstico extendido). Claves fuera del repo:
+`/opt/dmj-keys/` (600) + symlinks gitignorados en `mobile/` y
+`fallback/app/google-services.json` (temporal para el build).
