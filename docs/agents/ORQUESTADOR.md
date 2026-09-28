@@ -404,6 +404,12 @@ RELEASE y únicamente con todos los gates verdes.
   `docs/ADR/ADR-001..010`. `docs/app/ARQUITECTURA-2.1.74.md` queda marcado
   como borrador histórico. Los 16 tests y la matriz Android/OEM quedan
   pospuestos (fase física, IA-2).
+- 2026-09-28: **primera sesión ADB física** (ZTE Z2450, Android 14, app 2.1.73,
+  equipo macias, por Tailscale). Doze forzado 4 min: sin degradación (fixes
+  cada ~4 min). Kill del proceso cortó el canal ADB (puerto cerrado, ping OK);
+  pendiente revisar el teléfono. Hallazgo: duplicado real en producción
+  (fixes 93992/93993 idénticos, reintento sin dedupe). Registro en
+  `docs/operations/PRUEBAS-FISICAS.md`.
 - 2026-09-28: **implementación ejecutada con subagentes** (encargo del dueño,
   FASE 1-11). Servidor: migración 002 aplicada (idempotencia, guardas de viva,
   validación de fechas, purga 2037), lote `/positions`, `GET /journey`,
