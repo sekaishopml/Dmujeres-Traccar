@@ -392,6 +392,54 @@ RELEASE y únicamente con todos los gates verdes.
   evidencia actual no se puede confirmar qué versión corre; se pidió
   verificar la versión instalada en el teléfono y llevarla a 2.1.73 para
   tener diagnóstico.
+- 2026-09-28: **consolidación de flota ejecutada** (pedido del dueño):
+  joseph 39→53, miguel 41→60, kevin 40+52→59, jeremy 51→58, con respaldo
+  previo verificado y ensayo con rollback. 0 huérfanos, 15 dispositivos.
+  Pilay ya era uno solo (56) y no tiene usuario (pendiente crearlo). Joseph
+  unificado en el 53 pero deshabilitado (si vuelve, habilitar el 53). Detalle
+  en `docs/operations/CONSOLIDACION-2026-09-28.md`.
+- 2026-09-28: **veredicto 2.1.66**: el diff 2.1.66→actual en la app no toca
+  nada de trazo/ubicación (solo bienvenida), así que degradar la flota no
+  cambiaría el dibujo y la OTA ni siquiera puede degradar a equipos en 283.
+  Se recomienda NO degradar y mantener 2.1.73 + tramos estimados.
+- 2026-09-28: **caso Joseph** (el dueño dio su historial: 2.1.35 → 2.1.6x →
+  2.1.73). Hay **dos registros**: 39 "joseph" (`historico-qa-39-joseph`, con
+  todo septiembre 11-22/09) y 53 "Joseph" (identificador `joseph`, solo 5
+  fixes el 22/09 17:04-17:07); **ambos deshabilitados**. La versión por
+  reporte: 2.1.35 = 15 s moviendo/60 s parado; 2.1.56-64 = 15 s/120 s
+  adaptativa; 2.1.65 = arreglo de movimiento; 2.1.66 = 10 s/120 s ("trazo
+  impecable"); 2.1.67-72 = solo bienvenida; 2.1.73 = build OTA actual. Su
+  comportamiento de septiembre (denso 7 s manejando el 13/09, disperso
+  100-900 s parado, huecos de hasta 60 h el fin de semana) es normal para
+  esas versiones. **Crítico**: el identificador que manda su app (`joseph`)
+  resuelve al 53, que está deshabilitado, y el servidor **descarta** esas
+  posiciones (200 OK, nada guardado). Si vuelve a operar, hay que habilitar
+  el 53, no el 39.
+- 2026-09-28: **ahorro de batería en Pilay** (hipótesis del dueño, confirmada
+  en lo esencial). La batería descarta el ahorro automático (82% a las 17:00,
+  cargó 08-10h, 61% a las 23:00; el saver automático salta al 15-20%), pero un
+  ajuste **manual** cuadra perfecto: a las 17:38-17:41 hay 3 fixes duplicados
+  (misma hora dos veces: 17:38:23, 17:40:03, 17:41:05), firma de que el proceso
+  se mató y reinició reenviando la cola; desde ese reinicio quedó en cadencia
+  lenta (60 s manejando, 90 s-6 min en casa). Cambiar el modo de batería de la
+  app mata el proceso en muchos fabricantes. Se pidió revisar en el teléfono:
+  Batería de la app en "Sin restricciones", ahorro del sistema apagado y
+  versión instalada.
+- 2026-09-28: **plataforma subida a GitHub** (pedido del dueño). El repo
+  `sekaishopml/Dmujeres-Traccar` ya tenía 231 commits del monorepo viejo (con
+  `docs/` e `infrastructure/` que chocaban), así que la plataforma se subió a
+  la rama nueva **`plataforma`** (227 archivos, sin `.env`): main quedó
+  intacto. Ojo: el repo es público y el árbol lleva defaults de prueba
+  (`cctv2026` en `scripts/validation/e2e.sh`) y documentos internos; valorar
+  pasarlo a privado. El token usado para el push se eliminó del disco y se
+  desactivó el `credential.helper` global que lo había guardado solo.
+- 2026-09-28: **cadencia por versión** (caso Pilay). La cadencia está **idéntica
+  desde la 2.1.66 hasta la 2.1.72** (10 s moviendo / 120 s parado / 10 m; esas
+  versiones solo tocaron la bienvenida): lo que instaló a las 17:00 no cambió
+  la cadencia por constantes. Lo que cambió es que la app se quedó en modo
+  lento durante ese viaje (o el doze la congeló); por eso la tarde quedó a
+  ~60 s por fix. Sigue pendiente confirmar la versión instalada en el teléfono
+  (Ajustes → Apps).
 - 2026-09-28: **llegada/salida de Pilay y corrección de doble trazo** (pedido
   del dueño). La llegada (densa, 1-5 s) y la salida (dispersa, 60 s) se ven
   distintas porque son dos cadencias reales del teléfono, no un fallo del
