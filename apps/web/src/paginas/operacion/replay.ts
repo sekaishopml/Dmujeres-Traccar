@@ -27,24 +27,66 @@ interface EstimadoHeredado {
   trazado: [number, number][];
 }
 
+// Tramo tal como puede llegar del API. El contrato vigente es TramoReconstruido
+// (desde, hasta, metodo, mapaVersion, trazado), pero la extensión a tramos
+// densos puede añadir campos de ventana (índices o instantes) que la web no
+// necesita: se toleran y se ignoran sin romper.
+type TramoCrudo = Record<string, unknown>;
+
+function esParCoordenada(valor: unknown): valor is [number, number] {
+  return (
+    Array.isArray(valor) &&
+    typeof valor[0] === 'number' &&
+    typeof valor[1] === 'number' &&
+    Number.isFinite(valor[0]) &&
+    Number.isFinite(valor[1])
+  );
+}
+
+// Sanea un tramo del API a la forma que dibujan las capas. Devuelve null si no
+// se puede ubicar (sin desde/hasta) o dibujar (trazado con menos de dos puntos
+// válidos). Un método ausente o desconocido cae a ESTIMATED (punteado gris, sin
+// chevrones): un tramo reconstruido nunca se dibuja como GPS registrado.
+function sanearTramo(tramo: unknown): TramoReconstruido | null {
+  if (!tramo || typeof tramo !== 'object') return null;
+  const crudo = tramo as TramoCrudo;
+  if (typeof crudo.desde !== 'string' || typeof crudo.hasta !== 'string') return null;
+  if (!Array.isArray(crudo.trazado)) return null;
+  const trazado = (crudo.trazado as unknown[])
+    .filter(esParCoordenada)
+    .map(([lon, lat]) => [lon, lat] as [number, number]);
+  if (trazado.length < 2) return null;
+  const metodo: MetodoReconstruccion = crudo.metodo === 'MATCHED' ? 'MATCHED' : 'ESTIMATED';
+  const mapaVersion = typeof crudo.mapaVersion === 'string' ? crudo.mapaVersion : null;
+  return { desde: crudo.desde, hasta: crudo.hasta, metodo, mapaVersion, trazado };
+}
+
 // Normaliza la respuesta del servidor a la lista de tramos reconstruidos. El
 // contrato vigente devuelve `reconstruidos` con método y versión de mapa; los
 // `estimados` heredados no traen método (son rutas A→B sin observaciones) y
 // se tratan como ESTIMATED como compatibilidad temporal mientras el servidor
-// aún los devuelva.
+// aún los devuelva. Los campos extra de ventana de los tramos densos se
+// toleran: el saneado solo exige desde/hasta/trazado y conserva el método.
 export function normalizarReconstruidos(respuesta: {
-  reconstruidos?: TramoReconstruido[] | null;
+  reconstruidos?: unknown;
   estimados?: EstimadoHeredado[] | null;
 } | null | undefined): TramoReconstruido[] {
   if (!respuesta) return [];
-  if (Array.isArray(respuesta.reconstruidos)) return respuesta.reconstruidos;
-  return (respuesta.estimados ?? []).map((tramo) => ({
-    desde: tramo.desde,
-    hasta: tramo.hasta,
-    metodo: 'ESTIMATED' as MetodoReconstruccion,
-    mapaVersion: null,
-    trazado: tramo.trazado,
-  }));
+  if (Array.isArray(respuesta.reconstruidos)) {
+    const saneados: TramoReconstruido[] = [];
+    for (const tramo of respuesta.reconstruidos) {
+      const saneado = sanearTramo(tramo);
+      if (saneado) saneados.push(saneado);
+    }
+    return saneados;
+  }
+  const heredados = Array.isArray(respuesta.estimados) ? respuesta.estimados : [];
+  const saneados: TramoReconstruido[] = [];
+  for (const tramo of heredados) {
+    const saneado = sanearTramo({ ...tramo, metodo: 'ESTIMATED', mapaVersion: null });
+    if (saneado) saneados.push(saneado);
+  }
+  return saneados;
 }
 
 // Método del tramo reconstruido que une dos instantes, si existe.
@@ -57,8 +99,11 @@ export function metodoDeTramo(
 }
 
 // Tramo reconstruido que toca el fix indicado (par anterior o siguiente). El
-// clic sobre un trazado selecciona el fix más cercano, que es un extremo del
-// tramo, así que basta con mirar los dos pares vecinos.
+// clic sobre un trazado de hueco selecciona el fix más cercano, que es un
+// extremo del tramo, así que basta con mirar los dos pares vecinos. Los tramos
+// densos ajustados a vía cubren una ventana de varios fixes: el fix interior
+// no es extremo de ningún par, así que además se busca la ventana que contiene
+// su instante (con varias, manda MATCHED) para rotular el método en la ficha.
 export function tramoDeIndice(
   posiciones: Posicion[],
   reconstruidos: TramoReconstruido[],
@@ -75,6 +120,21 @@ export function tramoDeIndice(
   if (siguiente) {
     const tramo = metodoDeTramo(reconstruidos, actual.registradoEn, siguiente.registradoEn);
     if (tramo) return tramo;
+  }
+  const instante = milisegundos(actual.registradoEn);
+  if (Number.isFinite(instante)) {
+    let estimado: TramoReconstruido | null = null;
+    for (const tramo of reconstruidos) {
+      const desde = milisegundos(tramo.desde);
+      const hasta = milisegundos(tramo.hasta);
+      if (!Number.isFinite(desde) || !Number.isFinite(hasta)) continue;
+      const inicio = Math.min(desde, hasta);
+      const fin = Math.max(desde, hasta);
+      if (instante < inicio || instante > fin) continue;
+      if (tramo.metodo === 'MATCHED') return tramo;
+      estimado ??= tramo;
+    }
+    if (estimado) return estimado;
   }
   return null;
 }
@@ -200,7 +260,10 @@ function rumboDePosicion(posicion: Posicion, anterior: Posicion | null): number 
 // lleve su banda, y una fuente GeoJSON estática de miles de líneas de dos
 // puntos se publica de una sola vez al cargar el recorrido.
 // Los tramos reconstruidos entran con su método (MATCHED o ESTIMATED) y su
-// estilo propio; los pares que cubren ya no dibujan su recta.
+// estilo propio; los pares que cubren ya no dibujan su recta. Los tramos
+// densos ajustados a vía cubren una ventana de varios fixes (sus extremos no
+// son adyacentes): la cruda interior se conserva debajo y el trazado ajustado
+// se dibuja encima en su capa propia, así que ambas quedan visibles.
 export function segmentosDeRecorrido(
   posiciones: Posicion[],
   huecos: Hueco[],
@@ -214,10 +277,19 @@ export function segmentosDeRecorrido(
   );
   const segmentos: SegmentoRecorrido[] = [];
   for (const tramo of reconstruidos) {
-    if (tramo.trazado.length >= 2) {
+    // El trazado ya viene saneado, pero se filtran pares no finitos por
+    // defensa: un punto malo no debe tumbar el tramo denso completo.
+    // Un método desconocido cae a estimado: punteado gris, nunca como GPS.
+    const trazado = Array.isArray(tramo.trazado)
+      ? tramo.trazado.filter(
+          (par): par is [number, number] =>
+            Array.isArray(par) && Number.isFinite(par[0]) && Number.isFinite(par[1]),
+        )
+      : [];
+    if (trazado.length >= 2) {
       segmentos.push({
         tipo: tramo.metodo === 'MATCHED' ? 'matched' : 'estimated',
-        coordenadas: tramo.trazado,
+        coordenadas: trazado.map(([lon, lat]) => [lon, lat] as [number, number]),
       });
     }
   }
@@ -297,8 +369,9 @@ export function puntosDeRecorrido(
   // del trazado con el rumbo entre puntos consecutivos, como si fueran fixes.
   // Se acotan a ~24 por tramo y usan la imagen propia del método, no la banda
   // de velocidad: el tramo reconstruido nunca se colorea como GPS registrado.
-  // Los tramos estimados (ESTIMATED) no llevan chevrones: la línea punteada
-  // gris ya los distingue y las flechas los harían pasar por ruta normal.
+  // Los tramos densos usan el mismo reparto; su trazado corto añade pocos
+  // puntos. Los tramos estimados (ESTIMATED) no llevan chevrones: la línea
+  // punteada gris ya los distingue y las flechas los harían pasar por normal.
   let indiceTrazado = posiciones.length;
   for (const tramo of reconstruidos) {
     if (tramo.metodo !== 'MATCHED') continue;
@@ -306,8 +379,11 @@ export function puntosDeRecorrido(
     if (!trazado || trazado.length < 2) continue;
     const salto = Math.max(1, Math.ceil(trazado.length / 24));
     for (let i = 0; i < trazado.length; i += salto) {
-      const [lon, lat] = trazado[i];
-      const [lonSiguiente, latSiguiente] = trazado[Math.min(i + 1, trazado.length - 1)];
+      const punto = trazado[i];
+      const puntoSiguiente = trazado[Math.min(i + 1, trazado.length - 1)];
+      if (!Array.isArray(punto) || !Array.isArray(puntoSiguiente)) continue;
+      const [lon, lat] = punto;
+      const [lonSiguiente, latSiguiente] = puntoSiguiente;
       if (![lon, lat, lonSiguiente, latSiguiente].every(Number.isFinite)) continue;
       features.push({
         type: 'Feature',

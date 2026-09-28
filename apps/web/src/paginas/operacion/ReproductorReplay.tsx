@@ -618,7 +618,7 @@ export function PanelPuntoSeleccionado() {
         <dt>Tramo</dt>
         <dd>
           {tramo
-            ? `${ETIQUETA_METODO_TRAMO[tramo.metodo]}${tramo.mapaVersion ? ` · mapa ${tramo.mapaVersion}` : ''}`
+            ? `${ETIQUETA_METODO_TRAMO[tramo.metodo] ?? 'Tramo reconstruido'}${tramo.mapaVersion ? ` · mapa ${tramo.mapaVersion}` : ''}`
             : 'GPS registrado'}
         </dd>
         <dt>Equipo</dt>

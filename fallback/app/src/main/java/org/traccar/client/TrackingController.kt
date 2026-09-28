@@ -59,6 +59,13 @@ class TrackingController(private val context: Context) :
     private var lastFixLat = 0.0
     private var lastFixLon = 0.0
     private var lastFixAtMs = 0L
+    /**
+     * Último fix ALMACENADO (captured_at + coords exactas) para el
+     * [DuplicateFixGuard]. OJO: no es el último RECIBIDO (`lastFix*`, tiempo
+     * de pared para la máquina): solo avanza cuando el fix entra al almacén,
+     * nunca con un duplicado descartado.
+     */
+    private var lastStoredFix: DuplicateFixGuard.Fix? = null
     /** Aviso significant-motion pendiente de consumir en el próximo fix. */
     private var significantMotionPending = false
     private val databaseHelper = DatabaseHelper(context)
@@ -121,13 +128,19 @@ class TrackingController(private val context: Context) :
         val journeyOpen = journeyManager.local()?.open == true ||
             preferences.getBoolean(DmujeresApi.KEY_JOURNEY_OPEN, false)
         val history = runCatching {
-            databaseHelper.selectRecentPositions(RESTORE_HISTORY).map {
-                MovementStateMachine.FixSample(it.time.time, it.speed, 0.0)
-            }
+            databaseHelper.selectRecentPositions(RESTORE_HISTORY)
         }.getOrDefault(emptyList())
+        // Siembra del antiduplicado con el último almacenado (el primero de
+        // la lista: viene en ORDER BY id DESC): cero queries extra en régimen.
+        lastStoredFix = history.firstOrNull()?.let {
+            DuplicateFixGuard.Fix(it.time.time, it.latitude, it.longitude)
+        }
+        val samples = history.map {
+            MovementStateMachine.FixSample(it.time.time, it.speed, 0.0)
+        }
         // El desplazamiento entre fixes se recalcula en vivo; el historial
         // aporta velocidad y frescura (suficiente para no asumir quietud).
-        machine.restore(now, journeyOpen, history)
+        machine.restore(now, journeyOpen, samples)
         if (journeyOpen && runCatching {
                 databaseHelper.getMeta(DatabaseHelper.KEY_RECOVERY_PENDING)
             }.getOrNull() == "1"
@@ -383,9 +396,34 @@ class TrackingController(private val context: Context) :
     /**
      * Captura local primero (disco), subida después: el fix se persiste con su
      * identidad y la cola lo drena en serie. La captura nunca depende de la red.
+     *
+     * Antiduplicado del fused ([DuplicateFixGuard]): si el fix es la misma
+     * observación ya almacenada (mismo captured_at Y mismas coords, o mismo
+     * punto con dt < 5 s), se descarta ANTES del INSERT. Es el único punto por
+     * el que todo fix aceptado entra al almacén (periódico, suelto y rescate,
+     * fused y GPS del sistema), así que un solo guard cubre todos los caminos
+     * sin tocar la cadencia (la máquina ya vio el fix) ni el protocolo.
      */
     private fun write(position: Position) {
         log("write", position)
+        val candidate = DuplicateFixGuard.Fix(position.time.time, position.latitude, position.longitude)
+        val last = lastStoredFix ?: runCatching {
+            // Solo si el arranque no sembró (arranque a medias o restauración
+            // fallida): UNA fila, y solo para fixes que pasaron los filtros.
+            databaseHelper.selectRecentPositions(1).firstOrNull()?.let {
+                DuplicateFixGuard.Fix(it.time.time, it.latitude, it.longitude)
+            }
+        }.getOrNull()
+        if (last != null && DuplicateFixGuard.isDuplicate(candidate, last)) {
+            Log.i(TAG, "fix duplicado del fused descartado " +
+                "(captured_at=${position.time.time} lat=${position.latitude} lon=${position.longitude})")
+            return
+        }
+        // Se marca ANTES del insert asíncrono: dos entregas del mismo fix en
+        // el mismo hilo verían el mismo "último" y ambas pasarían (el caso
+        // real: seq 35/36 con el mismo ms). Si el insert fallara se perdería
+        // un fix aislado; aceptado frente a duplicar sistemáticamente.
+        lastStoredFix = candidate
         databaseHelper.insertPositionAsync(position, object : DatabaseHandler<Unit?> {
             override fun onComplete(success: Boolean, result: Unit?) {
                 if (success) {

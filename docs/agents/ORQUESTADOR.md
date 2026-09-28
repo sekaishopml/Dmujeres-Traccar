@@ -426,6 +426,17 @@ RELEASE y únicamente con todos los gates verdes.
   temporal para el build. APK 9,1 MB, vc 284, misma firma de flota que 2.1.73
   (SHA-256 idéntico) → actualiza sin borrar datos. Pendiente: puerto ADB
   nuevo del teléfono (el 46641 dejó de responder) para instalar y probar.
+- 2026-09-28: **flujo app→servidor + giros en calle** (3 subagentes, ruta
+  16:42–16:49 desalineada). App: `DuplicateFixGuard` en `write()` (descarta
+  doble entrega mismo ms/coords y desplazamiento 0 con dt<5 s; causa raíz:
+  `getCurrentLocation` compite con el callback sin pasar el filtro) + 5 tests
+  nuevos (74 total: 69 ok, 1 omitido, 5 fallos preexistentes verificados en
+  árbol limpio). Servidor: `ruteo.js` ajusta a vía ventanas densas (≤100
+  pts/5 min, cortes en huecos y paradas, presupuesto 3 s + caché; jornada 101:
+  1 MATCHED, pico 53,9 m → 14,1 m a vía, desviación máx 20,1 m). Web: capa
+  MATCHED densa con chevrones + ficha + saneo (tsc + vite ok). E2E 26/26 con
+  el ruteo nuevo. APK **2.1.75 (vc 285)** firmada lista para instalar y probar
+  en campo (misma firma de flota).
 - 2026-09-28: **implementación ejecutada con subagentes** (encargo del dueño,
   FASE 1-11). Servidor: migración 002 aplicada (idempotencia, guardas de viva,
   validación de fechas, purga 2037), lote `/positions`, `GET /journey`,
