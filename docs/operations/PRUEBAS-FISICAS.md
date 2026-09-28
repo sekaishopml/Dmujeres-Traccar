@@ -112,3 +112,10 @@ motor nuevo (máquina de movimiento, store v5, cola con backoff, recovery con
 alarma, JourneyManager, diagnóstico extendido). Claves fuera del repo:
 `/opt/dmj-keys/` (600) + symlinks gitignorados en `mobile/` y
 `fallback/app/google-services.json` (temporal para el build).
+
+## Sesión 2026-09-28 (tarde) — 2.1.75 instalada
+
+`adb install -r` OK (puerto 42007). vc 285/2.1.75 confirmada, proceso vivo,
+FGS activo, sin FATALs, posiciones fluyendo (94347 17:14:10). Trae
+`DuplicateFixGuard` + servidor con MATCHED denso. Pendiente: ruta de campo
+para verificar giros ajustados y ausencia de dobles capturas.
