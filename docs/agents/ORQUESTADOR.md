@@ -392,6 +392,18 @@ RELEASE y únicamente con todos los gates verdes.
   evidencia actual no se puede confirmar qué versión corre; se pidió
   verificar la versión instalada en el teléfono y llevarla a 2.1.73 para
   tener diagnóstico.
+- 2026-09-28: **auditoría y arquitectura final CERRADA** (encargo del dueño).
+  Auditoría código vs documentación con evidencia archivo:línea y datos:
+  18 hallazgos confirmados/riesgo y 1 hipótesis (ver
+  `docs/audit/BUG-REGISTER.md`), destacando: `posicion_actual` retrocede,
+  sin idempotencia, cola bloqueable por 4xx, movimiento por acelerómetro,
+  partición basura 2037, APK 2.1.73 fuera de git y replay estimado
+  indistinguible. Entregables: `docs/FINAL-ARCHITECTURE.md` (maestro),
+  `docs/AI-HANDOFF.md` (plan para la IA implementadora),
+  `docs/audit/IMPLEMENTATION-BACKLOG.md`, `docs/audit/DECISION-MATRIX.md` y
+  `docs/ADR/ADR-001..010`. `docs/app/ARQUITECTURA-2.1.74.md` queda marcado
+  como borrador histórico. Los 16 tests y la matriz Android/OEM quedan
+  pospuestos (fase física, IA-2).
 - 2026-09-28: **consolidación de flota ejecutada** (pedido del dueño):
   joseph 39→53, miguel 41→60, kevin 40+52→59, jeremy 51→58, con respaldo
   previo verificado y ensayo con rollback. 0 huérfanos, 15 dispositivos.

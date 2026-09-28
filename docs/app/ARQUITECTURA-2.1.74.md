@@ -1,4 +1,10 @@
-# Arquitectura 2.1.74 — Despertar en Doze, wake lock por jornada y estado de movimiento (borrador)
+# Arquitectura 2.1.74 — Despertar en Doze, wake lock por jornada y estado de movimiento (borrador histórico)
+
+> **SUPERADO**: este documento fue un borrador de diseño. La arquitectura final
+> está **cerrada** en `docs/FINAL-ARCHITECTURE.md` (con ADRs en `docs/ADR/` y
+> el plan de implementación en `docs/AI-HANDOFF.md` y
+> `docs/audit/IMPLEMENTATION-BACKLOG.md`). Se conserva solo como contexto
+> histórico: no implementar desde aquí.
 
 Estado: borrador de diseño. No implementado.
 Base medida: productiva 2.1.73 (vc 283 en `ota/latest.json`) = 2.1.72 + bump, sin cambios de trazo desde 2.1.66.
