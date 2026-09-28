@@ -1,29 +1,38 @@
 import { api, consulta } from '../../api/cliente';
+import type { OpcionesPeticion } from '../../api/cliente';
 import type { Dispositivo, Pagina, Posicion, PosicionesVivas, Replay, ReporteParada } from '@contratos';
-import type { RespuestaJornadasFlota } from '@contratos';
+import type { RespuestaJornadasFlota, RespuestaSalud } from '@contratos';
 
 // La flota la consumen Inicio, En vivo, Historial, Replay y Detalle: una sola
 // clave de caché mantiene los datos coherentes entre páginas.
 export const CLAVE_FLOTA = ['flota'] as const;
 
-export function traerFlota(): Promise<Pagina<Dispositivo>> {
-  return api.get<Pagina<Dispositivo>>(`/api/v1/fleet${consulta({ tamano: 200 })}`);
+export function traerFlota(opciones?: OpcionesPeticion): Promise<Pagina<Dispositivo>> {
+  return api.get<Pagina<Dispositivo>>(`/api/v1/fleet${consulta({ tamano: 200 })}`, opciones);
 }
 
-export function traerPosicionesVivas(): Promise<PosicionesVivas> {
-  return api.get<PosicionesVivas>('/api/v1/positions/live');
+export function traerPosicionesVivas(opciones?: OpcionesPeticion): Promise<PosicionesVivas> {
+  return api.get<PosicionesVivas>('/api/v1/positions/live', opciones);
 }
 
-export function traerDispositivo(id: string): Promise<Dispositivo> {
-  return api.get<Dispositivo>(`/api/v1/fleet/${encodeURIComponent(id)}`);
+export function traerDispositivo(id: string, opciones?: OpcionesPeticion): Promise<Dispositivo> {
+  return api.get<Dispositivo>(`/api/v1/fleet/${encodeURIComponent(id)}`, opciones);
 }
 
-export function traerUltimaPosicion(id: string): Promise<Posicion> {
-  return api.get<Posicion>(`/api/v1/fleet/${encodeURIComponent(id)}/position`);
+export function traerUltimaPosicion(id: string, opciones?: OpcionesPeticion): Promise<Posicion> {
+  return api.get<Posicion>(`/api/v1/fleet/${encodeURIComponent(id)}/position`, opciones);
 }
 
-export function traerReplay(id: string, desde: string, hasta: string): Promise<Replay> {
-  return api.get<Replay>(`/api/v1/replay/${encodeURIComponent(id)}${consulta({ desde, hasta })}`);
+// Respuesta de GET /api/v1/replay/{id}: `reconstruidos` es el contrato
+// vigente (ADR-007, con método y versión de mapa, definido en el paquete
+// compartido por el equipo servidor); `estimados` se conserva mientras el
+// servidor aún lo devuelva, como compatibilidad temporal.
+export interface RespuestaReplay extends Replay {
+  estimados?: { desde: string; hasta: string; trazado: [number, number][] }[];
+}
+
+export function traerReplay(id: string, desde: string, hasta: string): Promise<RespuestaReplay> {
+  return api.get<RespuestaReplay>(`/api/v1/replay/${encodeURIComponent(id)}${consulta({ desde, hasta })}`);
 }
 
 export interface Jornada {
@@ -52,8 +61,16 @@ export function traerJornadas(idPublico: string, desde: string, hasta: string): 
 // Jornadas de todos los equipos visibles en la ventana: alimenta la auditoría
 // (día completo y expediente por unidad). Ventana cerrada con total 0 no es
 // error; significa "sin jornadas ese día".
-export function traerJornadasFlota(desde: string, hasta: string, dispositivoId?: string): Promise<RespuestaJornadasFlota> {
-  return api.get<RespuestaJornadasFlota>(`/api/v1/journeys${consulta({ desde, hasta, dispositivoId, tamano: 200 })}`);
+export function traerJornadasFlota(
+  desde: string,
+  hasta: string,
+  dispositivoId?: string,
+  opciones?: OpcionesPeticion,
+): Promise<RespuestaJornadasFlota> {
+  return api.get<RespuestaJornadasFlota>(
+    `/api/v1/journeys${consulta({ desde, hasta, dispositivoId, tamano: 200 })}`,
+    opciones,
+  );
 }
 
 // Paradas del servidor: segmentación precisa de la plataforma (>= 3 min y por
@@ -63,6 +80,17 @@ export function traerParadas(idPublico: string, desde: string, hasta: string): P
   return api.get<Pagina<ReporteParada>>(
     `/api/v1/reports/stops${consulta({ dispositivoId: idPublico, desde, hasta, tamano: 200 })}`,
   );
+}
+
+// Salud por equipo (GET /api/v1/salud, ADR-009): estado derivado en el
+// servidor con su causa (tipos en el paquete compartido). Si el endpoint aún
+// no está desplegado, la vista trata el 404 como "sin dato" con estados de
+// carga/error/vacío correctos.
+
+// Sondeo de fondo: un 401 aquí no redirige, solo deja el estado de error para
+// que la comprobación de sesión decida.
+export function traerSalud(): Promise<RespuestaSalud> {
+  return api.get<RespuestaSalud>('/api/v1/salud', { redirigir401: false });
 }
 
 export interface RespuestaDireccion {

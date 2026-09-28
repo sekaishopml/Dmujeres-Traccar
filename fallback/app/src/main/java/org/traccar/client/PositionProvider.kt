@@ -1,0 +1,144 @@
+/*
+ * Copyright 2013 - 2022 Anton Tananaev (anton@traccar.org)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.traccar.client
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.location.Location
+import androidx.preference.PreferenceManager
+import android.util.Log
+import kotlin.math.abs
+
+abstract class PositionProvider(
+    protected val context: Context,
+    protected val listener: PositionListener,
+) {
+
+    interface PositionListener {
+        fun onPositionUpdate(position: Position)
+        fun onPositionError(error: Throwable)
+    }
+
+    protected var preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
+    protected var deviceId = preferences.getString(Prefs.DEVICE, "undefined")!!.lowercase()
+    protected var distance: Double = preferences.getString(Prefs.DISTANCE, "10")!!.toInt().toDouble()
+    protected var angle: Double = preferences.getString(Prefs.ANGLE, "15")!!.toInt().toDouble()
+    private var lastLocation: Location? = null
+
+    /**
+     * Intervalo de reporte efectivo (ms). Lo ajusta la cadencia adaptativa:
+     * corto en movimiento (trazo fino) y largo en quietud (sin ruido).
+     */
+    @Volatile
+    var reportIntervalMs: Long = AdaptiveCadence.MOVING_INTERVAL_MS
+
+    /** Nombre del proveedor vigente (para el campo `provider` del evento). */
+    open val providerName: String = "gps"
+
+    abstract fun startUpdates()
+    abstract fun stopUpdates()
+    abstract fun requestSingleLocation()
+
+    /**
+     * Fix FRESCO para recuperaciones (alarma/FCM/boot): nunca last-known.
+     * Un last-known al despertar repetiría el punto previo al hueco y
+     * falsearía la reconstrucción. Por defecto delega; cada proveedor lo
+     * implementa con su API de "posición actual".
+     */
+    open fun requestFreshLocation() {
+        requestSingleLocation()
+    }
+
+    /**
+     * Reconfigura la petición de ubicaciones al cambiar el estado de movimiento
+     * (lo llama TrackingController). Cada proveedor recrea su petición.
+     */
+    abstract fun applyMotionState(moving: Boolean)
+
+    /** Alinea el filtro temporal del reporte con la cadencia del estado. */
+    protected fun updateReportInterval(moving: Boolean) {
+        reportIntervalMs = if (moving) {
+            AdaptiveCadence.movingIntervalMs(configuredIntervalSeconds())
+        } else {
+            AdaptiveCadence.STATIONARY_INTERVAL_MS
+        }
+    }
+
+    /** "Frecuencia" del panel (`mobile.intervalSeconds`) o null si no es válida. */
+    protected fun configuredIntervalSeconds(): Long? =
+        preferences.getString(Prefs.INTERVAL, null)?.toLongOrNull()
+
+    protected fun processLocation(location: Location?) {
+        val lastLocation = this.lastLocation
+        // Guardas anti-ruido para el filtro de ángulo: quieto, el rumbo del GPS
+        // salta aleatoriamente y sin estas condiciones se enviaba un punto en
+        // cada fix (telaraña en el replay con el equipo detenido).
+        val leg = if (lastLocation != null && location != null) {
+            location.distanceTo(lastLocation).toDouble()
+        } else {
+            0.0
+        }
+        val dtSeconds = if (lastLocation != null && location != null) {
+            (location.time - lastLocation.time) / 1000.0
+        } else {
+            0.0
+        }
+        val impliedSpeed = if (dtSeconds > 0) leg / dtSeconds else 0.0
+        // Velocidad honesta: si el sensor confirma quietud Y no se movió ni 10 m
+        // desde el último punto aceptado, se reporta 0 (evita que el ruido del
+        // GPS marque "en línea" al equipo detenido). Si se movió, se reporta la
+        // velocidad real aunque el sensor no lo haya notado (caminatas cortas).
+        if (location != null && MotionMonitor.isMoving() == false && leg < MIN_LEG_FOR_SPEED_M) {
+            location.speed = 0f
+        }
+        if (location != null &&
+            (lastLocation == null || location.time - lastLocation.time >= reportIntervalMs || distance > 0
+                    && leg >= distance || angle > 0
+                    && leg >= ANGLE_MIN_LEG_M && impliedSpeed >= ANGLE_MIN_SPEED_MPS
+                    && abs(location.bearing - lastLocation.bearing) >= angle)
+        ) {
+            Log.i(TAG, "location new")
+            preferences.edit().putLong(KEY_LAST_FIX_AT, System.currentTimeMillis()).apply()
+            this.lastLocation = location
+            listener.onPositionUpdate(Position(deviceId, location, getBatteryStatus(context)))
+        } else {
+            Log.i(TAG, if (location != null) "location ignored" else "location nil")
+        }
+    }
+
+    protected fun getBatteryStatus(context: Context): BatteryStatus = readBatteryStatus(context)
+
+    companion object {
+        private val TAG = PositionProvider::class.java.simpleName
+
+        /** Hora del último fix aceptado (para el refresco progresivo). */
+        const val KEY_LAST_FIX_AT = "lastFixAt"
+
+        /**
+         * Pata mínima (m) para que un giro cuente como reporte (filtra jitter).
+         * Bajada de 12 a 8 m: captura esquinas de 90° antes de la distancia de
+         * filtro (10 m), sin disparar telaraña con el equipo detenido.
+         */
+        const val ANGLE_MIN_LEG_M = 8.0
+
+        /** Velocidad implícita mínima (m/s) para que el giro cuente. */
+        const val ANGLE_MIN_SPEED_MPS = 1.5
+
+        /** Bajo esta pata (m) el equipo se considera realmente quieto (velocidad 0). */
+        const val MIN_LEG_FOR_SPEED_M = 10.0
+    }
+
+}

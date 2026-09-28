@@ -1,22 +1,21 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { Dispositivo, Jornada, RespuestaJornadas } from '@contratos';
-import { api, consulta } from '../api/cliente';
+import type { Dispositivo, EstadoSalud } from '@contratos';
+import { consulta } from '../api/cliente';
 import { bateria, duracion, hace, hora, GUION } from '../util/formato';
 import Icono from '../componentes/Icono';
-import { traerFlota, CLAVE_FLOTA } from './operacion/datos';
-import { mensajeError } from './operacion/errores';
+import { traerFlota, traerJornadasFlota, traerSalud, CLAVE_FLOTA } from './operacion/datos';
+import { esNoEncontrado, mensajeError } from './operacion/errores';
 import { claveEstado } from './operacion/estado';
 import { finDeDia, fechaHoyLocal, inicioDeDia } from './operacion/rango';
 import '../estilos/paginas.css';
 
 const REFRESCO_MS = 15_000;
-// Las jornadas se consultan unidad por unidad (no hay vista agregada en la
-// API): el sondeo va más espaciado que el de flota para no multiplicar
-// peticiones cada 15 s, y se detiene con la pestaña oculta.
+// Las jornadas y la salud se consultan agregadas (una petición por sondeo):
+// el sondeo va más espaciado que el de flota y se detiene con la pestaña
+// oculta.
 const REFRESCO_JORNADAS_MS = 60_000;
-const LOTE_CONSULTAS = 12;
 const MAX_AVISOS = 6;
 // El estado SIN_SENAL de la API ya exige 5 minutos sin conexión; el umbral se
 // repite para no avisar de equipos que acaban de reconectar entre sondeos.
@@ -46,55 +45,40 @@ interface FilaJornada {
   duracionMin: number | null;
 }
 
-// Arma la cola del día con GET /api/v1/fleet/{id}/journeys por unidad visible.
-// El fallo de una consulta (404 de un equipo, endpoint todavía no desplegado,
-// caída puntual) se lee como "sin filas" y no tumba la tabla; `disponible`
-// queda en true si al menos una unidad respondió, para distinguir una flota
-// sin jornadas de un servidor que aún no publica el dato.
-async function jornadasDeHoy(
-  dispositivos: Dispositivo[],
-  desde: string,
-  hasta: string,
-): Promise<{ filas: FilaJornada[]; disponible: boolean }> {
-  const filas: FilaJornada[] = [];
-  let disponible = false;
-  for (let inicio = 0; inicio < dispositivos.length; inicio += LOTE_CONSULTAS) {
-    const lote = dispositivos.slice(inicio, inicio + LOTE_CONSULTAS);
-    const respuestas = await Promise.all(
-      lote.map(async (equipo) => {
-        try {
-          const respuesta = await api.get<RespuestaJornadas>(
-            `/api/v1/fleet/${encodeURIComponent(equipo.idPublico)}/journeys${consulta({ desde, hasta })}`,
-          );
-          return { equipo, jornadas: respuesta.jornadas, ok: true };
-        } catch {
-          return { equipo, jornadas: [] as Jornada[], ok: false };
-        }
-      }),
-    );
-    for (const { equipo, jornadas, ok } of respuestas) {
-      if (ok) disponible = true;
-      for (const jornada of jornadas) {
-        filas.push({
-          unidadId: equipo.idPublico,
-          nombre: equipo.nombre,
-          identificador: equipo.identificadorUnico,
-          inicioEn: jornada.inicioEn,
-          finEn: jornada.finEn,
-          duracionMin: jornada.duracionMin,
-        });
-      }
-    }
-  }
-  // Cola de auditoría: la jornada más reciente primero.
-  filas.sort((a, b) => new Date(b.inicioEn).getTime() - new Date(a.inicioEn).getTime());
-  return { filas, disponible };
+// Chip de salud con las clases existentes: el color ya se lee en el resto del
+// panel y no se agregan estilos nuevos.
+const CLASE_SALUD: Record<EstadoSalud, string> = {
+  HEALTHY: 'enLinea',
+  DEGRADED: 'senalDebil',
+  OFFLINE: 'sinSenal',
+  RECOVERING: 'detenido',
+  MISCONFIGURED: 'deshabilitado',
+};
+
+const ETIQUETA_SALUD: Record<EstadoSalud, string> = {
+  HEALTHY: 'Saludable',
+  DEGRADED: 'Degradado',
+  OFFLINE: 'Sin señal',
+  RECOVERING: 'Recuperando',
+  MISCONFIGURED: 'Mal configurado',
+};
+
+// Edad del último fix en texto corto ("hace 8 min"): la causa explica el
+// porqué y esto pone el cuándo. Sin dato se muestra el guion, nunca un cero
+// inventado.
+function haceSegundos(segundos: number | null | undefined): string {
+  if (segundos == null || !Number.isFinite(segundos)) return GUION;
+  if (segundos < 60) return `hace ${Math.max(0, Math.round(segundos))} s`;
+  const minutos = Math.round(segundos / 60);
+  if (minutos < 60) return `hace ${minutos} min`;
+  return `hace ${Math.floor(minutos / 60)} h ${minutos % 60} min`;
 }
 
 export default function Inicio() {
+  // Sondeo de fondo: un 401 aquí no redirige, solo deja el estado de error.
   const flota = useQuery({
     queryKey: CLAVE_FLOTA,
-    queryFn: traerFlota,
+    queryFn: () => traerFlota({ redirigir401: false }),
     refetchInterval: REFRESCO_MS,
   });
 
@@ -116,12 +100,40 @@ export default function Inicio() {
   }, [dispositivos]);
 
   const hoy = fechaHoyLocal();
+  // Cola del día con el agregado GET /api/v1/journeys: una sola petición en
+  // vez de una por unidad visible. El identificador se completa con la flota
+  // ya cargada; sin ella se muestra el id público, nunca un texto inventado.
   const jornadas = useQuery({
-    queryKey: ['inicio', 'jornadas', 'hoy', hoy, dispositivos.length],
-    enabled: flota.isSuccess && dispositivos.length > 0,
-    queryFn: () => jornadasDeHoy(dispositivos, inicioDeDia(hoy), finDeDia(hoy)),
+    queryKey: ['inicio', 'jornadas', 'hoy', hoy],
+    queryFn: () => traerJornadasFlota(inicioDeDia(hoy), finDeDia(hoy), undefined, { redirigir401: false }),
     refetchInterval: () => (document.hidden ? false : REFRESCO_JORNADAS_MS),
   });
+
+  // Salud por equipo (GET /api/v1/salud, ADR-009): estado derivado con causa.
+  // El endpoint aún no existe: el 404 se lee como "sin dato", no como fallo.
+  const salud = useQuery({
+    queryKey: ['salud'],
+    queryFn: traerSalud,
+    refetchInterval: () => (document.hidden ? false : REFRESCO_JORNADAS_MS),
+    retry: false,
+  });
+
+  const filasJornadas = useMemo<FilaJornada[]>(() => {
+    const identificadores = new Map(dispositivos.map((equipo) => [equipo.idPublico, equipo.identificadorUnico]));
+    const filas = (jornadas.data?.datos ?? []).map((jornada) => ({
+      unidadId: jornada.idPublico,
+      nombre: jornada.nombre,
+      identificador: identificadores.get(jornada.idPublico) ?? jornada.idPublico,
+      inicioEn: jornada.inicioEn,
+      finEn: jornada.finEn,
+      duracionMin: jornada.duracionMin,
+    }));
+    // Cola de auditoría: la jornada más reciente primero.
+    filas.sort((a, b) => new Date(b.inicioEn).getTime() - new Date(a.inicioEn).getTime());
+    return filas;
+  }, [jornadas.data, dispositivos]);
+
+  const jornadasDisponibles = jornadas.data != null;
 
   // Prioridad del aviso: 0 sin reportar, 1 batería crítica, 2 fuera de jornada.
   // Un equipo puede acumular motivos y se listan juntos, sin repetir la fila.
@@ -160,15 +172,23 @@ export default function Inicio() {
 
   const actualizado = flota.dataUpdatedAt ? hace(new Date(flota.dataUpdatedAt).toISOString()) : null;
 
-  const datosJornadas = jornadas.data;
-  const unidadesConJornada = datosJornadas
-    ? new Set(datosJornadas.filas.map((fila) => fila.unidadId)).size
-    : 0;
+  const unidadesConJornada = useMemo(
+    () => new Set(filasJornadas.map((fila) => fila.unidadId)).size,
+    [filasJornadas],
+  );
   const cuentaJornadas = jornadas.isPending
     ? 'Consultando…'
-    : datosJornadas && datosJornadas.disponible
-      ? `${datosJornadas.filas.length} jornadas · ${unidadesConJornada} unidades`
+    : jornadasDisponibles
+      ? `${filasJornadas.length} jornadas · ${unidadesConJornada} unidades`
       : 'Sin datos del servidor';
+
+  const equiposSalud = salud.data?.datos ?? [];
+  const nombresSalud = useMemo(() => new Map(dispositivos.map((equipo) => [equipo.id, equipo])), [dispositivos]);
+  const cuentaSalud = salud.isPending
+    ? 'Consultando…'
+    : salud.error
+      ? 'Sin datos del servidor'
+      : `${equiposSalud.length} equipos`;
 
   return (
     <section className="pagina-inicio">
@@ -238,19 +258,19 @@ export default function Inicio() {
               {dispositivos.length > 0 && jornadas.isPending && (
                 <p className="vacio">Consultando las jornadas del día…</p>
               )}
-              {datosJornadas && !datosJornadas.disponible && (
-                <p className="vacio">
-                  <Icono nombre="historial" />
-                  Las jornadas todavía no están disponibles en el servidor.
-                </p>
-              )}
-              {datosJornadas && datosJornadas.disponible && datosJornadas.filas.length === 0 && (
+              {jornadasDisponibles && filasJornadas.length === 0 && (
                 <p className="vacio">
                   <Icono nombre="historial" />
                   Ninguna unidad abrió jornada hoy.
                 </p>
               )}
-              {datosJornadas && datosJornadas.disponible && datosJornadas.filas.length > 0 && (
+              {!jornadas.isPending && !jornadasDisponibles && (
+                <p className="vacio">
+                  <Icono nombre="historial" />
+                  Las jornadas todavía no están disponibles en el servidor.
+                </p>
+              )}
+              {jornadasDisponibles && filasJornadas.length > 0 && (
                 <div className="tabla-envoltura">
                   <table className="tabla">
                     <thead>
@@ -263,7 +283,7 @@ export default function Inicio() {
                       </tr>
                     </thead>
                     <tbody>
-                      {datosJornadas.filas.map((fila) => (
+                      {filasJornadas.map((fila) => (
                         <tr key={`${fila.unidadId}-${fila.inicioEn}`}>
                           <td>
                             <Link className="enlace-tabla" to={`/unidad/${fila.unidadId}`}>
@@ -287,6 +307,61 @@ export default function Inicio() {
                     </tbody>
                   </table>
                 </div>
+              )}
+            </div>
+          </section>
+
+          <section className="seccion">
+            <div className="bloque">
+              <header className="cabecera-seccion">
+                <h2>Salud de la flota</h2>
+                <span className="cuenta">{cuentaSalud}</span>
+              </header>
+              {salud.isPending && <p className="vacio">Consultando la salud de los equipos…</p>}
+              {salud.error && esNoEncontrado(salud.error) && (
+                <p className="vacio">
+                  <Icono nombre="sistema" />
+                  La salud por equipo aún no está disponible en el servidor.
+                </p>
+              )}
+              {salud.error && !esNoEncontrado(salud.error) && (
+                <p className="vacio">
+                  <Icono nombre="sistema" />
+                  {mensajeError(salud.error)}
+                </p>
+              )}
+              {salud.data && equiposSalud.length === 0 && (
+                <p className="vacio">
+                  <Icono nombre="sistema" />
+                  Sin equipos para mostrar.
+                </p>
+              )}
+              {salud.data && equiposSalud.length > 0 && (
+                <ul className="lista-avisos">
+                  {equiposSalud.map((equipo) => {
+                    const conocido = nombresSalud.get(equipo.dispositivoId);
+                    const nombre = conocido?.nombre ?? `Equipo ${equipo.dispositivoId}`;
+                    const identificador = conocido?.identificadorUnico ?? String(equipo.dispositivoId);
+                    // La causa del servidor ya suele traer la edad ("Último
+                    // GPS hace 8 min", ADR-009); solo se compone desde
+                    // lastFixAgeS cuando viene vacía.
+                    const causa =
+                      equipo.causa ||
+                      (equipo.lastFixAgeS != null
+                        ? `Último GPS ${haceSegundos(equipo.lastFixAgeS)}`
+                        : 'Sin causa informada');
+                    return (
+                      <li key={equipo.dispositivoId}>
+                        <span className={`chip ${CLASE_SALUD[equipo.estado]}`}>{ETIQUETA_SALUD[equipo.estado]}</span>
+                        <span>
+                          <strong>{nombre}</strong>{' '}
+                          <span className="mono apagado">{identificador}</span>
+                        </span>
+                        <span className="motivo">{causa}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
           </section>

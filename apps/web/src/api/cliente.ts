@@ -1,10 +1,26 @@
 // Cliente único de la API /api/v1. Sin dependencias: fetch + manejo de errores.
 // La sesión vive en una cookie HttpOnly; el navegador nunca ve credenciales
-// internas. Un 401 redirige al login.
+// internas. Un 401 lleva al login por navegación SPA (la registra el marco);
+// las consultas de fondo (sondeo) no redirigen, solo dejan su estado de error.
 
 export interface ErrorApi {
   codigo: string;
   mensaje: string;
+}
+
+export interface OpcionesPeticion {
+  // En false, un 401 no redirige al login. Para sondeos de fondo: redirigir a
+  // mitad de la operación echaría a la operadora sin avisar y recargaría la
+  // página en cada intervalo mientras la sesión esté vencida.
+  redirigir401?: boolean;
+}
+
+// Navegación SPA al login que registra el marco (Disposicion) con useNavigate.
+// Sin manejador se conserva el reemplazo completo como respaldo.
+let manejadorNoAutorizado: (() => void) | null = null;
+
+export function alNoAutorizado(manejador: (() => void) | null): void {
+  manejadorNoAutorizado = manejador;
 }
 
 export class ApiError extends Error {
@@ -18,7 +34,7 @@ export class ApiError extends Error {
   }
 }
 
-async function pedir<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise<T> {
+async function pedir<T>(metodo: string, ruta: string, cuerpo?: unknown, opciones: OpcionesPeticion = {}): Promise<T> {
   const res = await fetch(ruta, {
     method: metodo,
     credentials: 'same-origin',
@@ -33,7 +49,10 @@ async function pedir<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise
   if (!res.ok) {
     const error: ErrorApi = datos?.error ?? { codigo: 'ERROR_INTERNO', mensaje: `Error ${res.status}` };
     if (res.status === 401 && !ruta.endsWith('/auth/login') && !ruta.endsWith('/auth/me')) {
-      window.location.href = '/login';
+      if (opciones.redirigir401 !== false) {
+        if (manejadorNoAutorizado) manejadorNoAutorizado();
+        else window.location.href = '/login';
+      }
     }
     throw new ApiError(res.status, error.codigo, error.mensaje);
   }
@@ -41,10 +60,10 @@ async function pedir<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise
 }
 
 export const api = {
-  get: <T>(ruta: string) => pedir<T>('GET', ruta),
-  post: <T>(ruta: string, cuerpo?: unknown) => pedir<T>('POST', ruta, cuerpo),
-  put: <T>(ruta: string, cuerpo?: unknown) => pedir<T>('PUT', ruta, cuerpo),
-  borrar: <T>(ruta: string) => pedir<T>('DELETE', ruta),
+  get: <T>(ruta: string, opciones?: OpcionesPeticion) => pedir<T>('GET', ruta, undefined, opciones),
+  post: <T>(ruta: string, cuerpo?: unknown, opciones?: OpcionesPeticion) => pedir<T>('POST', ruta, cuerpo, opciones),
+  put: <T>(ruta: string, cuerpo?: unknown, opciones?: OpcionesPeticion) => pedir<T>('PUT', ruta, cuerpo, opciones),
+  borrar: <T>(ruta: string, opciones?: OpcionesPeticion) => pedir<T>('DELETE', ruta, undefined, opciones),
 };
 
 // Construye querystrings solo con parámetros definidos.

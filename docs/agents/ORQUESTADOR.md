@@ -404,6 +404,17 @@ RELEASE y únicamente con todos los gates verdes.
   `docs/ADR/ADR-001..010`. `docs/app/ARQUITECTURA-2.1.74.md` queda marcado
   como borrador histórico. Los 16 tests y la matriz Android/OEM quedan
   pospuestos (fase física, IA-2).
+- 2026-09-28: **implementación ejecutada con subagentes** (encargo del dueño,
+  FASE 1-11). Servidor: migración 002 aplicada (idempotencia, guardas de viva,
+  validación de fechas, purga 2037), lote `/positions`, `GET /journey`,
+  particiones mes+2, `/match` + `mapaVersion` en routing, `/api/v1/salud`.
+  App: máquina de movimiento, store v5, cola con backoff, recovery con
+  alarma, JourneyManager, diagnóstico extendido (build + 69 tests en verde).
+  Web: replay REAL/MATCHED/ESTIMATED (`estimados` eliminado), 401 SPA, salud
+  con causa. Release: sin credenciales en repo, 284/2.1.74 en código (APK sin
+  firmar), gate TLS documentado. Servicios reiniciados, E2E 26/26 PASS,
+  detalle en `docs/IMPLEMENTATION-COMPLETE.md`. Producción condicionada a
+  pruebas físicas.
 - 2026-09-28: **consolidación de flota ejecutada** (pedido del dueño):
   joseph 39→53, miguel 41→60, kevin 40+52→59, jeremy 51→58, con respaldo
   previo verificado y ensayo con rollback. 0 huérfanos, 15 dispositivos.

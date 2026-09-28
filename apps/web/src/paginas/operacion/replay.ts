@@ -1,36 +1,82 @@
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import type { Hueco, Posicion, SegmentoEstimado } from '@contratos';
+import type { Hueco, MetodoReconstruccion, Posicion, TramoReconstruido } from '@contratos';
 import { GUION } from '../../util/formato';
 
+export type { MetodoReconstruccion, TramoReconstruido } from '@contratos';
+
 export interface SegmentoRecorrido {
-  tipo: 'ruta' | 'hueco' | 'estimado';
+  tipo: 'ruta' | 'hueco' | 'matched' | 'estimated';
   coordenadas: [number, number][];
   // Solo en los tramos de ruta: 0..4 según la velocidad del fix que cierra el
   // par. La capa de línea lo usa para colorear tramo a tramo, como Traccar.
-  // El tramo estimado (hueco resuelto por calles en el servidor) usa la banda
-  // de crucero para verse como un tramo más del recorrido.
+  // Los tramos reconstruidos no llevan banda: cada método tiene su estilo
+  // propio (ADR-007) y nunca se pintan como GPS registrado.
   banda?: number;
 }
 
-// Banda que se le da al tramo estimado cuando no se puede resolver desde los
-// fixes (respaldo): verde de crucero, el color con el que ya se pinta la mayor
-// parte de una ruta normal.
-const BANDA_ESTIMADA = 1;
+export const ETIQUETA_METODO_TRAMO: Record<MetodoReconstruccion, string> = {
+  MATCHED: 'Ajustado a vía',
+  ESTIMATED: 'Tramo estimado',
+};
 
-// Índice del fix que cierra un instante, para ubicar los extremos del tramo.
-function indiceDeInstante(posiciones: Posicion[], instante: string): number {
-  const indice = posiciones.findIndex((posicion) => posicion.registradoEn === instante);
-  return indice;
+// Tramo heredado del contrato anterior (`estimados`, sin método): solo une
+// dos fixes con un trazado por calles.
+interface EstimadoHeredado {
+  desde: string;
+  hasta: string;
+  trazado: [number, number][];
 }
 
-// Banda del tramo estimado según la velocidad real entre sus dos fixes: el
-// tramo se ve exactamente como un tramo normal de esa velocidad.
-function bandaDeTramo(posiciones: Posicion[], tramo: SegmentoEstimado): number {
-  const indice = indiceDeInstante(posiciones, tramo.hasta);
-  if (indice < 0) return BANDA_ESTIMADA;
+// Normaliza la respuesta del servidor a la lista de tramos reconstruidos. El
+// contrato vigente devuelve `reconstruidos` con método y versión de mapa; los
+// `estimados` heredados no traen método (son rutas A→B sin observaciones) y
+// se tratan como ESTIMATED como compatibilidad temporal mientras el servidor
+// aún los devuelva.
+export function normalizarReconstruidos(respuesta: {
+  reconstruidos?: TramoReconstruido[] | null;
+  estimados?: EstimadoHeredado[] | null;
+} | null | undefined): TramoReconstruido[] {
+  if (!respuesta) return [];
+  if (Array.isArray(respuesta.reconstruidos)) return respuesta.reconstruidos;
+  return (respuesta.estimados ?? []).map((tramo) => ({
+    desde: tramo.desde,
+    hasta: tramo.hasta,
+    metodo: 'ESTIMATED' as MetodoReconstruccion,
+    mapaVersion: null,
+    trazado: tramo.trazado,
+  }));
+}
+
+// Método del tramo reconstruido que une dos instantes, si existe.
+export function metodoDeTramo(
+  reconstruidos: TramoReconstruido[],
+  desde: string,
+  hasta: string,
+): TramoReconstruido | null {
+  return reconstruidos.find((tramo) => tramo.desde === desde && tramo.hasta === hasta) ?? null;
+}
+
+// Tramo reconstruido que toca el fix indicado (par anterior o siguiente). El
+// clic sobre un trazado selecciona el fix más cercano, que es un extremo del
+// tramo, así que basta con mirar los dos pares vecinos.
+export function tramoDeIndice(
+  posiciones: Posicion[],
+  reconstruidos: TramoReconstruido[],
+  indice: number,
+): TramoReconstruido | null {
   const actual = posiciones[indice];
+  if (!actual) return null;
   const anterior = indice > 0 ? posiciones[indice - 1] : null;
-  return bandaVelocidad(velocidadEfectivaKmh(actual, anterior));
+  const siguiente = indice < posiciones.length - 1 ? posiciones[indice + 1] : null;
+  if (anterior) {
+    const tramo = metodoDeTramo(reconstruidos, anterior.registradoEn, actual.registradoEn);
+    if (tramo) return tramo;
+  }
+  if (siguiente) {
+    const tramo = metodoDeTramo(reconstruidos, actual.registradoEn, siguiente.registradoEn);
+    if (tramo) return tramo;
+  }
+  return null;
 }
 
 // Una parada del recorrido. En Replay manda la lista del servidor
@@ -153,32 +199,34 @@ function rumboDePosicion(posicion: Posicion, anterior: Posicion | null): number 
 // es una Feature propia: el coloreado por velocidad necesita que cada tramo
 // lleve su banda, y una fuente GeoJSON estática de miles de líneas de dos
 // puntos se publica de una sola vez al cargar el recorrido.
-// Los tramos que el servidor resolvió por calles (`estimados`: huecos y fixes
-// muy separados) entran como un tramo más ('estimado', banda de crucero) y ya
-// no dibujan su recta punteada.
+// Los tramos reconstruidos entran con su método (MATCHED o ESTIMATED) y su
+// estilo propio; los pares que cubren ya no dibujan su recta.
 export function segmentosDeRecorrido(
   posiciones: Posicion[],
   huecos: Hueco[],
-  estimados: SegmentoEstimado[],
+  reconstruidos: TramoReconstruido[],
 ): SegmentoRecorrido[] {
-  const paresEstimados = new Set(estimados.map((tramo) => `${tramo.desde}|${tramo.hasta}`));
+  const paresReconstruidos = new Map(reconstruidos.map((tramo) => [`${tramo.desde}|${tramo.hasta}`, tramo]));
   const paresHueco = new Set(
     huecos
-      .filter((hueco) => !paresEstimados.has(`${hueco.desde}|${hueco.hasta}`))
+      .filter((hueco) => !paresReconstruidos.has(`${hueco.desde}|${hueco.hasta}`))
       .map((hueco) => `${hueco.desde}|${hueco.hasta}`),
   );
   const segmentos: SegmentoRecorrido[] = [];
-  for (const tramo of estimados) {
+  for (const tramo of reconstruidos) {
     if (tramo.trazado.length >= 2) {
-      segmentos.push({ tipo: 'estimado', banda: bandaDeTramo(posiciones, tramo), coordenadas: tramo.trazado });
+      segmentos.push({
+        tipo: tramo.metodo === 'MATCHED' ? 'matched' : 'estimated',
+        coordenadas: tramo.trazado,
+      });
     }
   }
   for (let i = 1; i < posiciones.length; i += 1) {
     const anterior = posiciones[i - 1];
     const actual = posiciones[i];
-    // El tramo estimado ya dibuja este par: la recta quedaría encima de la
-    // ruta por calles con otro color y se vería doble.
-    if (paresEstimados.has(`${anterior.registradoEn}|${actual.registradoEn}`)) continue;
+    // El tramo reconstruido ya dibuja este par: la recta quedaría encima del
+    // trazado con otro estilo y se vería doble.
+    if (paresReconstruidos.has(`${anterior.registradoEn}|${actual.registradoEn}`)) continue;
     const coordenadas: [number, number][] = [
       [anterior.longitud, anterior.latitud],
       [actual.longitud, actual.latitud],
@@ -203,7 +251,7 @@ export function segmentosDeRecorrido(
 export function puntosDeRecorrido(
   posiciones: Posicion[],
   huecos: Hueco[],
-  estimados: SegmentoEstimado[],
+  reconstruidos: TramoReconstruido[],
 ): FeatureCollection<Point> {
   const paresHueco = new Set(huecos.map((hueco) => `${hueco.desde}|${hueco.hasta}`));
   const features: Feature<Point>[] = [];
@@ -225,6 +273,9 @@ export function puntosDeRecorrido(
       properties: {
         bearing: rumboDePosicion(posicion, anterior),
         banda: bandaVelocidad(velocidadEfectivaKmh(posicion, anterior)),
+        // Origen del punto para la capa de chevrones: los reales se colorean
+        // por banda de velocidad; los ajustados a vía usan su imagen propia.
+        origen: 'real',
         indice,
         hueco: enHueco,
       },
@@ -242,15 +293,17 @@ export function puntosDeRecorrido(
     const punto = aPunto(posiciones.length - 1);
     if (punto) features.push(punto);
   }
-  // Chevrones del tramo estimado: se reparten a lo largo del trazado con el
-  // rumbo entre puntos consecutivos, como si fueran fixes. Se acotan a ~24 por
-  // tramo (el trazado trae los vértices de las calles y en las curvas se
-  // juntan) y usan la banda de crucero para mezclarse con la ruta normal.
+  // Chevrones de los tramos ajustados a vía (MATCHED): se reparten a lo largo
+  // del trazado con el rumbo entre puntos consecutivos, como si fueran fixes.
+  // Se acotan a ~24 por tramo y usan la imagen propia del método, no la banda
+  // de velocidad: el tramo reconstruido nunca se colorea como GPS registrado.
+  // Los tramos estimados (ESTIMATED) no llevan chevrones: la línea punteada
+  // gris ya los distingue y las flechas los harían pasar por ruta normal.
   let indiceTrazado = posiciones.length;
-  for (const tramo of estimados) {
+  for (const tramo of reconstruidos) {
+    if (tramo.metodo !== 'MATCHED') continue;
     const trazado = tramo.trazado;
     if (!trazado || trazado.length < 2) continue;
-    const banda = bandaDeTramo(posiciones, tramo);
     const salto = Math.max(1, Math.ceil(trazado.length / 24));
     for (let i = 0; i < trazado.length; i += salto) {
       const [lon, lat] = trazado[i];
@@ -260,7 +313,8 @@ export function puntosDeRecorrido(
         type: 'Feature',
         properties: {
           bearing: rumboEntrePuntos(lat, lon, latSiguiente, lonSiguiente),
-          banda,
+          banda: 0,
+          origen: 'matched',
           indice: indiceTrazado,
           hueco: false,
         },
@@ -479,12 +533,14 @@ export function indiceCercaDeInstante(posiciones: Posicion[], instante: number):
 // Posición del marcador para un instante cualquiera: interpola linealmente
 // entre el fix anterior y el siguiente para que la reproducción se vea fluida
 // aunque los fixes lleguen espaciados. En los tramos sin evidencia (hueco
-// formal o salto de más de 5 min) devuelve el último fix conocido: una
-// interpolación recta inventaría un desplazamiento entre dos lecturas.
+// formal, salto de más de 5 min o par cubierto por un tramo reconstruido)
+// devuelve el último fix conocido: una interpolación recta inventaría un
+// desplazamiento entre dos lecturas.
 export function puntoEnInstante(
   posiciones: Posicion[],
   huecos: Hueco[],
   instante: number,
+  reconstruidos: TramoReconstruido[] = [],
 ): { latitud: number; longitud: number } | null {
   const indice = indicePorInstante(posiciones, instante);
   const actual = posiciones[indice];
@@ -494,7 +550,10 @@ export function puntoEnInstante(
   const desde = milisegundos(actual.registradoEn);
   const hasta = milisegundos(siguiente.registradoEn);
   const esHueco = huecos.some((hueco) => hueco.desde === actual.registradoEn && hueco.hasta === siguiente.registradoEn);
-  if (esHueco || hasta - desde > ANTIGUEDAD_SIN_SENAL_MS || !(hasta > desde)) {
+  const esReconstruido = reconstruidos.some(
+    (tramo) => tramo.desde === actual.registradoEn && tramo.hasta === siguiente.registradoEn,
+  );
+  if (esHueco || esReconstruido || hasta - desde > ANTIGUEDAD_SIN_SENAL_MS || !(hasta > desde)) {
     return { latitud: actual.latitud, longitud: actual.longitud };
   }
   const fraccion = Math.min(Math.max((instante - desde) / (hasta - desde), 0), 1);

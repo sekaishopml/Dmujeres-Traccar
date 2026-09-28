@@ -8,5 +8,6 @@ export * from "./journeys";
 export * from "./reports";
 export * from "./geocode";
 export * from "./battery";
+export * from "./salud";
 
 export const VERSION_API = "v1";

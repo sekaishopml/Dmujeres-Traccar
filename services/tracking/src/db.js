@@ -44,11 +44,28 @@ function limitesMesUtc(fecha) {
   return { inicio, fin };
 }
 
+// Ventana de captura aceptada (ADR-010): [ahora−30d, ahora+24h]. Fuera de
+// ella el fix viene con reloj corrupto (caso 2037_10 en producción) y no se
+// guarda: se clasifica como `invalid` para drenar el buffer sin polucionar
+// particiones.
+const VENTANA_CAPTURA_MS_ATRAS = 30 * 24 * 60 * 60 * 1000;
+const VENTANA_CAPTURA_MS_ADELANTE = 24 * 60 * 60 * 1000;
+
+export function fechaCapturaValida(fecha, ahoraMs = Date.now()) {
+  if (!(fecha instanceof Date) || Number.isNaN(fecha.getTime())) return false;
+  const instante = fecha.getTime();
+  return (
+    instante >= ahoraMs - VENTANA_CAPTURA_MS_ATRAS &&
+    instante <= ahoraMs + VENTANA_CAPTURA_MS_ADELANTE
+  );
+}
+
 export class Almacen {
   #pool;
   #particiones = new Set();
   #particionesEvento = new Set();
   #log;
+  #tieneIdempotencia = null;
 
   constructor(pool, log) {
     this.#pool = pool;
@@ -57,6 +74,32 @@ export class Almacen {
 
   get pool() {
     return this.#pool;
+  }
+
+  // Detecta si la migración 002 ya aplicó (columnas boot_id/local_sequence).
+  // La migración NO se aplica en esta fase: el código funciona sin ella
+  // (acepta sin dedupe) y con ella (dedupe por UNIQUE parcial).
+  async #soportaIdempotencia(conexion) {
+    if (this.#tieneIdempotencia !== null) return this.#tieneIdempotencia;
+    const ejecutor = conexion ?? this.#pool;
+    try {
+      const resultado = await ejecutor.query(
+        `SELECT count(*)::int AS total
+           FROM information_schema.columns
+          WHERE table_schema = 'tracking'
+            AND table_name = 'dmt_posicion'
+            AND column_name IN ('boot_id', 'local_sequence')`,
+      );
+      this.#tieneIdempotencia = Number(resultado.rows[0]?.total) === 2;
+    } catch {
+      // Sin permiso de lectura del esquema se asume sin columnas: no se rompe
+      // la ingesta, solo se pierde el dedupe hasta la migración.
+      this.#tieneIdempotencia = false;
+    }
+    if (!this.#tieneIdempotencia) {
+      this.#log?.warn?.('idempotencia sin columnas boot_id/local_sequence; dedupe desactivado hasta migración 002');
+    }
+    return this.#tieneIdempotencia;
   }
 
   async buscarDispositivo(identificador) {
@@ -114,7 +157,9 @@ export class Almacen {
   // Inserta un evento de jornada sin duplicar: la clave es (dispositivo, tipo,
   // atributos->>'journeyId'), por lo que un reintento del cliente con el mismo
   // journeyId no genera otra fila. Se ejecuta dentro de la transaccion de la
-  // jornada para que evento y jornada queden consistentes.
+  // jornada para que evento y jornada queden consistentes. El SELECT previo
+  // evita el duplicado y el ON CONFLICT DO NOTHING cubre la carrera entre dos
+  // peticiones simultáneas (sin UNIQUE dedicado, el bare DO NOTHING no falla).
   async #insertarEvento(conexion, { dispositivoId, tipo, journeyId, bateria }) {
     if (journeyId === null || journeyId === undefined) return false;
     const existente = await conexion.query(
@@ -131,12 +176,14 @@ export class Almacen {
     await this.#asegurarParticionEvento(conexion, marca);
     const atributos = { journeyId, mobileSeverity: 'info' };
     if (typeof bateria === 'number' && Number.isFinite(bateria)) atributos.battery = bateria;
-    await conexion.query(
+    const insertado = await conexion.query(
       `INSERT INTO tracking.dmt_evento (dispositivo_id, tipo, ocurrido_en, atributos)
-       VALUES ($1, $2, $3, $4::jsonb)`,
+       VALUES ($1, $2, $3, $4::jsonb)
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
       [dispositivoId, tipo, marca, JSON.stringify(atributos)],
     );
-    return true;
+    return insertado.rowCount > 0;
   }
 
   async #fusionarAtributos(conexion, dispositivoId, parche) {
@@ -159,34 +206,86 @@ export class Almacen {
     );
   }
 
+  // Inserta una posición con idempotencia (device, boot, seq) y guarda de
+  // posición viva: un paquete atrasado nunca retrocede dmt_posicion_actual ni
+  // ultima_conexion_en. Devuelve {posicionId} | {duplicado:true} |
+  // {invalido:true}. La fecha fuera de [ahora−30d, ahora+24h] se rechaza sin
+  // tocar la base (evita la partición 2037_10).
   async registrarPosicion(dispositivoId, posicion) {
+    if (!fechaCapturaValida(posicion.registradoEn)) {
+      return { invalido: true };
+    }
     const conexion = await this.#pool.connect();
     try {
       await conexion.query('BEGIN');
       await this.#asegurarParticion(conexion, posicion.registradoEn);
-      const insertada = await conexion.query(
-        `INSERT INTO tracking.dmt_posicion (
-           dispositivo_id, protocolo, latitud, longitud, altitud_m,
-           velocidad_kmh, rumbo_grados, precision_m, bateria_pct, valida,
-           fijado_en, registrado_en, atributos
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12::jsonb)
-         RETURNING id`,
-        [
-          dispositivoId,
-          posicion.protocolo,
-          posicion.latitud,
-          posicion.longitud,
-          posicion.altitud,
-          posicion.velocidadKmh,
-          posicion.rumbo,
-          posicion.precision,
-          posicion.bateria,
-          posicion.valida,
-          posicion.registradoEn,
-          JSON.stringify(posicion.atributos ?? {}),
-        ],
-      );
+      const usaIdempotencia = await this.#soportaIdempotencia(conexion);
+      const bootId = typeof posicion.bootId === 'string' && posicion.bootId.trim() !== ''
+        ? posicion.bootId.trim().slice(0, 64)
+        : null;
+      const secuencia = Number.isInteger(posicion.secuencia) && posicion.secuencia >= 0
+        ? posicion.secuencia
+        : (typeof posicion.seq === 'number' && Number.isInteger(posicion.seq) && posicion.seq >= 0
+          ? posicion.seq
+          : null);
+      let insertada;
+      if (usaIdempotencia) {
+        insertada = await conexion.query(
+          `INSERT INTO tracking.dmt_posicion (
+             dispositivo_id, protocolo, latitud, longitud, altitud_m,
+             velocidad_kmh, rumbo_grados, precision_m, bateria_pct, valida,
+             fijado_en, registrado_en, atributos, boot_id, local_sequence
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12::jsonb, $13, $14)
+           ON CONFLICT DO NOTHING
+           RETURNING id`,
+          [
+            dispositivoId,
+            posicion.protocolo,
+            posicion.latitud,
+            posicion.longitud,
+            posicion.altitud,
+            posicion.velocidadKmh,
+            posicion.rumbo,
+            posicion.precision,
+            posicion.bateria,
+            posicion.valida,
+            posicion.registradoEn,
+            JSON.stringify(posicion.atributos ?? {}),
+            bootId,
+            secuencia,
+          ],
+        );
+      } else {
+        insertada = await conexion.query(
+          `INSERT INTO tracking.dmt_posicion (
+             dispositivo_id, protocolo, latitud, longitud, altitud_m,
+             velocidad_kmh, rumbo_grados, precision_m, bateria_pct, valida,
+             fijado_en, registrado_en, atributos
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12::jsonb)
+           RETURNING id`,
+          [
+            dispositivoId,
+            posicion.protocolo,
+            posicion.latitud,
+            posicion.longitud,
+            posicion.altitud,
+            posicion.velocidadKmh,
+            posicion.rumbo,
+            posicion.precision,
+            posicion.bateria,
+            posicion.valida,
+            posicion.registradoEn,
+            JSON.stringify(posicion.atributos ?? {}),
+          ],
+        );
+      }
+      if (insertada.rowCount === 0) {
+        await conexion.query('ROLLBACK');
+        return { duplicado: true };
+      }
       const posicionId = String(insertada.rows[0].id);
+      // Solo avanza: un fix viejo no pisa la posición viva (corrige el bug de
+      // retroceso confirmado en db.js:191-222).
       await conexion.query(
         `INSERT INTO tracking.dmt_posicion_actual (
            dispositivo_id, posicion_id, latitud, longitud, altitud_m,
@@ -207,7 +306,8 @@ export class Almacen {
            registrado_en = EXCLUDED.registrado_en,
            atributos = EXCLUDED.atributos,
            recibido_en = now(),
-           actualizado_en = now()`,
+           actualizado_en = now()
+         WHERE EXCLUDED.registrado_en > tracking.dmt_posicion_actual.registrado_en`,
         [
           dispositivoId,
           posicionId,
@@ -223,13 +323,19 @@ export class Almacen {
           JSON.stringify(posicion.atributos ?? {}),
         ],
       );
+      // Solo avanza: ultima_conexion_en/ultima_posicion_id no retroceden con
+      // paquetes atrasados (GREATEST + guarda por tiempo).
       await conexion.query(
         `UPDATE tracking.dmt_dispositivo
             SET estado = 'online',
-                ultima_conexion_en = $2,
-                ultima_posicion_id = $3,
+                ultima_conexion_en = GREATEST(coalesce(ultima_conexion_en, $2), $2),
+                ultima_posicion_id = CASE
+                  WHEN ultima_conexion_en IS NULL OR $2 > ultima_conexion_en THEN $3
+                  ELSE ultima_posicion_id
+                END,
                 actualizado_en = now()
-          WHERE id = $1`,
+          WHERE id = $1
+            AND (ultima_conexion_en IS NULL OR $2 >= ultima_conexion_en)`,
         [dispositivoId, posicion.registradoEn, posicionId],
       );
       await conexion.query('COMMIT');
@@ -237,6 +343,210 @@ export class Almacen {
     } catch (error) {
       await conexion.query('ROLLBACK').catch(() => {});
       throw error;
+    } finally {
+      conexion.release();
+    }
+  }
+
+  // Lote idempotente en una sola transacción: valida fechas, inserta con
+  // ON CONFLICT DO NOTHING y avanza la posición viva solo con el fix más
+  // nuevo del lote. Devuelve por evento {seq, estado} con
+  // accepted|duplicate|invalid (dead lo decide el llamador por dispositivo
+  // deshabilitado). No lanza por eventos sueltos: los clasifica.
+  async registrarLotePosiciones(dispositivoId, posiciones) {
+    const resultados = [];
+    const conexion = await this.#pool.connect();
+    try {
+      await conexion.query('BEGIN');
+      const usaIdempotencia = await this.#soportaIdempotencia(conexion);
+      let mejorPosicionId = null;
+      let mejorRegistradoEn = null;
+      let mejorPosicion = null;
+      for (const posicion of posiciones) {
+        const seqEco = Number.isInteger(posicion.secuencia) ? posicion.secuencia
+          : (Number.isInteger(posicion.seq) ? posicion.seq : null);
+        if (!fechaCapturaValida(posicion.registradoEn)) {
+          resultados.push({ seq: seqEco, estado: 'invalid' });
+          continue;
+        }
+        await this.#asegurarParticion(conexion, posicion.registradoEn);
+        const bootId = typeof posicion.bootId === 'string' && posicion.bootId.trim() !== ''
+          ? posicion.bootId.trim().slice(0, 64)
+          : null;
+        const secuencia = Number.isInteger(posicion.secuencia) && posicion.secuencia >= 0
+          ? posicion.secuencia
+          : (Number.isInteger(posicion.seq) && posicion.seq >= 0 ? posicion.seq : null);
+        let insertada;
+        if (usaIdempotencia) {
+          insertada = await conexion.query(
+            `INSERT INTO tracking.dmt_posicion (
+               dispositivo_id, protocolo, latitud, longitud, altitud_m,
+               velocidad_kmh, rumbo_grados, precision_m, bateria_pct, valida,
+               fijado_en, registrado_en, atributos, boot_id, local_sequence
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12::jsonb, $13, $14)
+             ON CONFLICT DO NOTHING
+             RETURNING id`,
+            [
+              dispositivoId,
+              posicion.protocolo ?? 'lote',
+              posicion.latitud,
+              posicion.longitud,
+              posicion.altitud,
+              posicion.velocidadKmh,
+              posicion.rumbo,
+              posicion.precision,
+              posicion.bateria,
+              posicion.valida ?? true,
+              posicion.registradoEn,
+              JSON.stringify(posicion.atributos ?? {}),
+              bootId,
+              secuencia,
+            ],
+          );
+        } else {
+          insertada = await conexion.query(
+            `INSERT INTO tracking.dmt_posicion (
+               dispositivo_id, protocolo, latitud, longitud, altitud_m,
+               velocidad_kmh, rumbo_grados, precision_m, bateria_pct, valida,
+               fijado_en, registrado_en, atributos
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12::jsonb)
+             RETURNING id`,
+            [
+              dispositivoId,
+              posicion.protocolo ?? 'lote',
+              posicion.latitud,
+              posicion.longitud,
+              posicion.altitud,
+              posicion.velocidadKmh,
+              posicion.rumbo,
+              posicion.precision,
+              posicion.bateria,
+              posicion.valida ?? true,
+              posicion.registradoEn,
+              JSON.stringify(posicion.atributos ?? {}),
+            ],
+          );
+        }
+        if (insertada.rowCount === 0) {
+          resultados.push({ seq: seqEco, estado: 'duplicate' });
+          continue;
+        }
+        const posicionId = String(insertada.rows[0].id);
+        resultados.push({ seq: seqEco, estado: 'accepted' });
+        if (mejorRegistradoEn === null || posicion.registradoEn > mejorRegistradoEn) {
+          mejorRegistradoEn = posicion.registradoEn;
+          mejorPosicionId = posicionId;
+          mejorPosicion = posicion;
+        }
+      }
+      // La posición viva y el dispositivo solo avanzan con el fix más nuevo
+      // del lote aceptado (nunca con un lote entero atrasado).
+      if (mejorPosicion !== null) {
+        await conexion.query(
+          `INSERT INTO tracking.dmt_posicion_actual (
+             dispositivo_id, posicion_id, latitud, longitud, altitud_m,
+             velocidad_kmh, rumbo_grados, precision_m, bateria_pct, valida,
+             fijado_en, registrado_en, atributos
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12::jsonb)
+           ON CONFLICT (dispositivo_id) DO UPDATE SET
+             posicion_id = EXCLUDED.posicion_id,
+             latitud = EXCLUDED.latitud,
+             longitud = EXCLUDED.longitud,
+             altitud_m = EXCLUDED.altitud_m,
+             velocidad_kmh = EXCLUDED.velocidad_kmh,
+             rumbo_grados = EXCLUDED.rumbo_grados,
+             precision_m = EXCLUDED.precision_m,
+             bateria_pct = EXCLUDED.bateria_pct,
+             valida = EXCLUDED.valida,
+             fijado_en = EXCLUDED.fijado_en,
+             registrado_en = EXCLUDED.registrado_en,
+             atributos = EXCLUDED.atributos,
+             recibido_en = now(),
+             actualizado_en = now()
+           WHERE EXCLUDED.registrado_en > tracking.dmt_posicion_actual.registrado_en`,
+          [
+            dispositivoId,
+            mejorPosicionId,
+            mejorPosicion.latitud,
+            mejorPosicion.longitud,
+            mejorPosicion.altitud,
+            mejorPosicion.velocidadKmh,
+            mejorPosicion.rumbo,
+            mejorPosicion.precision,
+            mejorPosicion.bateria,
+            mejorPosicion.valida ?? true,
+            mejorPosicion.registradoEn,
+            JSON.stringify(mejorPosicion.atributos ?? {}),
+          ],
+        );
+        await conexion.query(
+          `UPDATE tracking.dmt_dispositivo
+              SET estado = 'online',
+                  ultima_conexion_en = GREATEST(coalesce(ultima_conexion_en, $2), $2),
+                  ultima_posicion_id = CASE
+                    WHEN ultima_conexion_en IS NULL OR $2 > ultima_conexion_en THEN $3
+                    ELSE ultima_posicion_id
+                  END,
+                  actualizado_en = now()
+            WHERE id = $1
+              AND (ultima_conexion_en IS NULL OR $2 >= ultima_conexion_en)`,
+          [dispositivoId, mejorRegistradoEn, mejorPosicionId],
+        );
+      }
+      await conexion.query('COMMIT');
+      return resultados;
+    } catch (error) {
+      await conexion.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      conexion.release();
+    }
+  }
+
+  // Estado de jornada del servidor para reconciliación del cliente tras
+  // recrear proceso/reboot. Lee operations.dmt_jornada (verdad del servidor),
+  // no la RAM del teléfono. Sin filas → ninguna.
+  async obtenerJornadaEstado(dispositivoId) {
+    const resultado = await this.#pool.query(
+      `SELECT estado, inicio_en, atributos
+         FROM operations.dmt_jornada
+        WHERE dispositivo_id = $1
+        ORDER BY inicio_en DESC, id DESC
+        LIMIT 1`,
+      [dispositivoId],
+    );
+    const fila = resultado.rows[0];
+    if (!fila) return { estado: 'ninguna', journeyId: null, inicioEn: null };
+    const attrs = fila.atributos ?? {};
+    const crudo = attrs.journeyId ?? attrs.journey_id ?? attrs.journey_id_legado ?? null;
+    const journeyId = crudo === null || crudo === undefined ? null : Number(crudo);
+    const inicioEn = fila.inicio_en instanceof Date ? fila.inicio_en.toISOString() : new Date(fila.inicio_en).toISOString();
+    if (fila.estado === 'abierta') {
+      return {
+        estado: 'abierta',
+        journeyId: Number.isFinite(journeyId) ? journeyId : null,
+        inicioEn,
+      };
+    }
+    return {
+      estado: 'cerrada',
+      journeyId: Number.isFinite(journeyId) ? journeyId : null,
+      inicioEn,
+    };
+  }
+
+  // Precreación proactiva (ADR-010): mes actual + 2 siguientes al arrancar
+  // (y en job diario) para que ninguna escritura quede sin partición. La
+  // creación on-write se conserva como red de seguridad.
+  async precrearParticionesProximas(ahora = new Date()) {
+    const conexion = await this.#pool.connect();
+    try {
+      const base = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), 1));
+      for (let desplazamiento = 0; desplazamiento < 3; desplazamiento += 1) {
+        const fecha = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + desplazamiento, 1));
+        await this.#asegurarParticion(conexion, fecha);
+        await this.#asegurarParticionEvento(conexion, fecha);
+      }
     } finally {
       conexion.release();
     }

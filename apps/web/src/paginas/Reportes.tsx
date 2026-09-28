@@ -131,7 +131,9 @@ export default function Reportes() {
       <p className="rango-efectivo">
         {resumen.data
           ? `Rango efectivo: ${fechaHora(resumen.data.desde)} — ${fechaHora(resumen.data.hasta)}`
-          : 'Consultando el rango seleccionado…'}
+          : resumen.error
+            ? 'Rango no disponible: no se pudo calcular el resumen.'
+            : 'Consultando el rango seleccionado…'}
       </p>
 
       <div className="pestanas" role="tablist">

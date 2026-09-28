@@ -11,7 +11,8 @@ Orden de ejecución estricto. Cada tarea es verificable sin dispositivos
 - Archivos: `database/migrations/002_idempotencia.sql` (nuevo),
   `services/tracking/src/db.js`, `services/tracking/src/movil.js`.
 - Cambios: columnas `boot_id text`, `local_sequence bigint`; índice único
-  parcial `(dispositivo_id, boot_id, local_sequence) WHERE boot_id IS NOT NULL`;
+  parcial `(dispositivo_id, registrado_en, boot_id, local_sequence)`
+  `WHERE boot_id IS NOT NULL` (el `registrado_en` lo exige el particionado);
   `INSERT ... ON CONFLICT DO NOTHING RETURNING id`; devolver `duplicado`.
 - Criterio: insertar dos veces el mismo `(device,boot,seq)` → 1 fila.
 - Verificación: `node24 smoke.mjs` (tracking) + SQL manual.

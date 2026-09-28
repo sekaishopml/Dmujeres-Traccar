@@ -36,16 +36,18 @@ export default function Detalle() {
   const [mapa, setMapa] = useState<TipoMapa | null>(null);
   const marcador = useRef<Marker | null>(null);
 
+  // Sondeo de fondo cada 10 s: un 401 aquí no redirige, solo deja el estado
+  // de error; la comprobación de sesión decide.
   const consultaEquipo = useQuery({
     queryKey: ['dispositivo', identificador],
-    queryFn: () => traerDispositivo(identificador),
+    queryFn: () => traerDispositivo(identificador, { redirigir401: false }),
     enabled: identificador !== '',
     refetchInterval: REFRESCO_MS,
   });
 
   const consultaPosicion = useQuery({
     queryKey: ['dispositivo', identificador, 'posicion'],
-    queryFn: () => traerUltimaPosicion(identificador),
+    queryFn: () => traerUltimaPosicion(identificador, { redirigir401: false }),
     enabled: identificador !== '',
     refetchInterval: REFRESCO_MS,
     // Un 404 aquí no es fallo: la unidad simplemente no tiene fix conocido.

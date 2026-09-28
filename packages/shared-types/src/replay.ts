@@ -10,14 +10,20 @@ export interface Hueco {
   motivo: MotivoHueco;
 }
 
+/** Cómo se obtuvo el tramo reconstruido: ajustado a vía o estimado A→B. */
+export type MetodoReconstruccion = "MATCHED" | "ESTIMATED";
+
 /**
- * Tramo dibujado con el camino estimado por calles: une dos fixes consecutivos
- * que quedaron muy separados (huecos o cadencia lenta). Es una estimación para
- * el dibujo; las posiciones registradas no cambian.
+ * Tramo reconstruido por calles entre dos fixes muy separados. MATCHED trae
+ * fixes intermedios ajustados a vía (/match); ESTIMATED es ruta A→B (/route).
+ * mapaVersion es el SHA-256 del PBF de GraphHopper (null si no se conoce).
+ * Nunca se presenta como GPS registrado: la web lo dibuja punteado/rotulado.
  */
-export interface SegmentoEstimado {
+export interface TramoReconstruido {
   desde: string;
   hasta: string;
+  metodo: MetodoReconstruccion;
+  mapaVersion: string | null;
   trazado: [number, number][];
 }
 
@@ -40,7 +46,7 @@ export interface Replay {
   hasta: string;
   posiciones: Posicion[];
   huecos: Hueco[];
-  estimados: SegmentoEstimado[];
+  reconstruidos: TramoReconstruido[];
   resumen: ReplayResumen;
   generadoEn: string;
 }

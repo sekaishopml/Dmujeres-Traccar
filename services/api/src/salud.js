@@ -1,8 +1,13 @@
-// Salud, disponibilidad y version (rutas publicas, sin sesion).
+// Salud del proceso y salud de la flota (FASE 1).
+// /health, /ready y /version son públicas sin sesión; /salud requiere sesión
+// y devuelve por equipo {datos:[...]} derivado de posiciones/eventos/
+// atributos. Si un campo aún no lo reporta la app, viaja como null (nunca se
+// inventa). El estado nunca es mudo: siempre trae causa en español.
 
 import { consultar } from './db.js';
 import { respuestaJson } from './http.js';
 import { servicioNoDisponible } from './errores.js';
+import { PREDICADO_PERMISO, permisoDe } from './flota.js';
 
 export function salud(ctx) {
   respuestaJson(ctx.res, 200, { estado: 'ok' });
@@ -74,4 +79,217 @@ export async function version(ctx) {
     commit: ctx.entorno.commit,
     construidoEn: ctx.entorno.construidoEn,
   });
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/salud — estado de la flota con causa (requiere sesión)
+// ---------------------------------------------------------------------------
+
+const UMBRAL_OFFLINE_SEGUNDOS = 30 * 60;
+const UMBRAL_DEGRADADO_SEGUNDOS = 5 * 60;
+
+function enteroAtributo(atributos, clave) {
+  const valor = atributos?.[clave];
+  if (typeof valor === 'number' && Number.isFinite(valor)) return Math.trunc(valor);
+  if (typeof valor === 'string' && /^-?\d+$/.test(valor.trim())) {
+    return Number.parseInt(valor.trim(), 10);
+  }
+  return null;
+}
+
+function textoAtributo(atributos, ...claves) {
+  for (const clave of claves) {
+    const valor = atributos?.[clave];
+    if (typeof valor === 'string' && valor.trim() !== '') return valor.trim();
+  }
+  return null;
+}
+
+function booleanoAtributo(atributos, ...claves) {
+  for (const clave of claves) {
+    const valor = atributos?.[clave];
+    if (typeof valor === 'boolean') return valor;
+    if (typeof valor === 'string' && (valor.trim().toLowerCase() === 'true' || valor.trim().toLowerCase() === 'false')) {
+      return valor.trim().toLowerCase() === 'true';
+    }
+  }
+  return null;
+}
+
+// Profundidad del buffer: mobile.pending directo o dentro del latido JSON
+// (lastDiagnostics.report.buffer.pending). Null si la app aún no lo reporta.
+function bufferDepthDe(atributos) {
+  const directo = enteroAtributo(atributos, 'mobile.pending')
+    ?? enteroAtributo(atributos, 'mobile.bufferPending')
+    ?? enteroAtributo(atributos, 'mobile.bufferDepth');
+  if (directo !== null) return directo;
+  const crudo = atributos?.lastDiagnostics;
+  if (typeof crudo === 'string' && crudo !== '') {
+    try {
+      const latido = JSON.parse(crudo);
+      const pendiente = latido?.report?.buffer?.pending;
+      if (typeof pendiente === 'number' && Number.isFinite(pendiente)) return Math.trunc(pendiente);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function minutosLegibles(segundos) {
+  if (segundos < 60) return `${segundos} s`;
+  const minutos = Math.round(segundos / 60);
+  if (minutos < 60) return `${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  return `${horas} h ${minutos % 60} min`;
+}
+
+function aSaludDispositivo(fila, ahoraMs) {
+  const atributos = fila.atributos ?? {};
+  const registradoEn = fila.registrado_en instanceof Date ? fila.registrado_en.getTime() : null;
+  const recibidoEn = fila.recibido_en instanceof Date ? fila.recibido_en.getTime() : null;
+  const lastFixAgeS = registradoEn === null ? null : Math.max(0, Math.floor((ahoraMs - registradoEn) / 1000));
+  const uploadLagS = registradoEn === null || recibidoEn === null
+    ? null
+    : Math.max(0, Math.floor((recibidoEn - registradoEn) / 1000));
+  const previoMs = fila.prev_registrado_en instanceof Date ? fila.prev_registrado_en.getTime() : null;
+  const captureGapS = registradoEn === null || previoMs === null
+    ? null
+    : Math.max(0, Math.floor((registradoEn - previoMs) / 1000));
+  const bufferDepth = bufferDepthDe(atributos);
+  const bateriaPct = fila.bat_pct !== null && fila.bat_pct !== undefined
+    ? Number(fila.bat_pct)
+    : (fila.pa_bateria !== null && fila.pa_bateria !== undefined ? Number(fila.pa_bateria) : null);
+  const bateriaNum = Number.isFinite(bateriaPct) ? Math.trunc(bateriaPct) : null;
+  const cargando = fila.bat_cargando === true || fila.bat_cargando === false
+    ? fila.bat_cargando
+    : booleanoAtributo(atributos, 'mobile.charging');
+  const gps = textoAtributo(atributos, 'mobile.gps')
+    ?? (booleanoAtributo(atributos, 'mobile.gpsEnabled') === null
+      ? null
+      : (booleanoAtributo(atributos, 'mobile.gpsEnabled') ? 'on' : 'off'));
+  const permFondo = booleanoAtributo(atributos, 'mobile.permBackground');
+  const permFina = booleanoAtributo(atributos, 'mobile.permFine');
+  const permisos = permFondo === null && permFina === null
+    ? null
+    : { fondo: permFondo, fina: permFina };
+  const bateriaExenta = booleanoAtributo(atributos, 'mobile.batteryExempt');
+  const fgs = textoAtributo(atributos, 'mobile.fgs', 'mobile.fgsState', 'mobile.service');
+  const jornada = fila.jornada_estado === 'abierta' ? 'abierta'
+    : fila.jornada_estado === null || fila.jornada_estado === undefined ? 'ninguna'
+    : 'cerrada';
+  const red = textoAtributo(atributos, 'mobile.network');
+  const bootId = textoAtributo(atributos, 'mobile.bootId', 'mobile.boot_id');
+  const recoveryCount = enteroAtributo(atributos, 'mobile.recoveryCount')
+    ?? enteroAtributo(atributos, 'mobile.recovery_count');
+  const appVersion = textoAtributo(atributos, 'mobile.appVersion', 'mobile.app_version');
+  const android = textoAtributo(atributos, 'mobile.android', 'mobile.androidVersion', 'mobile.osVersion');
+  const fabricante = textoAtributo(atributos, 'mobile.vendor', 'mobile.manufacturer', 'mobile.fabricante');
+  const modelo = textoAtributo(atributos, 'mobile.model', 'mobile.modelo');
+
+  // Derivación honesta: primero lo mal configurado, luego lo sin señal, luego
+  // lo que se está recuperando, luego lo degradado; solo al final HEALTHY.
+  let estado = 'HEALTHY';
+  let causa = 'Operativo.';
+  if (permFina === false) {
+    estado = 'MISCONFIGURED';
+    causa = 'Sin permiso de ubicación precisa.';
+  } else if (permFondo === false) {
+    estado = 'MISCONFIGURED';
+    causa = 'Sin permiso de ubicación en segundo plano.';
+  } else if (gps === 'off') {
+    estado = 'MISCONFIGURED';
+    causa = 'GPS apagado en el equipo.';
+  } else if (lastFixAgeS === null) {
+    estado = 'OFFLINE';
+    causa = 'Sin fixes registrados.';
+  } else if (lastFixAgeS > UMBRAL_OFFLINE_SEGUNDOS) {
+    estado = 'OFFLINE';
+    causa = `Último GPS hace ${minutosLegibles(lastFixAgeS)}.`;
+  } else if (bufferDepth !== null && bufferDepth > 0 && lastFixAgeS < UMBRAL_DEGRADADO_SEGUNDOS) {
+    estado = 'RECOVERING';
+    causa = `Recuperando continuidad (${bufferDepth} pendientes).`;
+  } else if (lastFixAgeS > UMBRAL_DEGRADADO_SEGUNDOS) {
+    estado = 'DEGRADED';
+    causa = `Último GPS hace ${minutosLegibles(lastFixAgeS)}.`;
+  } else if (uploadLagS !== null && uploadLagS > 300) {
+    estado = 'DEGRADED';
+    causa = `Subida con retraso de ${minutosLegibles(uploadLagS)}.`;
+  } else if (captureGapS !== null && captureGapS > 600) {
+    estado = 'DEGRADED';
+    causa = `Hueco de captura de ${minutosLegibles(captureGapS)}.`;
+  } else if (bateriaNum !== null && bateriaNum < 15 && cargando !== true) {
+    estado = 'DEGRADED';
+    causa = `Batería baja (${bateriaNum} %).`;
+  } else if (fila.precision_m !== null && Number(fila.precision_m) > 80) {
+    estado = 'DEGRADED';
+    causa = 'Señal GPS débil.';
+  }
+
+  return {
+    dispositivoId: Number(fila.id),
+    estado,
+    causa,
+    lastFixAgeS,
+    uploadLagS,
+    captureGapS,
+    bufferDepth,
+    bateriaPct: bateriaNum,
+    cargando,
+    gps,
+    permisos,
+    bateriaExenta,
+    fgs,
+    jornada,
+    red,
+    bootId,
+    recoveryCount,
+    appVersion,
+    android,
+    fabricante,
+    modelo,
+  };
+}
+
+export async function listarSalud(ctx) {
+  const { rows } = await consultar(
+    ctx.pool,
+    `SELECT d.id, d.atributos,
+            pa.registrado_en, pa.recibido_en, pa.bateria_pct AS pa_bateria,
+            pa.precision_m,
+            bat.porcentaje AS bat_pct, bat.cargando AS bat_cargando,
+            j.estado AS jornada_estado,
+            prev.registrado_en AS prev_registrado_en
+       FROM tracking.dmt_dispositivo d
+       LEFT JOIN tracking.dmt_posicion_actual pa ON pa.dispositivo_id = d.id
+       LEFT JOIN LATERAL (
+         SELECT b.porcentaje, b.cargando
+           FROM telemetry.dmt_bateria b
+          WHERE b.dispositivo_id = d.id
+          ORDER BY b.registrado_en DESC
+          LIMIT 1
+       ) bat ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT e.estado
+           FROM operations.dmt_jornada e
+          WHERE e.dispositivo_id = d.id
+          ORDER BY e.inicio_en DESC, e.id DESC
+          LIMIT 1
+       ) j ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT p.registrado_en
+           FROM tracking.dmt_posicion p
+          WHERE p.dispositivo_id = d.id
+            AND pa.registrado_en IS NOT NULL
+            AND p.registrado_en < pa.registrado_en
+          ORDER BY p.registrado_en DESC
+          LIMIT 1
+       ) prev ON TRUE
+      WHERE d.habilitado AND ${PREDICADO_PERMISO}
+      ORDER BY d.id`,
+    [permisoDe(ctx.usuario)],
+    { signal: ctx.signal },
+  );
+  const ahoraMs = Date.now();
+  respuestaJson(ctx.res, 200, { datos: rows.map((fila) => aSaludDispositivo(fila, ahoraMs)) });
 }

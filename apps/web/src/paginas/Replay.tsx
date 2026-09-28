@@ -7,7 +7,7 @@ import Icono from '../componentes/Icono';
 import MapaRaster from './operacion/MapaRaster';
 import ReproductorReplay, { LineaTiempoReplay, ListaParadas, PanelPuntoSeleccionado } from './operacion/ReproductorReplay';
 import FiltroReplay from './operacion/FiltroReplay';
-import { traerFlota, traerJornadas, traerParadas, traerReplay } from './operacion/datos';
+import { traerFlota, traerJornadas, traerParadas, traerReplay, CLAVE_FLOTA } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
 import {
   aColeccion,
@@ -17,10 +17,11 @@ import {
   horaCorta,
   indiceCercaDeInstante,
   milisegundos,
+  normalizarReconstruidos,
   puntosDeRecorrido,
   segmentosDeRecorrido,
 } from './operacion/replay';
-import type { Parada } from './operacion/replay';
+import type { Parada, TramoReconstruido } from './operacion/replay';
 import { fechaHoyLocal, finDeDia, inicioDeDia } from './operacion/rango';
 import './operacion.css';
 
@@ -32,6 +33,10 @@ function nombreArchivo(id: string): string {
 }
 
 const LADO_CHEVRON = 24;
+// Chevron del tramo ajustado a vía: el mismo trazo que los reales pero en el
+// azul del método, para que no se lea como banda de velocidad.
+const COLOR_MATCHED = '#4a6fa5';
+const ID_CHEVRON_MATCHED = 'chev-matched';
 // Paleta de velocidad suavizada (teal, verde, ámbar, naranja y rojo apagados).
 // El orden coincide con la banda 0..4 que calcula replay.ts a partir de la
 // velocidad y con los ids de imagen que referencia la capa symbol. Los tonos
@@ -95,7 +100,7 @@ export default function Replay() {
   const [mapa, setMapa] = useState<TipoMapa | null>(null);
   const [panelRecogido, setPanelRecogido] = useState(false);
 
-  const flota = useQuery({ queryKey: ['flota'], queryFn: traerFlota });
+  const flota = useQuery({ queryKey: CLAVE_FLOTA, queryFn: () => traerFlota() });
   const equipos = flota.data?.datos ?? [];
   const seleccionado = dispositivoId || equipos[0]?.idPublico || '';
   const rangoValido = desde !== '' && hasta !== '' && desde <= hasta;
@@ -136,18 +141,23 @@ export default function Replay() {
   }, [replay.data]);
 
   const huecos = useMemo(() => replay.data?.huecos ?? [], [replay.data]);
-  // Tramos resueltos por calles en el servidor (huecos y fixes muy separados).
-  const estimados = useMemo(() => replay.data?.estimados ?? [], [replay.data]);
+  // Tramos reconstruidos por el servidor (ADR-007): el contrato vigente trae
+  // `reconstruidos` con método; los `estimados` heredados se normalizan a
+  // ESTIMATED en replay.ts como compatibilidad temporal.
+  const reconstruidos = useMemo<TramoReconstruido[]>(
+    () => normalizarReconstruidos(replay.data),
+    [replay.data],
+  );
   const segmentos = useMemo(
-    () => segmentosDeRecorrido(posiciones, huecos, estimados),
-    [posiciones, huecos, estimados],
+    () => segmentosDeRecorrido(posiciones, huecos, reconstruidos),
+    [posiciones, huecos, reconstruidos],
   );
   const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
   // Los puntos alimentan solo la capa de chevrones; la selección del mapa ya
   // no depende de ellos, se resuelve por cercanía sobre la línea de acierto.
   const puntos = useMemo(
-    () => puntosDeRecorrido(posiciones, huecos, estimados),
-    [posiciones, huecos, estimados],
+    () => puntosDeRecorrido(posiciones, huecos, reconstruidos),
+    [posiciones, huecos, reconstruidos],
   );
 
   const paradasServidor = useMemo<Parada[] | null>(() => {
@@ -200,10 +210,11 @@ export default function Replay() {
     if (!mapa.getSource('replay-flechas')) {
       mapa.addSource('replay-flechas', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
-    // Dos fuentes y cinco capas: el contorno navy que separa la traza del
-    // mapa, la ruta coloreada por banda de velocidad, los tramos sin señal
-    // punteados, los chevrones sobre los fixes y la capa de acierto de línea.
-    // Repintar reemplaza los datos de las fuentes, nunca recrea capas.
+    // Cuatro capas de trazo sobre el contorno: la ruta real coloreada por
+    // banda de velocidad, el tramo ajustado a vía (línea continua fina azul),
+    // el tramo estimado (punteado gris sobre calles) y el hueco sin
+    // reconstruir (recta punteada gris). Repintar reemplaza los datos de las
+    // fuentes, nunca recrea capas.
     if (!mapa.getLayer('replay-linea-hit')) {
       mapa.addLayer({
         id: 'replay-linea-hit',
@@ -238,9 +249,9 @@ export default function Replay() {
         id: 'replay-linea',
         type: 'line',
         source: 'replay-recorrido',
-        // La ruta real y los tramos estimados por calles comparten capa: el
-        // tramo estimado llega con la banda de crucero y se pinta como uno más.
-        filter: ['in', ['get', 'tipo'], ['literal', ['ruta', 'estimado']]],
+        // Solo GPS registrado: los tramos reconstruidos tienen sus capas
+        // propias (ADR-007) y jamás se pintan como ruta normal.
+        filter: ['==', ['get', 'tipo'], 'ruta'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           // Misma paleta que los chevrones. El navy queda como respaldo si un
@@ -260,6 +271,38 @@ export default function Replay() {
         },
       });
     }
+    // MATCHED: hueco con observaciones ajustado a vía. Línea continua fina en
+    // el azul del método, sin coloreado por velocidad.
+    if (!mapa.getLayer('replay-matched')) {
+      mapa.addLayer({
+        id: 'replay-matched',
+        type: 'line',
+        source: 'replay-recorrido',
+        filter: ['==', ['get', 'tipo'], 'matched'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': COLOR_MATCHED,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2, 16, 3.5],
+        },
+      });
+    }
+    // ESTIMATED: hueco sin observaciones, ruta A→B. Punteado gris con la
+    // etiqueta "tramo estimado" de la leyenda; el trazo es más grueso y con
+    // otro guion que la recta del hueco sin reconstruir.
+    if (!mapa.getLayer('replay-estimated')) {
+      mapa.addLayer({
+        id: 'replay-estimated',
+        type: 'line',
+        source: 'replay-recorrido',
+        filter: ['==', ['get', 'tipo'], 'estimated'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#6b7684',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 16, 4],
+          'line-dasharray': [2, 2],
+        },
+      });
+    }
     if (!mapa.getLayer('replay-hueco')) {
       mapa.addLayer({
         id: 'replay-hueco',
@@ -276,7 +319,7 @@ export default function Replay() {
         },
       });
     }
-    // Las cinco imágenes deben existir antes de crear la capa symbol; si el
+    // Las seis imágenes deben existir antes de crear la capa symbol; si el
     // canvas falla para alguna, la capa no se agrega y no queda referenciando
     // una imagen ausente.
     for (let banda = 0; banda < IDS_CHEVRON.length; banda += 1) {
@@ -285,7 +328,11 @@ export default function Replay() {
       const imagen = imagenChevron(COLORES_BANDA[banda]);
       if (imagen) mapa.addImage(id, imagen);
     }
-    const imagenesListas = IDS_CHEVRON.every((id) => mapa.hasImage(id));
+    if (!mapa.hasImage(ID_CHEVRON_MATCHED)) {
+      const imagen = imagenChevron(COLOR_MATCHED);
+      if (imagen) mapa.addImage(ID_CHEVRON_MATCHED, imagen);
+    }
+    const imagenesListas = IDS_CHEVRON.every((id) => mapa.hasImage(id)) && mapa.hasImage(ID_CHEVRON_MATCHED);
     if (imagenesListas && !mapa.getLayer('replay-flechas')) {
       mapa.addLayer({
         id: 'replay-flechas',
@@ -297,7 +344,14 @@ export default function Replay() {
           // fija esta expresión. allow-overlap los deja pegados a la ruta,
           // como en Traccar, aunque se solapen en curvas cerradas. La rotación
           // es en coordenadas del mapa para que el icono apunte al rumbo real.
-          'icon-image': ['match', ['get', 'banda'], 0, 'chev-0', 1, 'chev-1', 2, 'chev-2', 3, 'chev-3', 'chev-4'],
+          // Los puntos ajustados a vía usan su imagen propia, no la banda.
+          'icon-image': [
+            'match',
+            ['get', 'origen'],
+            'matched',
+            ID_CHEVRON_MATCHED,
+            ['match', ['get', 'banda'], 0, 'chev-0', 1, 'chev-1', 2, 'chev-2', 3, 'chev-3', 'chev-4'],
+          ],
           'icon-rotate': ['get', 'bearing'],
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
@@ -447,13 +501,19 @@ export default function Replay() {
   }
 
   return (
-    <ReproductorReplay mapa={mapa} posiciones={posiciones} huecos={huecos} dispositivo={replay.data?.dispositivo ?? null}>
+    <ReproductorReplay
+      mapa={mapa}
+      posiciones={posiciones}
+      huecos={huecos}
+      reconstruidos={reconstruidos}
+      dispositivo={replay.data?.dispositivo ?? null}
+    >
       <section className="replay-pantalla">
         {/* El mapa ocupa la pantalla completa; panel, leyenda y franja flotan
             encima con las clases que definen global.css y operacion.css. */}
         <MapaRaster clase="mapa" alListo={setMapa} />
-        {/* Leyenda del estado del marcador actual y del tramo sin datos,
-            junto al mapa y sin adornos. */}
+        {/* Leyenda: estado del marcador actual y las tres capas del recorrido
+            (ADR-007), más el tramo sin datos que quedó sin reconstruir. */}
         <div className="replay-leyenda" aria-hidden="true">
           <span>
             <span className="muestra movimiento" /> En movimiento
@@ -463,6 +523,15 @@ export default function Replay() {
           </span>
           <span>
             <span className="muestra sin-senal" /> Sin señal
+          </span>
+          <span>
+            <span className="muestra real" /> Recorrido GPS
+          </span>
+          <span>
+            <span className="muestra ajustado" /> Ajustado a vía
+          </span>
+          <span>
+            <span className="muestra estimado" /> Tramo estimado
           </span>
           <span>
             <span className="muestra sin-datos" /> Tramo sin datos

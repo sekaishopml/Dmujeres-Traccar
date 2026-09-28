@@ -45,14 +45,16 @@ export default function EnVivo() {
     posiciones: new Map(),
   });
 
+  // Sondeo de fondo cada 5 s: un 401 aquí no redirige (redirigir401: false),
+  // solo deja el estado de error; la comprobación de sesión decide.
   const flota = useQuery({
     queryKey: CLAVE_FLOTA,
-    queryFn: traerFlota,
+    queryFn: () => traerFlota({ redirigir401: false }),
     refetchInterval: () => (document.hidden ? false : REFRESCO_MS),
   });
   const vivas = useQuery({
     queryKey: ['posiciones-vivas'],
-    queryFn: traerPosicionesVivas,
+    queryFn: () => traerPosicionesVivas({ redirigir401: false }),
     refetchInterval: () => (document.hidden ? false : REFRESCO_MS),
   });
 

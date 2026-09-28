@@ -2,9 +2,10 @@
 // controles de equipo/paginación, chips y estados de carga/error. Centralizar
 // esto evita que cada página invente sus propios mensajes o formatos.
 import { useQuery } from '@tanstack/react-query';
-import type { Dispositivo, EstadoDispositivo, Pagina, Usuario } from '@contratos';
-import { ApiError, api, consulta } from '../../api/cliente';
+import type { Dispositivo, EstadoDispositivo, Usuario } from '@contratos';
+import { ApiError } from '../../api/cliente';
 import { GUION, bateria as formatearBateria } from '../../util/formato';
+import { CLAVE_FLOTA, traerFlota } from '../operacion/datos';
 
 // --- Errores ---
 
@@ -30,11 +31,13 @@ export function MensajeError({ error }: { error: unknown }) {
 // --- Flota ---
 
 // La flota se pide una sola vez con el tamaño máximo del contrato (200) y
-// react-query comparte la caché entre Batería, Reportes y Configuración.
+// react-query comparte la caché entre todas las páginas con la misma clave
+// (CLAVE_FLOTA): Batería, Reportes y Configuración no repiten la petición que
+// ya hicieron Inicio, En vivo, Historial o Replay.
 export function useEquipos() {
   return useQuery({
-    queryKey: ['flota', 'todos'],
-    queryFn: () => api.get<Pagina<Dispositivo>>(`/api/v1/fleet${consulta({ tamano: 200 })}`),
+    queryKey: CLAVE_FLOTA,
+    queryFn: () => traerFlota(),
   });
 }
 

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { GUION, fecha } from '../util/formato';
 import FiltroReplay from './operacion/FiltroReplay';
-import { traerDireccion, traerFlota, traerJornadasFlota, traerParadas, traerReplay } from './operacion/datos';
+import { traerDireccion, traerFlota, traerJornadasFlota, traerParadas, traerReplay, CLAVE_FLOTA } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
 import { fechaHoyLocal, finDeDia, inicioDeDia } from './operacion/rango';
 import { milisegundos } from './operacion/replay';
@@ -238,7 +238,7 @@ export default function Historial() {
   const [hasta, setHasta] = useState(parametros.get('hasta') ?? fechaHoyLocal());
   const [seleccion, setSeleccion] = useState<string | null>(null);
 
-  const flota = useQuery({ queryKey: ['flota'], queryFn: traerFlota });
+  const flota = useQuery({ queryKey: CLAVE_FLOTA, queryFn: () => traerFlota() });
   const equipos = flota.data?.datos ?? [];
 
   const rangoValido = desde !== '' && hasta !== '' && desde <= hasta;

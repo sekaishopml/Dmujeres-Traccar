@@ -63,21 +63,23 @@ function FilaDependencia({
 }
 
 export default function Sistema() {
+  // Sondeo de fondo cada 15 s: un 401 aquí no redirige, solo deja el estado
+  // de error; la comprobación de sesión decide.
   const salud = useQuery({
     queryKey: ['sistema', 'salud'],
-    queryFn: () => api.get<Salud>('/api/v1/health'),
+    queryFn: () => api.get<Salud>('/api/v1/health', { redirigir401: false }),
     refetchInterval: INTERVALO_MS,
   });
 
   const listo = useQuery({
     queryKey: ['sistema', 'listo'],
-    queryFn: () => api.get<Disponibilidad>('/api/v1/ready'),
+    queryFn: () => api.get<Disponibilidad>('/api/v1/ready', { redirigir401: false }),
     refetchInterval: INTERVALO_MS,
   });
 
   const version = useQuery({
     queryKey: ['sistema', 'version'],
-    queryFn: () => api.get<Version>('/api/v1/version'),
+    queryFn: () => api.get<Version>('/api/v1/version', { redirigir401: false }),
     refetchInterval: INTERVALO_MS,
   });
 

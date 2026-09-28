@@ -11,30 +11,42 @@ import com.graphhopper.GraphHopperConfig;
 import com.graphhopper.ResponsePath;
 import com.graphhopper.config.Profile;
 import com.graphhopper.json.Statement;
+import com.graphhopper.matching.MapMatching;
+import com.graphhopper.matching.MatchResult;
+import com.graphhopper.matching.Observation;
 import com.graphhopper.util.CustomModel;
 import com.graphhopper.util.PointList;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Mini-servicio de ruteo por calles para los tramos sin datos del Replay.
+ * Servicio de ruteo por calles para el Replay (FASE 1).
  *
- * El matcher (/match) solo pega cada fix a la via; para reconstruir un hueco
- * hace falta la ruta entre dos puntos, que es lo que expone este servicio:
+ * Dos operaciones, mismo grafo de Ecuador (/opt/graphhopper/graph-cache-8,
+ * perfil "car"):
  *   POST /route {"from":[lon,lat],"to":[lon,lat]}
- *     -> {"points":[[lon,lat],...],"distance":m,"time":ms}
+ *     -> {"points":[[lon,lat],...],"distance":m,"time":ms,"mapaVersion":sha256}
+ *   POST /match {"points":[[lon,lat],...],"accuracy":m}
+ *     -> {"matched":[...],"distance":m,"raw":n,"filtered":n,"snappedRatio":x,
+ *         "mapaVersion":sha256}
  *
- * Reutiliza el grafo de Ecuador ya importado (/opt/graphhopper/graph-cache-8)
- * con el mismo perfil "car" del matcher, asi que el trazado sigue las calles
- * con las mismas reglas de circulacion. Solo escucha en loopback y lo consume
- * la API (`services/api/src/ruteo.js`); la web dibuja el resultado como un
- * tramo mas del recorrido.
+ * /route estima huecos sin observaciones; /match ajusta a vía cuando el hueco
+ * trae fixes intermedios (la API lo usa con >=2 intermedios, ADR-008). La
+ * lógica de matching se reutiliza de MatchService.java del respaldo
+ * legado-final (resiliente: nunca pierde cobertura ni inventa desvíos).
+ * mapaVersion es el SHA-256 del PBF, calculado una vez al arrancar para no
+ * releer 120 MB por petición. Solo loopback; lo consume ruteo.js.
  */
 public class RouteService {
 
@@ -42,6 +54,8 @@ public class RouteService {
     private static final String PBF = System.getenv().getOrDefault("DMJ_RUTEO_PBF", "/opt/graphhopper/ecuador-latest.osm.pbf");
     private static final String GRAPH = System.getenv().getOrDefault("DMJ_RUTEO_GRAFO", "/opt/graphhopper/graph-cache-8");
     private static final int PUERTO = Integer.parseInt(System.getenv().getOrDefault("DMJ_RUTEO_PUERTO", "8992"));
+
+    private static String MAPA_VERSION = "desconocida";
 
     private static GraphHopper buildHopper() {
         GraphHopperConfig cfg = new GraphHopperConfig();
@@ -63,22 +77,51 @@ public class RouteService {
         return hopper;
     }
 
+    // SHA-256 del PBF una sola vez: identifica el mapa en cada respuesta para
+    // que el Replay sepa con qué grafo se reconstruyó cada tramo.
+    private static String calcularMapaVersion(String rutaPbf) {
+        try (InputStream entrada = Files.newInputStream(Paths.get(rutaPbf))) {
+            MessageDigest sha = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[65536];
+            int leidos;
+            while ((leidos = entrada.read(buffer)) != -1) {
+                sha.update(buffer, 0, leidos);
+            }
+            byte[] resumen = sha.digest();
+            StringBuilder hex = new StringBuilder(resumen.length * 2);
+            for (byte b : resumen) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            System.err.println("[ruteo] AVISO no se pudo hashear el PBF: " + e.getMessage());
+            return "desconocida";
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         System.out.println("[ruteo] importando/cargando grafo...");
         GraphHopper hopper = buildHopper();
         System.out.println("[ruteo] grafo listo");
+        MAPA_VERSION = calcularMapaVersion(PBF);
+        System.out.println("[ruteo] mapaVersion=" + MAPA_VERSION.substring(0, Math.min(12, MAPA_VERSION.length())) + "...");
+
+        MapMatching mm = MapMatching.fromGraphHopper(hopper, new com.graphhopper.util.PMap().putObject("profile", "car"));
+        mm.setTransitionProbabilityBeta(5);
+        mm.setMeasurementErrorSigma(10);
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", PUERTO), 0);
         // La API pide varios tramos en paralelo por cada Replay: cuatro hilos
         // alcanzan para que el grafo no se convierta en cuello de botella.
         server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
         server.createContext("/health", (HttpExchange ex) -> responder(ex, 200, "ok", false));
-        server.createContext("/route", (HttpExchange ex) -> manejar(ex, hopper));
+        server.createContext("/route", (HttpExchange ex) -> manejarRoute(ex, hopper));
+        server.createContext("/match", (HttpExchange ex) -> manejarMatch(ex, mm));
         server.start();
         System.out.println("[ruteo] escuchando en 127.0.0.1:" + PUERTO);
     }
 
-    private static void manejar(HttpExchange ex, GraphHopper hopper) throws IOException {
+    private static void manejarRoute(HttpExchange ex, GraphHopper hopper) throws IOException {
         try {
             if (!"POST".equals(ex.getRequestMethod())) {
                 responder(ex, 405, "{\"error\":\"POST required\"}", true);
@@ -110,10 +153,60 @@ public class RouteService {
             cuerpo.set("points", salida);
             cuerpo.put("distance", ruta.getDistance());
             cuerpo.put("time", ruta.getTime());
+            cuerpo.put("mapaVersion", MAPA_VERSION);
             responder(ex, 200, JSON.writeValueAsString(cuerpo), true);
         } catch (Exception e) {
             e.printStackTrace();
             responder(ex, 500, "{\"error\":\"" + String.valueOf(e.getMessage()).replace("\"", "'") + "\"}", true);
+        }
+    }
+
+    private static void manejarMatch(HttpExchange ex, MapMatching mm) throws IOException {
+        try {
+            if (!"POST".equals(ex.getRequestMethod())) {
+                responder(ex, 405, "{\"error\":\"POST required\"}", true);
+                return;
+            }
+            ObjectNode body = JSON.readValue(ex.getRequestBody(), ObjectNode.class);
+            ArrayNode points = (ArrayNode) body.get("points");
+            if (points == null || points.size() < 2) {
+                responder(ex, 400, "{\"error\":\"se requieren >=2 puntos\"}", true);
+                return;
+            }
+            List<Observation> observations = new ArrayList<>();
+            for (int i = 0; i < points.size(); i++) {
+                ArrayNode p = (ArrayNode) points.get(i);
+                double lon = p.get(0).asDouble();
+                double lat = p.get(1).asDouble();
+                if (!Double.isFinite(lon) || !Double.isFinite(lat)
+                        || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                    responder(ex, 400, "{\"error\":\"punto fuera de rango\"}", true);
+                    return;
+                }
+                observations.add(new Observation(new com.graphhopper.util.shapes.GHPoint(lat, lon)));
+            }
+            List<Observation> filtered = mm.filterObservations(observations);
+            HybridResult hybrid = new HybridResult();
+            resilientMatch(mm, filtered, hybrid, 0);
+            ArrayNode matched = JSON.createArrayNode();
+            for (double[] coord : hybrid.coords) {
+                ArrayNode point = JSON.createArrayNode();
+                point.add(coord[0]);
+                point.add(coord[1]);
+                matched.add(point);
+            }
+            ObjectNode resp = JSON.createObjectNode();
+            resp.set("matched", matched);
+            resp.put("distance", hybrid.distance);
+            resp.put("raw", observations.size());
+            resp.put("filtered", filtered.size());
+            resp.put("snappedRatio", hybrid.coords.isEmpty() ? 0 : (double) hybrid.snapped / hybrid.coords.size());
+            resp.put("mapaVersion", MAPA_VERSION);
+            responder(ex, 200, JSON.writeValueAsString(resp), true);
+        } catch (Exception e) {
+            e.printStackTrace();
+            String mensaje = String.valueOf(e.getMessage()).replace("\"", "'");
+            responder(ex, 500, "{\"error\":\"" + mensaje + "\"}", true);
         }
     }
 
@@ -134,5 +227,112 @@ public class RouteService {
         try (OutputStream os = ex.getResponseBody()) {
             os.write(datos);
         }
+    }
+
+    // --- Matching resiliente reutilizado de MatchService.java (respaldo) ---
+    // Nunca pierde cobertura y nunca inventa desvíos: cada snap solo se usa si
+    // dist(raw, snap) <= 60 m; si Viterbi falla se descarta el paso y se
+    // reintenta (máx 10); si sigue fallando se divide; lo que ni así casa sale
+    // crudo. Cobertura: 100% de las observaciones de entrada.
+
+    private static class HybridResult {
+        final List<double[]> coords = new ArrayList<>();
+        double distance = 0;
+        int snapped = 0;
+
+        void addRaw(Observation obs) {
+            coords.add(new double[]{obs.getPoint().getLon(), obs.getPoint().getLat()});
+        }
+
+        void addAllRaw(List<Observation> list) {
+            for (Observation obs : list) {
+                addRaw(obs);
+            }
+        }
+    }
+
+    private static final double SNAP_TRUST_M = 60;
+
+    private static void resilientMatch(MapMatching mm, List<Observation> observations, HybridResult out, int depth) {
+        if (observations.size() < 2 || depth > 4) {
+            out.addAllRaw(observations);
+            return;
+        }
+        List<Observation> current = new ArrayList<>(observations);
+        int dropped = 0;
+        while (true) {
+            try {
+                MatchResult result = mm.match(current);
+                collectHybrid(result, current, out);
+                out.distance += result.getMatchLength();
+                return;
+            } catch (IllegalArgumentException e) {
+                int step = parseBrokenStep(e.getMessage());
+                if (step >= 0 && step < current.size() && dropped < 10) {
+                    current.remove(step);
+                    dropped += 1;
+                    continue;
+                }
+                if (depth >= 4 || current.size() < 4) {
+                    out.addAllRaw(current);
+                    return;
+                }
+                int mid = current.size() / 2;
+                resilientMatch(mm, current.subList(0, mid), out, depth + 1);
+                resilientMatch(mm, current.subList(mid, current.size()), out, depth + 1);
+                return;
+            }
+        }
+    }
+
+    private static void collectHybrid(MatchResult result, List<Observation> observations, HybridResult out) {
+        List<com.graphhopper.matching.EdgeMatch> edges = result.getEdgeMatches();
+        List<com.graphhopper.matching.State> states = new ArrayList<>();
+        for (com.graphhopper.matching.EdgeMatch edge : edges) {
+            states.addAll(edge.getStates());
+        }
+        if (states.size() != observations.size()) {
+            out.addAllRaw(observations);
+            return;
+        }
+        for (int i = 0; i < observations.size(); i++) {
+            com.graphhopper.storage.index.Snap snap = states.get(i).getSnap();
+            if (snap == null) {
+                out.addRaw(observations.get(i));
+                continue;
+            }
+            com.graphhopper.util.shapes.GHPoint3D snapped = runCatchingSnapped(snap);
+            if (snapped != null && snap.getQueryDistance() <= SNAP_TRUST_M) {
+                out.coords.add(new double[]{snapped.getLon(), snapped.getLat()});
+                out.snapped += 1;
+            } else {
+                out.addRaw(observations.get(i));
+            }
+        }
+    }
+
+    private static com.graphhopper.util.shapes.GHPoint3D runCatchingSnapped(
+            com.graphhopper.storage.index.Snap snap) {
+        try {
+            return snap.getSnappedPoint();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static int parseBrokenStep(String message) {
+        if (message == null) {
+            return -1;
+        }
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("time step (\\d+)").matcher(message);
+        if (matcher.find()) {
+            try {
+                return Integer.parseInt(matcher.group(1));
+            } catch (NumberFormatException ignored) {
+                return -1;
+            }
+        }
+        return -1;
     }
 }

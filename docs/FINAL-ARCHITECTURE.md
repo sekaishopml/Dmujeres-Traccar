@@ -189,8 +189,10 @@ Identidad estable: `(device_id, boot_id, local_sequence)`.
 - Nunca se usa el timestamp como identidad.
 
 Servidor: `tracking.dmt_posicion` gana `boot_id text`, `local_sequence bigint`
-y `UNIQUE (dispositivo_id, boot_id, local_sequence)` (índice único; partición
-por herencia lo soporta). Ingesta con `ON CONFLICT DO NOTHING RETURNING` →
+y `UNIQUE (dispositivo_id, registrado_en, boot_id, local_sequence)` parcial
+(`WHERE boot_id IS NOT NULL`; el `registrado_en` lo exige el particionado y
+no debilita el dedupe porque la retransmisión trae el mismo captured_at).
+Ingesta con `ON CONFLICT DO NOTHING RETURNING` →
 clasifica `accepted | duplicate`. Reintentos del mismo evento no duplican.
 Eventos atrasados se aceptan; `captured_at` (`fijado_en/registrado_en`) y
 `received_at` (`recibido_en`) se conservan separados (ya es así).

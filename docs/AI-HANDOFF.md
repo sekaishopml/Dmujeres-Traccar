@@ -4,13 +4,25 @@ Lee primero `docs/FINAL-ARCHITECTURE.md` (arquitectura cerrada) y
 `docs/audit/BUG-REGISTER.md`. Este documento es el plan de trabajo práctico.
 No reabras decisiones: están en `docs/ADR/` y son vinculantes.
 
-Repo: `/home/DMujeres-Tracking` (rama `plataforma`). El código Android NO está
-en el árbol de trabajo: está en el historial git (`origin/main:fallback/...`).
-Para trabajar la app: `git worktree add --detach /tmp/dmj-app origin/main` y
-trabaja ahí; al terminar, commit en una rama nueva desde `plataforma` (no
-rompas `main`).
+Repo: `/home/DMujeres-Tracking` (rama `plataforma`). El código Android ya está
+integrado en el árbol (`fallback/`); no hace falta worktree.
 
----
+## 0. Estado de implementación (2026-09-28, verificado)
+
+Completado y desplegado en producción: FASE 1 servidor (migración 002
+aplicada, idempotencia, guardas de viva, validación de fechas, lote
+`/api/mobile/v1/positions`, `GET /api/mobile/v1/journey`, particiones mes+2,
+`/match` en routing con `mapaVersion`); app completa (máquina de movimiento,
+store v5, cola con backoff, recovery con alarma, JourneyManager,
+diagnóstico); replay REAL/MATCHED/ESTIMATED con `reconstruidos`
+(`estimados` eliminado del contrato); salud `/api/v1/salud` + panel;
+credenciales de prueba fuera del repo; versión 284/2.1.74 en código (APK sin
+firmar: el keystore no está en el repo). E2E 26/26 PASS. Detalle técnico en
+`docs/IMPLEMENTATION-COMPLETE.md`.
+
+Pendiente (fase física): los 16 tests con dispositivos reales, matriz
+Android/OEM, build release firmado, publicación OTA 2.1.74 y TLS de
+producción.
 
 ## 1. Qué está hecho (no lo toques)
 
@@ -57,10 +69,11 @@ OsmAnd legacy (`services/tracking/src/osmand.js`) que usan las APK en calle.
 
 ### Sprint 1 — Servidor (rápido, sin teléfonos)
 1. **P1-SERVER-001** Idempotencia. Migración
-   `database/migrations/002_idempotencia_posiciones.sql`: columnas
+   `database/migrations/002_idempotencia.sql`: columnas
    `boot_id text`, `local_sequence bigint` + índice único
-   `(dispositivo_id, boot_id, local_sequence) WHERE boot_id IS NOT NULL`
-   (parcial para no romper datos históricos). En `db.js:registrarPosicion`:
+   `(dispositivo_id, registrado_en, boot_id, local_sequence)`
+   `WHERE boot_id IS NOT NULL` (el `registrado_en` lo exige el particionado;
+   parcial para no romper datos históricos). En `db.js:registrarPosicion`:
    `INSERT ... ON CONFLICT DO NOTHING RETURNING id`; si no hay fila →
    `{ duplicado: true }`. Devolver resultado a `osmand.js` (200 igual) y al
    lote nuevo.

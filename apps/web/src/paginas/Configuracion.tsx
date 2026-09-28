@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Pagina } from '@contratos';
 import { api, consulta } from '../api/cliente';
 import { useSesion } from '../store/sesion';
+import { CLAVE_FLOTA } from './operacion/datos';
 import Icono from '../componentes/Icono';
 import { ChipEstado, MensajeError } from './admin/comunes';
 import { Toast } from './admin/Toast';
@@ -167,8 +168,10 @@ export default function Configuracion() {
   const [exito, setExito] = useState('');
   const cerrarExito = useCallback(() => setExito(''), []);
 
+  // Misma clave que el resto de páginas (CLAVE_FLOTA): comparte la caché de
+  // la flota en vez de repetir la petición con otra clave.
   const equipos = useQuery({
-    queryKey: ['flota', 'todos'],
+    queryKey: CLAVE_FLOTA,
     queryFn: () => api.get<Pagina<DispositivoGestion>>(`/api/v1/fleet${consulta({ tamano: 200 })}`),
   });
 

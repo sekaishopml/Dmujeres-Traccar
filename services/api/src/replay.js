@@ -7,7 +7,7 @@ import { datosInvalidos, noEncontrado } from './errores.js';
 import { leerOrden, leerPaginacion, leerRango, respuestaJson } from './http.js';
 import { PREDICADO_PERMISO, SELECT_DISPOSITIVO, buscarDispositivo, permisoDe } from './flota.js';
 import { calcularHuecos, resumirRecorrido } from './geo.js';
-import { estimarTramos } from './ruteo.js';
+import { reconstruirTramos } from './ruteo.js';
 
 export const LIMITE_POSICIONES_REPLAY = 50000;
 
@@ -120,17 +120,17 @@ export async function obtenerReplay(ctx) {
   }
   const posiciones = rows.map(aPosicion);
   const huecos = calcularHuecos(posiciones);
-  // Tramos que quedan a saltos (huecos o fixes muy separados): la web los
-  // dibuja con el camino estimado por calles, como un tramo mas del recorrido.
-  // Si el ruteo no responde, la lista sale vacia y se dibuja la recta de hoy.
-  const estimados = await estimarTramos(posiciones, ctx.signal);
+  // Tramos reconstruidos por calles (huecos o fixes muy separados): la web los
+  // dibuja por capas REAL/MATCHED/ESTIMATED. `estimados` se conserva una
+  // versión como alias deprecado con la forma vieja.
+  const reconstruidos = await reconstruirTramos(posiciones, ctx.signal);
   respuestaJson(ctx.res, 200, {
     dispositivo: aDispositivo(dispositivo, ctx.usuario),
     desde: rango.desde.toISOString(),
     hasta: rango.hasta.toISOString(),
     posiciones,
     huecos,
-    estimados,
+    reconstruidos,
     resumen: resumirRecorrido(posiciones, huecos.length),
     generadoEn: new Date().toISOString(),
   });

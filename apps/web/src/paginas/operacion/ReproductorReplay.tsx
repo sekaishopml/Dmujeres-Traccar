@@ -12,6 +12,7 @@ import { bateria, duracion, fechaHora, GUION, velocidad } from '../../util/forma
 import Icono from '../../componentes/Icono';
 import { traerDireccion } from './datos';
 import {
+  ETIQUETA_METODO_TRAMO,
   estadoDePunto,
   horaCorta,
   indiceBateriaConocida,
@@ -20,8 +21,9 @@ import {
   milisegundos,
   puntoEnInstante,
   serieBateria,
+  tramoDeIndice,
 } from './replay';
-import type { EstadoUnidad, Parada } from './replay';
+import type { EstadoUnidad, Parada, TramoReconstruido } from './replay';
 
 // Chart.js exige registrar las piezas que se dibujan. El gráfico del
 // reproductor es una línea con relleno, sin ejes, sin leyenda y sin tooltip:
@@ -96,6 +98,7 @@ interface Props {
   mapa: TipoMapa | null;
   posiciones: Posicion[];
   huecos: Hueco[];
+  reconstruidos: TramoReconstruido[];
   dispositivo: Dispositivo | null;
   children: ReactNode;
 }
@@ -103,6 +106,7 @@ interface Props {
 interface Reproductor {
   posiciones: Posicion[];
   huecos: Hueco[];
+  reconstruidos: TramoReconstruido[];
   dispositivo: Dispositivo | null;
   indice: number;
   punto: Posicion | null;
@@ -139,7 +143,7 @@ const ContextoReproductor = createContext<Reproductor | null>(null);
 // lógica. La superficie de selección es la capa de acierto de línea que agrega
 // Replay sobre la ruta; el reproductor se engancha a ella y resuelve el fix más
 // cercano con posiciones, que ya tiene en memoria.
-export default function ReproductorReplay({ mapa, posiciones, huecos, dispositivo, children }: Props) {
+export default function ReproductorReplay({ mapa, posiciones, huecos, reconstruidos, dispositivo, children }: Props) {
   const [indice, setIndice] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
   const [velocidadReproduccion, setVelocidadReproduccion] = useState(1);
@@ -285,7 +289,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, dispositiv
         ultimoPintado = ahora;
         setIndice(siguiente);
       }
-      const interpolado = puntoEnInstante(posiciones, huecos, instanteRef.current);
+      const interpolado = puntoEnInstante(posiciones, huecos, instanteRef.current, reconstruidos);
       if (interpolado) {
         marcadorActual.current?.setLngLat([interpolado.longitud, interpolado.latitud]);
         if (seguir && mapa) mapa.setCenter([interpolado.longitud, interpolado.latitud], { duration: 0 });
@@ -294,7 +298,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, dispositiv
     };
     cuadro = window.requestAnimationFrame(avanzar);
     return () => window.cancelAnimationFrame(cuadro);
-  }, [reproduciendo, velocidadReproduccion, posiciones, huecos, factor, seguir, mapa, sincronizarSlider]);
+  }, [reproduciendo, velocidadReproduccion, posiciones, huecos, reconstruidos, factor, seguir, mapa, sincronizarSlider]);
 
   // Resaltado del punto seleccionado. La superficie de selección es la capa de
   // acierto de línea que agrega Replay junto a la ruta; aquí solo vive el aro
@@ -457,6 +461,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, dispositiv
   const estado: Reproductor = {
     posiciones,
     huecos,
+    reconstruidos,
     dispositivo,
     indice: indiceAcotado,
     punto,
@@ -568,15 +573,24 @@ function GraficoBateria() {
 
 // Detalle del fix seleccionado en el mapa: solo datos sencillos (hora,
 // dirección, velocidad y batería), el estado del punto (movimiento, detención
-// o sin señal) y si el equipo está habilitado, como el panel clásico. Las
-// coordenadas, la precisión y la recepción en el servidor eran datos técnicos
-// y se retiraron. Incluye acciones para volver al punto o soltar la selección.
+// o sin señal), el método del tramo cuando el punto toca uno reconstruido
+// (ajustado a vía o tramo estimado, con su versión de mapa) y si el equipo
+// está habilitado, como el panel clásico. Las coordenadas, la precisión y la
+// recepción en el servidor eran datos técnicos y se retiraron. Incluye
+// acciones para volver al punto o soltar la selección.
 export function PanelPuntoSeleccionado() {
-  const { posiciones, huecos, dispositivo, seleccionado, mover, pausar, quitarSeleccion } = useReproductor();
+  const { posiciones, huecos, reconstruidos, dispositivo, seleccionado, mover, pausar, quitarSeleccion } =
+    useReproductor();
   const punto = seleccionado != null ? posiciones[seleccionado] ?? null : null;
   const estado = useMemo(
     () => (seleccionado == null ? null : estadoDePunto(posiciones, huecos, seleccionado)),
     [posiciones, huecos, seleccionado],
+  );
+  // El clic sobre un trazado reconstruido selecciona su fix más cercano, que
+  // es un extremo del tramo: la ficha muestra su método (ADR-007).
+  const tramo = useMemo(
+    () => (seleccionado == null ? null : tramoDeIndice(posiciones, reconstruidos, seleccionado)),
+    [posiciones, reconstruidos, seleccionado],
   );
   const direccion = useDireccion(punto?.latitud ?? null, punto?.longitud ?? null, punto != null);
   if (!punto || seleccionado == null) {
@@ -601,6 +615,12 @@ export function PanelPuntoSeleccionado() {
         <dd>{bateria(punto.bateriaPct)}</dd>
         <dt>Estado</dt>
         <dd>{estado ? ETIQUETA_ESTADO_PUNTO[estado] : GUION}</dd>
+        <dt>Tramo</dt>
+        <dd>
+          {tramo
+            ? `${ETIQUETA_METODO_TRAMO[tramo.metodo]}${tramo.mapaVersion ? ` · mapa ${tramo.mapaVersion}` : ''}`
+            : 'GPS registrado'}
+        </dd>
         <dt>Equipo</dt>
         <dd>{dispositivo ? (dispositivo.habilitado ? 'Habilitado' : 'Deshabilitado') : GUION}</dd>
       </dl>

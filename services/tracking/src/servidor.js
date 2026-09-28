@@ -2,7 +2,9 @@
 // exposicion publica) y enruta:
 //   * GET/POST /                    -> protocolo OsmAnd (App actual, :5055 en prod)
 //   * GET  /api/mobile/v1/config
+//   * GET  /api/mobile/v1/journey      (reconciliación cliente↔servidor)
 //   * POST /api/mobile/v1/journey
+//   * POST /api/mobile/v1/positions    (lote idempotente boot+seq)
 //   * POST /api/mobile/v1/diagnostics
 //   * GET  /api/mobile/v1/ota
 //   * POST /api/mobile/v1/fcm-token
@@ -17,6 +19,8 @@ import {
   atenderConfig,
   atenderDiagnosticos,
   atenderJornada,
+  atenderJornadaConsulta,
+  atenderLotePosiciones,
   atenderOta,
   atenderRecuperacionAck,
   atenderTokenFcm,
@@ -49,6 +53,12 @@ async function manejar(req, res, ctx) {
   }
   if (ruta === '/api/mobile/v1/journey' && metodo === 'POST') {
     return atenderJornada(req, res, { ...ctx, url });
+  }
+  if (ruta === '/api/mobile/v1/journey' && metodo === 'GET') {
+    return atenderJornadaConsulta(req, res, { ...ctx, url });
+  }
+  if (ruta === '/api/mobile/v1/positions' && metodo === 'POST') {
+    return atenderLotePosiciones(req, res, { ...ctx, url });
   }
   if (ruta === '/api/mobile/v1/diagnostics' && metodo === 'POST') {
     return atenderDiagnosticos(req, res, { ...ctx, url });
@@ -99,6 +109,15 @@ async function principal() {
     error: (mensaje) => console.error(`[tracking] ERROR ${mensaje}`),
   };
   const almacen = await crearAlmacen(configuracion, log);
+  // Particiones mes actual + 2 siguientes (ADR-010): evita que una escritura
+  // quede sin partición a fin de mes. El on-write de db.js queda como red.
+  // No falla el arranque si la base no responde a DDL: se avisa y se sigue.
+  try {
+    await almacen.precrearParticionesProximas();
+    log.info('particiones mes+2 precreadas');
+  } catch (error) {
+    log.warn(`precreacion de particiones fallo: ${error.message}`);
+  }
   // Al arrancar se reconcilian las jornadas: las que se iniciaron antes del
   // corte (o con el servidor caído) quedan registradas y las abandonadas se
   // cierran por timeout. Después se revisa cada hora.

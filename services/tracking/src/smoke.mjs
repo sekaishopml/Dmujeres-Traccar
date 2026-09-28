@@ -149,6 +149,10 @@ async function humo() {
   const t1 = Date.now();
   const t2 = Date.now() + 1000;
   const tsDiagnostico = Date.now() + 2000;
+  // Tiempos del lote FASE 1 (distintos de t1/t2 para limpieza exacta).
+  const tLote1 = Date.now() + 3000;
+  const tLote2 = Date.now() + 4000;
+  const bootLote = `humo-boot-${Date.now()}`;
   const jornadaId = Date.now();
   const tokenFcm = `humo-token-${jornadaId}-${'a'.repeat(24)}`;
   const intentoRecuperacion = `humo-attempt-${jornadaId}`;
@@ -714,6 +718,165 @@ async function humo() {
       String(filaAlerta.dispositivo_id) === idDispositivo &&
       filaAlerta.atributos.stage === 'TRACKING_ACTIVE' && filaAlerta.atributos.priority === 'HIGH' &&
       filaAlerta.atributos.reason === 'humo', `filas=${filaAlerta ? 1 : 0}`);
+
+    // 11. Lote FASE 1: aceptado, duplicado (si hay columnas), inválido y muerto.
+    const pedirLote = async (eventos, cabeceras = {}) => {
+      const respuesta = await fetch(`${base}/api/mobile/v1/positions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': clave,
+          'x-device-id': DISPOSITIVO_QA,
+          ...cabeceras,
+        },
+        body: JSON.stringify({ eventos }),
+      });
+      const texto = await respuesta.text();
+      let json = null;
+      try {
+        json = texto ? JSON.parse(texto) : null;
+      } catch {
+        json = null;
+      }
+      return { estado: respuesta.status, json };
+    };
+    const columnasIdempotencia = (
+      await pool.query(
+        `SELECT count(*)::int AS total FROM information_schema.columns
+          WHERE table_schema = 'tracking' AND table_name = 'dmt_posicion'
+            AND column_name IN ('boot_id', 'local_sequence')`,
+      )
+    ).rows[0].total === 2;
+    const loteValido = [
+      {
+        bootId: bootLote, seq: 1, journeyId: jornadaId, capturedAt: new Date(tLote1).toISOString(),
+        lat: -2.1894, lon: -79.8891, alt: 35, speed: 23.1, bearing: 91,
+        accuracy: 8, battery: 77, charging: true, mock: false,
+        provider: 'fused', movementState: 'ACTIVE',
+      },
+      {
+        bootId: bootLote, seq: 2, journeyId: jornadaId, capturedAt: new Date(tLote2).toISOString(),
+        lat: -2.19, lon: -79.89, accuracy: 9, battery: 76, mock: false,
+      },
+    ];
+    const loteUno = await pedirLote(loteValido);
+    comprobar('lote responde 200 con resultados accepted',
+      loteUno.estado === 200 && Array.isArray(loteUno.json?.resultados) &&
+      loteUno.json.resultados.length === 2 &&
+      loteUno.json.resultados.every((r) => r.estado === 'accepted'),
+      `estado=${loteUno.estado} ${JSON.stringify(loteUno.json)?.slice(0, 200)}`);
+    const filasLote = (
+      await pool.query(
+        `SELECT id, registrado_en FROM tracking.dmt_posicion
+          WHERE dispositivo_id = $1 AND registrado_en = ANY($2::timestamptz[])
+          ORDER BY registrado_en`,
+        [idDispositivo, [new Date(tLote1), new Date(tLote2)]],
+      )
+    ).rows;
+    comprobar('lote guarda las dos posiciones', filasLote.length === 2, `filas=${filasLote.length}`);
+    for (const fila of filasLote) posicionesCreadas.push(String(fila.id));
+
+    const loteRepetido = await pedirLote(loteValido);
+    const estadosRepetidos = (loteRepetido.json?.resultados ?? []).map((r) => r.estado);
+    if (columnasIdempotencia) {
+      comprobar('lote repetido clasifica duplicate sin duplicar filas',
+        loteRepetido.estado === 200 && estadosRepetidos.every((e) => e === 'duplicate'),
+        `estados=${estadosRepetidos.join(',')}`);
+      const conteoTrasDupe = (
+        await pool.query(
+          `SELECT count(*)::int AS total FROM tracking.dmt_posicion
+            WHERE dispositivo_id = $1 AND registrado_en = ANY($2::timestamptz[])`,
+          [idDispositivo, [new Date(tLote1), new Date(tLote2)]],
+        )
+      ).rows[0].total;
+      comprobar('duplicado no crea filas nuevas', conteoTrasDupe === 2, `total=${conteoTrasDupe}`);
+    } else {
+      // Sin migración 002 no hay UNIQUE: el servidor acepta (documentado) y el
+      // humo limpia las filas extra por timestamp para dejar la base igual.
+      comprobar('lote sin columnas 002 acepta (dedupe pendiente de migración)',
+        loteRepetido.estado === 200 && estadosRepetidos.every((e) => e === 'accepted'),
+        `estados=${estadosRepetidos.join(',')}`);
+      const extras = (
+        await pool.query(
+          `SELECT id FROM tracking.dmt_posicion
+            WHERE dispositivo_id = $1 AND registrado_en = ANY($2::timestamptz[])
+            ORDER BY id`,
+          [idDispositivo, [new Date(tLote1), new Date(tLote2)]],
+        )
+      ).rows.map((fila) => String(fila.id));
+      for (const id of extras) {
+        if (!posicionesCreadas.includes(id)) posicionesCreadas.push(id);
+      }
+    }
+
+    const loteInvalido = await pedirLote([
+      // Fecha absurda (reloj corrupto) → invalid sin guardar.
+      { bootId: bootLote, seq: 3, capturedAt: '2037-10-15T18:59:35.000Z', lat: -2.19, lon: -79.89 },
+      // Sin identidad y fuera de rango → invalid.
+      { bootId: '', seq: -1, capturedAt: new Date(tLote1).toISOString(), lat: 999, lon: -79.89 },
+    ]);
+    comprobar('lote con fechas/coordenadas absurdas responde invalid',
+      loteInvalido.estado === 200 &&
+      loteInvalido.json?.resultados?.[0]?.estado === 'invalid' &&
+      loteInvalido.json?.resultados?.[1]?.estado === 'invalid',
+      `estado=${loteInvalido.estado}`);
+    const loteLimite = await pedirLote(new Array(501).fill(loteValido[0]));
+    comprobar('lote con más de 500 eventos responde 413', loteLimite.estado === 413,
+      `estado=${loteLimite.estado}`);
+    const loteClaveMala = await pedirLote(loteValido, { 'x-api-key': 'clave-incorrecta' });
+    comprobar('lote con clave inválida responde 401', loteClaveMala.estado === 401,
+      `estado=${loteClaveMala.estado}`);
+
+    // 12. Jornada GET para reconciliación (tras el stop queda cerrada).
+    const jornadaGet = await fetch(`${base}/api/mobile/v1/journey`, {
+      headers: { 'x-api-key': clave, 'x-device-id': DISPOSITIVO_QA },
+    });
+    const jornadaGetJson = await jornadaGet.json().catch(() => null);
+    comprobar('GET journey responde 200 con estado/journeyId/inicioEn',
+      jornadaGet.status === 200 &&
+      ['abierta', 'cerrada', 'ninguna'].includes(jornadaGetJson?.estado) &&
+      ('journeyId' in (jornadaGetJson ?? {})) && ('inicioEn' in (jornadaGetJson ?? {})),
+      `estado=${jornadaGet.status} cuerpo=${JSON.stringify(jornadaGetJson)?.slice(0, 160)}`);
+    const jornadaGetClaveMala = await fetch(`${base}/api/mobile/v1/journey`, {
+      headers: { 'x-api-key': 'clave-incorrecta', 'x-device-id': DISPOSITIVO_QA },
+    });
+    comprobar('GET journey con clave inválida responde 401', jornadaGetClaveMala.status === 401,
+      `estado=${jornadaGetClaveMala.status}`);
+
+    // 13. OsmAnd con fecha absurda: 200 sin guardar (drena sin partición 2037).
+    const absurda = await pedir(`/?id=${DISPOSITIVO_QA}&timestamp=2147483647000&lat=-2.19&lon=-79.89`);
+    comprobar('OsmAnd con fecha 2038 responde 200 sin guardar', absurda.estado === 200,
+      `estado=${absurda.estado}`);
+    const filaAbsurda = (
+      await pool.query(
+        `SELECT count(*)::int AS total FROM tracking.dmt_posicion
+          WHERE dispositivo_id = $1 AND registrado_en > now() + interval '24 hours'`,
+        [idDispositivo],
+      )
+    ).rows[0].total;
+    // Solo cuenta futuras reales (>24h); el humo no deja ninguna (la de 2037
+    // histórica es del equipo 50, no de qa-f0).
+    comprobar('fecha absurda no crea partición ni fila futura', filaAbsurda === 0,
+      `futuras=${filaAbsurda}`);
+
+    // 14. Particiones mes+2 precreadas al arrancar (posiciones y eventos).
+    const nombreMes = (desplazamiento) => {
+      const base = new Date();
+      const fecha = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + desplazamiento, 1));
+      const mes = String(fecha.getUTCMonth() + 1).padStart(2, '0');
+      return `${fecha.getUTCFullYear()}_${mes}`;
+    };
+    const particiones = (
+      await pool.query(
+        `SELECT tablename FROM pg_tables
+          WHERE schemaname = 'tracking' AND tablename LIKE 'dmt_posicion_%'
+             OR schemaname = 'tracking' AND tablename LIKE 'dmt_evento_%'`,
+      )
+    ).rows.map((fila) => fila.tablename);
+    const mesesEsperados = [0, 1, 2].map(nombreMes);
+    const posicionesOk = mesesEsperados.every((mes) => particiones.includes(`dmt_posicion_${mes}`));
+    comprobar('particiones mes+2 de posiciones precreadas', posicionesOk,
+      `meses=${mesesEsperados.join(',')}`);
   } finally {
     await detenerServidor();
     describirUnaVez();
@@ -723,7 +886,7 @@ async function humo() {
       const encontradas = await pool.query(
         `SELECT id FROM tracking.dmt_posicion
           WHERE dispositivo_id = $1 AND registrado_en = ANY($2::timestamptz[])`,
-        [idDispositivo, [new Date(t1), new Date(t2)]],
+        [idDispositivo, [new Date(t1), new Date(t2), new Date(tLote1), new Date(tLote2)]],
       );
       const ids = [...new Set([...posicionesCreadas, ...encontradas.rows.map((fila) => String(fila.id))])];
       if (ids.length > 0) {

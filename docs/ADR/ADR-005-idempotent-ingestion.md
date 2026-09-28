@@ -15,8 +15,10 @@ Identidad estable `(dispositivo_id, boot_id, local_sequence)`:
 - Cliente: `boot_id` = UUID por proceso (persistido en `meta`); `local_sequence`
   = contador persistente que solo incrementa (no se reinicia en reboot).
 - Servidor: columnas nuevas + índice único parcial
-  `(dispositivo_id, boot_id, local_sequence) WHERE boot_id IS NOT NULL`
-  (parcial para no romper históricos sin identidad).
+  `(dispositivo_id, registrado_en, boot_id, local_sequence) WHERE boot_id IS
+  NOT NULL` (parcial para no romper históricos sin identidad; el
+  `registrado_en` lo exige el particionado y no debilita el dedupe porque la
+  retransmisión trae el mismo captured_at).
 - Ingesta: `INSERT ... ON CONFLICT DO NOTHING RETURNING id` → clasifica
   `accepted | duplicate`; lote nuevo `/api/mobile/v1/positions`.
 - Regla de posición viva: `dmt_posicion_actual` y `ultima_conexion_en` solo

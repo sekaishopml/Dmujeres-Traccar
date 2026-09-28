@@ -8,6 +8,8 @@
 // (el contrato del fork respondia 400) y un fallo de almacenamiento responde
 // 503 (error recuperable) en lugar de 500.
 
+import { fechaCapturaValida } from './db.js';
+
 const LIMITE_CUERPO = 64 * 1024;
 const MAX_ALARMA = 200;
 const MAX_INT_32 = 2147483647;
@@ -122,6 +124,14 @@ export async function atenderOsmand(req, res, ctx) {
   // nada, igual que hacía el servidor anterior con los equipos deshabilitados.
   if (dispositivo.habilitado === false) return responder(res, 200);
 
+  // Fechas absurdas (reloj corrupto, caso 2037_10): 200 sin guardar para
+  // drenar el buffer del teléfono sin reintento infinito ni partición basura.
+  // La ventana [ahora−30d, ahora+24h] vive en db.js (ADR-010).
+  if (!fechaCapturaValida(momento)) {
+    ctx.log.warn(`osmand: fecha invalida id=${identificador} ts=${momento.toISOString()}`);
+    return responder(res, 200);
+  }
+
   const nudos = numero(params.get('speed'));
   const rumbo = numero(params.get('bearing') ?? params.get('heading'));
   const bateria = numero(params.get('batt'));
@@ -143,7 +153,11 @@ export async function atenderOsmand(req, res, ctx) {
   };
 
   try {
-    await ctx.almacen.registrarPosicion(dispositivo.id, posicion);
+    const resultado = await ctx.almacen.registrarPosicion(dispositivo.id, posicion);
+    // Duplicado o inválido tardío (carrera): 200 igual para drenar el buffer;
+    // el servidor ya tiene el dato o lo rechazó por fecha sin polucionar.
+    if (resultado?.duplicado) ctx.log.info(`osmand: duplicado id=${identificador}`);
+    if (resultado?.invalido) ctx.log.warn(`osmand: fecha invalida al guardar id=${identificador}`);
   } catch (error) {
     ctx.log.error(`osmand: fallo al guardar posicion: ${error.message}`);
     return responder(res, 503);

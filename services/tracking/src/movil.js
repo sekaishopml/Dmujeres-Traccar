@@ -10,6 +10,10 @@ import { join } from 'node:path';
 
 const LIMITE_JSON = 64 * 1024;
 const LIMITE_DIAGNOSTICO = 10_000;
+// Lote de posiciones: hasta 500 eventos (~200 B c/u) caben en 512 KB con
+// margen; más allá se rechaza con 413 para no agotar memoria.
+const LIMITE_LOTE = 512 * 1024;
+const MAX_EVENTOS_LOTE = 500;
 const VENTANA_ANTIRREBOTE = 20_000;
 const VENTANA_AUDITORIA_OTA = 60_000;
 const MAX_TOKEN = 512;
@@ -545,4 +549,218 @@ export async function atenderRecuperacionAck(req, res, ctx) {
     `stage=${atributos.stage} priority=${atributos.priority}`,
   );
   return responderJson(res, 200, { ok: true, success: true, status: 'accepted' });
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/mobile/v1/journey (reconciliación cliente↔servidor)
+// ---------------------------------------------------------------------------
+// Tras recrear proceso/reboot la app pregunta la verdad del servidor
+// (operations.dmt_jornada) para continuar o cerrar sin depender de RAM.
+// Responde {estado:'abierta'|'cerrada'|'ninguna', journeyId, inicioEn}.
+export async function atenderJornadaConsulta(req, res, ctx) {
+  if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 404);
+  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+    return responderSinCuerpo(res, 401);
+  }
+  const identificador = identificadorDe(req, ctx.url);
+  if (!identificador) return responderSinCuerpo(res, 400);
+  const dispositivo = await buscarOFallar(ctx, res, identificador, 404);
+  if (!dispositivo) return;
+  try {
+    const estado = await ctx.almacen.obtenerJornadaEstado(dispositivo.id);
+    return responderJson(res, 200, estado);
+  } catch (error) {
+    ctx.log.error(`movil/journey-get: fallo al leer jornada: ${error.message}`);
+    return responderSinCuerpo(res, 503);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/mobile/v1/positions (lote idempotente)
+// ---------------------------------------------------------------------------
+// Contrato: body {eventos:[{bootId,seq,journeyId,capturedAt,lat,lon,alt,speed,
+// bearing,accuracy,battery,charging,mock,provider,movementState}]} →
+// {resultados:[{seq,estado}]} con estado accepted|duplicate|invalid|dead.
+// - accepted: guardado (o sin identidad pero válido, solo OsmAnd legacy).
+// - duplicate: mismo (device,boot,seq) ya registrado (ON CONFLICT).
+// - invalid: coordenadas/fecha/identidad fuera de contrato, sin guardar.
+// - dead: equipo deshabilitado (drena sin guardar, igual que OsmAnd).
+// Límite 500 eventos por lote; una transacción por lote en db.js.
+function esLatitud(valor) {
+  return typeof valor === 'number' && Number.isFinite(valor) && valor >= -90 && valor <= 90;
+}
+
+function esLongitud(valor) {
+  return typeof valor === 'number' && Number.isFinite(valor) && valor >= -180 && valor <= 180;
+}
+
+function enteroSecuencia(valor) {
+  if (typeof valor === 'number' && Number.isInteger(valor) && valor >= 0) return valor;
+  if (typeof valor === 'string' && /^\d+$/.test(valor.trim())) {
+    const convertido = Number.parseInt(valor.trim(), 10);
+    if (Number.isSafeInteger(convertido) && convertido >= 0) return convertido;
+  }
+  return null;
+}
+
+function numeroFinito(valor) {
+  if (valor === null || valor === undefined) return null;
+  const convertido = typeof valor === 'number' ? valor : Number(String(valor).trim());
+  return Number.isFinite(convertido) ? convertido : null;
+}
+
+export async function atenderLotePosiciones(req, res, ctx) {
+  if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 503);
+  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+    return responderSinCuerpo(res, 401);
+  }
+  const lectura = await leerJson(req, LIMITE_LOTE);
+  if (!lectura.ok) return responderSinCuerpo(res, lectura.motivo === 'grande' ? 413 : 400);
+  const cuerpo = objeto(lectura.datos);
+  // El dispositivo viaja en X-Device-Id (canal móvil); se acepta ?deviceId o
+  // body.deviceId como respaldo para pruebas con curl.
+  let identificador = identificadorDeCabecera(req);
+  if (!identificador) {
+    try {
+      const urlAux = ctx.url ?? new URL(req.url, 'http://127.0.0.1');
+      identificador = identificadorDe(req, urlAux);
+    } catch {
+      identificador = null;
+    }
+  }
+  if (!identificador && cuerpo) {
+    identificador = texto(cuerpo.deviceId) ?? texto(cuerpo.dispositivoId);
+  }
+  if (!identificador) return responderSinCuerpo(res, 400);
+  const dispositivo = await buscarOFallar(ctx, res, identificador, 404);
+  if (!dispositivo) return;
+  const eventos = cuerpo ? cuerpo.eventos : null;
+  if (!Array.isArray(eventos) || eventos.length === 0) return responderSinCuerpo(res, 400);
+  if (eventos.length > MAX_EVENTOS_LOTE) return responderSinCuerpo(res, 413);
+  if (cuerpo && cuerpo.deviceId !== undefined && !idCoincide(cuerpo.deviceId, dispositivo)) {
+    return responderSinCuerpo(res, 403);
+  }
+
+  // Equipo deshabilitado: dead para todo el lote (drena sin guardar).
+  if (dispositivo.habilitado === false) {
+    const resultados = eventos.map((evento) => {
+      const crudo = evento !== null && typeof evento === 'object' ? evento.seq : null;
+      return { seq: enteroSecuencia(crudo), estado: 'dead' };
+    });
+    return responderJson(res, 200, { resultados });
+  }
+
+  // Prevalidación sin base: coordenadas, fecha e identidad. Lo inválido no
+  // llega a la transacción; lo válido se inserta en un solo lote.
+  const ahora = Date.now();
+  const limiteAtras = ahora - 30 * 24 * 60 * 60 * 1000;
+  const limiteAdelante = ahora + 24 * 60 * 60 * 1000;
+  const resultados = new Array(eventos.length);
+  const validos = [];
+  for (let indice = 0; indice < eventos.length; indice += 1) {
+    const evento = eventoObjeto(eventos[indice]);
+    const seqEco = evento ? enteroSecuencia(evento.seq) : null;
+    if (!evento || seqEco === null) {
+      resultados[indice] = { seq: seqEco, estado: 'invalid' };
+      continue;
+    }
+    const bootId = typeof evento.bootId === 'string' ? evento.bootId.trim() : null;
+    if (!bootId) {
+      resultados[indice] = { seq: seqEco, estado: 'invalid' };
+      continue;
+    }
+    const lat = numeroFinito(evento.lat);
+    const lon = numeroFinito(evento.lon);
+    if (!esLatitud(lat) || !esLongitud(lon)) {
+      resultados[indice] = { seq: seqEco, estado: 'invalid' };
+      continue;
+    }
+    const capturado = evento.capturedAt === undefined || evento.capturedAt === null
+      ? null
+      : new Date(evento.capturedAt);
+    if (!(capturado instanceof Date) || Number.isNaN(capturado.getTime())) {
+      resultados[indice] = { seq: seqEco, estado: 'invalid' };
+      continue;
+    }
+    const instante = capturado.getTime();
+    if (instante < limiteAtras || instante > limiteAdelante) {
+      resultados[indice] = { seq: seqEco, estado: 'invalid' };
+      continue;
+    }
+    // Opcionales: se normalizan sin tumbar el evento (null si no sirven).
+    const bateriaCruda = numeroFinito(evento.battery);
+    const bateria = bateriaCruda === null ? null : Math.min(100, Math.max(0, bateriaCruda));
+    const simulado = evento.mock === true;
+    const atributos = {};
+    if (evento.journeyId !== undefined && evento.journeyId !== null) {
+      const jornadaCruda = enteroSecuencia(evento.journeyId) ?? numeroFinito(evento.journeyId);
+      if (jornadaCruda !== null) atributos.journeyId = jornadaCruda;
+    }
+    if (typeof evento.provider === 'string' && evento.provider.trim() !== '') {
+      atributos.provider = evento.provider.trim().slice(0, 32);
+    }
+    if (typeof evento.movementState === 'string' && evento.movementState.trim() !== '') {
+      atributos.movementState = evento.movementState.trim().slice(0, 32);
+    }
+    if (evento.charging !== undefined) atributos.charging = evento.charging === true;
+    if (simulado) atributos.mock = true;
+    validos.push({
+      indice,
+      seqEco,
+      posicion: {
+        protocolo: 'lote',
+        latitud: lat,
+        longitud: lon,
+        altitud: numeroFinito(evento.alt),
+        // speed se interpreta como km/h del contrato móvil (sin conversión
+        // inventada; si la app enviara m/s se ajusta en Sprint 2 con versión).
+        velocidadKmh: numeroFinito(evento.speed),
+        rumbo: numeroFinito(evento.bearing),
+        precision: numeroFinito(evento.accuracy),
+        bateria,
+        valida: !simulado,
+        registradoEn: capturado,
+        bootId,
+        secuencia: seqEco,
+        atributos,
+      },
+    });
+  }
+
+  try {
+    if (validos.length > 0) {
+      const lote = validos.map((entrada) => ({ ...entrada.posicion, seq: entrada.seqEco }));
+      const parciales = await ctx.almacen.registrarLotePosiciones(dispositivo.id, lote);
+      const porSeq = new Map();
+      for (const parcial of parciales) {
+        // La clave de dedupe es (boot,seq); el seq basta para reatar porque el
+        // boot ya se validó por evento y el lote es de un solo dispositivo.
+        if (!porSeq.has(parcial.seq)) porSeq.set(parcial.seq, []);
+        porSeq.get(parcial.seq).push(parcial.estado);
+      }
+      const usados = new Map();
+      for (const entrada of validos) {
+        const estados = porSeq.get(entrada.seqEco) ?? ['accepted'];
+        const vez = usados.get(entrada.seqEco) ?? 0;
+        usados.set(entrada.seqEco, vez + 1);
+        resultados[entrada.indice] = { seq: entrada.seqEco, estado: estados[Math.min(vez, estados.length - 1)] };
+      }
+    }
+    // Los inválidos ya quedaron en `resultados`; por seguridad se rellena
+    // cualquier hueco como invalid (nunca se deja undefined).
+    for (let indice = 0; indice < resultados.length; indice += 1) {
+      if (!resultados[indice]) {
+        const evento = eventoObjeto(eventos[indice]);
+        resultados[indice] = { seq: evento ? enteroSecuencia(evento.seq) : null, estado: 'invalid' };
+      }
+    }
+    return responderJson(res, 200, { resultados });
+  } catch (error) {
+    ctx.log.error(`movil/positions: fallo al guardar lote: ${error.message}`);
+    return responderSinCuerpo(res, 503);
+  }
+}
+
+function eventoObjeto(valor) {
+  return valor !== null && typeof valor === 'object' && !Array.isArray(valor) ? valor : null;
 }

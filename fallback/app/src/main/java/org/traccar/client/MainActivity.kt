@@ -1,0 +1,712 @@
+/*
+ * Copyright 2017 - 2021 Anton Tananaev (anton@traccar.org)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.traccar.client
+
+import androidx.appcompat.app.AppCompatActivity
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.widget.TextView
+import android.widget.LinearLayout
+import android.widget.Button
+import android.widget.ImageView
+import android.widget.Toast
+import android.view.View
+import android.os.SystemClock
+import androidx.appcompat.app.AlertDialog
+import android.content.Intent
+import androidx.core.content.ContextCompat
+import androidx.preference.PreferenceManager
+
+/** Refresco en vivo del home (estado, pendientes, batería y duración). */
+private const val LIVE_REFRESH_MS = 5_000L
+
+/** Freno entre chequeos de actualización (banner en vivo con la app abierta). */
+private const val OTA_CHECK_MIN_GAP_MS = 60_000L
+
+/** Extra del menú de depuración para probar la animación del banner. */
+const val EXTRA_BANNER_DEMO = "bannerDemo"
+
+/** Marca del último chequeo de actualización (para el freno). */
+private const val KEY_LAST_OTA_CHECK = "lastOtaCheckApp"
+
+/** Pasos visibles del refresco manual (para el relleno proporcional). */
+private const val REFRESH_STEPS = 8
+
+/** Aviso "inicia la jornada" en el botón ACTUALIZAR (luego vuelve solo). */
+private const val JOURNEY_NOTICE_MS = 2_500L
+
+/** Naranja de aviso: el refresco terminó con algo fallando. */
+private val REFRESH_WARNING_COLOR = 0xFFE65100.toInt()
+
+class MainActivity : AppCompatActivity() {
+
+    private var tapCount = 0
+    private var tapFirstAt = 0L
+    private var tapLastAt = 0L
+
+    /** Último número de posiciones en el búfer, leído por el refresco de la tarjeta. */
+    @Volatile
+    private var cachedPending = 0
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        if (!prefs.getBoolean(Prefs.ONBOARDED, false)) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+        // Plan B: el servicio queda siempre encendido (sin interruptor visible).
+        prefs.edit().putBoolean(Prefs.STATUS, true).apply()
+        ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+        // Config remota al abrir: si cambió y el servicio ya corre, se reinicia
+        // una sola vez (con guardas: ver RemoteConfig.restartService).
+        RemoteConfig.applyAndRestartIfChanged(this)
+        // Pantalla propia, sin ninguna configuración visible: toda la
+        // configuración es interna y el menú de depuración se abre con
+        // 5 toques en la versión (ya no existe el panel de ajustes de Traccar).
+        setContentView(R.layout.activity_locked_home)
+        wireLockedHome()
+        maybeCheckOta()
+        if (intent.getBooleanExtra(EXTRA_BANNER_DEMO, false)) {
+            showBannerDemo()
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_BANNER_DEMO, false)) {
+            showBannerDemo()
+        }
+    }
+
+    /**
+     * Chequeo de actualización con freno: al abrir la app, al volver a ella y
+     * cada minuto con la app abierta. El freno se marca al TERMINAR el chequeo
+     * (no antes): si la actividad se cierra a mitad, el próximo intento vuelve
+     * enseguida en vez de quedar a ciegas.
+     */
+    private fun maybeCheckOta() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong(KEY_LAST_OTA_CHECK, 0L)
+        if (now - last < OTA_CHECK_MIN_GAP_MS) return
+        showUpdateDialogIfAvailable {
+            prefs.edit().putLong(KEY_LAST_OTA_CHECK, System.currentTimeMillis()).apply()
+        }
+    }
+
+    /**
+     * Banner superior de actualización: pegado al borde de arriba, baja
+     * deslizándose y empuja el home; al tocarlo descarga e instala. Se revisa
+     * en vivo (al abrir, al volver y cada minuto con la app abierta).
+     */
+    private fun showUpdateDialogIfAvailable(onDone: (() -> Unit)? = null) {
+        DmujeresApi.checkOta(this) { label, url, sha256 ->
+            runOnUiThread {
+                onDone?.invoke()
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (label == null) return@runOnUiThread
+                showUpdateBanner(url, sha256)
+            }
+        }
+    }
+
+    /**
+     * Banner de actualización: baja deslizándose desde arriba y, como es
+     * flotante, SOLO desplaza la hamburguesa (el resto del contenido no se
+     * mueve). Animación suave con desaceleración.
+     */
+    private fun showUpdateBanner(url: String, sha256: String, demo: Boolean = false) {
+        if (isFinishing || isDestroyed) return
+        val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
+        if (banner.visibility == View.VISIBLE) return
+        val console = findViewById<android.widget.ImageButton>(R.id.console_button)
+        val height = (46 * resources.displayMetrics.density).toInt()
+        val slide = android.view.animation.DecelerateInterpolator()
+        banner.visibility = View.VISIBLE
+        banner.translationY = -height.toFloat()
+        banner.animate().translationY(0f).setDuration(420).setInterpolator(slide).start()
+        // La hamburguesa acompaña la bajada para quedar visible debajo.
+        console?.animate()?.translationY(height.toFloat())?.setDuration(420)?.setInterpolator(slide)?.start()
+        banner.setOnClickListener {
+            if (demo) {
+                hideUpdateBanner()
+                Toast.makeText(this, getString(R.string.debug_banner_demo_done), Toast.LENGTH_SHORT).show()
+            } else {
+                UpdateActivity.start(this, url, sha256)
+            }
+        }
+    }
+
+    /** Sube el banner y devuelve la hamburguesa a su sitio (misma suavidad). */
+    private fun hideUpdateBanner() {
+        val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
+        val console = findViewById<android.widget.ImageButton>(R.id.console_button)
+        val height = (46 * resources.displayMetrics.density).toInt()
+        val slide = android.view.animation.DecelerateInterpolator()
+        banner.animate().translationY(-height.toFloat()).setDuration(320).setInterpolator(slide)
+            .withEndAction { banner.visibility = View.GONE }
+            .start()
+        console?.animate()?.translationY(0f)?.setDuration(320)?.setInterpolator(slide)?.start()
+    }
+
+    /** Menú de depuración: muestra la animación del banner sin tocar la OTA. */
+    private fun showBannerDemo() {
+        val banner = findViewById<LinearLayout>(R.id.update_banner)
+        if (banner?.visibility == View.VISIBLE) {
+            // Reinicia para poder repetir la animación las veces que haga falta.
+            banner.visibility = View.GONE
+            banner.translationY = 0f
+            findViewById<android.widget.ImageButton>(R.id.console_button)?.translationY = 0f
+        }
+        showUpdateBanner("", "", demo = true)
+    }
+
+    private var durationTicker: Runnable? = null
+
+    /** Pantalla principal: logo, banner de estado, 3 cuadros y botón de jornada.
+     *  Mismo orden y colores del panel: banner rojo (sin jornada) / verde
+     *  (en jornada), cuadros de Pendientes, Batería y Duración, y skeleton
+     *  pulsante mientras cargan los datos. Sin scroll. */
+    private fun wireLockedHome() {
+        val button = findViewById<Button>(R.id.journey_button)
+        val version = findViewById<TextView>(R.id.version_label)
+        val updateButton = findViewById<Button>(R.id.update_button)
+        // Consola de estado (1.1.x): arriba a la derecha.
+        findViewById<android.widget.ImageButton>(R.id.console_button).setOnClickListener {
+            startActivity(Intent(this, StatusActivity::class.java))
+        }
+
+        button.setOnClickListener {
+            if (DmujeresApi.isJourneyOpen(this)) {
+                val startedAt = PreferenceManager.getDefaultSharedPreferences(this)
+                    .getLong(DmujeresApi.KEY_JOURNEY_STARTED_AT, 0L)
+                val minutes = if (startedAt > 0L) ((System.currentTimeMillis() - startedAt) / 60_000L).toInt() else 0
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.journey_confirm_title)
+                    .setMessage(getString(R.string.journey_confirm_body, minutes / 60, minutes % 60))
+                    .setPositiveButton(R.string.journey_confirm_ok) { _, _ ->
+                        DmujeresApi.journeyEnded(this)
+                        refreshLockedHome()
+                    }
+                    .setNegativeButton(R.string.journey_confirm_cancel, null)
+                    .show()
+            } else {
+                // Sin los permisos que mantienen la captura y las notificaciones
+                // la jornada no arranca: se avisa y se abre el paso de permisos.
+                if (!journeyPermissionsGranted()) {
+                    Toast.makeText(this, R.string.journey_missing_permissions, Toast.LENGTH_LONG).show()
+                    OnboardingActivity.start(this, OnboardingActivity.STEP_PERMISSIONS)
+                    return@setOnClickListener
+                }
+                ContextCompat.startForegroundService(
+                    this, Intent(this, TrackingService::class.java),
+                )
+                DmujeresApi.journeyStarted(this)
+                refreshLockedHome()
+            }
+        }
+        // ACTUALIZAR: refresco manual de posición y servicio con el servidor
+        // (reenvía pendientes y pide un fix inmediato). El avance se ve DENTRO
+        // del botón: el texto de cada paso reemplaza la palabra y el relleno
+        // azul avanza de izquierda a derecha. La actualización de la APP es el
+        // banner superior.
+        updateButton.setOnClickListener {
+            // Sin jornada abierta no se refresca: el botón lo explica y vuelve.
+            if (DmujeresApi.isJourneyOpen(this)) {
+                runProgressiveRefresh()
+            } else {
+                showJourneyClosedNotice()
+            }
+        }
+        version.text = getString(
+            R.string.version_footer_fmt,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE,
+        )
+        version.setOnClickListener { onVersionTap() }
+        // Skeleton del dashboard (como en la app nativa): cubos que pulsan hasta
+        // que los datos están listos (batería inmediata, buffer en segundo hilo).
+        val skeleton = findViewById<View>(R.id.skeleton_group)
+        val content = findViewById<View>(R.id.home_content)
+        val anim = android.animation.ValueAnimator.ofFloat(1.0f, 0.4f, 1.0f).apply {
+            duration = 900
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+        }
+        anim.addUpdateListener { skeleton.alpha = it.animatedValue as Float }
+        anim.start()
+        Thread {
+            val pendingCount = try {
+                DatabaseHelper(this).countPositions()
+            } catch (e: Exception) {
+                0
+            }
+            runOnUiThread {
+                anim.cancel()
+                skeleton.visibility = View.GONE
+                content.visibility = View.VISIBLE
+                refreshLockedHome()
+            }
+        }.start()
+
+        // El tiempo de jornada avanza cada 30 s mientras la pantalla esté abierta.
+        // Refresco vivo: estado, pendientes, batería y duración cada 5 s.
+        durationTicker = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed) return
+                // Reprogramar SIEMPRE primero y refrescar a prueba de fallos: si
+                // algo lanza, la cadena no se puede quedar muerta.
+                uiHandler.postDelayed(this, LIVE_REFRESH_MS)
+                runCatching { refreshLockedHome() }
+                // Banner en vivo: con la app abierta se revisa cada minuto.
+                runCatching { maybeCheckOta() }
+            }
+        }
+        refreshLockedHome()
+        // Antes el ticker se creaba pero NUNCA se lanzaba: por eso los cuadros
+        // solo cambiaban al salir y volver a entrar.
+        uiHandler.postDelayed(durationTicker!!, LIVE_REFRESH_MS)
+    }
+
+
+    /** Banner de estado (3 colores), cuadros y botón con el estado real. */
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Último estado de la pill (para no re-animar en cada refresco). */
+    private var pillStateRes = 0
+
+    /** Cambia el estado de la pill con una transición suave de color. */
+    private fun applyPillState(pill: LinearLayout, text: TextView, bgRes: Int, label: String, textColorRes: Int) {
+        if (pillStateRes != bgRes) {
+            val newBg = androidx.core.content.ContextCompat.getDrawable(this, bgRes)
+            val oldBg = (pill.background as? android.graphics.drawable.DrawableWrapper)?.drawable
+                ?: pill.background
+            if (oldBg != null && newBg != null) {
+                val transition = android.graphics.drawable.TransitionDrawable(arrayOf(oldBg, newBg))
+                transition.isCrossFadeEnabled = true
+                pill.background = transition
+                transition.startTransition(400)
+            } else {
+                pill.setBackgroundResource(bgRes)
+            }
+            pillStateRes = bgRes
+        }
+        text.text = label
+        text.setTextColor(getColor(textColorRes))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresco inmediato + vivo cada 5 s mientras la pantalla esté abierta.
+        runCatching { refreshLockedHome() }
+        durationTicker?.let { uiHandler.postDelayed(it, LIVE_REFRESH_MS) }
+        // Y chequeo de actualización (con freno) al volver a la app.
+        maybeCheckOta()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // En segundo plano no se refresca (ahorra batería); al volver, sigue.
+        durationTicker?.let { uiHandler.removeCallbacks(it) }
+    }
+
+    private fun refreshLockedHome() {
+        if (isFinishing || isDestroyed) return
+        val open = DmujeresApi.isJourneyOpen(this)
+        val running = TrackingService.isRunning
+        // La causa real de "no hay ruta": ubicación del sistema apagada.
+        // Se avisa con la pill y una fila que abre los ajustes.
+        val locationOn = runCatching {
+            (getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager)
+                .isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+        }.getOrDefault(true)
+        findViewById<LinearLayout>(R.id.location_warning)?.visibility =
+            if (locationOn) View.GONE else View.VISIBLE
+        findViewById<LinearLayout>(R.id.location_warning)?.setOnClickListener {
+            startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        }
+        val pill = findViewById<LinearLayout>(R.id.status_pill)
+        val pillText = findViewById<TextView>(R.id.pill_text)
+        val button = findViewById<Button>(R.id.journey_button)
+        val updateButton = findViewById<Button>(R.id.update_button)
+
+        // Estado visible (los mismos 4 del panel): deshabilitado (jornada
+        // apagada), sin conexión (no puede enviar), detenido (quieto) o en línea
+        // (en movimiento). Ubicación apagada tiene prioridad: impide trazar.
+        // Estados visibles en el TELÉFONO: EN LÍNEA (verde), SIN CONEXIÓN
+        // (naranja), DESHABILITADO (gris) y UBICACIÓN APAGADA (rojo). El
+        // "Detenido" es solo del panel/dash, aquí no se muestra.
+        val target = when {
+            !locationOn -> Triple(R.drawable.bg_pill_red, getString(R.string.pill_location_off), R.color.white)
+            !open -> Triple(R.drawable.bg_pill_gray, getString(R.string.pill_disabled), R.color.white)
+            !canSend() -> Triple(R.drawable.bg_pill_orange, getString(R.string.pill_no_connection), R.color.white)
+            else -> Triple(R.drawable.bg_pill_green, getString(R.string.pill_online), R.color.white)
+        }
+        applyPillState(pill, pillText, target.first, target.second, target.third)
+        button.setBackgroundResource(
+            if (open) R.drawable.bg_button_primary else R.drawable.bg_button_green,
+        )
+        button.text = getString(
+            if (open) R.string.journey_stop_upper else R.string.journey_start_upper,
+        )
+        // ACTUALIZAR se ve apagado (texto gris) sin jornada abierta; un refresco
+        // o el aviso en curso mandan sobre este estado de reposo.
+        if (!refreshing && !journeyNotice) {
+            updateButton.text = getString(R.string.refresh_button)
+            updateButton.setTextColor(updateButtonIdleColor())
+        }
+
+        val battery = readBattery()
+        findViewById<TextView>(R.id.battery_value)?.text = getString(R.string.battery_value_fmt, battery.first)
+        findViewById<TextView>(R.id.battery_value)?.setTextColor(
+            getColor(
+                when {
+                    battery.first <= 15 -> R.color.primary
+                    battery.first <= 35 -> android.R.color.holo_orange_dark
+                    else -> R.color.status_ok
+                },
+            ),
+        )
+        // El búfer se relee en cada refresco (30 s): antes solo se leía al
+        // arrancar y la tarjeta quedaba congelada en 0.
+        Thread {
+            val pending = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                // Guardamos el valor para que canSend() sepa si queda algo por enviar.
+                cachedPending = pending
+                findViewById<TextView>(R.id.pending_value)?.text = pending.toString()
+            }
+        }.start()
+        refreshDuration()
+    }
+
+    private fun refreshDuration() {
+        val text = findViewById<TextView>(R.id.duration_value) ?: return
+        if (!DmujeresApi.isJourneyOpen(this)) {
+            text.text = getString(R.string.journey_none_banner)
+            return
+        }
+        val startedAt = PreferenceManager.getDefaultSharedPreferences(this)
+            .getLong(DmujeresApi.KEY_JOURNEY_STARTED_AT, 0L)
+        if (startedAt <= 0L) {
+            text.text = getString(R.string.journey_none_banner)
+            return
+        }
+        val minutes = ((System.currentTimeMillis() - startedAt) / 60_000L).toInt()
+        text.text = getString(R.string.journey_duration_fmt, minutes / 60, minutes % 60)
+    }
+
+    private fun refreshLockedHomeDuration() = refreshDuration()
+
+    /**
+     * ¿La app puede enviar ahora? Usamos señales reales de la app (resultado de
+     * los envíos + búfer pendiente) y no las APIs del sistema (NetworkManager /
+     * ConnectivityManager), porque en algunas ROMs y con VPN activa mienten.
+     */
+    private var refreshing = false
+
+    /** Aviso "inicia la jornada" visible ahora en el botón ACTUALIZAR. */
+    private var journeyNotice = false
+
+    /** Color de reposo del botón ACTUALIZAR: navy con jornada, gris sin ella. */
+    private fun updateButtonIdleColor(): Int = androidx.core.content.ContextCompat.getColor(
+        this,
+        if (DmujeresApi.isJourneyOpen(this)) R.color.navy else R.color.muted,
+    )
+
+    /**
+     * Sin jornada no hay refresco: el botón muestra el aviso ~2.5 s (relleno
+     * en 0) y luego vuelve solo a "ACTUALIZAR".
+     */
+    private fun showJourneyClosedNotice() {
+        if (journeyNotice || refreshing) return
+        journeyNotice = true
+        val button = findViewById<Button>(R.id.update_button)
+        val fill = (button.background as android.graphics.drawable.LayerDrawable)
+            .findDrawableByLayerId(R.id.progress_fill) as android.graphics.drawable.ClipDrawable
+        fill.level = 0
+        button.text = getString(R.string.refresh_summary_journey_closed)
+        button.setTextColor(getColor(R.color.muted))
+        uiHandler.postDelayed({
+            journeyNotice = false
+            if (isFinishing || isDestroyed) return@postDelayed
+            button.text = getString(R.string.refresh_button)
+            button.setTextColor(updateButtonIdleColor())
+        }, JOURNEY_NOTICE_MS)
+    }
+
+    /**
+     * Refresco manual con el avance DENTRO del botón: el texto de cada paso
+     * reemplaza la palabra ACTUALIZAR y el relleno azul marino avanza de
+     * izquierda a derecha, proporcional a los pasos completados, con una
+     * animación continua y suave (no salta de golpe entre pasos).
+     */
+    private fun runProgressiveRefresh() {
+        if (refreshing) return
+        refreshing = true
+        val button = findViewById<Button>(R.id.update_button)
+        val fill = (button.background as android.graphics.drawable.LayerDrawable)
+            .findDrawableByLayerId(R.id.progress_fill) as android.graphics.drawable.ClipDrawable
+        var fillAnimator: android.animation.ValueAnimator? = null
+        val navy = androidx.core.content.ContextCompat.getColor(this, R.color.navy)
+
+        // Tinte del relleno: azul marino normal y naranja de aviso si un paso
+        // crítico falla. Se anima SIEMPRE (nada de saltos) y al reintentar
+        // vuelve a azul, para que no se quede pegado el color de un error
+        // anterior (era el bug: quedaba naranja aunque ya hubiera conexión).
+        var fillTint = navy
+        var warningShown = false
+        fun animateFillTint(to: Int, durationMs: Long) {
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                android.animation.ValueAnimator.ofArgb(fillTint, to).apply {
+                    duration = durationMs
+                    addUpdateListener { value ->
+                        fillTint = value.animatedValue as Int
+                        fill.setTint(fillTint)
+                    }
+                    start()
+                }
+            }
+        }
+        fun markWarning() {
+            if (warningShown) return
+            warningShown = true
+            animateFillTint(REFRESH_WARNING_COLOR, 700)
+        }
+        // Arranque limpio: el relleno nuevo empieza azul (aunque el anterior
+        // hubiera terminado en naranja).
+        runOnUiThread {
+            if (!isFinishing && !isDestroyed) {
+                fillTint = navy
+                fill.setTint(navy)
+            }
+        }
+
+        fun fillTo(step: Int, durationMs: Long) {
+            fillAnimator?.cancel()
+            val target = step * 10_000 / REFRESH_STEPS
+            fillAnimator = android.animation.ValueAnimator.ofInt(fill.level, target).apply {
+                duration = durationMs
+                interpolator = android.view.animation.LinearInterpolator()
+                addUpdateListener { value ->
+                    fill.level = value.animatedValue as Int
+                    // La letra pasa a blanco a medida que el relleno la cubre.
+                    val fraction = (value.animatedValue as Int) / 10_000f
+                    button.setTextColor(
+                        android.animation.ArgbEvaluator().evaluate(
+                            fraction, navy, android.graphics.Color.WHITE,
+                        ) as Int,
+                    )
+                }
+                start()
+            }
+        }
+        fun say(text: String, step: Int, durationMs: Long = 1_100) {
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                button.text = text
+                fillTo(step, durationMs)
+            }
+        }
+        Thread {
+            fun pause() = runCatching { Thread.sleep(900) }
+            try {
+                // 1) puntos pendientes
+                val before = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
+                say(getString(R.string.refresh_step_pending, before), 1)
+                TrackingService.refreshNow()
+                pause()
+                val after = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
+                say(getString(R.string.refresh_step_pending_ok, (before - after).coerceAtLeast(0)), 2)
+                if (after > 0) markWarning()
+                pause()
+                // 2) GPS
+                say(getString(R.string.refresh_step_gps), 3)
+                val gpsOn = runCatching {
+                    (getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager)
+                        .isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
+                }.getOrDefault(false)
+                val lastFixAt = PreferenceManager.getDefaultSharedPreferences(this)
+                    .getLong(PositionProvider.KEY_LAST_FIX_AT, 0L)
+                val fixAge = if (lastFixAt > 0) (System.currentTimeMillis() - lastFixAt) / 1000 else -1
+                say(
+                    if (gpsOn) {
+                        if (fixAge in 0..3600) getString(R.string.refresh_step_gps_ok, fixAge)
+                        else getString(R.string.refresh_step_gps_wait)
+                    } else {
+                        getString(R.string.refresh_step_gps_off)
+                    },
+                    3,
+                )
+                if (!gpsOn) markWarning()
+                pause()
+                // 3) datos móviles / red
+                say(getString(R.string.refresh_step_net), 4)
+                val online = runCatching {
+                    NetworkManager(this, object : NetworkManager.NetworkHandler {
+                        override fun onNetworkUpdate(isOnline: Boolean) = Unit
+                    }).isOnline
+                }.getOrDefault(false)
+                say(getString(if (online) R.string.refresh_step_net_ok else R.string.refresh_step_net_off), 4)
+                if (!online) markWarning()
+                pause()
+                // 4) servidor
+                say(getString(R.string.refresh_step_server), 5)
+                val serverOk = DmujeresApi.serverReachable(this)
+                say(getString(if (serverOk) R.string.refresh_step_server_ok else R.string.refresh_step_server_off), 5)
+                if (!serverOk) markWarning()
+                pause()
+                // 5) configuración remota
+                say(getString(R.string.refresh_step_config), 6)
+                val config = requestRemoteConfig()
+                say(
+                    getString(
+                        if (config == ConfigState.UPDATED) R.string.refresh_step_config_updated
+                        else R.string.refresh_step_config_ok,
+                    ),
+                    6,
+                )
+                if (config == ConfigState.UPDATED) {
+                    // Mismo reinicio que RemoteConfig.applyAndRestartIfChanged.
+                    stopService(Intent(this, TrackingService::class.java))
+                    ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+                }
+                pause()
+                // 6) Firebase
+                say(getString(R.string.refresh_step_firebase), 7)
+                val firebase = when (FcmStatus.hasToken(this)) {
+                    true -> FirebaseState.OK
+                    false -> FirebaseState.FAIL
+                    else -> FirebaseState.NA
+                }
+                say(
+                    getString(
+                        when (firebase) {
+                            FirebaseState.OK -> R.string.refresh_step_firebase_ok
+                            FirebaseState.FAIL -> R.string.refresh_step_firebase_off
+                            FirebaseState.NA -> R.string.refresh_step_firebase_na
+                        },
+                    ),
+                    7,
+                )
+                pause()
+                // Resumen honesto: los fallos reales mandan sobre el "Todo listo".
+                val summary = RefreshOutcome(
+                    journeyOpen = DmujeresApi.isJourneyOpen(this),
+                    pendingBefore = before,
+                    pendingAfter = after,
+                    gpsOn = gpsOn,
+                    online = online,
+                    serverOk = serverOk,
+                    firebase = firebase,
+                    config = config,
+                ).summary()
+                // El color final del relleno sigue el resultado real: azul si
+                // todo está bien, naranja de aviso si algo falló.
+                if (summary.allGood) animateFillTint(navy, 400) else markWarning()
+                say(getString(summary.textRes), 8, 700)
+                runOnUiThread { runCatching { refreshLockedHome() } }
+                pause()
+                // Reposo: vuelve la palabra ACTUALIZAR y el fondo blanco.
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    fillAnimator?.cancel()
+                    button.text = getString(R.string.refresh_button)
+                    button.setTextColor(updateButtonIdleColor())
+                    android.animation.ValueAnimator.ofInt(10_000, 0).apply {
+                        duration = 350
+                        addUpdateListener { value -> fill.level = value.animatedValue as Int }
+                        start()
+                    }
+                }
+            } finally {
+                refreshing = false
+            }
+        }.start()
+    }
+
+    private fun canSend(): Boolean = !ConnectionState.isFailing() && cachedPending == 0
+
+    /** Espera la config remota (con tope). NA = no llegó a consultarse. */
+    private fun requestRemoteConfig(): ConfigState {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val changed = java.util.concurrent.atomic.AtomicBoolean(false)
+        RemoteConfig.refresh(this) {
+            changed.set(it)
+            latch.countDown()
+        }
+        // La consulta tiene timeouts de 5 s; el tope evita que el refresco se
+        // quede pegado si el callback no llega.
+        val answered = runCatching {
+            latch.await(8, java.util.concurrent.TimeUnit.SECONDS)
+        }.getOrDefault(false)
+        return when {
+            !answered -> ConfigState.NA
+            changed.get() -> ConfigState.UPDATED
+            else -> ConfigState.OK
+        }
+    }
+
+    /** Permisos mínimos para iniciar jornada (los mismos del asistente). */
+    private fun journeyPermissionsGranted(): Boolean {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun readBattery(): Pair<Int, Boolean> {
+        val intent = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        if (intent == null) return -1 to false
+        val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 1)
+        val status = intent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+        val pct = if (level >= 0 && scale > 0) level * 100 / scale else -1
+        return pct to (status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == android.os.BatteryManager.BATTERY_STATUS_FULL)
+    }
+
+    private fun onVersionTap() {
+        val now = SystemClock.elapsedRealtime()
+        val valid = tapCount > 0 && now - tapLastAt in 1..1_200L && now - tapFirstAt <= 4_000L
+        tapCount = if (valid) tapCount + 1 else 1
+        if (!valid) tapFirstAt = now
+        tapLastAt = now
+        if (tapCount >= 5) {
+            tapCount = 0
+            // Acceso oculto: menú de depuración (pantallas y backend).
+            startActivity(Intent(this, DebugActivity::class.java))
+        }
+    }
+
+}

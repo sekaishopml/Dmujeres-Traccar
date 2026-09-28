@@ -18,10 +18,13 @@
 #   bash scripts/validation/e2e.sh              # incluye npm run build de apps/web
 #   bash scripts/validation/e2e.sh --sin-build  # omite el build (si otro proceso compila)
 #
-# Variables (todas opcionales):
+# Variables:
+#   DMJ_TEST_PASSWORD       OBLIGATORIA (sin valor por defecto; FASE 11).
+#                           Clave del usuario de prueba, solo por entorno.
+#   DMJ_TEST_MOVIL_KEY      OBLIGATORIA (sin valor por defecto; FASE 11).
+#                           Clave del canal movil (cabecera X-Api-Key), solo por entorno.
+#   DMJ_TEST_EMAIL          usuario de prueba (default fernando@dmujeres.local)
 #   DMJ_PROYECTO            raiz de la plataforma nueva (default /home/DMujeres-Tracking)
-#   DMJ_TEST_EMAIL          usuario de prueba (default del contrato de QA)
-#   DMJ_TEST_PASSWORD       clave del usuario de prueba (default del contrato de QA)
 #   DMJ_PROD_DB_CONTAINER   contenedor de produccion (default dmj-db; solo se
 #                           usa si sigue corriendo para comparar conteos)
 #   DMJ_PROD_DB_USER        usuario de produccion (default traccar)
@@ -30,13 +33,25 @@
 #   DMJ_NUEVA_DB_USER       usuario de la base nueva (default dmt)
 #   DMJ_NUEVA_DB_NAME       base nueva (default dmujeres)
 #
+# Seguridad (FASE 11): este script no trae credenciales por defecto ni las
+# imprime. Si falta DMJ_TEST_PASSWORD o DMJ_TEST_MOVIL_KEY, aborta con error.
+#
 # Salida: PASS/FAIL/AVISO por paso y codigo de salida 0 solo si no hay FAIL.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 PROYECTO="${DMJ_PROYECTO:-/home/DMujeres-Tracking}"
 DMJ_TEST_EMAIL="${DMJ_TEST_EMAIL:-fernando@dmujeres.local}"
-DMJ_TEST_PASSWORD="${DMJ_TEST_PASSWORD:-cctv2026}"
+# FASE 11: sin credenciales por defecto en el repo. Ambas claves son
+# obligatorias y llegan solo por entorno (fuera de git); no se imprimen.
+if [ -z "${DMJ_TEST_PASSWORD:-}" ]; then
+  echo "ERROR: falta DMJ_TEST_PASSWORD (obligatoria, sin valor por defecto). Exporte la clave de prueba por entorno y reintente." >&2
+  exit 2
+fi
+if [ -z "${DMJ_TEST_MOVIL_KEY:-}" ]; then
+  echo "ERROR: falta DMJ_TEST_MOVIL_KEY (obligatoria, sin valor por defecto). Exporte la clave del canal movil por entorno y reintente." >&2
+  exit 2
+fi
 
 PROD_DB_CONTAINER="${DMJ_PROD_DB_CONTAINER:-dmj-db}"
 PROD_DB_USER="${DMJ_PROD_DB_USER:-traccar}"
@@ -229,9 +244,9 @@ comprobar_http "http://127.0.0.1:25565/" 200 "services/web :25565 directo"
 comprobar_http "http://127.0.0.1:999/" 200 "panel nuevo :999 (plataforma)"
 comprobar_http "http://127.0.0.1:999/DMujeres-Tracking-2.1.73.apk" 200 "OTA APK por :999"
 
-# Canal movil de la App por :999 (config con clave y equipo reales)
+# Canal movil de la App por :999 (config con clave y equipo reales; clave solo por entorno)
 codigo_movil="$(curl -sS -o "$TMP/movil.json" -w '%{http_code}' --max-time 10 \
-  -H "X-Api-Key: ${DMJ_TEST_MOVIL_KEY:-cctv2026}" -H "X-Device-Id: macias" \
+  -H "X-Api-Key: ${DMJ_TEST_MOVIL_KEY}" -H "X-Device-Id: macias" \
   http://127.0.0.1:999/api/mobile/v1/config || true)"
 if [ "$codigo_movil" = "200" ]; then
   paso PASS "canal movil /api/mobile/v1/config por :999" "HTTP 200"
@@ -239,9 +254,9 @@ else
   paso FAIL "canal movil /api/mobile/v1/config por :999" "HTTP ${codigo_movil:-sin respuesta}"
 fi
 
-# Manifiesto OTA por :999
+# Manifiesto OTA por :999 (clave solo por entorno)
 codigo_ota="$(curl -sS -o "$TMP/ota.json" -w '%{http_code}' --max-time 10 \
-  -H "X-Api-Key: ${DMJ_TEST_MOVIL_KEY:-cctv2026}" \
+  -H "X-Api-Key: ${DMJ_TEST_MOVIL_KEY}" \
   "http://127.0.0.1:999/api/mobile/v1/ota?deviceId=macias&versionCode=275" || true)"
 if [ "$codigo_ota" = "200" ]; then
   paso PASS "OTA manifiesto por :999" "HTTP 200"
@@ -299,7 +314,7 @@ if [ -n "$cookie" ]; then
     paso FAIL "GET /api/v1/fleet con sesion" "HTTP $codigo_fleet total=$total_fleet"
   fi
 
-  # Ruteo estimado por calles: servicio local vivo y campo `estimados` en el
+  # Ruteo por calles: servicio local vivo y campo `reconstruidos` en el
   # replay (los tramos a saltos se dibujan pegados a las vias).
   salud_ruteo="$(curl -sS --max-time 5 http://127.0.0.1:8992/health 2>/dev/null || true)"
   if [ "$salud_ruteo" = "ok" ]; then
@@ -320,20 +335,20 @@ if [ -n "$cookie" ]; then
     hasta_replay="$(node24 -e 'process.stdout.write(new Date().toISOString())')"
     codigo_replay="$(curl -sS -o "$TMP/replay.json" -w '%{http_code}' --max-time 20 -H "Cookie: $cookie" \
       "http://127.0.0.1/api/v1/replay/$id_replay?desde=$desde_replay&hasta=$hasta_replay" || true)"
-    tiene_estimados="$(node24 -e '
+    tiene_reconstruidos="$(node24 -e '
       const fs = require("fs");
       try {
         const datos = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-        process.stdout.write(Array.isArray(datos.estimados) ? "si" : "no");
+        process.stdout.write(Array.isArray(datos.reconstruidos) ? "si" : "no");
       } catch { process.stdout.write("no"); }
     ' "$TMP/replay.json" 2>/dev/null || echo no)"
-    if [ "$codigo_replay" = "200" ] && [ "$tiene_estimados" = "si" ]; then
-      paso PASS "replay expone tramos estimados" "HTTP $codigo_replay"
+    if [ "$codigo_replay" = "200" ] && [ "$tiene_reconstruidos" = "si" ]; then
+      paso PASS "replay expone tramos reconstruidos" "HTTP $codigo_replay"
     else
-      paso AVISO "replay expone tramos estimados" "http=$codigo_replay estimados=$tiene_estimados"
+      paso AVISO "replay expone tramos reconstruidos" "http=$codigo_replay reconstruidos=$tiene_reconstruidos"
     fi
   else
-    paso AVISO "replay expone tramos estimados" "sin dispositivo en la flota de prueba"
+    paso AVISO "replay expone tramos reconstruidos" "sin dispositivo en la flota de prueba"
   fi
 
   codigo_logout="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \

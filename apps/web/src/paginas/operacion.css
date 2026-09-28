@@ -190,6 +190,17 @@
   width: 10px; height: 0; border: 0; border-top: 2px dotted var(--gris);
   border-radius: 0; box-shadow: none;
 }
+/* Capas del recorrido (ADR-007): muestras de línea, no de punto. La real es
+   sólida en el verde de crucero, la ajustada a vía es sólida fina azul y la
+   estimada es punteada gris, igual que sus capas del mapa. */
+.replay-leyenda .real,
+.replay-leyenda .ajustado,
+.replay-leyenda .estimado {
+  width: 12px; height: 0; border: 0; border-radius: 0; box-shadow: none;
+}
+.replay-leyenda .real { border-top: 3px solid var(--verde); }
+.replay-leyenda .ajustado { border-top: 2px solid #4a6fa5; }
+.replay-leyenda .estimado { border-top: 3px dotted var(--gris); }
 
 /* El marcador actual cambia de color por estado del fix; el navy de global.css
    queda solo para el arranque. */

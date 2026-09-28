@@ -342,6 +342,30 @@ async function principal() {
           replay.json?.resumen?.totalPosiciones === replay.json.posiciones.length,
         JSON.stringify(replay.json)?.slice(0, 200),
       );
+      // FASE 1: reconstruidos con {desde,hasta,metodo,mapaVersion,trazado}.
+      // Transición: replay.js aún expone `estimados` (fuera de lista FASE 1);
+      // ruteo.js ya devuelve la forma nueva, así que se acepta cualquiera de
+      // las dos claves siempre que la forma sea la honesta.
+      const tramos = replay.json?.reconstruidos ?? replay.json?.estimados ?? null;
+      const claveTramos = replay.json?.reconstruidos !== undefined ? 'reconstruidos' : 'estimados';
+      const formaTramo = (tramo) =>
+        tramo !== null && typeof tramo === 'object' &&
+        typeof tramo.desde === 'string' && typeof tramo.hasta === 'string' &&
+        (tramo.metodo === 'MATCHED' || tramo.metodo === 'ESTIMATED') &&
+        (tramo.mapaVersion === null || typeof tramo.mapaVersion === 'string') &&
+        Array.isArray(tramo.trazado) && tramo.trazado.length >= 2;
+      comprobar(
+        `replay tramos (${claveTramos}) con forma honesta metodo/mapaVersion/trazado`,
+        replay.estado === 200 && (tramos === null || (Array.isArray(tramos) && tramos.every(formaTramo))),
+        `clave=${claveTramos} total=${Array.isArray(tramos) ? tramos.length : 'n/a'}`,
+      );
+      if (replay.json?.reconstruidos !== undefined && replay.json?.estimados !== undefined) {
+        comprobar(
+          'replay expone reconstruidos sin duplicar estimados en el contrato final',
+          false,
+          'conviven ambas claves en transición; quitar estimados en Sprint 3',
+        );
+      }
     }
 
     // Jornadas: encendido/apagado del equipo de prueba el 25/09 (hora local).
@@ -459,6 +483,33 @@ async function principal() {
       'battery/{deviceId} 200 con muestras',
       bateriaDispositivo.estado === 200 && Array.isArray(bateriaDispositivo.json?.muestras) && bateriaDispositivo.json.muestras.length >= 1,
       JSON.stringify(bateriaDispositivo.json)?.slice(0, 200),
+    );
+
+    // Salud FASE 1: estado con causa por equipo (requiere sesión).
+    const salud = await pedir('GET', '/salud');
+    const estadosSalud = new Set(['HEALTHY', 'DEGRADED', 'OFFLINE', 'RECOVERING', 'MISCONFIGURED']);
+    const filaSaludOk = (fila) =>
+      fila !== null && typeof fila === 'object' &&
+      Number.isInteger(fila.dispositivoId) &&
+      estadosSalud.has(fila.estado) &&
+      typeof fila.causa === 'string' && fila.causa.length > 0 &&
+      ('lastFixAgeS' in fila) && ('uploadLagS' in fila) && ('captureGapS' in fila) &&
+      ('bufferDepth' in fila) && ('bateriaPct' in fila) && ('cargando' in fila) &&
+      ('gps' in fila) && ('permisos' in fila) && ('bateriaExenta' in fila) &&
+      ('fgs' in fila) && ('jornada' in fila) && ('red' in fila) &&
+      ('bootId' in fila) && ('recoveryCount' in fila) && ('appVersion' in fila) &&
+      ('android' in fila) && ('fabricante' in fila) && ('modelo' in fila);
+    comprobar(
+      'salud 200 con datos y causa por equipo',
+      salud.estado === 200 && Array.isArray(salud.json?.datos) &&
+      salud.json.datos.length >= 1 && salud.json.datos.every(filaSaludOk),
+      `estado=${salud.estado} total=${salud.json?.datos?.length ?? 'n/a'}`,
+    );
+    const saludSinSesion = await pedir('GET', '/salud', { conCookie: false });
+    comprobar(
+      'salud sin cookie 401 NO_AUTENTICADO',
+      saludSinSesion.estado === 401 && saludSinSesion.json?.error?.codigo === 'NO_AUTENTICADO',
+      `estado=${saludSinSesion.estado}`,
     );
 
     // Usuarios: usuario normal no administra

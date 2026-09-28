@@ -1259,6 +1259,40 @@
           }
         }
       }
+    },
+    "/api/v1/salud": {
+      "get": {
+        "tags": [
+          "sistema"
+        ],
+        "summary": "Salud de la flota con causa",
+        "description": "Estado por equipo (HEALTHY/DEGRADED/OFFLINE/RECOVERING/MISCONFIGURED) con causa legible, derivado de posiciones/eventos/atributos. Los campos que la app aún no reporta viajan como null.",
+        "operationId": "listarSalud",
+        "responses": {
+          "200": {
+            "description": "Salud de la flota.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespuestaSalud"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServicioNoDisponible"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1978,37 +2012,6 @@
         },
         "additionalProperties": false
       },
-      "SegmentoEstimado": {
-        "type": "object",
-        "description": "Tramo entre dos fixes muy separados resuelto con el camino estimado por calles; es una estimacion para el dibujo.",
-        "required": [
-          "desde",
-          "hasta",
-          "trazado"
-        ],
-        "properties": {
-          "desde": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "hasta": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "trazado": {
-            "type": "array",
-            "items": {
-              "type": "array",
-              "items": {
-                "type": "number"
-              },
-              "minItems": 2,
-              "maxItems": 2
-            }
-          }
-        },
-        "additionalProperties": false
-      },
       "ReplayResumen": {
         "type": "object",
         "required": [
@@ -2116,19 +2119,19 @@
               "$ref": "#/components/schemas/Hueco"
             }
           },
-          "estimados": {
-            "type": "array",
-            "description": "Tramos entre fixes muy separados (huecos o cadencia lenta) resueltos por calles para el dibujo.",
-            "items": {
-              "$ref": "#/components/schemas/SegmentoEstimado"
-            }
-          },
           "resumen": {
             "$ref": "#/components/schemas/ReplayResumen"
           },
           "generadoEn": {
             "type": "string",
             "format": "date-time"
+          },
+          "reconstruidos": {
+            "type": "array",
+            "description": "Tramos reconstruidos por calles con método y versión de mapa (reemplaza a estimados).",
+            "items": {
+              "$ref": "#/components/schemas/TramoReconstruido"
+            }
           }
         },
         "additionalProperties": false
@@ -3022,6 +3025,237 @@
           "construidoEn": {
             "type": "string",
             "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EstadoSalud": {
+        "type": "string",
+        "enum": [
+          "HEALTHY",
+          "DEGRADED",
+          "OFFLINE",
+          "RECOVERING",
+          "MISCONFIGURED"
+        ]
+      },
+      "PermisosSalud": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "required": [
+          "fondo",
+          "fina"
+        ],
+        "properties": {
+          "fondo": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fina": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SaludDispositivo": {
+        "type": "object",
+        "required": [
+          "dispositivoId",
+          "estado",
+          "causa"
+        ],
+        "properties": {
+          "dispositivoId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "estado": {
+            "$ref": "#/components/schemas/EstadoSalud"
+          },
+          "causa": {
+            "type": "string",
+            "description": "Causa legible en español; nunca un OFFLINE mudo."
+          },
+          "lastFixAgeS": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "uploadLagS": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "captureGapS": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "bufferDepth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "bateriaPct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "cargando": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "gps": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "permisos": {
+            "$ref": "#/components/schemas/PermisosSalud"
+          },
+          "bateriaExenta": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fgs": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "jornada": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "red": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bootId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recoveryCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "appVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "android": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fabricante": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modelo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "RespuestaSalud": {
+        "type": "object",
+        "required": [
+          "datos"
+        ],
+        "properties": {
+          "datos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SaludDispositivo"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "TramoReconstruido": {
+        "type": "object",
+        "description": "Tramo entre dos fixes muy separados resuelto por calles. MATCHED = ajustado a vía con fixes intermedios (/match); ESTIMATED = ruta A→B sin observaciones (/route). Nunca se presenta como GPS registrado.",
+        "required": [
+          "desde",
+          "hasta",
+          "metodo",
+          "mapaVersion",
+          "trazado"
+        ],
+        "properties": {
+          "desde": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hasta": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metodo": {
+            "type": "string",
+            "enum": [
+              "MATCHED",
+              "ESTIMATED"
+            ]
+          },
+          "mapaVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SHA-256 del PBF de GraphHopper; null si no se conoce."
+          },
+          "trazado": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
           }
         },
         "additionalProperties": false

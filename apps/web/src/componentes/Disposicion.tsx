@@ -4,6 +4,7 @@ import Icono from './Icono';
 import type { NombreIcono } from './Icono';
 import Cargando from './Cargando';
 import { useSesion } from '../store/sesion';
+import { alNoAutorizado } from '../api/cliente';
 
 const ENLACES: { ruta: string; texto: string; icono: NombreIcono; fin?: boolean }[] = [
   { ruta: '/', texto: 'Inicio', icono: 'inicio', fin: true },
@@ -84,6 +85,13 @@ export default function Disposicion() {
   useEffect(() => {
     setMenuAbierto(false);
   }, [ubicacion.pathname]);
+
+  // El 401 del cliente API navega por SPA en vez de recargar la página
+  // completa: conserva el estado del enrutador y evita perder la ruta.
+  useEffect(() => {
+    alNoAutorizado(() => navegar('/login', { replace: true }));
+    return () => alNoAutorizado(null);
+  }, [navegar]);
 
   useEffect(() => {
     cargar().then((u) => {
