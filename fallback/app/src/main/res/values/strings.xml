@@ -278,4 +278,16 @@ Se registrará el cierre en el panel.</string>
   <string name="debug_no_update">No hay actualización disponible</string>
   <string name="debug_save">Guardar</string>
   <string name="debug_close">Cerrar</string>
+  <string name="debug_close_session_title">Finalizar sesión</string>
+  <string name="debug_close_session_summary">Envía lo pendiente, cierra la jornada y la sesión</string>
+  <string name="debug_close_session_confirm_fmt">Hay %1$d posiciones guardadas. Se enviará lo pendiente y se cerrará la jornada.</string>
+  <string name="debug_close_session_confirm_empty">No hay posiciones pendientes. Se enviará lo pendiente y se cerrará la jornada.</string>
+  <string name="debug_close_session_ok">Finalizar</string>
+  <string name="debug_close_session_start">Cerrando sesión…</string>
+  <string name="debug_close_session_progress_fmt">Enviando… %1$d enviadas · %2$d restantes</string>
+  <string name="debug_close_session_done_fmt">Sesión finalizada · %1$d posiciones enviadas</string>
+  <string name="debug_close_session_remaining_fmt">Quedan %1$d posiciones guardadas en el teléfono: se enviarán al entrar de nuevo</string>
+  <string name="debug_close_session_journey_offline">El cierre de jornada quedó sin confirmar (sin conexión): en el teléfono ya está cerrada.</string>
+  <string name="debug_close_session_auth">La sesión venció durante el envío: entra de nuevo para enviar lo pendiente.</string>
+  <string name="debug_close_session_not_cleared">No se pudo cerrar la sesión, sigue activa. Vuelve a intentarlo.</string>
 </resources>

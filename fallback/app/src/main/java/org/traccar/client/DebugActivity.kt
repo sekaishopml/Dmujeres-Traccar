@@ -10,7 +10,14 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * Menú de depuración (acceso oculto: 5 toques en la versión).
@@ -20,6 +27,9 @@ import androidx.preference.PreferenceManager
  * bienvenida, consola, actualización…) y el estado del backend.
  */
 class DebugActivity : AppCompatActivity() {
+
+    /** Trabajo del cierre limpio en curso (se cancela al salir). */
+    private var closeJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,7 +97,19 @@ class DebugActivity : AppCompatActivity() {
             addRow(rows, R.string.debug_logout_title, logoutSummary()) {
                 showLogoutDialog()
             }
+            addDestructiveRow(
+                rows,
+                R.string.debug_close_session_title,
+                R.string.debug_close_session_summary,
+            ) {
+                showCloseSessionDialog()
+            }
         }
+    }
+
+    override fun onDestroy() {
+        runCatching { closeJob?.cancel() }
+        super.onDestroy()
     }
 
     // ── Diseño de filas ─────────────────────────────────────────────────────
@@ -122,6 +144,18 @@ class DebugActivity : AppCompatActivity() {
         val row = LayoutInflater.from(this).inflate(R.layout.debug_row, rows, false)
         row.findViewById<TextView>(R.id.row_title).setText(titleRes)
         row.findViewById<TextView>(R.id.row_summary).text = summary
+        row.setOnClickListener { action() }
+        rows.addView(row)
+    }
+
+    /** Fila destructiva: título en rojo (acción que cierra/borra). */
+    private fun addDestructiveRow(rows: LinearLayout, titleRes: Int, summaryRes: Int, action: () -> Unit) {
+        val row = LayoutInflater.from(this).inflate(R.layout.debug_row, rows, false)
+        row.findViewById<TextView>(R.id.row_title).apply {
+            setText(titleRes)
+            setTextColor(ContextCompat.getColor(context, R.color.primary))
+        }
+        row.findViewById<TextView>(R.id.row_summary).setText(summaryRes)
         row.setOnClickListener { action() }
         rows.addView(row)
     }
@@ -326,6 +360,104 @@ class DebugActivity : AppCompatActivity() {
                 finish()
             }
             .setNegativeButton(R.string.debug_close, null)
+            .show()
+    }
+
+    /**
+     * Finalizar sesión (solo debug): confirmación destructiva. El cierre
+     * limpio envía lo pendiente y cierra la jornada antes de limpiar.
+     */
+    private fun showCloseSessionDialog() {
+        val pending = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(-1)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.debug_close_session_title)
+            .setMessage(
+                if (pending > 0) {
+                    getString(R.string.debug_close_session_confirm_fmt, pending)
+                } else {
+                    getString(R.string.debug_close_session_confirm_empty)
+                },
+            )
+            .setPositiveButton(R.string.debug_close_session_ok) { _, _ ->
+                runCloseSession()
+            }
+            .setNegativeButton(R.string.debug_close, null)
+            .show()
+    }
+
+    /**
+     * Corre el cierre limpio sin bloquear el hilo principal: diálogo de
+     * progreso no cancelable que avanza por lote, con tope ~30 s. Al terminar
+     * se informa en español (o cierra completo o dice qué faltó) y, si la
+     * sesión quedó limpia, se abre el login.
+     */
+    private fun runCloseSession() {
+        if (closeJob?.isActive == true) return
+        val progress = AlertDialog.Builder(this)
+            .setTitle(R.string.debug_close_session_title)
+            .setMessage(getString(R.string.debug_close_session_start))
+            .setCancelable(false)
+            .create()
+        progress.show()
+        closeJob = CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+            val report = SessionCloser.cerrarSesionLimpia(this@DebugActivity) { sent, remaining ->
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed && progress.isShowing) {
+                        progress.setMessage(
+                            getString(
+                                R.string.debug_close_session_progress_fmt,
+                                sent,
+                                remaining.coerceAtLeast(0),
+                            ),
+                        )
+                    }
+                }
+            }
+            if (!isFinishing && !isDestroyed) {
+                runCatching { progress.dismiss() }
+                showCloseResult(report)
+            }
+        }
+    }
+
+    /** Informe humano del cierre: completo o qué faltó (sin jerga). */
+    private fun showCloseResult(report: SessionClosePlan.CloseReport) {
+        if (!report.sessionCleared) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.debug_close_session_title)
+                .setMessage(getString(R.string.debug_close_session_not_cleared))
+                .setPositiveButton(R.string.debug_close, null)
+                .show()
+            return
+        }
+        if (report.isComplete()) {
+            toast(getString(R.string.debug_close_session_done_fmt, report.sent))
+            LoginActivity.start(this)
+            finish()
+            return
+        }
+        val lines = ArrayList<String>()
+        if (report.remaining > 0) {
+            lines.add(getString(R.string.debug_close_session_remaining_fmt, report.remaining))
+        } else if (report.remaining < 0) {
+            lines.add(getString(R.string.debug_close_session_remaining_fmt, 0))
+        }
+        if (report.journey == SessionClosePlan.JourneyOutcome.OFFLINE) {
+            lines.add(getString(R.string.debug_close_session_journey_offline))
+        }
+        if (report.authFailed) {
+            lines.add(getString(R.string.debug_close_session_auth))
+        }
+        if (lines.isEmpty()) {
+            lines.add(getString(R.string.debug_close_session_done_fmt, report.sent))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.debug_close_session_title)
+            .setMessage(lines.joinToString("\n\n"))
+            .setPositiveButton(R.string.debug_close) { _, _ ->
+                LoginActivity.start(this)
+                finish()
+            }
             .show()
     }
 

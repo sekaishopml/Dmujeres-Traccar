@@ -87,6 +87,9 @@ class TrackingController(private val context: Context) :
     private var isOnline = networkManager.isOnline
 
     fun start() {
+        // Arranque nuevo = captura abierta: un cierre limpio previo (solo
+        // debug) pudo dejar el congelamiento puesto si el proceso murió.
+        captureFrozen = false
         // boot_id: UUID por arranque de proceso (las filas viejas conservan el
         // suyo: la identidad es por evento, no por instalación).
         runCatching { databaseHelper.rotateBootId() }
@@ -290,6 +293,10 @@ class TrackingController(private val context: Context) :
     }
 
     override fun onPositionUpdate(position: Position) {
+        // Cierre limpio de sesión en curso (solo debug): no se acepta ningún
+        // fix nuevo a la cola mientras se vacía. No se toca la máquina ni el
+        // vigilante: solo se deja de almacenar.
+        if (captureFrozen) return
         val now = System.currentTimeMillis()
         // Guardia de teleport (rechazo de error, no pérdida): ANTES de que el
         // salto contamine la máquina, el último fix o el vigilante. El fix
@@ -517,6 +524,15 @@ class TrackingController(private val context: Context) :
 
     companion object {
         private val TAG = TrackingController::class.java.simpleName
+
+        /**
+         * Congelamiento de captura para el cierre limpio de sesión (solo
+         * debug): mientras está activo, [onPositionUpdate] descarta los fixes
+         * antes de almacenarlos. Lo pone [SessionCloser] al empezar y lo quita
+         * al terminar (o al arrancar el servicio / entrar de nuevo).
+         */
+        @Volatile
+        var captureFrozen: Boolean = false
 
         /** Revisión del vigilante de GPS (re-solicitud / respaldo AOSP). */
         private const val WATCHDOG_PERIOD_MS = 60_000L

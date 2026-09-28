@@ -88,6 +88,24 @@ class LoginActivity : AppCompatActivity() {
                 enterButton.text = getString(R.string.login_enter)
                 when (result) {
                     DmujeresApi.LoginResult.AUTHORIZED -> {
+                        // Inicio limpio en otra sesión: la sesión se reemplaza
+                        // (SessionStore.save) y además no queda captura
+                        // congelada ni nombre/usuario residual (el cierre
+                        // limpio ya retiró el anterior). El servicio se
+                        // reinicia para tomar la sesión nueva: al arrancar
+                        // reconcilia la jornada con GET /journey (continúa la
+                        // abierta del equipo o espera una nueva, nunca dos
+                        // abiertas locales) y la cola drena primero lo
+                        // heredado (lo más viejo primero).
+                        TrackingController.captureFrozen = false
+                        if (TrackingService.isRunning) {
+                            RemoteConfig.restartService(this)
+                        } else {
+                            androidx.core.content.ContextCompat.startForegroundService(
+                                this,
+                                Intent(this, TrackingService::class.java),
+                            )
+                        }
                         startActivity(
                             Intent(this, MainActivity::class.java)
                                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
