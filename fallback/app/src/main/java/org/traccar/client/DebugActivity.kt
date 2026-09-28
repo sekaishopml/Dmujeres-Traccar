@@ -89,17 +89,15 @@ class DebugActivity : AppCompatActivity() {
             toast(getString(R.string.debug_clear_console_done))
         }
 
-        // Finalizar sesión en rojo, debajo de vaciar consola (solo debug).
-        // El cierre limpio envía lo pendiente y cierra la jornada antes de
-        // limpiar la sesión; entrar con otro usuario reemplaza la anterior.
-        if (BuildConfig.DEBUG) {
-            addDestructiveRow(
-                rows,
-                R.string.debug_close_session_title,
-                R.string.debug_close_session_summary,
-            ) {
-                showCloseSessionDialog()
-            }
+        // Finalizar sesión en rojo, debajo de vaciar consola (también en
+        // release: la flota no instala debug y el dueño lo necesita visible).
+        // La confirmación evita toques accidentales; sin sesión solo abre login.
+        addDestructiveRow(
+            rows,
+            R.string.debug_close_session_title,
+            R.string.debug_close_session_summary,
+        ) {
+            showCloseSessionDialog()
         }
     }
 
