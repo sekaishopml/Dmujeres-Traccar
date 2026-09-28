@@ -1,7 +1,7 @@
 {
-  "version": "2.1.78",
-  "versionCode": 288,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.78.apk",
-  "notes": "Cierre limpio de sesion y la sesion ya no renombra al equipo",
-  "sha256": "d538c4189de822da71dcd20a94814c7e28d59d663b500143c91f9fac7cc7a069"
+  "version": "2.1.79",
+  "versionCode": 289,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.79.apk",
+  "notes": "Boton Finalizar sesion en rojo debajo de vaciar consola",
+  "sha256": "176ddf083601186e34d4e1d064b72e02715539f781923510efc8baed62ec6fa1"
 }
