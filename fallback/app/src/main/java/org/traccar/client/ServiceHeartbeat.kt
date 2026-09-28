@@ -70,6 +70,10 @@ object ServiceHeartbeat {
                 val deadEvents = runCatching { DatabaseHelper(context).deadEventsCount() }.getOrDefault(0L)
                 val recoveryCount = prefs.getLong(Prefs.RECOVERY_COUNT, 0L)
                 val movementState = prefs.getString(Prefs.MOVEMENT_STATE, "UNKNOWN").orEmpty()
+                // Modo caminata: el panel distingue el paseo a pie (2-8 km/h,
+                // cadencia fina por avance) del vehículo, sin tocar el lote.
+                val walking = prefs.getBoolean(Prefs.MOVEMENT_WALKING, false)
+                val movementMode = prefs.getString(Prefs.MOVEMENT_MODE, Prefs.MODE_NORMAL).orEmpty()
                 val fgsState = if (TrackingService.isRunning) "running" else "stopped"
                 val battery = readBatteryStatus(context)
                 val fixAt = prefs.getLong(PositionProvider.KEY_LAST_FIX_AT, 0L)
@@ -153,6 +157,8 @@ object ServiceHeartbeat {
                             .put("recoveryCount", recoveryCount)
                             .put("fgsState", fgsState)
                             .put("movementState", movementState)
+                            .put("caminando", walking)
+                            .put("mode", movementMode)
                             .put("serverUrl", prefs.getString(Prefs.URL, "")),
                     ),
                 )

@@ -35,10 +35,12 @@ const TANDA = 8;
 const PRESUPUESTO_MS = 3000;
 // Ventanas densas para ajuste a vía (/match) en cadencia fina. Hasta 100
 // puntos o 5 min por ventana: el matcher filtra observaciones cercanas y cada
-// ventana responde en <100 ms en el grafo local. Se corta en paradas con
-// velocidad 0 prolongada y en huecos que ya se tratan como antes (>=45 s), así
-// que nunca se solapa con los candidatos de huecos. Las ventanas paradas
-// (desplazamiento <50 m) se descartan antes de llamar: es jitter, no ruta.
+// ventana responde en <100 ms en el grafo local. El interior de paradas
+// prolongadas nunca entra a ventanas (se corta antes del inicio y se reanuda
+// después del fin) y los outliers de teleport se apartan del ajuste; además
+// se corta en huecos que ya se tratan como antes (>=45 s), así que nunca se
+// solapa con los candidatos de huecos. Las ventanas paradas (desplazamiento
+// <50 m) se descartan antes de llamar: es jitter, no ruta.
 const MAX_PUNTOS_VENTANA_DENSA = 100;
 const MAX_DURACION_VENTANA_DENSA_MS = 5 * 60 * 1000;
 const MIN_PUNTOS_VENTANA_DENSA = 3;
@@ -47,6 +49,13 @@ const VELOCIDAD_PARADA_KMH = 2;
 const DURACION_PARADA_CORTE_MS = 60 * 1000;
 const MAX_VENTANAS_DENSAS = 200;
 const TANDA_DENSAS = 4;
+// Rechazo de teleports antes de /match (el crudo se conserva intacto, solo
+// se aparta el fix del ajuste): velocidad implícita contra el anterior
+// válido mayor a 120 km/h, o pico aislado de precisión >30 m con ambos
+// vecinos <15 m. Si al quitar outliers quedan <3 fixes, se descarta.
+const VELOCIDAD_MAX_TELEPORT_KMH = 120;
+const PRECISION_PICO_M = 30;
+const PRECISION_VECINA_FIABLE_M = 15;
 
 const cache = new Map();
 
@@ -106,11 +115,12 @@ function velocidadParaParada(actual, anterior) {
 }
 
 // Rachas de velocidad <2 km/h que duran >=60 s (mismo umbral de detención que
-// la web). Se usan solo como bordes de ventana: el jitter parado no se manda
-// al matcher, que devolvería vueltas absurdas sobre la misma manzana. Un fix
-// aislado en movimiento no rompe la racha (suele ser glitch de velocidad,
-// como el 0 de las 21:47:48 en plena marcha o el 2,1 entre ceros al detenerse):
-// hacen falta 2 seguidos para cerrarla.
+// la web). Ningún índice cubierto por estas rachas puede pertenecer a una
+// ventana matchable: el jitter parado no se manda al matcher, que devolvería
+// vueltas absurdas sobre la misma manzana. Un fix aislado en movimiento no
+// rompe la racha (suele ser glitch de velocidad, como el 0 de las 21:47:48
+// en plena marcha o el 2,1 entre ceros al detenerse): hacen falta 2 seguidos
+// para cerrarla.
 function detectarParadasProlongadas(posiciones) {
   const paradas = [];
   let inicioRacha = -1;
@@ -149,10 +159,129 @@ function detectarParadasProlongadas(posiciones) {
   return paradas;
 }
 
+// Precisión del fix en metros, o null si no hay dato válido. Acepta el DTO
+// (precisionM) y la fila cruda (precision_m) sin convertir unidades.
+function leerPrecisionM(posicion) {
+  try {
+    const valor = posicion?.precisionM ?? posicion?.precision_m;
+    return typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
+  } catch {
+    return null;
+  }
+}
+
+// Velocidad implícita en km/h entre dos fixes (distancia/tiempo), o null si
+// no se puede calcular (tiempo inválido o no positivo). No lanza.
+function velocidadImplicitaKmh(anterior, actual) {
+  try {
+    const desde = instanteMs(anterior);
+    const hasta = instanteMs(actual);
+    const segundos = (hasta - desde) / 1000;
+    if (!(Number.isFinite(segundos) && segundos > 0)) return null;
+    const metros = distanciaM(anterior, actual);
+    if (!Number.isFinite(metros)) return null;
+    return (metros / segundos) * 3.6;
+  } catch {
+    return null;
+  }
+}
+
+// Aparta outliers de teleport de la entrada a /match sin mutar el crudo:
+// devuelve una lista nueva sin los fixes saltados. Dos reglas:
+// - velocidad implícita contra el anterior válido >120 km/h (teleport);
+// - pico aislado de precisión >30 m con ambos vecinos <15 m.
+// La comparación de velocidad usa el anterior conservado (no el outlier) para
+// no marcar como outlier el fix bueno que vuelve del salto. No lanza: ante
+// cualquier dato inválido devuelve lo que sí pudo filtrar.
+function filtrarOutliersTeleport(ventana) {
+  try {
+    if (!Array.isArray(ventana) || ventana.length === 0) return [];
+    // Paso 1: velocidad implícita excesiva.
+    const sinSaltos = [];
+    let anteriorValido = null;
+    for (const fix of ventana) {
+      try {
+        if (!coordenadasValidas(fix)) {
+          continue;
+        }
+        if (!anteriorValido) {
+          sinSaltos.push(fix);
+          anteriorValido = fix;
+          continue;
+        }
+        const velocidad = velocidadImplicitaKmh(anteriorValido, fix);
+        if (
+          typeof velocidad === 'number' &&
+          Number.isFinite(velocidad) &&
+          velocidad > VELOCIDAD_MAX_TELEPORT_KMH
+        ) {
+          continue;
+        }
+        sinSaltos.push(fix);
+        anteriorValido = fix;
+      } catch {
+        continue;
+      }
+    }
+    // Paso 2: pico aislado de precisión (solo interiores con ambos vecinos).
+    if (sinSaltos.length < 3) return sinSaltos;
+    const sinPicos = [sinSaltos[0]];
+    for (let i = 1; i < sinSaltos.length - 1; i += 1) {
+      try {
+        const previa = leerPrecisionM(sinSaltos[i - 1]);
+        const actual = leerPrecisionM(sinSaltos[i]);
+        const siguiente = leerPrecisionM(sinSaltos[i + 1]);
+        if (
+          actual !== null &&
+          previa !== null &&
+          siguiente !== null &&
+          actual > PRECISION_PICO_M &&
+          previa < PRECISION_VECINA_FIABLE_M &&
+          siguiente < PRECISION_VECINA_FIABLE_M
+        ) {
+          continue;
+        }
+        sinPicos.push(sinSaltos[i]);
+      } catch {
+        sinPicos.push(sinSaltos[i]);
+      }
+    }
+    sinPicos.push(sinSaltos[sinSaltos.length - 1]);
+    return sinPicos;
+  } catch {
+    try {
+      return Array.isArray(ventana) ? ventana.slice() : [];
+    } catch {
+      return [];
+    }
+  }
+}
+
+// Desplazamiento máximo desde el primer fix de la ventana, o NaN si no se
+// puede calcular. Se usa el máximo (no extremo a extremo) para no descartar
+// recorridos en bucle que vuelven cerca del origen. No lanza.
+function desplazamientoMaximoM(ventana) {
+  try {
+    let maximo = 0;
+    for (let i = 1; i < ventana.length; i += 1) {
+      const desplazamiento = distanciaM(ventana[0], ventana[i]);
+      if (desplazamiento > maximo) maximo = desplazamiento;
+    }
+    return maximo;
+  } catch {
+    return NaN;
+  }
+}
+
 // Parte el track en ventanas matchables: hasta 100 puntos o 5 min, cortando
-// en huecos >=45 s (ya tratados como antes) y en bordes de parada prolongada.
-// Devuelve listas de fixes; el llamador filtra y llama a /match por ventana.
-// No lanza: ante dato inválido devuelve las ventanas que sí pudo partir.
+// en huecos >=45 s (ya tratados como antes). El interior de paradas
+// prolongadas nunca pertenece a una ventana: se corta antes del inicio y se
+// reanuda después del fin, así que una ventana que empieza dentro de una
+// parada (índice 0 o tras corte de hueco) no arrastra deriva ni el salto
+// siguiente. Después se apartan outliers de teleport de la entrada a /match
+// (el crudo queda intacto). Devuelve listas de fixes ya limpios; el llamador
+// los manda a /match por ventana. No lanza: ante dato inválido devuelve las
+// ventanas que sí pudo partir.
 export function partirVentanasDensas(posiciones) {
   const ventanas = [];
   try {
@@ -163,47 +292,74 @@ export function partirVentanasDensas(posiciones) {
     } catch {
       paradas = [];
     }
-    const esInicioParada = new Set(paradas.map((p) => p.inicio));
-    const esFinParada = new Set(paradas.map((p) => p.fin));
-    let inicio = 0;
-    const cerrar = (fin) => {
-      if (fin >= inicio) ventanas.push(posiciones.slice(inicio, fin + 1));
-      inicio = fin + 1;
-    };
-    for (let i = 1; i < posiciones.length; i += 1) {
-      const anteriorMs = instanteMs(posiciones[i - 1]);
-      const actualMs = instanteMs(posiciones[i]);
-      if (Number.isFinite(anteriorMs) && Number.isFinite(actualMs)) {
-        if ((actualMs - anteriorMs) / 1000 >= MIN_SEPARACION_RUTEO_SEGUNDOS) {
+    // Conjunto con todos los índices cubiertos por paradas prolongadas: el
+    // interior parado jamás va a /match (antes solo se cortaba en bordes y
+    // la deriva + el teleport siguiente quedaban pegados en una ventana).
+    const enParada = new Set();
+    try {
+      for (const parada of paradas) {
+        if (!parada || !Number.isInteger(parada.inicio) || !Number.isInteger(parada.fin)) continue;
+        for (let i = parada.inicio; i <= parada.fin; i += 1) enParada.add(i);
+      }
+    } catch {
+      // Sin conjunto tampoco se rompe: se sigue con partición por huecos.
+    }
+    // Tramos libres de parada: se corta antes del inicio y se reanuda
+    // después del fin. Cada tramo se parte luego por huecos y topes.
+    const tramosLibres = [];
+    try {
+      let actual = [];
+      for (let i = 0; i < posiciones.length; i += 1) {
+        if (enParada.has(i)) {
+          if (actual.length > 0) {
+            tramosLibres.push(actual);
+            actual = [];
+          }
+          continue;
+        }
+        actual.push(posiciones[i]);
+      }
+      if (actual.length > 0) tramosLibres.push(actual);
+    } catch {
+      return ventanas;
+    }
+    for (const tramo of tramosLibres) {
+      let inicio = 0;
+      const cerrar = (fin) => {
+        if (fin >= inicio) ventanas.push(tramo.slice(inicio, fin + 1));
+        inicio = fin + 1;
+      };
+      for (let i = 1; i < tramo.length; i += 1) {
+        const anteriorMs = instanteMs(tramo[i - 1]);
+        const actualMs = instanteMs(tramo[i]);
+        if (Number.isFinite(anteriorMs) && Number.isFinite(actualMs)) {
+          if ((actualMs - anteriorMs) / 1000 >= MIN_SEPARACION_RUTEO_SEGUNDOS) {
+            cerrar(i - 1);
+            continue;
+          }
+        }
+        if (i - inicio + 1 > MAX_PUNTOS_VENTANA_DENSA) {
           cerrar(i - 1);
           continue;
         }
+        const inicioMs = instanteMs(tramo[inicio]);
+        if (
+          Number.isFinite(inicioMs) &&
+          Number.isFinite(actualMs) &&
+          actualMs - inicioMs > MAX_DURACION_VENTANA_DENSA_MS
+        ) {
+          cerrar(i - 1);
+        }
       }
-      if (esInicioParada.has(i) || esFinParada.has(i - 1)) {
-        cerrar(i - 1);
-        continue;
-      }
-      if (i - inicio + 1 > MAX_PUNTOS_VENTANA_DENSA) {
-        cerrar(i - 1);
-        continue;
-      }
-      const inicioMs = instanteMs(posiciones[inicio]);
-      if (
-        Number.isFinite(inicioMs) &&
-        Number.isFinite(actualMs) &&
-        actualMs - inicioMs > MAX_DURACION_VENTANA_DENSA_MS
-      ) {
-        cerrar(i - 1);
-      }
+      cerrar(tramo.length - 1);
     }
-    cerrar(posiciones.length - 1);
   } catch {
     return ventanas;
   }
   // Solo ventanas con movimiento real: al menos 3 fixes, coordenadas finitas
-// y tiempo creciente, con algún fix a >=50 m del primero. Se usa el máximo
-// desplazamiento desde el inicio (no extremo a extremo) para no descartar
-// recorridos en bucle que vuelven cerca del origen.
+  // y tiempo creciente, con algún fix a >=50 m del primero. Tras apartar
+  // outliers se reexige >=3 fixes y >=50 m: una ventana que solo pasaba el
+  // gate gracias al salto (deriva parada + teleport) queda descartada.
   const utiles = [];
   try {
     for (const ventana of ventanas) {
@@ -212,17 +368,24 @@ export function partirVentanasDensas(posiciones) {
       const desde = instanteMs(ventana[0]);
       const hasta = instanteMs(ventana[ventana.length - 1]);
       if (!(Number.isFinite(desde) && Number.isFinite(hasta) && hasta > desde)) continue;
-      let maxDesplazamiento = 0;
+      const maxDesplazamiento = desplazamientoMaximoM(ventana);
+      if (!(maxDesplazamiento >= MIN_DESPLAZAMIENTO_VENTANA_M)) continue;
+      let limpia = ventana;
       try {
-        for (let i = 1; i < ventana.length; i += 1) {
-          const desplazamiento = distanciaM(ventana[0], ventana[i]);
-          if (desplazamiento > maxDesplazamiento) maxDesplazamiento = desplazamiento;
-        }
+        limpia = filtrarOutliersTeleport(ventana);
       } catch {
+        limpia = ventana;
+      }
+      if (limpia.length < MIN_PUNTOS_VENTANA_DENSA) continue;
+      if (!limpia.every(coordenadasValidas)) continue;
+      const desdeLimpio = instanteMs(limpia[0]);
+      const hastaLimpio = instanteMs(limpia[limpia.length - 1]);
+      if (!(Number.isFinite(desdeLimpio) && Number.isFinite(hastaLimpio) && hastaLimpio > desdeLimpio)) {
         continue;
       }
-      if (!(maxDesplazamiento >= MIN_DESPLAZAMIENTO_VENTANA_M)) continue;
-      utiles.push(ventana);
+      const maxLimpio = desplazamientoMaximoM(limpia);
+      if (!(maxLimpio >= MIN_DESPLAZAMIENTO_VENTANA_M)) continue;
+      utiles.push(limpia);
       if (utiles.length >= MAX_VENTANAS_DENSAS) break;
     }
   } catch {

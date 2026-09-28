@@ -28,4 +28,19 @@ object Prefs {
 
     /** Último estado de la máquina de movimiento (para el latido). */
     const val MOVEMENT_STATE = "movementState"
+
+    /**
+     * ¿El avance acumulado indica caminata? Se persiste en cada fix para que
+     * el latido lo reporte sin depender de la RAM del servicio.
+     */
+    const val MOVEMENT_WALKING = "movementWalking"
+
+    /**
+     * Modo de desplazamiento para el panel (`caminata` o `normal`): distingue
+     * en el diagnóstico un paseo a pie de un trayecto en vehículo, ambos en
+     * cadencia fina.
+     */
+    const val MOVEMENT_MODE = "movementMode"
+    const val MODE_WALK = "caminata"
+    const val MODE_NORMAL = "normal"
 }

@@ -27,6 +27,7 @@ import android.util.Log
 import org.traccar.client.DatabaseHelper.DatabaseHandler
 import org.traccar.client.RequestManager.RequestHandler
 import org.traccar.client.journey.JourneyManager
+import org.traccar.client.capture.CaptureGate
 import org.traccar.client.movement.MovementStateMachine
 import org.traccar.client.recovery.DozeAlarmReceiver
 import org.traccar.client.sync.UploadQueue
@@ -51,6 +52,12 @@ class TrackingController(private val context: Context) :
     private val machine = MovementStateMachine()
     private val journeyManager = JourneyManager(context)
     private var uploadQueue: UploadQueue? = null
+    /**
+     * Filtros de captura (teleport, colapso en parado, giro): deciden si cada
+     * fix se almacena, sin tocar cadencia, protocolo, jornada ni recuperación.
+     * Con estado propio (último almacenado/aceptado), sembrado del historial.
+     */
+    private val captureGate = CaptureGate()
 
     /** Cadencia fina vigente (se aplica al proveedor solo al cambiar). */
     private var fineCadence = true
@@ -135,6 +142,11 @@ class TrackingController(private val context: Context) :
         lastStoredFix = history.firstOrNull()?.let {
             DuplicateFixGuard.Fix(it.time.time, it.latitude, it.longitude)
         }
+        // Misma siembra para los filtros de captura (distancia, latido, rumbo
+        // y referencia fresca del teleport): el primer fix siempre se guarda.
+        history.firstOrNull()?.let {
+            captureGate.seed(it.time.time, it.latitude, it.longitude, it.course, it.accuracy)
+        }
         val samples = history.map {
             MovementStateMachine.FixSample(it.time.time, it.speed, 0.0)
         }
@@ -211,7 +223,14 @@ class TrackingController(private val context: Context) :
     /** El estado vigente queda en prefs para el latido (sin RAM de por medio). */
     private fun persistMovementState() {
         runCatching {
-            preferences.edit().putString(Prefs.MOVEMENT_STATE, machine.state.name).apply()
+            preferences.edit()
+                .putString(Prefs.MOVEMENT_STATE, machine.state.name)
+                .putBoolean(Prefs.MOVEMENT_WALKING, machine.isWalking)
+                .putString(
+                    Prefs.MOVEMENT_MODE,
+                    if (machine.isWalking) Prefs.MODE_WALK else Prefs.MODE_NORMAL,
+                )
+                .apply()
         }
     }
 
@@ -271,9 +290,21 @@ class TrackingController(private val context: Context) :
     }
 
     override fun onPositionUpdate(position: Position) {
+        val now = System.currentTimeMillis()
+        // Guardia de teleport (rechazo de error, no pérdida): ANTES de que el
+        // salto contamine la máquina, el último fix o el vigilante. El fix
+        // falso se tira y no se toca nada más.
+        if (captureGate.isTeleport(
+                position.latitude, position.longitude,
+                position.time.time, position.accuracy, position.speed,
+            )
+        ) {
+            Log.w(TAG, "fix teleport descartado " +
+                "(lat=${position.latitude} lon=${position.longitude} v=${position.speed} kn)")
+            return
+        }
         // La velocidad reportada (nudos) alimenta el detector de giros.
         MotionMonitor.lastSpeedKnots = position.speed
-        val now = System.currentTimeMillis()
         // Desplazamiento desde el último fix aceptado (el GPS manda sobre el
         // IMU: suple una velocidad nula cuando el equipo sí se movió).
         val legM = if (lastFixAtMs > 0) {
@@ -288,21 +319,42 @@ class TrackingController(private val context: Context) :
         runCatching {
             preferences.edit().putBoolean(Prefs.LAST_MOCK, position.mock).apply()
         }
-        // La máquina decide (GPS > distancia > significant > IMU); el forzado
-        // por velocidad anterior (holdMovingUntilMs) se elimina: era una
-        // segunda autoridad de cadencia fuera de la máquina.
+        // La máquina decide (GPS > caminata > distancia > significant > IMU);
+        // el forzado por velocidad anterior (holdMovingUntilMs) se elimina: era
+        // una segunda autoridad de cadencia fuera de la máquina. Se alimenta
+        // con coordenadas para que el avance sostenido a pie cuente como
+        // movimiento aunque la instantánea sea <3 kn.
         val significant = significantMotionPending
         significantMotionPending = false
         val before = machine.state
-        machine.onFix(now, position.speed, legM, MotionMonitor.isMoving(), significant)
+        machine.onFixWithPosition(
+            now, position.speed, legM,
+            position.latitude, position.longitude,
+            MotionMonitor.isMoving(), significant,
+        )
         if (machine.state != before) {
             Log.i(TAG, "movimiento: $before -> ${machine.state} " +
-                "(v=${position.speed} kn, d=${legM.toInt()} m)")
+                "(v=${position.speed} kn, d=${legM.toInt()} m, caminando=${machine.isWalking})")
         }
         applyCadence()
         persistMovementState()
         watchdog.noteFix(now)
         StatusActivity.addMessage(context.getString(R.string.status_location_update))
+        // Filtros de captura: colapso en parado (tira el ruido) y giro (obliga
+        // la esquina). Lo que no se almacena aquí no es dato perdido: es ruido
+        // colapsado o esquina ya cubierta; el teleport ya se rechazó arriba.
+        val outcome = captureGate.evaluate(
+            position.latitude, position.longitude, position.course, position.accuracy,
+            position.speed, position.time.time,
+            machine.state == MovementStateMachine.State.STATIONARY, now,
+        )
+        if (!outcome.store) {
+            Log.i(TAG, "fix colapsado en parado, no se almacena (${outcome.reason})")
+            return
+        }
+        if (outcome.reason == CaptureGate.Reason.STORE_TURN) {
+            Log.i(TAG, "giro: esquina almacenada")
+        }
         if (buffer) {
             // El evento lleva proveedor y estado para el lote e idempotencia.
             write(position.copy(provider = positionProvider.providerName, movementState = machine.state.name))

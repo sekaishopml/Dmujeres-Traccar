@@ -1,5 +1,7 @@
 package org.traccar.client.movement
 
+import org.traccar.client.capture.WalkDetector
+
 /**
  * Máquina de estados de movimiento (pura: sin Android, testeable en JVM).
  *
@@ -10,9 +12,12 @@ package org.traccar.client.movement
  * que la falta de evidencia degrade a lento: sin datos se captura en fino
  * (ACTIVE-seguro), no en grueso.
  *
- * Prioridad de evidencias (ADR-006):
+ * Prioridad de evidencias (ADR-006, extendida con caminata):
  * 1. Velocidad GPS >= 3 kn: manda siempre.
- * 2. Desplazamiento acumulado entre fixes >= 150 m: suple velocidad nula.
++ * 1b. Caminata (avance neto 2-8 km/h sostenido 3 min): también es movimiento,
++ *     aunque la instantánea quede bajo 3 kn; nunca se degrada a STATIONARY
++ *     mientras haya avance sostenido.
+  * 2. Desplazamiento acumulado entre fixes >= 150 m: suple velocidad nula.
  * 3. Significant motion / giro: arranque de ruta.
  * 4. Acelerómetro ([MotionMonitor]): ÚLTIMO indicio, nunca por sí solo.
  * 5. Historial persistido: reconstrucción tras recreación de proceso.
@@ -57,6 +62,18 @@ class MovementStateMachine {
     /** Último momento con evidencia de movimiento. */
     private var lastMotionAtMs: Long = -1L
 
+    /**
+     * Avance bajo pero sostenido (caminata): se alimenta con cada fix que trae
+     * coordenadas ([onFixWithPosition]). Mientras haya avance, la máquina no
+     * puede caer a STATIONARY aunque la velocidad instantánea sea <3 kn, y la
+     * cadencia se mantiene fina (ACTIVE).
+     */
+    private val walkDetector = WalkDetector()
+
+    /** ¿El avance acumulado indica caminata ahora mismo? (para el panel). */
+    val isWalking: Boolean
+        get() = walkDetector.walking
+
     // --- Ciclo de jornada ---------------------------------------------------
 
     /** La jornada siempre nace de una acción visible del usuario. */
@@ -65,6 +82,7 @@ class MovementStateMachine {
         stillSinceMs = -1L
         lastFixAtMs = -1L
         lastMotionAtMs = nowMs
+        walkDetector.reset()
         return state
     }
 
@@ -73,6 +91,7 @@ class MovementStateMachine {
         stillSinceMs = -1L
         lastFixAtMs = -1L
         lastMotionAtMs = -1L
+        walkDetector.reset()
         return state
     }
 
@@ -92,10 +111,39 @@ class MovementStateMachine {
         displacementM: Double,
         imuMoving: Boolean?,
         significantMotion: Boolean = false,
+    ): State = onFixInternal(nowMs, speedKn, displacementM, imuMoving, significantMotion, isWalking)
+
+    /**
+     * Fix GPS aceptado CON coordenadas: además de lo mismo que [onFix],
+     * alimenta el detector de caminata con el avance real. Es la entrada que
+     * usa el controlador en producción; [onFix] queda para compatibilidad y
+     * tests legados (no toca el historial de avance).
+     */
+    fun onFixWithPosition(
+        nowMs: Long,
+        speedKn: Double,
+        displacementM: Double,
+        latitude: Double,
+        longitude: Double,
+        imuMoving: Boolean?,
+        significantMotion: Boolean = false,
+    ): State {
+        if (state == State.STOPPED) return state
+        val walking = walkDetector.add(nowMs, latitude, longitude)
+        return onFixInternal(nowMs, speedKn, displacementM, imuMoving, significantMotion, walking)
+    }
+
+    private fun onFixInternal(
+        nowMs: Long,
+        speedKn: Double,
+        displacementM: Double,
+        imuMoving: Boolean?,
+        significantMotion: Boolean,
+        walking: Boolean,
     ): State {
         if (state == State.STOPPED) return state
         lastFixAtMs = nowMs
-        val moving = isMovingEvidence(speedKn, displacementM, imuMoving, significantMotion)
+        val moving = isMovingEvidence(speedKn, displacementM, imuMoving, significantMotion, walking)
         if (moving) {
             lastMotionAtMs = nowMs
             stillSinceMs = -1L
@@ -151,6 +199,8 @@ class MovementStateMachine {
      */
     fun onTick(nowMs: Long): State {
         if (state == State.STOPPED || state == State.STARTING) return state
+        // Sin fixes nuevos el avance viejo caduca: no vale como caminata eterna.
+        walkDetector.evict(nowMs)
         // lastFixAtMs >= 0: hubo al menos un fix (el 0L es válido en tests; en
         // producción los epoch reales nunca son 0; -1L = sin fix aún).
         if (lastFixAtMs >= 0L && nowMs - lastFixAtMs >= NO_FIX_RECOVER_MS) {
@@ -175,6 +225,8 @@ class MovementStateMachine {
             // Al recuperar se arranca en fino hasta tener evidencia (3 min).
             stillSinceMs = -1L
             lastMotionAtMs = nowMs
+            // El avance previo al hueco ya no dice nada del presente.
+            walkDetector.reset()
         }
         return state
     }
@@ -202,6 +254,9 @@ class MovementStateMachine {
      * ACTIVE; si todo es quieto desde hace >= 3 min, STATIONARY.
      */
     fun restore(nowMs: Long, journeyOpen: Boolean, history: List<FixSample>): State {
+        // El historial no trae coordenadas: el avance previo no se hereda (se
+        // reconstruye en vivo con los primeros fixes; ante la duda, fino).
+        walkDetector.reset()
         if (!journeyOpen) {
             state = State.STOPPED
             return state
@@ -252,11 +307,15 @@ class MovementStateMachine {
         displacementM: Double,
         imuMoving: Boolean?,
         significantMotion: Boolean,
+        walking: Boolean,
     ): Boolean {
-        // 1. El GPS manda siempre. 2. El desplazamiento suple velocidad nula.
-        // 3. El sensor significativo arranca ruta. 4. El IMU es el último
-        // indicio: suma, pero su UNKNOWN (null) nunca resta.
+        // 1. El GPS manda siempre. 1b. La caminata (avance bajo pero sostenido)
+        // también es movimiento: nunca se degrada a STATIONARY por velocidad
+        // instantánea <3 kn mientras haya avance. 2. El desplazamiento suple
+        // velocidad nula. 3. El sensor significativo arranca ruta. 4. El IMU
+        // es el último indicio: suma, pero su UNKNOWN (null) nunca resta.
         if (speedKn >= MOVING_SPEED_KN) return true
+        if (walking) return true
         if (displacementM >= MOVING_DISTANCE_M) return true
         if (significantMotion) return true
         return imuMoving == true

@@ -13,12 +13,14 @@ import Icono from '../../componentes/Icono';
 import { traerDireccion } from './datos';
 import {
   ETIQUETA_METODO_TRAMO,
+  ETIQUETA_MODO_REAL,
   estadoDePunto,
   horaCorta,
   indiceBateriaConocida,
   indiceMasCercano,
   indicePorInstante,
   milisegundos,
+  modoDePunto,
   puntoEnInstante,
   serieBateria,
   tramoDeIndice,
@@ -587,10 +589,16 @@ export function PanelPuntoSeleccionado() {
     [posiciones, huecos, seleccionado],
   );
   // El clic sobre un trazado reconstruido selecciona su fix más cercano, que
-  // es un extremo del tramo: la ficha muestra su método (ADR-007).
+  // es un extremo del tramo: la ficha muestra su método (ADR-007). En GPS
+  // registrado se añade el modo (vehículo, a pie o detenido) sin mezclar las
+  // semánticas: lo reconstruido nunca se rotula como GPS.
   const tramo = useMemo(
     () => (seleccionado == null ? null : tramoDeIndice(posiciones, reconstruidos, seleccionado)),
     [posiciones, reconstruidos, seleccionado],
+  );
+  const modo = useMemo(
+    () => (seleccionado == null || tramo != null ? null : modoDePunto(posiciones, seleccionado)),
+    [posiciones, seleccionado, tramo],
   );
   const direccion = useDireccion(punto?.latitud ?? null, punto?.longitud ?? null, punto != null);
   if (!punto || seleccionado == null) {
@@ -619,7 +627,7 @@ export function PanelPuntoSeleccionado() {
         <dd>
           {tramo
             ? `${ETIQUETA_METODO_TRAMO[tramo.metodo] ?? 'Tramo reconstruido'}${tramo.mapaVersion ? ` · mapa ${tramo.mapaVersion}` : ''}`
-            : 'GPS registrado'}
+            : `GPS registrado${modo ? ` · ${ETIQUETA_MODO_REAL[modo]}` : ''}`}
         </dd>
         <dt>Equipo</dt>
         <dd>{dispositivo ? (dispositivo.habilitado ? 'Habilitado' : 'Deshabilitado') : GUION}</dd>

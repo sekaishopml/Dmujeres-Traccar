@@ -437,6 +437,18 @@ RELEASE y únicamente con todos los gates verdes.
   MATCHED densa con chevrones + ficha + saneo (tsc + vite ok). E2E 26/26 con
   el ruteo nuevo. APK **2.1.75 (vc 285)** firmada lista para instalar y probar
   en campo (misma firma de flota).
+- 2026-09-28: **match en giros + ruido parado + trazado corporativo** (ruta
+  17:17–17:20, 3 subagentes). Servidor: el interior de paradas prolongadas ya
+  no entra a /match y los teleports se apartan del ajuste (crudo intacto);
+  jornada 101: de 2 ventanas (1 basura) a 1 MATCHED limpio (maxSnap 10,9 m),
+  hueco clásico sigue ESTIMATED. App: colapso en parado (≥15 m o latido 5
+  min), captura en giro (≥30°), modo caminata (2–8,5 km/h, `caminando` en
+  diagnóstico) y guardia de teleport (>200 km/h + incoherencia T2); 60/60
+  tests nuevos, suite 118 con 5 fallos preexistentes, debug compila. Web:
+  corredor corporativo (casing+núcleo+chevrones), caminata fina, quieto como
+  halo+nube sin espagueti, paradas con insignia numerada y duración, pines
+  inicio/fin, leyenda de 8 entradas (tsc + vite ok). E2E 26/26. APK **2.1.76
+  (vc 286)** firmada lista para campo.
 - 2026-09-28: **implementación ejecutada con subagentes** (encargo del dueño,
   FASE 1-11). Servidor: migración 002 aplicada (idempotencia, guardas de viva,
   validación de fechas, purga 2037), lote `/positions`, `GET /journey`,

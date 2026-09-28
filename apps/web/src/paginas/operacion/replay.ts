@@ -12,7 +12,15 @@ export interface SegmentoRecorrido {
   // Los tramos reconstruidos no llevan banda: cada método tiene su estilo
   // propio (ADR-007) y nunca se pintan como GPS registrado.
   banda?: number;
+  // Modo de desplazamiento del par (solo ruta): el corredor corporativo dibuja
+  // vehículo con casing ancho, caminata con línea fina del mismo idioma y
+  // quieto sin línea (la dispersión se muestra como halo de puntos).
+  modo?: ModoReal;
 }
+
+// Modo de desplazamiento de un fix o par GPS registrado. No toca el contrato
+// del API: se deriva solo de la velocidad efectiva local.
+export type ModoReal = 'vehiculo' | 'caminata' | 'quieto';
 
 export const ETIQUETA_METODO_TRAMO: Record<MetodoReconstruccion, string> = {
   MATCHED: 'Ajustado a vía',
@@ -159,6 +167,14 @@ export type EstadoUnidad = 'movimiento' | 'detencion' | 'sinSenal';
 // distingue avance real, y 3 minutos descartan las paradas de semáforo.
 export const VELOCIDAD_DETENCION_KMH = 2;
 export const DURACION_DETENCION_MIN = 3;
+// Caminata sostenida por debajo de 8 km/h: separa el tramo a pie (2-8 km/h)
+// del tramo en moto (10-17 km/h) de la jornada de referencia. La deriva con el
+// equipo parado (±25 m) queda bajo el umbral de detención y se trata como
+// quieto, nunca como caminata.
+export const UMBRAL_CAMINATA_KMH = 8;
+// Radio de parada para el halo de dispersión: cubre la deriva parada (±25 m)
+// con margen para lecturas con precisión pobre.
+export const RADIO_PARADA_M = 60;
 // El servidor corta los huecos a los 10 min; para el marcador una lectura que
 // lleva más de 5 min sin el fix siguiente ya se considera sin señal, incluso
 // aunque no llegue a ser un hueco formal.
@@ -232,6 +248,120 @@ function bandaVelocidad(velocidadKmh: number | null): number {
   return 4;
 }
 
+// Serie de velocidades efectivas alineada con las posiciones: la reportada
+// manda y, si falta, se estima contra el fix anterior. Null sin evidencia.
+function velocidadesEfectivas(posiciones: Posicion[]): (number | null)[] {
+  return posiciones.map((posicion, i) => velocidadEfectivaKmh(posicion, i > 0 ? posiciones[i - 1] : null));
+}
+
+// Índices de fixes detenidos en rachas de al menos 3 seguidos bajo el umbral.
+// Exigir racha evita que un único fix lento de caminata (2-8 km/h con un valle
+// bajo 2) se lea como parada y rompa la línea a pie con un hueco de halo.
+function indicesQuietos(posiciones: Posicion[]): Set<number> {
+  const velocidades = velocidadesEfectivas(posiciones);
+  const detenido = velocidades.map((v) => v != null && Number.isFinite(v) && v < VELOCIDAD_DETENCION_KMH);
+  const quietos = new Set<number>();
+  let inicio = -1;
+  const cerrar = (fin: number) => {
+    if (inicio >= 0 && fin - inicio + 1 >= 3) {
+      for (let i = inicio; i <= fin; i += 1) quietos.add(i);
+    }
+    inicio = -1;
+  };
+  for (let i = 0; i < detenido.length; i += 1) {
+    if (detenido[i]) {
+      if (inicio < 0) inicio = i;
+    } else {
+      if (inicio >= 0) cerrar(i - 1);
+    }
+  }
+  if (inicio >= 0) cerrar(detenido.length - 1);
+  return quietos;
+}
+
+// Modo de un fix GPS registrado: quieto si pertenece a una racha detenida,
+// caminata si su velocidad y la de un vecino están bajo 8 km/h (sostenida),
+// vehículo en el resto (incluido sin dato: no se inventa caminata).
+export function modoDePunto(posiciones: Posicion[], indice: number): ModoReal {
+  const velocidades = velocidadesEfectivas(posiciones);
+  const quietos = indicesQuietos(posiciones);
+  if (quietos.has(indice)) return 'quieto';
+  const actual = velocidades[indice];
+  if (actual == null || !Number.isFinite(actual) || actual >= UMBRAL_CAMINATA_KMH) return 'vehiculo';
+  const anterior = indice > 0 ? velocidades[indice - 1] : null;
+  const siguiente = indice < velocidades.length - 1 ? velocidades[indice + 1] : null;
+  const vecinoBajo =
+    (anterior != null && Number.isFinite(anterior) && anterior < UMBRAL_CAMINATA_KMH) ||
+    (siguiente != null && Number.isFinite(siguiente) && siguiente < UMBRAL_CAMINATA_KMH);
+  return vecinoBajo ? 'caminata' : 'vehiculo';
+}
+
+// Modo del par entre dos fixes (el que cierra el par manda, con el vecino
+// como confirmación de caminata sostenida). El par es quieto solo si sus dos
+// extremos pertenecen a la misma racha detenida: fuera de ella, dos fixes
+// lentos aislados siguen siendo caminata o vehículo, no dispersión parada.
+function modoDePar(quietos: Set<number>, velocidades: (number | null)[], i: number): ModoReal {
+  if (quietos.has(i - 1) && quietos.has(i)) return 'quieto';
+  const actual = velocidades[i];
+  if (actual == null || !Number.isFinite(actual) || actual >= UMBRAL_CAMINATA_KMH) return 'vehiculo';
+  const anterior = i > 0 ? velocidades[i - 1] : null;
+  const siguiente = i < velocidades.length - 1 ? velocidades[i + 1] : null;
+  const vecinoBajo =
+    (anterior != null && Number.isFinite(anterior) && anterior < UMBRAL_CAMINATA_KMH) ||
+    (siguiente != null && Number.isFinite(siguiente) && siguiente < UMBRAL_CAMINATA_KMH);
+  return vecinoBajo ? 'caminata' : 'vehiculo';
+}
+
+export const ETIQUETA_MODO_REAL: Record<ModoReal, string> = {
+  vehiculo: 'En vehículo',
+  caminata: 'A pie',
+  quieto: 'Detenido',
+};
+
+// Halo de dispersión de una parada: centro de la parada, radio observado
+// (máxima distancia de sus fixes al centro, acotada a 15-80 m) y ventana
+// temporal. El halo se dibuja como círculo sutil y los fixes quietos como
+// nube de puntos: se muestra la dispersión real sin unirla con líneas.
+export interface HaloParada {
+  indice: number;
+  latitud: number;
+  longitud: number;
+  radioM: number;
+  inicio: string;
+  fin: string;
+  duracionMin: number;
+}
+
+export function halosDeParadas(posiciones: Posicion[], paradas: Parada[]): HaloParada[] {
+  return paradas
+    .map((parada, indice) => {
+      if (!Number.isFinite(parada.latitud) || !Number.isFinite(parada.longitud)) return null;
+      const inicio = milisegundos(parada.inicio);
+      const fin = milisegundos(parada.fin);
+      if (!Number.isFinite(inicio) || !Number.isFinite(fin)) return null;
+      const desde = Math.min(inicio, fin);
+      const hasta = Math.max(inicio, fin);
+      let maxDistM = 0;
+      let fixes = 0;
+      for (const posicion of posiciones) {
+        if (!Number.isFinite(posicion.latitud) || !Number.isFinite(posicion.longitud)) continue;
+        const instante = milisegundos(posicion.registradoEn);
+        if (!Number.isFinite(instante) || instante < desde || instante > hasta) continue;
+        fixes += 1;
+        maxDistM = Math.max(
+          maxDistM,
+          distanciaKm({ latitud: parada.latitud, longitud: parada.longitud }, posicion) * 1000,
+        );
+      }
+      // Sin fixes en la ventana (parada del servidor fuera del rango cargado)
+      // se conserva un halo de referencia de 25 m: la insignia sigue anclada a
+      // la parada sin inventar dispersión.
+      const radioM = fixes === 0 ? 25 : Math.min(Math.max(maxDistM, 15), 80);
+      return { indice, latitud: parada.latitud, longitud: parada.longitud, radioM, inicio: parada.inicio, fin: parada.fin, duracionMin: parada.duracionMin };
+    })
+    .filter((halo): halo is HaloParada => halo != null);
+}
+
 // Rumbo inicial (0 = norte) entre dos pares lat/lon; lo usan los fixes y los
 // chevrones del tramo estimado, que no tienen Posicion.
 function rumboEntrePuntos(latA: number, lonA: number, latB: number, lonB: number): number {
@@ -276,6 +406,11 @@ export function segmentosDeRecorrido(
       .map((hueco) => `${hueco.desde}|${hueco.hasta}`),
   );
   const segmentos: SegmentoRecorrido[] = [];
+  // Clasificación vehículo/caminata/quieto por velocidad efectiva: se calcula
+  // una vez para todo el recorrido para que el modo del par confirme la
+  // caminata con el vecino (sostenida) y la racha detenida marque el quieto.
+  const velocidades = velocidadesEfectivas(posiciones);
+  const quietos = indicesQuietos(posiciones);
   for (const tramo of reconstruidos) {
     // El trazado ya viene saneado, pero se filtran pares no finitos por
     // defensa: un punto malo no debe tumbar el tramo denso completo.
@@ -310,6 +445,7 @@ export function segmentosDeRecorrido(
     segmentos.push({
       tipo: 'ruta',
       banda: bandaVelocidad(velocidadEfectivaKmh(actual, anterior)),
+      modo: modoDePar(quietos, velocidades, i),
       coordenadas,
     });
   }
@@ -326,6 +462,19 @@ export function puntosDeRecorrido(
   reconstruidos: TramoReconstruido[],
 ): FeatureCollection<Point> {
   const paresHueco = new Set(huecos.map((hueco) => `${hueco.desde}|${hueco.hasta}`));
+  const velocidades = velocidadesEfectivas(posiciones);
+  const quietos = indicesQuietos(posiciones);
+  const modoDeFix = (indice: number): ModoReal => {
+    if (quietos.has(indice)) return 'quieto';
+    const actual = velocidades[indice];
+    if (actual == null || !Number.isFinite(actual) || actual >= UMBRAL_CAMINATA_KMH) return 'vehiculo';
+    const anterior = indice > 0 ? velocidades[indice - 1] : null;
+    const siguiente = indice < velocidades.length - 1 ? velocidades[indice + 1] : null;
+    const vecinoBajo =
+      (anterior != null && Number.isFinite(anterior) && anterior < UMBRAL_CAMINATA_KMH) ||
+      (siguiente != null && Number.isFinite(siguiente) && siguiente < UMBRAL_CAMINATA_KMH);
+    return vecinoBajo ? 'caminata' : 'vehiculo';
+  };
   const features: Feature<Point>[] = [];
   const paso = posiciones.length > 3000 ? 2 : 1;
   const aPunto = (indice: number): Feature<Point> | null => {
@@ -347,7 +496,10 @@ export function puntosDeRecorrido(
         banda: bandaVelocidad(velocidadEfectivaKmh(posicion, anterior)),
         // Origen del punto para la capa de chevrones: los reales se colorean
         // por banda de velocidad; los ajustados a vía usan su imagen propia.
+        // `modo` deja a la capa filtrar el quieto: parado no hay rumbo que
+        // mostrar y el fix ya se lee en la nube de dispersión.
         origen: 'real',
+        modo: modoDeFix(indice),
         indice,
         hueco: enHueco,
       },
@@ -400,6 +552,35 @@ export function puntosDeRecorrido(
     }
   }
   return { type: 'FeatureCollection', features };
+}
+
+// Nube de dispersión parada: un punto por fix quieto (racha detenida) para
+// dibujar la deriva real como halo sutil en vez de unirla con líneas. Los
+// fixes en movimiento no entran: su evidencia ya es la línea del corredor.
+export function puntosQuietos(posiciones: Posicion[]): FeatureCollection<Point> {
+  const quietos = indicesQuietos(posiciones);
+  const features: Feature<Point>[] = [];
+  for (const indice of quietos) {
+    const posicion = posiciones[indice];
+    if (!posicion || !Number.isFinite(posicion.latitud) || !Number.isFinite(posicion.longitud)) continue;
+    features.push({
+      type: 'Feature',
+      properties: { indice },
+      geometry: { type: 'Point', coordinates: [posicion.longitud, posicion.latitud] },
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+export function aColeccionHalos(halos: HaloParada[]): FeatureCollection<Point> {
+  return {
+    type: 'FeatureCollection',
+    features: halos.map((halo) => ({
+      type: 'Feature',
+      properties: { indice: halo.indice, radioM: halo.radioM },
+      geometry: { type: 'Point', coordinates: [halo.longitud, halo.latitud] },
+    })),
+  };
 }
 
 // Paso de decimación de chevrones según el zoom: alejado, cientos de flechas
@@ -540,7 +721,11 @@ export function aColeccion(segmentos: SegmentoRecorrido[]): FeatureCollection<Li
     type: 'FeatureCollection',
     features: segmentos.map((segmento) => ({
       type: 'Feature',
-      properties: segmento.banda == null ? { tipo: segmento.tipo } : { tipo: segmento.tipo, banda: segmento.banda },
+      properties: {
+        tipo: segmento.tipo,
+        ...(segmento.banda == null ? {} : { banda: segmento.banda }),
+        ...(segmento.modo == null ? {} : { modo: segmento.modo }),
+      },
       geometry: { type: 'LineString', coordinates: segmento.coordenadas },
     })),
   };

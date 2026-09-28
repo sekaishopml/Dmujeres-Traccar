@@ -11,17 +11,21 @@ import { traerFlota, traerJornadas, traerParadas, traerReplay, CLAVE_FLOTA } fro
 import { esNoEncontrado, mensajeError } from './operacion/errores';
 import {
   aColeccion,
+  aColeccionHalos,
   detencionesDeRecorrido,
   fechaAyerLocal,
   flechasPorZoom,
+  halosDeParadas,
   horaCorta,
   indiceCercaDeInstante,
   milisegundos,
   normalizarReconstruidos,
   puntosDeRecorrido,
+  puntosQuietos,
   segmentosDeRecorrido,
 } from './operacion/replay';
 import type { Parada, TramoReconstruido } from './operacion/replay';
+import { duracion } from '../util/formato';
 import { fechaHoyLocal, finDeDia, inicioDeDia } from './operacion/rango';
 import './operacion.css';
 
@@ -32,47 +36,46 @@ function nombreArchivo(id: string): string {
   return id.replace(/[^\w.-]+/g, '_');
 }
 
-const LADO_CHEVRON = 24;
-// Chevron del tramo ajustado a vía: el mismo trazo que los reales pero en el
-// azul del método, para que no se lea como banda de velocidad.
+const LADO_CHEVRON = 28;
+// Azul corporativo del tramo ajustado a vía: nunca comparte la paleta de
+// velocidad del GPS registrado (ADR-007).
 const COLOR_MATCHED = '#4a6fa5';
 const ID_CHEVRON_MATCHED = 'chev-matched';
 // Paleta de velocidad suavizada (teal, verde, ámbar, naranja y rojo apagados).
 // El orden coincide con la banda 0..4 que calcula replay.ts a partir de la
-// velocidad y con los ids de imagen que referencia la capa symbol. Los tonos
-// saturados anteriores teñían el mapa y competían con las etiquetas.
+// velocidad y con los ids de imagen que referencia la capa symbol.
 const COLORES_BANDA = ['#2a9d8f', '#5a9367', '#d9a441', '#d97b41', '#c65b5b'];
 const IDS_CHEVRON = COLORES_BANDA.map((_, banda) => `chev-${banda}`);
 
-// Chevron "V" abierta dibujado en un canvas fuera del DOM y registrado como
-// imagen del mapa. Apunta hacia arriba porque MapLibre parte de esa dirección
-// al rotar por rumbo. Se pinta un trazo grueso del color de la banda y encima
-// otro blanco y fino: queda un chevron blanco con borde de color, discreto
-// sobre cualquier capa del mapa, en vez del trazo sólido saturado anterior.
-// Se registra sin pixelRatio para que icon-size mande sobre el tamaño y el
-// icono no se corra de la línea. El trazo se centra en el lienzo para que el
-// ancla por defecto (centro) coincida con el fix.
-function imagenChevron(color: string): ImageData | null {
+// Chevron corporativo integrado: "V" abierta blanca con borde del color del
+// tramo, dibujada en canvas y registrada como imagen del mapa. Apunta hacia
+// arriba porque MapLibre parte de esa dirección al rotar por rumbo. El núcleo
+// blanco se lee sobre el corredor de color y el borde tiñe cada chevron con su
+// banda (o con el azul de ajustado a vía): la dirección va integrada al trazo,
+// no como marca suelta. Se registra sin pixelRatio para que icon-size mande
+// sobre el tamaño; el trazo se centra para que el ancla (centro) caiga en la
+// línea.
+function imagenChevron(colorBorde: string): ImageData | null {
   const lienzo = document.createElement('canvas');
   lienzo.width = LADO_CHEVRON;
   lienzo.height = LADO_CHEVRON;
   const contexto = lienzo.getContext('2d');
-  // Sin contexto 2D no hay imagen; la capa de chevrones se omite y queda la
-  // línea coloreada por velocidad.
+  // Sin contexto 2D no hay imagen; la capa de chevrones se omite y queda el
+  // corredor coloreado por velocidad.
   if (!contexto) return null;
   contexto.lineCap = 'round';
   contexto.lineJoin = 'round';
   contexto.beginPath();
-  contexto.moveTo(6, 16);
-  contexto.lineTo(12, 8);
-  contexto.lineTo(18, 16);
-  // Halo blanco fino y cuerpo del color de la banda encima: el chevrón se lee
-  // por su color sobre mapas claros y el halo lo separa en mapas oscuros.
-  contexto.strokeStyle = '#ffffff';
-  contexto.lineWidth = 7;
+  contexto.moveTo(7, 18);
+  contexto.lineTo(14, 9);
+  contexto.lineTo(21, 18);
+  // Borde del color del tramo y núcleo blanco encima: chevron blanco con filo
+  // de color, integrado al corredor.
+  contexto.strokeStyle = colorBorde;
+  contexto.lineWidth = 8;
   contexto.stroke();
-  contexto.strokeStyle = color;
-  contexto.lineWidth = 5;
+  contexto.strokeStyle = '#ffffff';
+  contexto.lineWidth = 4.5;
   contexto.stroke();
   return contexto.getImageData(0, 0, LADO_CHEVRON, LADO_CHEVRON);
 }
@@ -148,18 +151,6 @@ export default function Replay() {
     () => normalizarReconstruidos(replay.data),
     [replay.data],
   );
-  const segmentos = useMemo(
-    () => segmentosDeRecorrido(posiciones, huecos, reconstruidos),
-    [posiciones, huecos, reconstruidos],
-  );
-  const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
-  // Los puntos alimentan solo la capa de chevrones; la selección del mapa ya
-  // no depende de ellos, se resuelve por cercanía sobre la línea de acierto.
-  const puntos = useMemo(
-    () => puntosDeRecorrido(posiciones, huecos, reconstruidos),
-    [posiciones, huecos, reconstruidos],
-  );
-
   const paradasServidor = useMemo<Parada[] | null>(() => {
     const datos = paradasConsulta.data?.datos;
     if (!datos) return null;
@@ -191,6 +182,26 @@ export default function Replay() {
   const paradas = paradasServidor ?? paradasLocales;
   const paradasLocalesEnUso = paradasServidor == null && paradasConsulta.isError;
 
+  // Segmentos con modo vehículo/caminata/quieto: el quieto no dibuja línea
+  // (su dispersión se muestra como halo + nube de puntos) para no tejer el
+  // espagueti de la deriva parada.
+  const segmentos = useMemo(
+    () => segmentosDeRecorrido(posiciones, huecos, reconstruidos),
+    [posiciones, huecos, reconstruidos],
+  );
+  const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
+  // Los puntos alimentan solo la capa de chevrones; la selección del mapa ya
+  // no depende de ellos, se resuelve por cercanía sobre la línea de acierto.
+  const puntos = useMemo(
+    () => puntosDeRecorrido(posiciones, huecos, reconstruidos),
+    [posiciones, huecos, reconstruidos],
+  );
+  // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
+  // dispersión real sin líneas que la unan.
+  const halos = useMemo(() => halosDeParadas(posiciones, paradas), [posiciones, paradas]);
+  const coleccionHalos = useMemo(() => aColeccionHalos(halos), [halos]);
+  const coleccionQuietos = useMemo(() => puntosQuietos(posiciones), [posiciones]);
+
   const jornadas = useMemo(() => {
     const lista = [...(jornadasConsulta.data?.jornadas ?? [])];
     // El contrato no garantiza orden; se ordena por inicio para que "primera" y
@@ -210,68 +221,148 @@ export default function Replay() {
     if (!mapa.getSource('replay-flechas')) {
       mapa.addSource('replay-flechas', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
-    // Cuatro capas de trazo sobre el contorno: la ruta real coloreada por
-    // banda de velocidad, el tramo ajustado a vía (línea continua fina azul),
-    // el tramo estimado (punteado gris sobre calles) y el hueco sin
-    // reconstruir (recta punteada gris). Repintar reemplaza los datos de las
-    // fuentes, nunca recrea capas.
+    if (!mapa.getSource('replay-halos')) {
+      mapa.addSource('replay-halos', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!mapa.getSource('replay-quieto')) {
+      mapa.addSource('replay-quieto', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    // Limpieza del estilo anterior (línea única + contorno navy): el corredor
+    // corporativo lo reemplaza por casing y núcleo por modo. Si el mapa se
+    // reutiliza, las capas viejas se retiran para no duplicar la traza.
+    if (mapa.getLayer('replay-linea-base')) mapa.removeLayer('replay-linea-base');
+    if (mapa.getLayer('replay-linea')) mapa.removeLayer('replay-linea');
+    // Sistema visual del corredor corporativo (4 semánticas ADR-007):
+    // REAL vehículo (casing translúcido + núcleo por banda), REAL a pie
+    // (mismo idioma, más fino), MATCHED (azul propio), ESTIMATED (gris
+    // punteado) y hueco sin datos (gris claro punteado fino). El quieto no
+    // tiene capa de línea: su dispersión se muestra como halo + nube.
+    const COLOR_BANDA: unknown = [
+      'match',
+      ['get', 'banda'],
+      0, '#2a9d8f',
+      1, '#5a9367',
+      2, '#d9a441',
+      3, '#d97b41',
+      4, '#c65b5b',
+      '#0b2545',
+    ];
+    // Sin filtro de modo: cubre toda la traza para la selección, incluida la
+    // dispersión parada y los tramos sin señal. Casi transparente, solo acierto.
     if (!mapa.getLayer('replay-linea-hit')) {
       mapa.addLayer({
         id: 'replay-linea-hit',
         type: 'line',
         source: 'replay-recorrido',
-        // Sin filtro: la copia cubre también los tramos sin señal, de modo que
-        // toda la traza (incluidas sus flechas) sea pulsable. Va debajo de las
-        // capas visibles; con 18 px y opacidad casi nula solo captura el clic.
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#000000', 'line-width': 18, 'line-opacity': 0.01 },
       });
     }
-    // Contorno navy fino bajo la traza: separa la línea del mapa claro sin
-    // lavarla (el casing blanco anterior la hacía invisible sobre fondo
-    // blanco) y la mantiene legible en satélite. Va antes que la línea para
-    // quedar por debajo.
-    if (!mapa.getLayer('replay-linea-base')) {
+    // Halo de parada: círculo sutil bajo el corredor con la dispersión de
+    // referencia. La dispersión real la dibuja la nube de puntos quietos.
+    if (!mapa.getLayer('replay-halo')) {
       mapa.addLayer({
-        id: 'replay-linea-base',
+        id: 'replay-halo',
+        type: 'circle',
+        source: 'replay-halos',
+        paint: {
+          'circle-color': '#0b2545',
+          'circle-opacity': 0.07,
+          'circle-stroke-color': '#0b2545',
+          'circle-stroke-opacity': 0.16,
+          'circle-stroke-width': 1,
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 14, 16, 34],
+        },
+      });
+    }
+    // Casings translúcidos del corredor (debajo de los núcleos).
+    if (!mapa.getLayer('replay-casing-vehiculo')) {
+      mapa.addLayer({
+        id: 'replay-casing-vehiculo',
         type: 'line',
         source: 'replay-recorrido',
+        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['!=', ['get', 'modo'], 'caminata'], ['!=', ['get', 'modo'], 'quieto']],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': '#0b2545',
-          'line-opacity': 0.35,
+          'line-color': COLOR_BANDA as string,
+          'line-opacity': 0.22,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 9, 16, 14],
+        },
+      });
+    }
+    if (!mapa.getLayer('replay-casing-caminata')) {
+      mapa.addLayer({
+        id: 'replay-casing-caminata',
+        type: 'line',
+        source: 'replay-recorrido',
+        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['==', ['get', 'modo'], 'caminata']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': COLOR_BANDA as string,
+          'line-opacity': 0.16,
           'line-width': ['interpolate', ['linear'], ['zoom'], 10, 5, 16, 8],
         },
       });
     }
-    if (!mapa.getLayer('replay-linea')) {
+    if (!mapa.getLayer('replay-casing-matched')) {
       mapa.addLayer({
-        id: 'replay-linea',
+        id: 'replay-casing-matched',
         type: 'line',
         source: 'replay-recorrido',
-        // Solo GPS registrado: los tramos reconstruidos tienen sus capas
-        // propias (ADR-007) y jamás se pintan como ruta normal.
-        filter: ['==', ['get', 'tipo'], 'ruta'],
+        filter: ['==', ['get', 'tipo'], 'matched'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          // Misma paleta que los chevrones. El navy queda como respaldo si un
-          // tramo llegara sin banda. La línea engrosa con el zoom: 3,5 px de
-          // lejos y 6 px de cerca, sólida para leerse sobre mapas claros.
-          'line-color': [
-            'match',
-            ['get', 'banda'],
-            0, '#2a9d8f',
-            1, '#5a9367',
-            2, '#d9a441',
-            3, '#d97b41',
-            4, '#c65b5b',
-            '#0b2545',
-          ],
+          'line-color': COLOR_MATCHED,
+          'line-opacity': 0.2,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 16, 11],
+        },
+      });
+    }
+    if (!mapa.getLayer('replay-casing-estimated')) {
+      mapa.addLayer({
+        id: 'replay-casing-estimated',
+        type: 'line',
+        source: 'replay-recorrido',
+        filter: ['==', ['get', 'tipo'], 'estimated'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#6b7684',
+          'line-opacity': 0.14,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 16, 10],
+        },
+      });
+    }
+    // Núcleos nítidos del corredor.
+    if (!mapa.getLayer('replay-linea-vehiculo')) {
+      mapa.addLayer({
+        id: 'replay-linea-vehiculo',
+        type: 'line',
+        source: 'replay-recorrido',
+        // Solo GPS registrado en vehículo (y tramos sin modo por compatibilidad):
+        // los reconstruidos tienen sus capas propias (ADR-007) y el quieto no
+        // dibuja línea.
+        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['!=', ['get', 'modo'], 'caminata'], ['!=', ['get', 'modo'], 'quieto']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': COLOR_BANDA as string,
           'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3.5, 16, 6],
         },
       });
     }
-    // MATCHED: hueco con observaciones ajustado a vía. Línea continua fina en
+    if (!mapa.getLayer('replay-linea-caminata')) {
+      mapa.addLayer({
+        id: 'replay-linea-caminata',
+        type: 'line',
+        source: 'replay-recorrido',
+        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['==', ['get', 'modo'], 'caminata']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': COLOR_BANDA as string,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.8, 16, 3],
+        },
+      });
+    }
+    // MATCHED: hueco con observaciones ajustado a vía. Núcleo continuo fino en
     // el azul del método, sin coloreado por velocidad.
     if (!mapa.getLayer('replay-matched')) {
       mapa.addLayer({
@@ -286,9 +377,8 @@ export default function Replay() {
         },
       });
     }
-    // ESTIMATED: hueco sin observaciones, ruta A→B. Punteado gris con la
-    // etiqueta "tramo estimado" de la leyenda; el trazo es más grueso y con
-    // otro guion que la recta del hueco sin reconstruir.
+    // ESTIMATED: hueco sin observaciones, ruta A→B. Núcleo punteado gris sobre
+    // su casing: se lee como estimación, nunca como GPS registrado.
     if (!mapa.getLayer('replay-estimated')) {
       mapa.addLayer({
         id: 'replay-estimated',
@@ -310,25 +400,41 @@ export default function Replay() {
         source: 'replay-recorrido',
         filter: ['==', ['get', 'tipo'], 'hueco'],
         paint: {
-          // Gris punteado (--gris): el hueco se lee como "sin datos" y no se
-          // confunde con la ruta, porque antes compartía el rojo de la banda
-          // más rápida y el tramo parecía una recta de alta velocidad.
-          'line-color': '#6b7684',
+          // Gris claro punteado: el hueco se lee como "sin datos" y no se
+          // confunde con la ruta ni con el estimado (gris medio más grueso).
+          'line-color': '#9aa3af',
           'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2, 16, 3],
           'line-dasharray': [1, 2],
         },
       });
     }
-    // Las seis imágenes deben existir antes de crear la capa symbol; si el
-    // canvas falla para alguna, la capa no se agrega y no queda referenciando
-    // una imagen ausente.
+    // Nube de dispersión parada: puntos quietos como halo sutil, sin unirlos.
+    if (!mapa.getLayer('replay-quieto')) {
+      mapa.addLayer({
+        id: 'replay-quieto',
+        type: 'circle',
+        source: 'replay-quieto',
+        paint: {
+          'circle-color': '#0b2545',
+          'circle-opacity': 0.28,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-opacity': 0.6,
+          'circle-stroke-width': 0.5,
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2, 16, 4],
+        },
+      });
+    }
+    // Las imágenes corporativas (núcleo blanco, borde del tramo) deben existir
+    // antes de crear la capa symbol. Se regeneran si ya existían con el estilo
+    // anterior para que el chevron integrado quede aplicado.
     for (let banda = 0; banda < IDS_CHEVRON.length; banda += 1) {
       const id = IDS_CHEVRON[banda];
-      if (mapa.hasImage(id)) continue;
+      if (mapa.hasImage(id)) mapa.removeImage(id);
       const imagen = imagenChevron(COLORES_BANDA[banda]);
       if (imagen) mapa.addImage(id, imagen);
     }
-    if (!mapa.hasImage(ID_CHEVRON_MATCHED)) {
+    if (mapa.hasImage(ID_CHEVRON_MATCHED)) mapa.removeImage(ID_CHEVRON_MATCHED);
+    {
       const imagen = imagenChevron(COLOR_MATCHED);
       if (imagen) mapa.addImage(ID_CHEVRON_MATCHED, imagen);
     }
@@ -338,13 +444,16 @@ export default function Replay() {
         id: 'replay-flechas',
         type: 'symbol',
         source: 'replay-flechas',
+        // Parado no lleva chevron: sin desplazamiento no hay rumbo y el fix ya
+        // se lee en la nube de dispersión.
+        filter: ['!=', ['get', 'modo'], 'quieto'],
         layout: {
           // Un punto por fix, o uno de cada N según el zoom: la densidad la
           // decide la fuente (flechasPorZoom en cada zoomend) y el tamaño lo
           // fija esta expresión. allow-overlap los deja pegados a la ruta,
-          // como en Traccar, aunque se solapen en curvas cerradas. La rotación
-          // es en coordenadas del mapa para que el icono apunte al rumbo real.
-          // Los puntos ajustados a vía usan su imagen propia, no la banda.
+          // aunque se solapen en curvas cerradas. La rotación es en coordenadas
+          // del mapa para que el icono apunte al rumbo real. Los ajustados a
+          // vía usan su imagen propia, no la banda de velocidad.
           'icon-image': [
             'match',
             ['get', 'origen'],
@@ -371,6 +480,16 @@ export default function Replay() {
     if (!mapa) return;
     mapa.getSource<GeoJSONSource>('replay-recorrido')?.setData(coleccion);
   }, [mapa, coleccion]);
+
+  useEffect(() => {
+    if (!mapa) return;
+    mapa.getSource<GeoJSONSource>('replay-halos')?.setData(coleccionHalos);
+  }, [mapa, coleccionHalos]);
+
+  useEffect(() => {
+    if (!mapa) return;
+    mapa.getSource<GeoJSONSource>('replay-quieto')?.setData(coleccionQuietos);
+  }, [mapa, coleccionQuietos]);
 
   // Flechas adaptativas al zoom: en cada zoomend se recalcula la densidad y se
   // reemplaza solo la fuente de flechas, sin tocar la ruta ni el encuadre. No
@@ -410,13 +529,24 @@ export default function Replay() {
     };
   }, [mapa, posiciones]);
 
-  // Las paradas no tocan el encuadre: van dentro del recorrido y solo
-  // necesitan su círculo hueco naranja. Se retiran al cambiar de consulta.
+  // Paradas como insignias circulares numeradas con duración: el número sigue
+  // el orden del recorrido y la píldora muestra la duración observada. El halo
+  // de dispersión y la nube de puntos quietos ya están en sus capas; la
+  // insignia solo rotula. No tocan el encuadre y se retiran al cambiar de
+  // consulta.
   useEffect(() => {
     if (!mapa) return;
-    const marcadores = paradas.map((parada) => {
+    const marcadores = paradas.map((parada, orden) => {
       const elemento = document.createElement('div');
-      elemento.className = 'marcador-detencion';
+      elemento.className = 'marcador-parada';
+      elemento.title = `Parada ${orden + 1}: ${horaCorta(parada.inicio)} a ${horaCorta(parada.fin)} (${duracion(parada.duracionMin * 60)})`;
+      const insignia = document.createElement('span');
+      insignia.className = 'parada-insignia';
+      insignia.textContent = String(orden + 1);
+      const etiqueta = document.createElement('span');
+      etiqueta.className = 'parada-duracion';
+      etiqueta.textContent = duracion(parada.duracionMin * 60);
+      elemento.append(insignia, etiqueta);
       return new Marker({ element: elemento, anchor: 'center' })
         .setLngLat([parada.longitud, parada.latitud])
         .addTo(mapa);
@@ -512,8 +642,9 @@ export default function Replay() {
         {/* El mapa ocupa la pantalla completa; panel, leyenda y franja flotan
             encima con las clases que definen global.css y operacion.css. */}
         <MapaRaster clase="mapa" alListo={setMapa} />
-        {/* Leyenda: estado del marcador actual y las tres capas del recorrido
-            (ADR-007), más el tramo sin datos que quedó sin reconstruir. */}
+        {/* Leyenda del sistema visual: estado del marcador, corredor GPS por
+            modo (vehículo y a pie), dispersión parada con su insignia, capas
+            reconstruidas con identidad propia (ADR-007) y hueco sin datos. */}
         <div className="replay-leyenda" aria-hidden="true">
           <span>
             <span className="muestra movimiento" /> En movimiento
@@ -525,7 +656,13 @@ export default function Replay() {
             <span className="muestra sin-senal" /> Sin señal
           </span>
           <span>
-            <span className="muestra real" /> Recorrido GPS
+            <span className="muestra corredor-vehiculo" /> GPS en vehículo
+          </span>
+          <span>
+            <span className="muestra corredor-caminata" /> GPS a pie (&lt;8 km/h)
+          </span>
+          <span>
+            <span className="muestra halo" /> Parada (dispersión GPS)
           </span>
           <span>
             <span className="muestra ajustado" /> Ajustado a vía
