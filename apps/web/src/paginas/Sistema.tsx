@@ -1,7 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useState } from 'react';
+import type { FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CreacionUsuarioPlataforma, RolPlataforma, UsuarioPlataforma } from '@contratos';
 import { api } from '../api/cliente';
+import { useSesion } from '../store/sesion';
 import { GUION, fechaHora, hace } from '../util/formato';
-import { MensajeError, mensajeDeError } from './admin/comunes';
+import Icono from '../componentes/Icono';
+import { ChipHabilitado, MensajeError, esErrorDeEstado, mensajeDeError } from './admin/comunes';
+import { Dialogo } from './admin/Dialogo';
+import { Toast } from './admin/Toast';
+import { traerRoles, traerUsuariosPlataforma } from './operacion/datos';
 import type { Disponibilidad, Salud, Version } from './admin/tipos';
 import './admin.css';
 import '../estilos/paginas.css';
@@ -9,6 +17,8 @@ import '../estilos/paginas.css';
 // El contrato pide sondeo de salud; 15 s es suficiente para detectar caídas
 // sin castigar al servidor.
 const INTERVALO_MS = 15_000;
+
+const CLAVE_MINIMA = 8;
 
 type EstadoDependencia = 'ok' | 'error' | 'desconocido';
 
@@ -62,6 +72,141 @@ function FilaDependencia({
   );
 }
 
+function idEnUrl(usuario: UsuarioPlataforma): string {
+  return encodeURIComponent(usuario.idPublico ?? String(usuario.id));
+}
+
+function esAdmin(usuario: UsuarioPlataforma, roles: RolPlataforma[]): boolean {
+  if (usuario.administrador) return true;
+  if (usuario.roles?.some((rol) => rol.nombre.trim().toLowerCase() === 'administrador')) return true;
+  if (usuario.rolIds && usuario.rolIds.length > 0) {
+    return usuario.rolIds.some((id) => {
+      const rol = roles.find((otro) => String(otro.id) === String(id));
+      return rol?.nombre.trim().toLowerCase() === 'administrador';
+    });
+  }
+  return false;
+}
+
+function FormularioAdmin({
+  roles,
+  rolesError,
+  guardando,
+  error,
+  onGuardar,
+  onCancelar,
+}: {
+  roles: RolPlataforma[];
+  rolesError: unknown;
+  guardando: boolean;
+  error: Error | null;
+  onGuardar: (cuerpo: CreacionUsuarioPlataforma) => void;
+  onCancelar: () => void;
+}) {
+  const [cuenta, setCuenta] = useState('');
+  const [clave, setClave] = useState('');
+  const [verClave, setVerClave] = useState(false);
+  const [nombre, setNombre] = useState('');
+  const [rolId, setRolId] = useState('');
+  const [validacion, setValidacion] = useState('');
+
+  function enviar(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (guardando) return;
+    if (!cuenta.trim()) {
+      setValidacion('Escribe el nombre con el que la persona va a entrar.');
+      return;
+    }
+    if (!nombre.trim()) {
+      setValidacion('Escribe el nombre completo de la persona.');
+      return;
+    }
+    if (!clave) {
+      setValidacion('Escribe una contraseña para la cuenta nueva.');
+      return;
+    }
+    if (clave.length < CLAVE_MINIMA) {
+      setValidacion(`La contraseña debe tener al menos ${CLAVE_MINIMA} caracteres.`);
+      return;
+    }
+    setValidacion('');
+    const cuerpo: CreacionUsuarioPlataforma = {
+      usuario: cuenta.trim(),
+      clave,
+      nombre: nombre.trim(),
+    };
+    const rol = roles.find((otro) => String(otro.id) === rolId);
+    if (rol) cuerpo.rolIds = [rol.id];
+    onGuardar(cuerpo);
+  }
+
+  return (
+    <form onSubmit={enviar} noValidate>
+      <label className="campo">
+        <span>Nombre para entrar</span>
+        <input
+          value={cuenta}
+          onChange={(evento) => setCuenta(evento.target.value)}
+          autoFocus
+          autoComplete="off"
+          placeholder="Por ejemplo: jefa.turno"
+        />
+      </label>
+      <label className="campo">
+        <span>Contraseña</span>
+        <span className="clave-caja">
+          <input
+            type={verClave ? 'text' : 'password'}
+            value={clave}
+            onChange={(evento) => setClave(evento.target.value)}
+            autoComplete="new-password"
+          />
+          <button
+            type="button"
+            className="clave-ver"
+            onClick={() => setVerClave((visible) => !visible)}
+            aria-label={verClave ? 'Ocultar la contraseña' : 'Mostrar la contraseña'}
+          >
+            {verClave ? 'Ocultar' : 'Mostrar'}
+          </button>
+        </span>
+      </label>
+      <label className="campo">
+        <span>Nombre completo</span>
+        <input value={nombre} onChange={(evento) => setNombre(evento.target.value)} />
+      </label>
+      <label className="campo">
+        <span>Permiso</span>
+        <select value={rolId} onChange={(evento) => setRolId(evento.target.value)}>
+          <option value="">El que corresponda (sin elegir)</option>
+          {roles.map((rol) => (
+            <option key={String(rol.id)} value={String(rol.id)}>
+              {rol.nombre}
+            </option>
+          ))}
+        </select>
+      </label>
+      {rolesError !== null && rolesError !== undefined && (
+        <p className="apagado">No se pudieron traer los permisos; la cuenta se guarda sin permiso elegido.</p>
+      )}
+      {validacion !== '' && (
+        <p className="error" role="alert">
+          {validacion}
+        </p>
+      )}
+      {validacion === '' && error !== null && <p className="error" role="alert">{mensajeDeError(error)}</p>}
+      <div className="dialogo-pie">
+        <button type="button" className="suave" onClick={onCancelar} disabled={guardando}>
+          Cancelar
+        </button>
+        <button type="submit" className="principal" disabled={guardando}>
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function Sistema() {
   // Sondeo de fondo cada 15 s: un 401 aquí no redirige, solo deja el estado
   // de error; la comprobación de sesión decide.
@@ -105,6 +250,56 @@ export default function Sistema() {
 
   const estados = [estadoProceso, estadoBaseDatos, estadoTracking];
   const disponibles = estados.filter((estado) => estado === 'ok').length;
+
+  // --- Cuentas de administración (contrato nuevo /api/v1/usuarios y /roles) ---
+  const administrador = useSesion((estado) => estado.usuario?.administrador === true);
+  const cliente = useQueryClient();
+  const [modalAdmin, setModalAdmin] = useState(false);
+  const [exito, setExito] = useState('');
+  const cerrarExito = useCallback(() => setExito(''), []);
+
+  const cuentas = useQuery({
+    queryKey: ['usuarios-plataforma'],
+    enabled: administrador,
+    queryFn: () => traerUsuariosPlataforma(),
+  });
+  const roles = useQuery({
+    queryKey: ['roles'],
+    enabled: administrador,
+    queryFn: () => traerRoles(),
+  });
+  const listaRoles = roles.data ?? [];
+  const admins = (cuentas.data ?? []).filter((usuario) => esAdmin(usuario, listaRoles));
+  const sinPermiso = !administrador || esErrorDeEstado(cuentas.error, 403);
+
+  const crearAdmin = useMutation({
+    mutationFn: (cuerpo: CreacionUsuarioPlataforma) =>
+      api.post<{ usuario: UsuarioPlataforma }>('/api/v1/usuarios', cuerpo),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['usuarios-plataforma'] });
+      setExito('Cuenta de administración creada.');
+      setModalAdmin(false);
+    },
+  });
+
+  const bajaAdmin = useMutation({
+    mutationFn: (usuario: UsuarioPlataforma) => api.borrar<void>(`/api/v1/usuarios/${idEnUrl(usuario)}`),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['usuarios-plataforma'] });
+      setExito('Cuenta dada de baja. Se puede volver a dar de alta desde Usuarios.');
+    },
+  });
+
+  const altaAdmin = useMutation({
+    mutationFn: (usuario: UsuarioPlataforma) =>
+      api.patch<{ usuario: UsuarioPlataforma }>(`/api/v1/usuarios/${idEnUrl(usuario)}`, {
+        habilitado: true,
+      }),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['usuarios-plataforma'] });
+      setExito('Cuenta dada de alta de nuevo.');
+    },
+  });
 
   return (
     <section className="pagina-sistema">
@@ -194,6 +389,126 @@ export default function Sistema() {
           {listo.error && <MensajeError error={listo.error} />}
         </div>
       </section>
+
+      <section className="seccion">
+        <div className="bloque">
+          <header className="cabecera-seccion">
+            <h2>Qué puede cada permiso</h2>
+          </header>
+          <dl className="detalle-datos">
+            <dt>Administrador</dt>
+            <dd>Puede hacer todo: ver y cambiar la flota, crear cuentas y cambiar permisos.</dd>
+            <dt>Operador</dt>
+            <dd>Puede trabajar con la flota y los reportes, pero no puede crear cuentas ni cambiar permisos.</dd>
+            <dt>Solo lectura</dt>
+            <dd>Solo puede ver la información; no puede cambiar nada.</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section className="seccion">
+        <div className="bloque">
+          <header className="cabecera-seccion">
+            <h2>Cuentas de administración</h2>
+            <span className="cuenta">
+              {cuentas.data ? `${admins.length} con permiso alto` : 'Consultando…'}
+            </span>
+            <span className="acciones">
+              {administrador && (
+                <button
+                  type="button"
+                  className="principal con-icono"
+                  onClick={() => {
+                    crearAdmin.reset();
+                    setModalAdmin(true);
+                  }}
+                >
+                  <Icono nombre="mas" />
+                  Agregar cuenta
+                </button>
+              )}
+            </span>
+          </header>
+          {sinPermiso && (
+            <p className="aviso">Necesitas permisos de administrador para ver y cambiar estas cuentas.</p>
+          )}
+          {!sinPermiso && cuentas.isPending && <p className="vacio">Cargando cuentas…</p>}
+          {!sinPermiso && cuentas.error && <MensajeError error={cuentas.error} />}
+          {!sinPermiso && cuentas.data && admins.length === 0 && (
+            <p className="vacio">Todavía no hay cuentas con permiso alto.</p>
+          )}
+          {!sinPermiso && admins.length > 0 && (
+            <div className="tabla-envoltura">
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Cuenta</th>
+                    <th>Nombre completo</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {admins.map((usuario) => (
+                    <tr key={usuario.idPublico}>
+                      <td>{usuario.usuario}</td>
+                      <td>{usuario.nombre}</td>
+                      <td>
+                        <ChipHabilitado habilitado={usuario.habilitado} />
+                      </td>
+                      <td>
+                        <div className="fila-botones">
+                          {usuario.habilitado ? (
+                            <button
+                              type="button"
+                              className="accion-icono peligro"
+                              title="Dar de baja la cuenta"
+                              aria-label={`Dar de baja a ${usuario.nombre}`}
+                              onClick={() => bajaAdmin.mutate(usuario)}
+                              disabled={bajaAdmin.isPending}
+                            >
+                              <Icono nombre="basura" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="suave"
+                              onClick={() => altaAdmin.mutate(usuario)}
+                              disabled={altaAdmin.isPending}
+                            >
+                              {altaAdmin.isPending ? 'Dando de alta…' : 'Dar de alta'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {!sinPermiso && bajaAdmin.error && <MensajeError error={bajaAdmin.error} />}
+          {!sinPermiso && altaAdmin.error && <MensajeError error={altaAdmin.error} />}
+          {!sinPermiso && roles.error && (
+            <p className="apagado">No se pudieron traer los permisos; la lista se armó con lo disponible.</p>
+          )}
+        </div>
+      </section>
+
+      {modalAdmin && (
+        <Dialogo titulo="Agregar cuenta de administración" onCerrar={() => setModalAdmin(false)}>
+          <FormularioAdmin
+            roles={listaRoles}
+            rolesError={roles.error}
+            guardando={crearAdmin.isPending}
+            error={crearAdmin.error}
+            onGuardar={(cuerpo) => crearAdmin.mutate(cuerpo)}
+            onCancelar={() => setModalAdmin(false)}
+          />
+        </Dialogo>
+      )}
+
+      {exito !== '' && <Toast mensaje={exito} onCerrar={cerrarExito} />}
     </section>
   );
 }

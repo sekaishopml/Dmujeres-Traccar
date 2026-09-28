@@ -320,6 +320,10 @@ class MainActivity : AppCompatActivity() {
         durationTicker?.let { uiHandler.postDelayed(it, LIVE_REFRESH_MS) }
         // Y chequeo de actualización (con freno) al volver a la app.
         maybeCheckOta()
+        // Sesión terminada por el servidor (401 con token): se pide login de
+        // nuevo, una sola vez y sin bloquear (la captura local sigue intacta y
+        // la app opera con la clave compartida hasta entrar de nuevo).
+        maybeAskLogin()
     }
 
     override fun onPause() {
@@ -646,6 +650,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun canSend(): Boolean = !ConnectionState.isFailing() && cachedPending == 0
+
+    /**
+     * Aviso de sesión vencida (una sola vez por limpieza): diálogo no
+     * bloqueante con botón para volver a entrar. "Ahora no" lo cierra y la app
+     * sigue con la clave compartida.
+     */
+    private fun maybeAskLogin() {
+        if (isFinishing || isDestroyed) return
+        if (!SessionStore.takeAuthFailed(this)) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.session_expired_title)
+            .setMessage(R.string.session_expired_body)
+            .setPositiveButton(R.string.session_expired_enter) { _, _ ->
+                LoginActivity.start(this)
+            }
+            .setNegativeButton(R.string.session_expired_later, null)
+            .show()
+    }
 
     /** Espera la config remota (con tope). NA = no llegó a consultarse. */
     private fun requestRemoteConfig(): ConfigState {

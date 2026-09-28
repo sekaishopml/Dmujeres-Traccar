@@ -31,6 +31,10 @@ const CLAVE_MINIMA = 8;
 const CLAVE_MAXIMA = 200;
 
 function exigirAdministrador(usuario) {
+  // Solo lectura bloquea toda escritura, incluso con flag de administradora.
+  if (usuario?.soloLectura) {
+    throw sinPermiso('La cuenta de solo lectura no puede hacer cambios.');
+  }
   if (!usuario?.administrador) {
     throw sinPermiso('Se requiere una cuenta administradora.');
   }

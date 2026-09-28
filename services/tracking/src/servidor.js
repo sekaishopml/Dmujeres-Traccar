@@ -1,6 +1,7 @@
 // Servidor HTTP del receptor de tracking. Escucha en 127.0.0.1 (local, sin
 // exposicion publica) y enruta:
 //   * GET/POST /                    -> protocolo OsmAnd (App actual, :5055 en prod)
+//   * POST /api/mobile/v1/sesion      (login con usuario/clave -> Bearer)
 //   * GET  /api/mobile/v1/config
 //   * GET  /api/mobile/v1/journey      (reconciliación cliente↔servidor)
 //   * POST /api/mobile/v1/journey
@@ -23,6 +24,7 @@ import {
   atenderLotePosiciones,
   atenderOta,
   atenderRecuperacionAck,
+  atenderSesion,
   atenderTokenFcm,
 } from './movil.js';
 
@@ -48,6 +50,9 @@ async function manejar(req, res, ctx) {
     return responderNoEncontrado(res);
   }
 
+  if (ruta === '/api/mobile/v1/sesion' && metodo === 'POST') {
+    return atenderSesion(req, res, { ...ctx, url });
+  }
   if (ruta === '/api/mobile/v1/config' && metodo === 'GET') {
     return atenderConfig(req, res, { ...ctx, url });
   }

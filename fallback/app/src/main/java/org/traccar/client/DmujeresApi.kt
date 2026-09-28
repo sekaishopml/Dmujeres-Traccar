@@ -38,10 +38,52 @@ object DmujeresApi {
     /**
      * Llave del canal móvil: la contraseña que CCTV entregó (si el técnico la
      * cambió en modo avanzado) o la de fábrica embebida en el build.
+     * Es el FALLBACK cuando no hay sesión guardada (flota instalada).
      */
     fun apiKey(context: Context): String =
         prefs(context).getString(KEY_PASSWORD, "").orEmpty()
             .ifBlank { BuildConfig.MOBILE_HTTP_API_KEY }
+
+    /** ¿Hay sesión guardada (token)? Sin sesión se usa la clave compartida. */
+    fun hasSession(context: Context): Boolean =
+        SessionStore.hasSession(context)
+
+    /** Usuario de la sesión actual (vacío si no hay sesión). */
+    fun sessionUser(context: Context): String =
+        SessionStore.user(context)
+
+    /**
+     * Cabeceras de autenticación del canal móvil: con token se envía
+     * `Authorization: Bearer` (sin clave compartida); sin token, la clave
+     * actual. Devuelve true si se envió token (para tratar el 401).
+     * La identidad (`X-Device-Id`) la pone cada llamada como hasta ahora.
+     */
+    fun setAuthHeaders(connection: HttpURLConnection, context: Context): Boolean {
+        val headers = SessionAuth.authHeaders(SessionStore.token(context), apiKey(context))
+        for ((name, value) in headers) {
+            connection.setRequestProperty(name, value)
+        }
+        return SessionStore.hasSession(context)
+    }
+
+    /**
+     * 401 con token (revocado o usuario deshabilitado): limpia la sesión y deja
+     * marcado pedir login de nuevo. No reintenta: quien llamó ya pausó su envío
+     * (la cola) o era una sonda de un solo disparo. Sin token no hay sesión que
+     * limpiar (el 401 es de la clave compartida).
+     */
+    fun noteHttpResult(context: Context, code: Int, hadToken: Boolean) {
+        if (!SessionAuth.shouldClearSession(code, hadToken)) return
+        SessionStore.clearOnUnauthorized(context)
+        Log.w(TAG, "sesión terminada por el servidor (401 con token): se pedirá login")
+        StatusActivity.addMessage(context.getString(R.string.status_session_expired))
+    }
+
+    /** Cierre manual (debug): borra token y datos de sesión. */
+    fun logout(context: Context) {
+        SessionStore.clear(context)
+        Log.i(TAG, "sesión cerrada manualmente")
+    }
 
     /** Base web (999) derivada de la URL OsmAnd configurada (5055). */
     fun webBase(context: Context): String {
@@ -67,11 +109,16 @@ object DmujeresApi {
                 connection.readTimeout = 8_000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
-                connection.setRequestProperty("X-Api-Key", apiKey(context))
+                val hadToken = setAuthHeaders(connection, context)
                 connection.setRequestProperty("X-Device-Id", device)
                 connection.outputStream.use { it.write(body.toString().toByteArray()) }
-                ok = connection.responseCode in 200..299
-                if (!ok) Log.w(TAG, "$path respondió ${connection.responseCode}")
+                val code = connection.responseCode
+                ok = code in 200..299
+                if (!ok) {
+                    Log.w(TAG, "$path respondió $code")
+                    // 401 con token: limpiar y pedir login, sin reintentar en bucle.
+                    noteHttpResult(context, code, hadToken)
+                }
                 connection.disconnect()
             } catch (e: Exception) {
                 Log.w(TAG, "POST $path falló", e)
@@ -170,6 +217,82 @@ object DmujeresApi {
     }
 
     /**
+     * Inicio de sesión contra POST /api/mobile/v1/sesion {usuario, clave}.
+     * Bloqueante: llamar en hilo propio (como [checkLogin]).
+     *
+     * - 200: guarda el token en [SessionStore] (reemplaza la sesión anterior),
+     *   guarda el usuario y aplica la `configuracion` recibida (solo claves
+     *   conocidas) → [LoginResult.AUTHORIZED].
+     * - 401: credenciales inválidas → [LoginResult.BAD_CREDENTIALS].
+     * - 404: el servidor aún no tiene /sesion → compatibilidad: se valida con
+     *   el canal actual ([checkLogin], clave compartida) para no bloquear la
+     *   flota durante el despliegue del servidor.
+     * - Sin red u otro fallo → [LoginResult.OFFLINE].
+     */
+    fun login(context: Context, usuario: String, clave: String): LoginResult {
+        val user = SessionAuth.normalizeUser(usuario)
+        if (user.isBlank() || clave.isBlank()) return LoginResult.OFFLINE
+        val base = webBase(context)
+        if (base.isBlank()) return LoginResult.OFFLINE
+        val code: Int
+        val body: String
+        try {
+            val connection = URL(base + SessionAuth.PATH_SESION).openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 8_000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.outputStream.use {
+                it.write(SessionAuth.loginRequestJson(user, clave).toByteArray())
+            }
+            code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            body = runCatching { stream?.bufferedReader()?.use { it.readText() }.orEmpty() }.getOrDefault("")
+            connection.disconnect()
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo iniciar sesión", e)
+            return LoginResult.OFFLINE
+        }
+        return when (code) {
+            in 200..299 -> {
+                val token = SessionAuth.extractToken(body)
+                if (token.isNullOrBlank()) {
+                    Log.w(TAG, "sesion respondió 200 sin token")
+                    return LoginResult.OFFLINE
+                }
+                val expiraEn = SessionAuth.extractExpiresInSeconds(body) ?: 0L
+                val nombre = SessionAuth.extractDisplayName(body)
+                val expiraEnMs = if (expiraEn > 0) System.currentTimeMillis() + expiraEn * 1_000 else 0L
+                SessionStore.save(context, token, user, nombre, expiraEnMs)
+                prefs(context).edit().putString(Prefs.DEVICE, user).apply()
+                val config = SessionAuth.extractConfigBlock(body)
+                RemoteConfig.applySessionConfig(
+                    context,
+                    config?.let(SessionAuth::parseConfigBlock),
+                )
+                Log.i(TAG, "sesión iniciada para $user")
+                LoginResult.AUTHORIZED
+            }
+            401 -> LoginResult.BAD_CREDENTIALS
+            404 -> {
+                // Servidor anterior a /sesion: no se bloquea la flota, se valida
+                // con la clave compartida como hasta ahora.
+                Log.i(TAG, "sesion no disponible (404): compatibilidad con clave compartida")
+                val legacy = checkLogin(context, user, clave)
+                if (legacy == LoginResult.AUTHORIZED) {
+                    prefs(context).edit()
+                        .putString(Prefs.DEVICE, user)
+                        .putString(KEY_PASSWORD, clave)
+                        .apply()
+                }
+                legacy
+            }
+            else -> LoginResult.OFFLINE
+        }
+    }
+
+    /**
      * ¿El usuario existe en el servidor? null = no se pudo verificar (sin red).
      * Se usa el endpoint de configuración: 200 = autorizado, 404 = desconocido.
      */
@@ -180,10 +303,11 @@ object DmujeresApi {
             val connection = URL("$base/api/mobile/v1/config").openConnection() as HttpURLConnection
             connection.connectTimeout = 8_000
             connection.readTimeout = 8_000
-            connection.setRequestProperty("X-Api-Key", apiKey(context))
+            val hadToken = setAuthHeaders(connection, context)
             connection.setRequestProperty("X-Device-Id", userId)
             val code = connection.responseCode
             connection.disconnect()
+            noteHttpResult(context, code, hadToken)
             when (code) {
                 in 200..299 -> true
                 404 -> false
@@ -204,10 +328,11 @@ object DmujeresApi {
             val connection = URL("$base/api/mobile/v1/config").openConnection() as HttpURLConnection
             connection.connectTimeout = 5_000
             connection.readTimeout = 5_000
-            connection.setRequestProperty("X-Api-Key", apiKey(context))
+            val hadToken = setAuthHeaders(connection, context)
             connection.setRequestProperty("X-Device-Id", device)
             val code = connection.responseCode
             connection.disconnect()
+            noteHttpResult(context, code, hadToken)
             code in 200..499 // 404 también prueba que el servidor responde
         } catch (e: Exception) {
             false
@@ -245,7 +370,7 @@ object DmujeresApi {
         val device = deviceId(context)
         Thread {
             if (base.isNotBlank() && device.isNotBlank()) {
-                val server = tryServerOta(base, device, apiKey(context))
+                val server = tryServerOta(base, device, context)
                 if (server != null) {
                     onUpdate(server.first, server.second, server.third)
                     return@Thread
@@ -260,13 +385,15 @@ object DmujeresApi {
         }.start()
     }
 
-    private fun tryServerOta(base: String, device: String, key: String): Triple<String, String, String>? {
+    private fun tryServerOta(base: String, device: String, context: Context): Triple<String, String, String>? {
         return try {
             val url = URL("$base/api/mobile/v1/ota?deviceId=$device&versionCode=${BuildConfig.VERSION_CODE}")
             val connection = url.openConnection() as HttpURLConnection
             connection.connectTimeout = 8_000
             connection.readTimeout = 8_000
-            connection.setRequestProperty("X-Api-Key", key)
+            val hadToken = setAuthHeaders(connection, context)
+            val httpCode = runCatching { connection.responseCode }.getOrDefault(-1)
+            noteHttpResult(context, httpCode, hadToken)
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
             val json = JSONObject(body)

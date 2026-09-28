@@ -4,7 +4,7 @@
 // actual y anterior, identidad X-Device-Id, codigos 200/204/400/401/403/404/413)
 // traduciendo los efectos al modelo dmt_*.
 
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual, randomBytes, pbkdf2Sync } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -61,6 +61,183 @@ function claveValida(cabecera, claves) {
     }
   }
   return valida;
+}
+
+// ---------------------------------------------------------------------------
+// Sesión móvil: login con usuario/clave y Bearer en el resto del canal
+// ---------------------------------------------------------------------------
+// El token se guarda en iam.dmt_sesion con tipo='movil' (misma tabla que la
+// web: solo viaja el SHA-256 del token, nunca el valor en claro). Los demás
+// endpoints aceptan la clave compartida X-Api-Key (flota instalada) O el
+// Bearer de esta sesión; la clave se revisa primero por compatibilidad.
+
+// Valores que recibe la app cuando ni el equipo ni la persona ponen otro.
+// Copia exacta de CONFIG_POR_DEFECTO en services/api/src/esquema.js: si se
+// añade una clave aquí, se añade allá (etiqueta en español para la pantalla
+// de ajustes) y viceversa.
+const CONFIG_MOVIL_POR_DEFECTO = {
+  intervalSeconds: 10,
+  bufferMax: 5000,
+  bufferPolicy: 'drop_oldest',
+  ackTimeoutSeconds: 15,
+  maxRetries: 30,
+  distanceMeters: 10,
+  angleDegrees: 15,
+  accuracy: 'high',
+  bufferEnabled: true,
+  l1_pending_intent_enabled: false,
+  store_all_enabled: false,
+  l1_max_update_delay_ms: 60000,
+  min_interval_seconds: 10,
+};
+
+const CLAVES_CONFIG_MOVIL = Object.keys(CONFIG_MOVIL_POR_DEFECTO);
+
+// Misma credencial heredada que la API (PBKDF2-HMAC-SHA1/1000/24, hex).
+const ITERACIONES_CLAVE = 1000;
+const BYTES_CLAVE = 24;
+const HEX_24_BYTES = /^[0-9a-fA-F]{48}$/;
+const SAL_DESCARTE = Buffer.from('00112233445566778899aabbccddeeff0011223344556677', 'hex');
+
+function verificarClaveMovil(clave, hashHex, salHex) {
+  const sal = typeof salHex === 'string' && HEX_24_BYTES.test(salHex) ? Buffer.from(salHex, 'hex') : SAL_DESCARTE;
+  const esperado =
+    typeof hashHex === 'string' && HEX_24_BYTES.test(hashHex) ? Buffer.from(hashHex, 'hex') : Buffer.alloc(BYTES_CLAVE);
+  const calculado = pbkdf2Sync(clave, sal, ITERACIONES_CLAVE, BYTES_CLAVE, 'sha1');
+  return typeof hashHex === 'string' && HEX_24_BYTES.test(hashHex) && timingSafeEqual(esperado, calculado);
+}
+
+function hashSesion(token) {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+function tokenPortador(req) {
+  const cabecera = req.headers['authorization'];
+  if (typeof cabecera !== 'string') return null;
+  const coincidencia = /^Bearer\s+(.+)$/.exec(cabecera.trim());
+  if (!coincidencia) return null;
+  const token = coincidencia[1].trim();
+  return token !== '' && token.length <= 512 ? token : null;
+}
+
+async function validarTokenMovil(pool, token) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.id, s.expira_en, u.id AS usuario_id, u.nombre
+         FROM iam.dmt_sesion s
+         JOIN iam.dmt_usuario u ON u.id = s.usuario_id
+        WHERE s.token_hash = $1
+          AND s.revocada_en IS NULL
+          AND (s.expira_en IS NULL OR s.expira_en > now())
+          AND u.habilitado
+        LIMIT 1`,
+      [hashSesion(token)],
+    );
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Clave compartida (flota instalada) o sesión Bearer (app con login).
+async function autorizacionMovil(req, ctx) {
+  if (claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+    return { modo: 'clave' };
+  }
+  const token = tokenPortador(req);
+  if (!token || !ctx.almacen?.pool) return null;
+  const sesion = await validarTokenMovil(ctx.almacen.pool, token);
+  return sesion ? { modo: 'sesion', sesion } : null;
+}
+
+function direccionCliente(req) {
+  const reenviada = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+  const candidata = reenviada || req.socket?.remoteAddress || '';
+  const limpia = candidata.replace(/^\[|\]$/g, '');
+  return /^[0-9a-fA-F:.]{3,45}$/.test(limpia) ? limpia : null;
+}
+
+function agenteCliente(req) {
+  const agente = req.headers['user-agent'];
+  return typeof agente === 'string' ? agente.slice(0, 300) : null;
+}
+
+// Solo pasan claves conocidas con el tipo esperado; lo demás se ignora para
+// no tumbar el inicio de sesión por un ajuste viejo.
+function filtrarConfigApp(valor) {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return {};
+  const limpia = {};
+  for (const [clave, dato] of Object.entries(valor)) {
+    if (!CLAVES_CONFIG_MOVIL.includes(clave)) continue;
+    const defecto = CONFIG_MOVIL_POR_DEFECTO[clave];
+    if (typeof defecto === 'boolean' && typeof dato === 'boolean') limpia[clave] = dato;
+    else if (typeof defecto === 'number' && typeof dato === 'number' && Number.isFinite(dato)) limpia[clave] = dato;
+    else if (typeof defecto === 'string' && typeof dato === 'string' && dato.length <= 500) limpia[clave] = dato;
+  }
+  return limpia;
+}
+
+// POST /api/mobile/v1/sesion {usuario, clave} -> {token, expiraEn,
+// usuario:{nombre}, configuracion}. 401 genérico sin revelar si el usuario
+// existe; 400 si faltan campos; 503 con el canal apagado.
+export async function atenderSesion(req, res, ctx) {
+  if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 503);
+  const lectura = await leerJson(req, LIMITE_JSON);
+  if (!lectura.ok) return responderSinCuerpo(res, lectura.motivo === 'grande' ? 413 : 400);
+  const datos = objeto(lectura.datos);
+  const identificador = datos ? texto(datos.usuario) : null;
+  const clave = datos && typeof datos.clave === 'string' ? datos.clave : '';
+  if (!identificador || !clave) return responderSinCuerpo(res, 400);
+  let fila = null;
+  try {
+    const resultado = await ctx.almacen.pool.query(
+      `SELECT u.id, u.nombre, u.nombre_usuario, u.correo, u.habilitado,
+              u.hash_clave, u.sal, u.atributos
+         FROM iam.dmt_usuario u
+        WHERE u.nombre_usuario = $1 OR u.correo = $1
+        LIMIT 1`,
+      [identificador],
+    );
+    fila = resultado.rows[0] ?? null;
+  } catch (error) {
+    ctx.log.error(`movil/sesion: fallo al buscar usuario: ${error.message}`);
+    return responderSinCuerpo(res, 503);
+  }
+  // Mensaje único para no revelar si el usuario existe o está deshabilitado.
+  if (!fila || !verificarClaveMovil(clave, fila.hash_clave, fila.sal) || !fila.habilitado) {
+    return responderJson(res, 401, {
+      error: { codigo: 'NO_AUTENTICADO', mensaje: 'Usuario o clave incorrectos.' },
+    });
+  }
+  const horas = Number.isFinite(Number(ctx.configuracion.sesionMovilHoras))
+    ? Number(ctx.configuracion.sesionMovilHoras)
+    : 720;
+  const token = randomBytes(32).toString('base64url');
+  let expiraEn = null;
+  try {
+    const creada = await ctx.almacen.pool.query(
+      `INSERT INTO iam.dmt_sesion (usuario_id, token_hash, tipo, direccion_ip, agente, expira_en)
+       VALUES ($1, $2, 'movil', $3, $4, now() + ($5::numeric * interval '1 hour'))
+       RETURNING expira_en`,
+      [fila.id, hashSesion(token), direccionCliente(req), agenteCliente(req), horas],
+    );
+    expiraEn = creada.rows[0]?.expira_en ?? null;
+    await ctx.almacen.pool.query('UPDATE iam.dmt_usuario SET ultimo_acceso_en = now() WHERE id = $1', [fila.id]);
+  } catch (error) {
+    ctx.log.error(`movil/sesion: fallo al crear sesion: ${error.message}`);
+    return responderSinCuerpo(res, 503);
+  }
+  const atributos = fila.atributos ?? {};
+  const configuracion = {
+    ...CONFIG_MOVIL_POR_DEFECTO,
+    ...filtrarConfigApp(atributos.configApp),
+  };
+  return responderJson(res, 200, {
+    token,
+    expiraEn: expiraEn instanceof Date ? expiraEn.toISOString() : new Date(expiraEn).toISOString(),
+    usuario: { nombre: fila.nombre },
+    configuracion,
+  });
 }
 
 async function leerCuerpo(req, limite) {
@@ -194,7 +371,7 @@ async function buscarOFallar(ctx, res, identificador, codigoDesconocido) {
 
 export async function atenderConfig(req, res, ctx) {
   if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 503);
-  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+  if (!(await autorizacionMovil(req, ctx))) {
     return responderSinCuerpo(res, 401);
   }
   const identificador = identificadorDe(req, ctx.url);
@@ -225,7 +402,7 @@ export async function atenderConfig(req, res, ctx) {
 
 export async function atenderJornada(req, res, ctx) {
   if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 404);
-  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+  if (!(await autorizacionMovil(req, ctx))) {
     return responderSinCuerpo(res, 401);
   }
   const lectura = await leerJson(req, LIMITE_JSON);
@@ -289,7 +466,7 @@ export async function atenderJornada(req, res, ctx) {
 
 export async function atenderDiagnosticos(req, res, ctx) {
   if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 404);
-  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+  if (!(await autorizacionMovil(req, ctx))) {
     return responderSinCuerpo(res, 401);
   }
   const identificador = identificadorDe(req, ctx.url);
@@ -430,7 +607,7 @@ async function auditarOta(ctx, dispositivo, versionCode, actualiza, userAgent) {
 
 export async function atenderOta(req, res, ctx) {
   if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 503);
-  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+  if (!(await autorizacionMovil(req, ctx))) {
     return responderSinCuerpo(res, 401);
   }
   const identificador = identificadorDe(req, ctx.url);
@@ -473,7 +650,7 @@ export async function atenderOta(req, res, ctx) {
 // ---------------------------------------------------------------------------
 
 export async function atenderTokenFcm(req, res, ctx) {
-  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+  if (!(await autorizacionMovil(req, ctx))) {
     return responderSinCuerpo(res, 401);
   }
   const identificador = identificadorDeCabecera(req);
@@ -512,7 +689,7 @@ export async function atenderTokenFcm(req, res, ctx) {
 // ---------------------------------------------------------------------------
 
 export async function atenderRecuperacionAck(req, res, ctx) {
-  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+  if (!(await autorizacionMovil(req, ctx))) {
     return responderSinCuerpo(res, 401);
   }
   const identificador = identificadorDeCabecera(req);
@@ -559,7 +736,7 @@ export async function atenderRecuperacionAck(req, res, ctx) {
 // Responde {estado:'abierta'|'cerrada'|'ninguna', journeyId, inicioEn}.
 export async function atenderJornadaConsulta(req, res, ctx) {
   if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 404);
-  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+  if (!(await autorizacionMovil(req, ctx))) {
     return responderSinCuerpo(res, 401);
   }
   const identificador = identificadorDe(req, ctx.url);
@@ -611,7 +788,7 @@ function numeroFinito(valor) {
 
 export async function atenderLotePosiciones(req, res, ctx) {
   if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 503);
-  if (!claveValida(req.headers['x-api-key'], ctx.configuracion.clavesMoviles)) {
+  if (!(await autorizacionMovil(req, ctx))) {
     return responderSinCuerpo(res, 401);
   }
   const lectura = await leerJson(req, LIMITE_LOTE);

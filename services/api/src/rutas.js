@@ -1,14 +1,18 @@
-// Tabla de rutas del contrato /api/v1 (27 rutas) y emparejador simple.
+// Tabla de rutas del contrato /api/v1 (41 rutas) y emparejador simple.
 
 import * as auth from './auth.js';
 import * as bateria from './bateria.js';
 import * as config from './config.js';
+import * as cuentas from './cuentas.js';
+import * as esquema from './esquema.js';
 import * as flota from './flota.js';
 import * as geocodigo from './geocodigo.js';
+import * as grupos from './grupos.js';
 import * as jornadas from './jornadas.js';
 import * as posiciones from './posiciones.js';
 import * as replay from './replay.js';
 import * as reportes from './reportes.js';
+import * as roles from './roles.js';
 import * as salud from './salud.js';
 import * as usuarios from './usuarios.js';
 
@@ -35,6 +39,19 @@ export const DEFINICIONES = [
   { metodo: 'GET', ruta: '/api/v1/users/:id', manejar: usuarios.obtenerUsuario },
   { metodo: 'PUT', ruta: '/api/v1/users/:id', manejar: usuarios.actualizarUsuario },
   { metodo: 'DELETE', ruta: '/api/v1/users/:id', manejar: usuarios.eliminarUsuario },
+  { metodo: 'GET', ruta: '/api/v1/usuarios', manejar: cuentas.listarCuentas },
+  { metodo: 'POST', ruta: '/api/v1/usuarios', manejar: cuentas.crearCuenta },
+  { metodo: 'GET', ruta: '/api/v1/usuarios/:id', manejar: cuentas.obtenerCuenta },
+  { metodo: 'PATCH', ruta: '/api/v1/usuarios/:id', manejar: cuentas.actualizarCuenta },
+  { metodo: 'DELETE', ruta: '/api/v1/usuarios/:id', manejar: cuentas.eliminarCuenta },
+  { metodo: 'GET', ruta: '/api/v1/grupos', manejar: grupos.listarGrupos },
+  { metodo: 'POST', ruta: '/api/v1/grupos', manejar: grupos.crearGrupo },
+  { metodo: 'GET', ruta: '/api/v1/grupos/:id', manejar: grupos.obtenerGrupo },
+  { metodo: 'PATCH', ruta: '/api/v1/grupos/:id', manejar: grupos.actualizarGrupo },
+  { metodo: 'DELETE', ruta: '/api/v1/grupos/:id', manejar: grupos.eliminarGrupo },
+  { metodo: 'PUT', ruta: '/api/v1/grupos/:id/miembros', manejar: grupos.reemplazarMiembros },
+  { metodo: 'GET', ruta: '/api/v1/roles', manejar: roles.listarRoles },
+  { metodo: 'GET', ruta: '/api/v1/configuracion/esquema', manejar: esquema.obtenerEsquema },
   { metodo: 'GET', ruta: '/api/v1/config', manejar: config.obtenerConfiguracion },
   { metodo: 'GET', ruta: '/api/v1/geocode/reverse', manejar: geocodigo.obtenerDireccion },
   { metodo: 'GET', ruta: '/api/v1/health', publica: true, manejar: salud.salud },

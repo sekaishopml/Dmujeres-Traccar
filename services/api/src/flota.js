@@ -3,7 +3,8 @@
 
 import { consultar } from './db.js';
 import { aDispositivo, CLAVES_CONFIGURABLES } from './dto.js';
-import { datosInvalidos, noEncontrado } from './errores.js';
+import { datosInvalidos, noEncontrado, sinPermiso } from './errores.js';
+import { esSoloLectura } from './permisos.js';
 import { leerCuerpoJson, leerOrden, leerPaginacion, leerRango, respuestaJson } from './http.js';
 import { auditar } from './sesiones.js';
 
@@ -149,8 +150,13 @@ function validarNombreDispositivo(valor) {
 }
 
 // PUT /fleet/{id}: administradores o usuarios con el equipo asignado.
-// `atributos || $json` hace merge y nunca pisa claves fuera de la whitelist.
+// La cuenta de solo lectura no puede cambiar nada (403); el operador con el
+// equipo asignado sí. `atributos || $json` hace merge y nunca pisa claves fuera de la whitelist.
 export async function actualizarDispositivo(ctx) {
+  // Solo lectura (flag o rol) bloquea toda escritura.
+  if (await esSoloLectura(ctx.pool, ctx.usuario)) {
+    throw sinPermiso('La cuenta de solo lectura no puede hacer cambios.');
+  }
   const cuerpo = await leerCuerpoJson(ctx.req, 32768);
   const tieneNombre = cuerpo.nombre !== undefined;
   const tieneConfiguracion = cuerpo.configuracion !== undefined;

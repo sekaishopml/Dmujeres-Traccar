@@ -151,10 +151,14 @@ class JourneyManager(context: Context) {
         try {
             connection.connectTimeout = 8_000
             connection.readTimeout = 8_000
-            connection.setRequestProperty("X-Api-Key", DmujeresApi.apiKey(appContext))
+            val hadToken = DmujeresApi.setAuthHeaders(connection, appContext)
             connection.setRequestProperty("X-Device-Id", device)
             if (connection.responseCode == 404) return null // servidor viejo: fallback
-            if (connection.responseCode !in 200..299) return null
+            if (connection.responseCode !in 200..299) {
+                // 401 con token: sesión terminada, se pedirá login (sin reintento).
+                DmujeresApi.noteHttpResult(appContext, connection.responseCode, hadToken)
+                return null
+            }
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(body)
             val estado = json.optString("estado")

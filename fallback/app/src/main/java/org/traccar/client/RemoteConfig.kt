@@ -37,7 +37,7 @@ object RemoteConfig {
                 val connection = URL("$base/api/mobile/v1/config").openConnection() as HttpURLConnection
                 connection.connectTimeout = 5_000
                 connection.readTimeout = 5_000
-                connection.setRequestProperty("X-Api-Key", DmujeresApi.apiKey(context))
+                val hadToken = DmujeresApi.setAuthHeaders(connection, context)
                 connection.setRequestProperty("X-Device-Id", device)
                 val code = connection.responseCode
                 val body = if (code in 200..299) {
@@ -50,6 +50,8 @@ object RemoteConfig {
                     changed = apply(context, JSONObject(body))
                 } else {
                     Log.w(TAG, "config respondió $code")
+                    // 401 con token: sesión terminada, se pedirá login (sin reintento).
+                    DmujeresApi.noteHttpResult(context, code, hadToken)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "No se pudo consultar la configuración remota", e)
@@ -124,6 +126,36 @@ object RemoteConfig {
         val buffer = json.opt("bufferEnabled")
         if (buffer is Boolean && prefs.getBoolean(Prefs.BUFFER, true) != buffer) {
             editor.putBoolean(Prefs.BUFFER, buffer)
+            changed = true
+        }
+        if (changed) editor.apply()
+        return changed
+    }
+
+    /**
+     * Aplica la `configuracion` del login a las prefs: SOLO claves conocidas
+     * (ya validadas por [SessionAuth.parseConfigBlock]); el resto se ignora.
+     * Devuelve true solo si algún valor cambió.
+     */
+    fun applySessionConfig(context: Context, config: SessionAuth.ValidConfig?): Boolean {
+        if (config == null) return false
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val editor = prefs.edit()
+        var changed = false
+
+        fun putString(key: String, current: String, value: String?) {
+            if (value != null && current != value) {
+                editor.putString(key, value)
+                changed = true
+            }
+        }
+
+        putString(Prefs.INTERVAL, prefs.getString(Prefs.INTERVAL, "60").orEmpty(), config.interval)
+        putString(Prefs.DISTANCE, prefs.getString(Prefs.DISTANCE, "10").orEmpty(), config.distance)
+        putString(Prefs.ANGLE, prefs.getString(Prefs.ANGLE, "15").orEmpty(), config.angle)
+        putString(Prefs.ACCURACY, prefs.getString(Prefs.ACCURACY, "medium").orEmpty(), config.accuracy)
+        if (config.buffer != null && prefs.getBoolean(Prefs.BUFFER, true) != config.buffer) {
+            editor.putBoolean(Prefs.BUFFER, config.buffer)
             changed = true
         }
         if (changed) editor.apply()

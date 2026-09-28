@@ -124,9 +124,12 @@ class OnboardingActivity : AppCompatActivity() {
 
     /**
      * Validación completa del login, con el error EN LÍNEA (debajo del título
-     * "Inicia sesión", sin pop-up): campos vacíos, usuario no autorizado,
-     * contraseña incorrecta o sin conexión. Solo si todo pasa se guardan los
-     * datos y se avanza a permisos.
+     * "Inicia sesión", sin pop-up): campos vacíos, usuario o contraseña
+     * incorrectos, o sin conexión. Usa POST /api/mobile/v1/sesion (con
+     * compatibilidad a la clave compartida si el servidor aún no lo tiene) y
+     * guarda el token: entrar reemplaza la sesión anterior. Solo si todo pasa
+     * se avanza a permisos. Sin sesión guardada la app sigue con la clave
+     * compartida (no se bloquea la flota instalada).
      */
     private fun validateAndContinue() {
         val view = container.getChildAt(0) ?: return
@@ -152,20 +155,14 @@ class OnboardingActivity : AppCompatActivity() {
         primary.isEnabled = false
         primary.text = getString(R.string.login_checking)
         Thread {
-            val result = DmujeresApi.checkLogin(this, userId, password)
+            val result = DmujeresApi.login(this, userId, password)
             runOnUiThread {
                 primary.isEnabled = true
                 primary.text = getString(R.string.login_button)
                 when (result) {
-                    DmujeresApi.LoginResult.AUTHORIZED -> {
-                        PreferenceManager.getDefaultSharedPreferences(this).edit()
-                            .putString(Prefs.DEVICE, userId)
-                            .putString(DmujeresApi.KEY_PASSWORD, password)
-                            .apply()
-                        showPermissions()
-                    }
+                    DmujeresApi.LoginResult.AUTHORIZED -> showPermissions()
                     DmujeresApi.LoginResult.UNKNOWN_USER -> showError(R.string.login_error_unknown)
-                    DmujeresApi.LoginResult.BAD_CREDENTIALS -> showError(R.string.login_error_bad_key)
+                    DmujeresApi.LoginResult.BAD_CREDENTIALS -> showError(R.string.login_error_credentials)
                     else -> showError(R.string.login_error_offline)
                 }
             }

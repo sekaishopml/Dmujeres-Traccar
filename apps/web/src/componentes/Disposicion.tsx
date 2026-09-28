@@ -14,6 +14,7 @@ const ENLACES: { ruta: string; texto: string; icono: NombreIcono; fin?: boolean 
   { ruta: '/bateria', texto: 'Batería', icono: 'bateria' },
   { ruta: '/reportes', texto: 'Reportes', icono: 'reportes' },
   { ruta: '/usuarios', texto: 'Usuarios', icono: 'usuarios' },
+  { ruta: '/grupos', texto: 'Grupos', icono: 'usuarios' },
   { ruta: '/configuracion', texto: 'Configuración', icono: 'configuracion' },
   { ruta: '/sistema', texto: 'Sistema', icono: 'sistema' },
 ];
@@ -34,6 +35,7 @@ const GRUPOS: { titulo: string; enlaces: typeof ENLACES }[] = [
     titulo: 'Administración',
     enlaces: [
       { ruta: '/usuarios', texto: 'Usuarios', icono: 'usuarios' },
+      { ruta: '/grupos', texto: 'Grupos', icono: 'usuarios' },
       { ruta: '/configuracion', texto: 'Configuración', icono: 'configuracion' },
       { ruta: '/sistema', texto: 'Sistema', icono: 'sistema' },
     ],

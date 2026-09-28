@@ -78,6 +78,16 @@ class DebugActivity : AppCompatActivity() {
             StatusActivity.clearMessages()
             toast(getString(R.string.debug_clear_console_done))
         }
+
+        // Sesión: solo builds debug. Borra token y datos de sesión y vuelve a
+        // la pantalla de login; entrar con otro usuario reemplaza la anterior.
+        // La clave compartida no se toca (la flota instalada sigue operando).
+        if (BuildConfig.DEBUG) {
+            addSection(rows, R.string.debug_section_session)
+            addRow(rows, R.string.debug_logout_title, logoutSummary()) {
+                showLogoutDialog()
+            }
+        }
     }
 
     // ── Diseño de filas ─────────────────────────────────────────────────────
@@ -103,6 +113,15 @@ class DebugActivity : AppCompatActivity() {
         val row = LayoutInflater.from(this).inflate(R.layout.debug_row, rows, false)
         row.findViewById<TextView>(R.id.row_title).setText(titleRes)
         row.findViewById<TextView>(R.id.row_summary).setText(summaryRes)
+        row.setOnClickListener { action() }
+        rows.addView(row)
+    }
+
+    /** Variante con resumen dinámico (p. ej. usuario de la sesión actual). */
+    private fun addRow(rows: LinearLayout, titleRes: Int, summary: String, action: () -> Unit) {
+        val row = LayoutInflater.from(this).inflate(R.layout.debug_row, rows, false)
+        row.findViewById<TextView>(R.id.row_title).setText(titleRes)
+        row.findViewById<TextView>(R.id.row_summary).text = summary
         row.setOnClickListener { action() }
         rows.addView(row)
     }
@@ -274,6 +293,40 @@ class DebugActivity : AppCompatActivity() {
                 toast(getString(R.string.debug_buffer_toast, pending))
             }
         }.start()
+    }
+
+    // ── Sesión (solo debug) ─────────────────────────────────────────────────
+
+    /** Resumen con el usuario actual, o "sin sesión" si usa clave compartida. */
+    private fun logoutSummary(): String {
+        val user = SessionStore.user(this)
+        return if (user.isBlank()) {
+            getString(R.string.debug_logout_summary)
+        } else {
+            getString(R.string.debug_logout_summary_user_fmt, user)
+        }
+    }
+
+    /** Cierra la sesión: borra token y datos, y vuelve a la pantalla de login. */
+    private fun showLogoutDialog() {
+        val user = SessionStore.user(this)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.debug_logout_title)
+            .setMessage(
+                if (user.isBlank()) {
+                    getString(R.string.debug_logout_confirm_empty)
+                } else {
+                    getString(R.string.debug_logout_confirm_fmt, user)
+                },
+            )
+            .setPositiveButton(R.string.debug_logout_ok) { _, _ ->
+                DmujeresApi.logout(this)
+                toast(getString(R.string.debug_logout_done))
+                LoginActivity.start(this)
+                finish()
+            }
+            .setNegativeButton(R.string.debug_close, null)
+            .show()
     }
 
     private fun toast(message: String) {

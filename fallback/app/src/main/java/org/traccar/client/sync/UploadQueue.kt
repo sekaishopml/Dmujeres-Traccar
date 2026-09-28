@@ -178,7 +178,7 @@ class UploadQueue(
             for (position in batch) array.put(eventJson(position))
         })
         if (wakeLockEnabled) SendWakeLock.acquire(appContext)
-        val (code, response) = try {
+        val (code, response, hadToken) = try {
             postJson(url, deviceId, body)
         } catch (e: Exception) {
             Log.w(TAG, "lote: sin red", e)
@@ -206,8 +206,14 @@ class UploadQueue(
             }
             UploadPolicy.HttpClass.PAUSED -> {
                 pausedAuth = true
-                Log.w(TAG, "cola pausada por 401: clave móvil inválida")
-                StatusActivity.addMessage("Clave móvil inválida (401): subida pausada")
+                if (hadToken) {
+                    // Token revocado o usuario deshabilitado: limpiar la sesión
+                    // y pedir login de nuevo, sin reintentar en bucle.
+                    DmujeresApi.noteHttpResult(appContext, code, hadToken = true)
+                } else {
+                    Log.w(TAG, "cola pausada por 401: clave móvil inválida")
+                    StatusActivity.addMessage("Clave móvil inválida (401): subida pausada")
+                }
                 listener.onAuthPaused()
                 finishIdle()
             }
@@ -322,7 +328,7 @@ class UploadQueue(
             .getString(Prefs.DEVICE, "").orEmpty().trim().lowercase()
 
     @Throws(Exception::class)
-    private fun postJson(url: String, deviceId: String, body: JSONObject): Pair<Int, String> {
+    private fun postJson(url: String, deviceId: String, body: JSONObject): Triple<Int, String, Boolean> {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"
@@ -330,13 +336,13 @@ class UploadQueue(
             connection.readTimeout = 15_000
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("X-Api-Key", DmujeresApi.apiKey(appContext))
+            val hadToken = DmujeresApi.setAuthHeaders(connection, appContext)
             connection.setRequestProperty("X-Device-Id", deviceId)
             connection.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val text = runCatching { stream?.bufferedReader()?.use { it.readText() }.orEmpty() }.getOrDefault("")
-            return code to text
+            return Triple(code, text, hadToken)
         } finally {
             connection.disconnect()
         }

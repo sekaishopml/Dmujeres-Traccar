@@ -2,6 +2,12 @@ import { api, consulta } from '../../api/cliente';
 import type { OpcionesPeticion } from '../../api/cliente';
 import type { Dispositivo, Pagina, Posicion, PosicionesVivas, Replay, ReporteParada } from '@contratos';
 import type { RespuestaJornadasFlota, RespuestaSalud } from '@contratos';
+import type {
+  EntradaEsquemaAjustes,
+  GrupoPlataforma,
+  RolPlataforma,
+  UsuarioPlataforma,
+} from '@contratos';
 
 // La flota la consumen Inicio, En vivo, Historial, Replay y Detalle: una sola
 // clave de caché mantiene los datos coherentes entre páginas.
@@ -91,6 +97,56 @@ export function traerParadas(idPublico: string, desde: string, hasta: string): P
 // que la comprobación de sesión decida.
 export function traerSalud(): Promise<RespuestaSalud> {
   return api.get<RespuestaSalud>('/api/v1/salud', { redirigir401: false });
+}
+
+// --- Plataforma (usuarios, grupos, roles y esquema de ajustes) ---
+//
+// Contrato nuevo que otro frente implementa en paralelo: cada función pide
+// exactamente su endpoint (/api/v1/usuarios, /api/v1/grupos, /api/v1/roles,
+// /api/v1/configuracion/esquema). Si el endpoint aún no existe, la promesa
+// se rechaza y la pantalla muestra el error sin romper el resto del panel.
+//
+// La lista de usuarios del contrato es un arreglo simple. Si el servidor
+// responde temporalmente con una página {datos}, se acepta igual para no
+// dejar la tabla vacía durante la transición.
+function comoArreglo<T>(respuesta: T[] | { datos?: T[] } | null | undefined): T[] {
+  if (Array.isArray(respuesta)) return respuesta;
+  if (respuesta && Array.isArray((respuesta as { datos?: T[] }).datos)) {
+    return (respuesta as { datos: T[] }).datos;
+  }
+  return [];
+}
+
+export async function traerUsuariosPlataforma(opciones?: OpcionesPeticion): Promise<UsuarioPlataforma[]> {
+  const respuesta = await api.get<UsuarioPlataforma[] | { datos: UsuarioPlataforma[] }>(
+    '/api/v1/usuarios',
+    opciones,
+  );
+  return comoArreglo(respuesta);
+}
+
+export async function traerGrupos(opciones?: OpcionesPeticion): Promise<GrupoPlataforma[]> {
+  const respuesta = await api.get<GrupoPlataforma[] | { datos: GrupoPlataforma[] }>(
+    '/api/v1/grupos',
+    opciones,
+  );
+  return comoArreglo(respuesta);
+}
+
+export async function traerRoles(opciones?: OpcionesPeticion): Promise<RolPlataforma[]> {
+  const respuesta = await api.get<RolPlataforma[] | { datos: RolPlataforma[] }>(
+    '/api/v1/roles',
+    opciones,
+  );
+  return comoArreglo(respuesta);
+}
+
+export async function traerEsquemaAjustes(opciones?: OpcionesPeticion): Promise<EntradaEsquemaAjustes[]> {
+  const respuesta = await api.get<EntradaEsquemaAjustes[] | { datos: EntradaEsquemaAjustes[] }>(
+    '/api/v1/configuracion/esquema',
+    opciones,
+  );
+  return comoArreglo(respuesta);
 }
 
 export interface RespuestaDireccion {

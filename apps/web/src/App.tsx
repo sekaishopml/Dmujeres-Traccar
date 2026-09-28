@@ -13,6 +13,7 @@ const Replay = lazy(() => import('./paginas/Replay'));
 const Bateria = lazy(() => import('./paginas/Bateria'));
 const Reportes = lazy(() => import('./paginas/Reportes'));
 const Usuarios = lazy(() => import('./paginas/Usuarios'));
+const Grupos = lazy(() => import('./paginas/Grupos'));
 const Configuracion = lazy(() => import('./paginas/Configuracion'));
 const Sistema = lazy(() => import('./paginas/Sistema'));
 
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="/bateria" element={<Bateria />} />
             <Route path="/reportes" element={<Reportes />} />
             <Route path="/usuarios" element={<Usuarios />} />
+            <Route path="/grupos" element={<Grupos />} />
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/sistema" element={<Sistema />} />
             <Route path="*" element={<Navigate to="/" replace />} />

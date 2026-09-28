@@ -26,6 +26,9 @@ export const noEncontrado = (mensaje = 'El recurso no existe.') =>
 export const datosInvalidos = (mensaje = 'Los datos de la petición no son válidos.') =>
   new ErrorApi('DATOS_INVALIDOS', mensaje, 400);
 
+export const conflicto = (mensaje = 'El recurso ya existe.') =>
+  new ErrorApi('YA_EXISTE', mensaje, 409);
+
 export const errorInterno = (mensaje = 'Ocurrió un error interno.') =>
   new ErrorApi('ERROR_INTERNO', mensaje, 500);
 
