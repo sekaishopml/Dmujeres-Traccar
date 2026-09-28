@@ -23,8 +23,8 @@ android {
         applicationId 'com.dmujeres.traccar'
         minSdkVersion 21
         targetSdkVersion 35
-        versionCode 287
-        versionName '2.1.77'
+        versionCode 288
+        versionName '2.1.78'
         multiDexEnabled true
         buildConfigField "String", "MOBILE_HTTP_API_KEY", "\"${mobileApiKey}\""
         manifestPlaceholders = [appLabel: "Dmujeres Tracking"]
@@ -100,6 +100,7 @@ dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
     implementation 'androidx.preference:preference-ktx:1.2.1'
     implementation 'androidx.core:core-ktx:1.16.0'
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'com.github.judemanutd:autostarter:1.1.0'
     implementation('dev.doubledot.doki:library:0.0.1@aar') {

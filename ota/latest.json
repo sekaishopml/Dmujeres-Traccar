@@ -1,7 +1,7 @@
 {
-  "version": "2.1.77",
-  "versionCode": 287,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.77.apk",
-  "notes": "Cuentas y grupos, inicio de sesion en app, ajustes por persona",
-  "sha256": "9137c69b385abdee7c6c7dc6e4f6e14d5aeec2b201e85dd6b284c818859b7b73"
+  "version": "2.1.78",
+  "versionCode": 288,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.78.apk",
+  "notes": "Cierre limpio de sesion y la sesion ya no renombra al equipo",
+  "sha256": "d538c4189de822da71dcd20a94814c7e28d59d663b500143c91f9fac7cc7a069"
 }
