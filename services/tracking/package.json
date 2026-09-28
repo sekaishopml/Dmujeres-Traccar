@@ -1,0 +1,18 @@
+{
+  "name": "@dmujeres/tracking",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Receptor de tracking compatible con la App actual: protocolo OsmAnd y canal /api/mobile/v1/*, escribiendo solo en la base nueva dmt_*.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "main": "src/servidor.js",
+  "scripts": {
+    "start": "node src/servidor.js",
+    "smoke": "node src/smoke.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

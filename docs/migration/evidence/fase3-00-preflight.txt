@@ -1,0 +1,59 @@
+=== FASE 3 parte 3 - preflight ===
+2026-09-26 03:24:50 UTC
+
+--- docker ps ---
+NAMES            STATUS                    PORTS
+dmt-db           Up 26 minutes (healthy)   127.0.0.1:5443->5432/tcp
+dmj-mqtt         Up 6 days (healthy)       4370/tcp, 5369/tcp, 8084/tcp, 127.0.0.1:8083->8083/tcp, 0.0.0.0:1883->1883/tcp, [::]:1883->1883/tcp, 8883/tcp, 127.0.0.1:18083->18083/tcp
+cyhotel-master   Up 6 days                 0.0.0.0:8002->8000/tcp, [::]:8002->8000/tcp
+cyhotel-kiosco   Up 6 days (healthy)       0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+cyhotel-admin    Up 6 days                 0.0.0.0:8001->8000/tcp, [::]:8001->8000/tcp
+cyhotel-db       Up 6 days (healthy)       5432/tcp
+dmj-db           Up 6 days (healthy)       127.0.0.1:5433->5432/tcp
+dmj-redis        Up 6 days (healthy)       127.0.0.1:6379->6379/tcp
+
+--- versiones ---
+PostgreSQL 17.10 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2.29.1
+PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2.30.1
+
+--- conteos OLD (solo lectura) ---
+             t             |   n   
+---------------------------+-------
+ tc_actions                |  1517
+ tc_device_health          |  1002
+ tc_devices                |     9
+ tc_devices_habilitados    |     9
+ tc_events                 |  5131
+ tc_fcm_tokens             |     9
+ tc_keystore               |     1
+ tc_mobile_messages        |  5560
+ tc_positions              | 26844
+ tc_positions_bak_20260903 | 19602
+ tc_recovery_event         |  9727
+ tc_revoked_tokens         |     0
+ tc_statistics             |    17
+ tc_user_device            |    20
+ tc_users                  |     5
+ tc_users_administradores  |     1
+ tc_users_habilitados      |     5
+(17 rows)
+
+
+--- conteos NEW (deben ser 0) ---
+             t             | n 
+---------------------------+---
+ iam.dmt_clave_firma       | 0
+ iam.dmt_token_fcm         | 0
+ iam.dmt_usuario           | 0
+ operations.dmt_alerta     | 0
+ operations.dmt_asignacion | 0
+ operations.dmt_jornada    | 0
+ system.dmt_migracion_mapa | 0
+ telemetry.dmt_bateria     | 0
+ tracking.dmt_dispositivo  | 0
+ tracking.dmt_evento       | 0
+ tracking.dmt_posicion     | 0
+(11 rows)
+

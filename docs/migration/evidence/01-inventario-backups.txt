@@ -1,0 +1,48 @@
+# Inventario de /var/backups/dmj (2026-09-25)
+
+total 32132
+drwx------ 3 opencode opencode    4096 Sep 25 03:00 .
+drwxr-xr-x 4 root     root        4096 Sep 25 00:00 ..
+drwxr-xr-x 2 opencode opencode    4096 Sep 25 03:00 restore
+-rw-r--r-- 1 opencode opencode 4072579 Sep 19 12:54 traccar-20260919-125422.dump
+-rw-rw-r-- 1 opencode opencode       0 Sep 20 03:00 traccar-20260920-030001.dump
+-rw-rw-r-- 1 opencode opencode       0 Sep 21 03:00 traccar-20260921-030001.dump
+-rw-rw-r-- 1 opencode opencode 5592090 Sep 22 00:31 traccar-20260922-003135.dump
+-rw-rw-r-- 1 opencode opencode 4213534 Sep 22 03:00 traccar-20260922-030001.dump
+-rw-rw-r-- 1 opencode opencode 2418087 Sep 23 03:00 traccar-20260923-030001.dump
+-rw-rw-r-- 1 opencode opencode 3035742 Sep 24 03:00 traccar-20260924-030001.dump
+-rw-rw-r-- 1 opencode opencode 3449375 Sep 25 03:00 traccar-20260925-030001.dump
+-rw-rw-r-- 1 opencode opencode 4461153 Sep 22 14:55 traccar-pre-cambio-usuarios.dump
+-rw-r--r-- 1 opencode opencode 5625870 Sep 22 02:57 traccar-pre-purga-recorridos.dump
+
+## sha256 de los dumps
+dca77769057f70de585a7b8d3515d006187d29bea48845118651d360a2ae6e79  /var/backups/dmj/traccar-20260919-125422.dump
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /var/backups/dmj/traccar-20260920-030001.dump
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /var/backups/dmj/traccar-20260921-030001.dump
+40a837892cb792a2a37fd55f7cf289c04b3973b239deeda0a33fe25b9eaf06f2  /var/backups/dmj/traccar-20260922-003135.dump
+1d73f956437ecfdf7d99eb897837cd1b07d624388cb4fdd46718070c8fb209f7  /var/backups/dmj/traccar-20260922-030001.dump
+ad7eb431bae169fa032bb209dfce419f0a2d936a1b8988845356b80c79ac785f  /var/backups/dmj/traccar-20260923-030001.dump
+383e4fbf32d2097f1257688ff23e18e64429bc6fab28372a244fdbe87fd5dafa  /var/backups/dmj/traccar-20260924-030001.dump
+cdaf14b6a421dcbf022487190c43c599759fc75c8974cd6e036b8024c6b4b791  /var/backups/dmj/traccar-20260925-030001.dump
+bcfac5f10346e4defebe3b83a0a37b6cbca0bd314a1301ea839de627136b64ec  /var/backups/dmj/traccar-pre-cambio-usuarios.dump
+7705d93d6438a4ead1f50c99cddad3169afea399a0274b2a4d986053f3a67366  /var/backups/dmj/traccar-pre-purga-recorridos.dump
+
+## Verificacion pg_restore -l y restauracion en scratch (extracto de etl-run.txt)
+[03:12:19] Dump traccar-20260919-125422.dump -> 11759 posiciones | 19602 en bak | chunks: 22
+[03:12:19] AVISO: traccar-20260920-030001.dump tiene 0 bytes; se omite
+[03:12:19] AVISO: traccar-20260921-030001.dump tiene 0 bytes; se omite
+[03:12:21] Dump traccar-20260922-003135.dump -> 15665 posiciones | 19602 en bak | chunks: 22
+[03:12:22] Dump traccar-20260922-030001.dump -> 4 posiciones | 19602 en bak | chunks: 1
+[03:12:22] Dump traccar-20260923-030001.dump -> 4189 posiciones | 19602 en bak | chunks: 3
+[03:12:23] Dump traccar-20260924-030001.dump -> 13122 posiciones | 19602 en bak | chunks: 7
+[03:12:24] Dump traccar-20260925-030001.dump -> 20149 posiciones | 19602 en bak | chunks: 9
+[03:12:25] Dump traccar-pre-cambio-usuarios.dump -> 1522 posiciones | 19602 en bak | chunks: 3
+[03:12:27] Dump traccar-pre-purga-recorridos.dump -> 15898 posiciones | 19602 en bak | chunks: 22
+toc-20260919_125422.txt: 719 entradas TOC
+toc-20260922_003135.txt: 722 entradas TOC
+toc-20260922_030001.txt: 554 entradas TOC
+toc-20260923_030001.txt: 570 entradas TOC
+toc-20260924_030001.txt: 631 entradas TOC
+toc-20260925_030001.txt: 659 entradas TOC
+toc-pre_cambio_usuarios.txt: 570 entradas TOC
+toc-pre_purga_recorridos.txt: 722 entradas TOC

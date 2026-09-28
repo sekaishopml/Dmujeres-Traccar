@@ -1,0 +1,51 @@
+# ============================================================================
+# DMujeres Tracking - base de datos nueva (desarrollo)
+# ============================================================================
+# Servicio dmt-db: PostgreSQL 18 + TimescaleDB 2.30.1 para la plataforma nueva.
+#
+# Independiente de la produccion (dmj-db, PG17, puerto 5433, DB traccar):
+#   * puerto host 127.0.0.1:5443
+#   * base dmujeres, usuario dmt (variables en /home/DMujeres-Tracking/.env)
+#   * volumen nombrado dmt_db_datos (persiste aunque se elimine el contenedor)
+#
+# Nota PostgreSQL 18: la imagen oficial cambia PGDATA a
+# /var/lib/postgresql/18/docker. Aqui se fija PGDATA al punto de montaje
+# /var/lib/postgresql/data para que el volumen nombrado sea el directorio de
+# datos real (misma ruta que el convenio anterior, persistencia verificada).
+#
+# Uso:
+#   docker compose -f /home/DMujeres-Tracking/infrastructure/development/docker-compose.yml up -d
+#   docker compose -f /home/DMujeres-Tracking/infrastructure/development/docker-compose.yml down
+# ============================================================================
+
+name: dmt
+
+services:
+  dmt-db:
+    image: timescale/timescaledb:2.30.1-pg18
+    container_name: dmt-db
+    restart: unless-stopped
+    env_file:
+      - /home/DMujeres-Tracking/.env
+    ports:
+      - "127.0.0.1:5443:5432"
+    volumes:
+      - dmt_db_datos:/var/lib/postgresql/data
+    environment:
+      PGDATA: /var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=timescaledb,pg_stat_statements
+      - -c
+      - max_connections=200
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-dmt} -d ${POSTGRES_DB:-dmujeres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+volumes:
+  dmt_db_datos:
+    name: dmt_db_datos

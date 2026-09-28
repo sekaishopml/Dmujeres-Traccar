@@ -1,0 +1,65 @@
+[03:30:04] Staging: creando/vaciando system.dmt_staging_*
+[03:30:04] Usuarios (traccar.tc_users)
+[03:30:04] Dispositivos vivos (traccar.tc_devices)
+[03:30:04] Dispositivos historicos (traccar_qa.tc_devices)
+[03:30:05] Asignaciones (traccar.tc_user_device)
+[03:30:05] Eventos (traccar.tc_events)
+[03:30:05] Bateria desde posiciones (traccar.tc_positions, ultimos 7 dias)
+[03:30:05] Tokens FCM (traccar.tc_fcm_tokens)
+[03:30:05] Claves de firma (traccar.tc_keystore)
+[03:30:05] Recuperacion (traccar.tc_recovery_event)
+[03:30:05] Conteos de tablas pendientes/evaluar
+[03:30:06] Ejecutando 02_cargar_nucleo.sql
+BEGIN
+CREATE FUNCTION
+INSERT 0 3
+INSERT 0 5
+INSERT 0 5
+INSERT 0 17
+INSERT 0 20
+INSERT 0 5134
+INSERT 0 28
+INSERT 0 24
+INSERT 0 26857
+INSERT 0 9
+INSERT 0 1
+INSERT 0 9726
+ setval 
+--------
+      9
+(1 row)
+
+ setval 
+--------
+     59
+(1 row)
+
+ setval 
+--------
+  32231
+(1 row)
+
+INSERT 0 5
+INSERT 0 17
+INSERT 0 20
+INSERT 0 13
+COMMIT
+          objeto          | filas 
+--------------------------+-------
+ alertas_recuperacion     |  9726
+ asignaciones             |    20
+ bateria                  | 26881
+ claves_firma             |     1
+ dispositivos             |    17
+ eventos                  |  5134
+ fcm                      |     9
+ jornadas                 |    28
+ mapa                     |    55
+ roles                    |     3
+ usuario_rol              |     5
+ usuarios                 |     5
+ usuarios_administradores |     1
+ usuarios_habilitados     |     5
+(14 rows)
+
+[03:30:08] Fin de la carga nucleo

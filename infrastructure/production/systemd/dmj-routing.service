@@ -1,0 +1,19 @@
+# DMujeres Tracking - ruteo estimado por calles (GraphHopper 8).
+# Reutiliza el grafo de Ecuador ya importado por el matcher retirado; la API lo
+# consulta para rellenar los huecos del Replay. Solo loopback.
+[Unit]
+Description=DMujeres ruteo estimado por calles (GraphHopper 8, grafo de Ecuador)
+After=network.target
+
+[Service]
+Type=simple
+User=opencode
+Group=opencode
+ExecStart=/usr/bin/java -Xmx768m -cp /opt/route-service/matchservice.jar:/opt/route-service/clases dmj.RouteService
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

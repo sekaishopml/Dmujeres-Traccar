@@ -1,0 +1,30 @@
+BEGIN
+ setval 
+--------
+      9
+(1 row)
+
+ setval 
+--------
+     59
+(1 row)
+
+ setval 
+--------
+  88694
+(1 row)
+
+ setval 
+--------
+  32231
+(1 row)
+
+COMMIT
+          tabla           | secuencia 
+--------------------------+-----------
+ iam.dmt_usuario          |         9
+ tracking.dmt_dispositivo |        59
+ tracking.dmt_evento      |     32231
+ tracking.dmt_posicion    |     88694
+(4 rows)
+

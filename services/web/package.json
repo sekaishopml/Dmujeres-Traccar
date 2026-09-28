@@ -1,0 +1,11 @@
+{
+  "name": "dmujeres-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Puerta de entrada del panel DMujeres Tracking: sirve la web y proxya /api.",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/servidor.js"
+  }
+}

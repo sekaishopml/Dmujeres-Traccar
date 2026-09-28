@@ -1,0 +1,119 @@
+/* Estilos propios de las páginas de administración (Batería, Reportes,
+   Usuarios, Configuración y Sistema). Se apoyan en las clases base de
+   estilos/global.css y en estilos/paginas.css, y solo añaden lo específico. */
+
+/* Enlaces y acciones dentro de las tablas */
+.enlace-fila {
+  background: none; border: none; padding: 0; font: inherit; font-weight: 600;
+  color: var(--navy-2); cursor: pointer;
+}
+.enlace-fila:hover { background: none; color: var(--rojo); text-decoration: underline; }
+.tabla .fila-botones { margin-bottom: 0; gap: 4px; }
+
+/* Acción destructiva en tablas: mismo botón que .accion-icono pero en rojo,
+   para que eliminar no se confunda con editar. */
+.accion-icono.peligro { color: var(--rojo); }
+.accion-icono.peligro:hover { background: #fdeaef; color: var(--rojo-2); }
+
+/* Rango efectivo de Reportes: el rango que realmente aplicó la API, pegado a
+   la barra de filtros que lo precede. */
+.rango-efectivo { margin: 6px 0 12px; font-size: 12.5px; color: var(--apagado); }
+
+/* Pestañas de Reportes */
+.pestanas { display: flex; gap: 2px; border-bottom: 1px solid var(--linea); margin-bottom: 10px; }
+.pestanas button {
+  background: transparent; color: var(--apagado); border: 0; border-radius: 0;
+  border-bottom: 2px solid transparent; padding: 7px 11px; font-size: 13px;
+}
+.pestanas button:hover { background: var(--linea-2); color: var(--navy); }
+.pestanas button.activa { color: var(--navy); border-bottom-color: var(--rojo); font-weight: 650; }
+
+.paginacion {
+  display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap;
+  gap: 8px; margin-top: 9px; font-size: 12.5px; color: var(--apagado);
+}
+
+.fila-botones { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+
+.grafico { height: 280px; }
+
+/* Listas de definición (estado de servicios y versión desplegada) */
+.detalle-datos { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13px; }
+.detalle-datos dt {
+  color: var(--apagado); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  font-weight: 650; align-self: center;
+}
+.detalle-datos dd { margin: 0; word-break: break-word; }
+
+/* Estados binarios (carga, dependencias, capacidades) */
+.si { color: var(--verde); font-weight: 650; }
+.no { color: var(--rojo); font-weight: 650; }
+.chip.error { color: var(--rojo); background: #fdeaef; }
+
+/* Bloque resaltado cuando /ready falla o queda degradado */
+.bloque.fallo { border-color: #f2c3d2; background: #fffafb; }
+
+/* Dependencias de Sistema: fila con punto de estado, nombre, significado y
+   resultado a la derecha. El color del punto resume el estado de un vistazo. */
+.punto-estado.ok { background: var(--verde); }
+.punto-estado.error { background: var(--rojo); }
+.punto-estado.sin-datos { background: var(--gris); }
+.fila-dependencia {
+  display: flex; align-items: center; gap: 10px; padding: 9px 0;
+  border-bottom: 1px solid var(--linea-2);
+}
+.fila-dependencia:last-of-type { border-bottom: 0; }
+.fila-dependencia .detalle { color: var(--apagado); font-size: 12.5px; min-width: 0; }
+.fila-dependencia .resultado { margin-left: auto; white-space: nowrap; }
+@media (max-width: 700px) {
+  .fila-dependencia { flex-wrap: wrap; }
+  .fila-dependencia .detalle { flex-basis: 100%; padding-left: 18px; }
+}
+
+/* Diálogo modal de gestión (Usuarios), sobrio: borde fino y sombra discreta */
+.dialogo {
+  border: none; background: transparent; padding: 0; margin: auto;
+  width: 100%; max-width: min(640px, calc(100vw - 24px));
+}
+.dialogo::backdrop { background: rgba(11, 37, 69, .42); }
+.dialogo-caja {
+  background: var(--tarjeta); border: 1px solid var(--linea); border-radius: var(--radio);
+  padding: 14px 16px; box-shadow: 0 8px 24px rgba(11, 37, 69, .16);
+  max-height: calc(100vh - 48px); overflow: auto;
+}
+.dialogo-cab { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.dialogo-cab h2 { margin: 0; }
+.dialogo-pie { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
+
+/* Confirmación flotante de éxito */
+.toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 60;
+  display: flex; align-items: center; gap: 12px;
+  background: #fff; color: var(--texto); padding: 9px 10px 9px 13px;
+  border: 1px solid var(--linea); border-left: 3px solid var(--verde);
+  border-radius: 7px; box-shadow: 0 6px 18px rgba(11, 37, 69, .14); font-size: 13px;
+}
+.toast button { background: transparent; border-color: transparent; color: var(--navy-2); padding: 4px 8px; font-size: 12px; }
+.toast button:hover { background: var(--linea-2); }
+
+/* Formularios de gestión de usuarios y equipos */
+.clave-caja { position: relative; display: block; }
+.clave-caja input { padding-right: 74px; }
+.clave-ver {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  background: transparent; color: var(--navy-2); font-size: 11.5px; padding: 4px 7px;
+}
+.clave-ver:hover { background: var(--linea-2); }
+.recordar-admin { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 2px 0 8px; }
+
+input[type='checkbox'], input[type='radio'] { width: auto; min-height: 0; padding: 0; }
+
+.grupo-equipos { border: 1px solid var(--linea); border-radius: 7px; padding: 6px 10px 8px; margin: 0 0 10px; }
+.grupo-equipos legend {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--apagado); font-weight: 650; padding: 0 4px;
+}
+.equipos-asignados { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; max-height: 200px; overflow: auto; }
+.equipos-asignados label { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.ayuda-campo { color: var(--apagado); font-size: 12px; margin: 0 0 10px; }
+@media (max-width: 700px) { .equipos-asignados { grid-template-columns: 1fr; } }

@@ -1,0 +1,722 @@
+;
+; Archive created at 2026-09-22 07:57:40 UTC
+;     dbname: traccar
+;     TOC Entries: 712
+;     Compression: gzip
+;     Dump Version: 1.16-0
+;     Format: CUSTOM
+;     Integer: 4 bytes
+;     Offset: 8 bytes
+;     Dumped from database version: 17.10
+;     Dumped by pg_dump version: 17.10
+;
+;
+; Selected TOC Entries:
+;
+5078; 0 0 ACL - SCHEMA public pg_database_owner
+2; 3079 17837 EXTENSION - timescaledb 
+5079; 0 0 COMMENT - EXTENSION timescaledb 
+315; 1259 18712 TABLE public tc_positions traccar
+5080; 0 0 ACL public TABLE tc_positions traccar
+361; 1259 19651 TABLE _timescaledb_internal _hyper_1_10_chunk traccar
+5081; 0 0 ACL _timescaledb_internal TABLE _hyper_1_10_chunk traccar
+363; 1259 19674 TABLE _timescaledb_internal _hyper_1_12_chunk traccar
+5082; 0 0 ACL _timescaledb_internal TABLE _hyper_1_12_chunk traccar
+364; 1259 19686 TABLE _timescaledb_internal _hyper_1_13_chunk traccar
+5083; 0 0 ACL _timescaledb_internal TABLE _hyper_1_13_chunk traccar
+365; 1259 19698 TABLE _timescaledb_internal _hyper_1_14_chunk traccar
+5084; 0 0 ACL _timescaledb_internal TABLE _hyper_1_14_chunk traccar
+369; 1259 19740 TABLE _timescaledb_internal _hyper_1_18_chunk traccar
+5085; 0 0 ACL _timescaledb_internal TABLE _hyper_1_18_chunk traccar
+370; 1259 19752 TABLE _timescaledb_internal _hyper_1_19_chunk traccar
+5086; 0 0 ACL _timescaledb_internal TABLE _hyper_1_19_chunk traccar
+371; 1259 19764 TABLE _timescaledb_internal _hyper_1_20_chunk traccar
+5087; 0 0 ACL _timescaledb_internal TABLE _hyper_1_20_chunk traccar
+377; 1259 19858 TABLE _timescaledb_internal _hyper_1_26_chunk traccar
+5088; 0 0 ACL _timescaledb_internal TABLE _hyper_1_26_chunk traccar
+380; 1259 19965 TABLE _timescaledb_internal _hyper_1_28_chunk traccar
+5089; 0 0 ACL _timescaledb_internal TABLE _hyper_1_28_chunk traccar
+381; 1259 19999 TABLE _timescaledb_internal _hyper_1_29_chunk traccar
+5090; 0 0 ACL _timescaledb_internal TABLE _hyper_1_29_chunk traccar
+384; 1259 20040 TABLE _timescaledb_internal _hyper_1_32_chunk traccar
+5091; 0 0 ACL _timescaledb_internal TABLE _hyper_1_32_chunk traccar
+387; 1259 20114 TABLE _timescaledb_internal _hyper_1_35_chunk traccar
+5092; 0 0 ACL _timescaledb_internal TABLE _hyper_1_35_chunk traccar
+389; 1259 20140 TABLE _timescaledb_internal _hyper_1_37_chunk traccar
+5093; 0 0 ACL _timescaledb_internal TABLE _hyper_1_37_chunk traccar
+391; 1259 20187 TABLE _timescaledb_internal _hyper_1_39_chunk traccar
+5094; 0 0 ACL _timescaledb_internal TABLE _hyper_1_39_chunk traccar
+354; 1259 19282 TABLE _timescaledb_internal _hyper_1_3_chunk traccar
+5095; 0 0 ACL _timescaledb_internal TABLE _hyper_1_3_chunk traccar
+393; 1259 21675 TABLE _timescaledb_internal _hyper_1_41_chunk traccar
+5096; 0 0 ACL _timescaledb_internal TABLE _hyper_1_41_chunk traccar
+405; 1259 22120 TABLE _timescaledb_internal _hyper_1_47_chunk traccar
+5097; 0 0 ACL _timescaledb_internal TABLE _hyper_1_47_chunk traccar
+406; 1259 22286 TABLE _timescaledb_internal _hyper_1_48_chunk traccar
+5098; 0 0 ACL _timescaledb_internal TABLE _hyper_1_48_chunk traccar
+407; 1259 22298 TABLE _timescaledb_internal _hyper_1_49_chunk traccar
+5099; 0 0 ACL _timescaledb_internal TABLE _hyper_1_49_chunk traccar
+409; 1259 23256 TABLE _timescaledb_internal _hyper_1_51_chunk traccar
+5100; 0 0 ACL _timescaledb_internal TABLE _hyper_1_51_chunk traccar
+357; 1259 19515 TABLE _timescaledb_internal _hyper_1_6_chunk traccar
+5101; 0 0 ACL _timescaledb_internal TABLE _hyper_1_6_chunk traccar
+359; 1259 19629 TABLE _timescaledb_internal _hyper_1_8_chunk traccar
+5102; 0 0 ACL _timescaledb_internal TABLE _hyper_1_8_chunk traccar
+299; 1259 18651 TABLE public tc_events traccar
+5103; 0 0 ACL public TABLE tc_events traccar
+362; 1259 19663 TABLE _timescaledb_internal _hyper_2_11_chunk traccar
+5104; 0 0 ACL _timescaledb_internal TABLE _hyper_2_11_chunk traccar
+366; 1259 19710 TABLE _timescaledb_internal _hyper_2_15_chunk traccar
+5105; 0 0 ACL _timescaledb_internal TABLE _hyper_2_15_chunk traccar
+367; 1259 19720 TABLE _timescaledb_internal _hyper_2_16_chunk traccar
+5106; 0 0 ACL _timescaledb_internal TABLE _hyper_2_16_chunk traccar
+368; 1259 19730 TABLE _timescaledb_internal _hyper_2_17_chunk traccar
+5107; 0 0 ACL _timescaledb_internal TABLE _hyper_2_17_chunk traccar
+372; 1259 19765 TABLE _timescaledb_internal _hyper_2_21_chunk traccar
+5108; 0 0 ACL _timescaledb_internal TABLE _hyper_2_21_chunk traccar
+373; 1259 19786 TABLE _timescaledb_internal _hyper_2_22_chunk traccar
+5109; 0 0 ACL _timescaledb_internal TABLE _hyper_2_22_chunk traccar
+374; 1259 19796 TABLE _timescaledb_internal _hyper_2_23_chunk traccar
+5110; 0 0 ACL _timescaledb_internal TABLE _hyper_2_23_chunk traccar
+375; 1259 19810 TABLE _timescaledb_internal _hyper_2_24_chunk traccar
+5111; 0 0 ACL _timescaledb_internal TABLE _hyper_2_24_chunk traccar
+379; 1259 19955 TABLE _timescaledb_internal _hyper_2_27_chunk traccar
+5112; 0 0 ACL _timescaledb_internal TABLE _hyper_2_27_chunk traccar
+353; 1259 19272 TABLE _timescaledb_internal _hyper_2_2_chunk traccar
+5113; 0 0 ACL _timescaledb_internal TABLE _hyper_2_2_chunk traccar
+382; 1259 20012 TABLE _timescaledb_internal _hyper_2_30_chunk traccar
+5114; 0 0 ACL _timescaledb_internal TABLE _hyper_2_30_chunk traccar
+385; 1259 20067 TABLE _timescaledb_internal _hyper_2_33_chunk traccar
+5115; 0 0 ACL _timescaledb_internal TABLE _hyper_2_33_chunk traccar
+386; 1259 20104 TABLE _timescaledb_internal _hyper_2_34_chunk traccar
+5116; 0 0 ACL _timescaledb_internal TABLE _hyper_2_34_chunk traccar
+388; 1259 20130 TABLE _timescaledb_internal _hyper_2_36_chunk traccar
+5117; 0 0 ACL _timescaledb_internal TABLE _hyper_2_36_chunk traccar
+390; 1259 20177 TABLE _timescaledb_internal _hyper_2_38_chunk traccar
+5118; 0 0 ACL _timescaledb_internal TABLE _hyper_2_38_chunk traccar
+392; 1259 21665 TABLE _timescaledb_internal _hyper_2_40_chunk traccar
+5119; 0 0 ACL _timescaledb_internal TABLE _hyper_2_40_chunk traccar
+400; 1259 22070 TABLE _timescaledb_internal _hyper_2_42_chunk traccar
+5120; 0 0 ACL _timescaledb_internal TABLE _hyper_2_42_chunk traccar
+401; 1259 22080 TABLE _timescaledb_internal _hyper_2_43_chunk traccar
+5121; 0 0 ACL _timescaledb_internal TABLE _hyper_2_43_chunk traccar
+402; 1259 22090 TABLE _timescaledb_internal _hyper_2_44_chunk traccar
+5122; 0 0 ACL _timescaledb_internal TABLE _hyper_2_44_chunk traccar
+403; 1259 22100 TABLE _timescaledb_internal _hyper_2_45_chunk traccar
+5123; 0 0 ACL _timescaledb_internal TABLE _hyper_2_45_chunk traccar
+408; 1259 23244 TABLE _timescaledb_internal _hyper_2_50_chunk traccar
+5124; 0 0 ACL _timescaledb_internal TABLE _hyper_2_50_chunk traccar
+356; 1259 19505 TABLE _timescaledb_internal _hyper_2_5_chunk traccar
+5125; 0 0 ACL _timescaledb_internal TABLE _hyper_2_5_chunk traccar
+358; 1259 19605 TABLE _timescaledb_internal _hyper_2_7_chunk traccar
+5126; 0 0 ACL _timescaledb_internal TABLE _hyper_2_7_chunk traccar
+347; 1259 19207 TABLE public tc_actions traccar
+5127; 0 0 ACL public TABLE tc_actions traccar
+352; 1259 19264 TABLE _timescaledb_internal _hyper_3_1_chunk traccar
+5128; 0 0 ACL _timescaledb_internal TABLE _hyper_3_1_chunk traccar
+376; 1259 19847 TABLE _timescaledb_internal _hyper_3_25_chunk traccar
+5129; 0 0 ACL _timescaledb_internal TABLE _hyper_3_25_chunk traccar
+383; 1259 20027 TABLE _timescaledb_internal _hyper_3_31_chunk traccar
+5130; 0 0 ACL _timescaledb_internal TABLE _hyper_3_31_chunk traccar
+404; 1259 22112 TABLE _timescaledb_internal _hyper_3_46_chunk traccar
+5131; 0 0 ACL _timescaledb_internal TABLE _hyper_3_46_chunk traccar
+355; 1259 19497 TABLE _timescaledb_internal _hyper_3_4_chunk traccar
+5132; 0 0 ACL _timescaledb_internal TABLE _hyper_3_4_chunk traccar
+360; 1259 19643 TABLE _timescaledb_internal _hyper_3_9_chunk traccar
+5133; 0 0 ACL _timescaledb_internal TABLE _hyper_3_9_chunk traccar
+281; 1259 18581 TABLE public databasechangelog traccar
+5134; 0 0 ACL public TABLE databasechangelog traccar
+280; 1259 18576 TABLE public databasechangeloglock traccar
+5135; 0 0 ACL public TABLE databasechangeloglock traccar
+346; 1259 19206 SEQUENCE public tc_actions_id_seq traccar
+283; 1259 18587 TABLE public tc_attributes traccar
+5136; 0 0 ACL public TABLE tc_attributes traccar
+282; 1259 18586 SEQUENCE public tc_attributes_id_seq traccar
+285; 1259 18595 TABLE public tc_calendars traccar
+5137; 0 0 ACL public TABLE tc_calendars traccar
+284; 1259 18594 SEQUENCE public tc_calendars_id_seq traccar
+287; 1259 18603 TABLE public tc_commands traccar
+5138; 0 0 ACL public TABLE tc_commands traccar
+286; 1259 18602 SEQUENCE public tc_commands_id_seq traccar
+340; 1259 19127 TABLE public tc_commands_queue traccar
+5139; 0 0 ACL public TABLE tc_commands_queue traccar
+339; 1259 19126 SEQUENCE public tc_commands_queue_id_seq traccar
+288; 1259 18611 TABLE public tc_device_attribute traccar
+5140; 0 0 ACL public TABLE tc_device_attribute traccar
+289; 1259 18614 TABLE public tc_device_command traccar
+5141; 0 0 ACL public TABLE tc_device_command traccar
+349; 1259 19229 TABLE public tc_device_device traccar
+5142; 0 0 ACL public TABLE tc_device_device traccar
+290; 1259 18617 TABLE public tc_device_driver traccar
+5143; 0 0 ACL public TABLE tc_device_driver traccar
+291; 1259 18620 TABLE public tc_device_geofence traccar
+5144; 0 0 ACL public TABLE tc_device_geofence traccar
+395; 1259 22018 TABLE public tc_device_health traccar
+5145; 0 0 ACL public TABLE tc_device_health traccar
+394; 1259 22017 SEQUENCE public tc_device_health_id_seq traccar
+292; 1259 18623 TABLE public tc_device_maintenance traccar
+5146; 0 0 ACL public TABLE tc_device_maintenance traccar
+293; 1259 18626 TABLE public tc_device_notification traccar
+5147; 0 0 ACL public TABLE tc_device_notification traccar
+336; 1259 19092 TABLE public tc_device_order traccar
+5148; 0 0 ACL public TABLE tc_device_order traccar
+345; 1259 19181 TABLE public tc_device_report traccar
+5149; 0 0 ACL public TABLE tc_device_report traccar
+295; 1259 18630 TABLE public tc_devices traccar
+5150; 0 0 ACL public TABLE tc_devices traccar
+294; 1259 18629 SEQUENCE public tc_devices_id_seq traccar
+297; 1259 18641 TABLE public tc_drivers traccar
+5151; 0 0 ACL public TABLE tc_drivers traccar
+296; 1259 18640 SEQUENCE public tc_drivers_id_seq traccar
+298; 1259 18650 SEQUENCE public tc_events_id_seq traccar
+399; 1259 22037 TABLE public tc_fcm_tokens traccar
+5152; 0 0 ACL public TABLE tc_fcm_tokens traccar
+398; 1259 22036 SEQUENCE public tc_fcm_tokens_id_seq traccar
+301; 1259 18659 TABLE public tc_geofences traccar
+5153; 0 0 ACL public TABLE tc_geofences traccar
+300; 1259 18658 SEQUENCE public tc_geofences_id_seq traccar
+302; 1259 18666 TABLE public tc_group_attribute traccar
+5154; 0 0 ACL public TABLE tc_group_attribute traccar
+303; 1259 18669 TABLE public tc_group_command traccar
+5155; 0 0 ACL public TABLE tc_group_command traccar
+304; 1259 18672 TABLE public tc_group_driver traccar
+5156; 0 0 ACL public TABLE tc_group_driver traccar
+305; 1259 18675 TABLE public tc_group_geofence traccar
+5157; 0 0 ACL public TABLE tc_group_geofence traccar
+306; 1259 18678 TABLE public tc_group_maintenance traccar
+5158; 0 0 ACL public TABLE tc_group_maintenance traccar
+307; 1259 18681 TABLE public tc_group_notification traccar
+5159; 0 0 ACL public TABLE tc_group_notification traccar
+335; 1259 19079 TABLE public tc_group_order traccar
+5160; 0 0 ACL public TABLE tc_group_order traccar
+344; 1259 19168 TABLE public tc_group_report traccar
+5161; 0 0 ACL public TABLE tc_group_report traccar
+309; 1259 18685 TABLE public tc_groups traccar
+5162; 0 0 ACL public TABLE tc_groups traccar
+308; 1259 18684 SEQUENCE public tc_groups_id_seq traccar
+338; 1259 19115 TABLE public tc_keystore traccar
+5163; 0 0 ACL public TABLE tc_keystore traccar
+337; 1259 19114 SEQUENCE public tc_keystore_id_seq traccar
+311; 1259 18693 TABLE public tc_maintenances traccar
+5164; 0 0 ACL public TABLE tc_maintenances traccar
+310; 1259 18692 SEQUENCE public tc_maintenances_id_seq traccar
+351; 1259 19243 TABLE public tc_mobile_messages traccar
+5165; 0 0 ACL public TABLE tc_mobile_messages traccar
+350; 1259 19242 SEQUENCE public tc_mobile_messages_id_seq traccar
+313; 1259 18703 TABLE public tc_notifications traccar
+5166; 0 0 ACL public TABLE tc_notifications traccar
+312; 1259 18702 SEQUENCE public tc_notifications_id_seq traccar
+333; 1259 19059 TABLE public tc_orders traccar
+5167; 0 0 ACL public TABLE tc_orders traccar
+332; 1259 19058 SEQUENCE public tc_orders_id_seq traccar
+378; 1259 19889 TABLE public tc_positions_bak_20260903 traccar
+5168; 0 0 ACL public TABLE tc_positions_bak_20260903 traccar
+314; 1259 18711 SEQUENCE public tc_positions_id_seq traccar
+397; 1259 22027 TABLE public tc_recovery_event traccar
+5169; 0 0 ACL public TABLE tc_recovery_event traccar
+396; 1259 22026 SEQUENCE public tc_recovery_event_id_seq traccar
+342; 1259 19143 TABLE public tc_reports traccar
+5170; 0 0 ACL public TABLE tc_reports traccar
+341; 1259 19142 SEQUENCE public tc_reports_id_seq traccar
+348; 1259 19222 TABLE public tc_revoked_tokens traccar
+5171; 0 0 ACL public TABLE tc_revoked_tokens traccar
+317; 1259 18722 TABLE public tc_servers traccar
+5172; 0 0 ACL public TABLE tc_servers traccar
+316; 1259 18721 SEQUENCE public tc_servers_id_seq traccar
+319; 1259 18739 TABLE public tc_statistics traccar
+5173; 0 0 ACL public TABLE tc_statistics traccar
+318; 1259 18738 SEQUENCE public tc_statistics_id_seq traccar
+320; 1259 18755 TABLE public tc_user_attribute traccar
+5174; 0 0 ACL public TABLE tc_user_attribute traccar
+321; 1259 18758 TABLE public tc_user_calendar traccar
+5175; 0 0 ACL public TABLE tc_user_calendar traccar
+322; 1259 18761 TABLE public tc_user_command traccar
+5176; 0 0 ACL public TABLE tc_user_command traccar
+323; 1259 18764 TABLE public tc_user_device traccar
+5177; 0 0 ACL public TABLE tc_user_device traccar
+324; 1259 18767 TABLE public tc_user_driver traccar
+5178; 0 0 ACL public TABLE tc_user_driver traccar
+325; 1259 18770 TABLE public tc_user_geofence traccar
+5179; 0 0 ACL public TABLE tc_user_geofence traccar
+326; 1259 18773 TABLE public tc_user_group traccar
+5180; 0 0 ACL public TABLE tc_user_group traccar
+327; 1259 18776 TABLE public tc_user_maintenance traccar
+5181; 0 0 ACL public TABLE tc_user_maintenance traccar
+328; 1259 18779 TABLE public tc_user_notification traccar
+5182; 0 0 ACL public TABLE tc_user_notification traccar
+334; 1259 19066 TABLE public tc_user_order traccar
+5183; 0 0 ACL public TABLE tc_user_order traccar
+343; 1259 19155 TABLE public tc_user_report traccar
+5184; 0 0 ACL public TABLE tc_user_report traccar
+329; 1259 18782 TABLE public tc_user_user traccar
+5185; 0 0 ACL public TABLE tc_user_user traccar
+331; 1259 18786 TABLE public tc_users traccar
+5186; 0 0 ACL public TABLE tc_users traccar
+330; 1259 18785 SEQUENCE public tc_users_id_seq traccar
+410; 1259 30656 VIEW public v_device_funnel_daily traccar
+5187; 0 0 COMMENT public VIEW v_device_funnel_daily traccar
+5188; 0 0 ACL public TABLE v_device_funnel_daily traccar
+4273; 2604 19654 DEFAULT _timescaledb_internal _hyper_1_10_chunk servertime traccar
+4274; 2604 19655 DEFAULT _timescaledb_internal _hyper_1_10_chunk accuracy traccar
+4275; 2604 19677 DEFAULT _timescaledb_internal _hyper_1_12_chunk servertime traccar
+4276; 2604 19678 DEFAULT _timescaledb_internal _hyper_1_12_chunk accuracy traccar
+4277; 2604 19689 DEFAULT _timescaledb_internal _hyper_1_13_chunk servertime traccar
+4278; 2604 19690 DEFAULT _timescaledb_internal _hyper_1_13_chunk accuracy traccar
+4279; 2604 19701 DEFAULT _timescaledb_internal _hyper_1_14_chunk servertime traccar
+4280; 2604 19702 DEFAULT _timescaledb_internal _hyper_1_14_chunk accuracy traccar
+4281; 2604 19743 DEFAULT _timescaledb_internal _hyper_1_18_chunk servertime traccar
+4282; 2604 19744 DEFAULT _timescaledb_internal _hyper_1_18_chunk accuracy traccar
+4283; 2604 19755 DEFAULT _timescaledb_internal _hyper_1_19_chunk servertime traccar
+4284; 2604 19756 DEFAULT _timescaledb_internal _hyper_1_19_chunk accuracy traccar
+4285; 2604 19776 DEFAULT _timescaledb_internal _hyper_1_20_chunk servertime traccar
+4286; 2604 19777 DEFAULT _timescaledb_internal _hyper_1_20_chunk accuracy traccar
+4287; 2604 19861 DEFAULT _timescaledb_internal _hyper_1_26_chunk servertime traccar
+4288; 2604 19862 DEFAULT _timescaledb_internal _hyper_1_26_chunk accuracy traccar
+4289; 2604 19968 DEFAULT _timescaledb_internal _hyper_1_28_chunk servertime traccar
+4290; 2604 19969 DEFAULT _timescaledb_internal _hyper_1_28_chunk accuracy traccar
+4291; 2604 20002 DEFAULT _timescaledb_internal _hyper_1_29_chunk servertime traccar
+4292; 2604 20003 DEFAULT _timescaledb_internal _hyper_1_29_chunk accuracy traccar
+4293; 2604 20043 DEFAULT _timescaledb_internal _hyper_1_32_chunk servertime traccar
+4294; 2604 20044 DEFAULT _timescaledb_internal _hyper_1_32_chunk accuracy traccar
+4295; 2604 20117 DEFAULT _timescaledb_internal _hyper_1_35_chunk servertime traccar
+4296; 2604 20118 DEFAULT _timescaledb_internal _hyper_1_35_chunk accuracy traccar
+4297; 2604 20143 DEFAULT _timescaledb_internal _hyper_1_37_chunk servertime traccar
+4298; 2604 20144 DEFAULT _timescaledb_internal _hyper_1_37_chunk accuracy traccar
+4299; 2604 20190 DEFAULT _timescaledb_internal _hyper_1_39_chunk servertime traccar
+4300; 2604 20191 DEFAULT _timescaledb_internal _hyper_1_39_chunk accuracy traccar
+4267; 2604 19285 DEFAULT _timescaledb_internal _hyper_1_3_chunk servertime traccar
+4268; 2604 19286 DEFAULT _timescaledb_internal _hyper_1_3_chunk accuracy traccar
+4301; 2604 21678 DEFAULT _timescaledb_internal _hyper_1_41_chunk servertime traccar
+4302; 2604 21679 DEFAULT _timescaledb_internal _hyper_1_41_chunk accuracy traccar
+4305; 2604 22123 DEFAULT _timescaledb_internal _hyper_1_47_chunk servertime traccar
+4306; 2604 22124 DEFAULT _timescaledb_internal _hyper_1_47_chunk accuracy traccar
+4307; 2604 22289 DEFAULT _timescaledb_internal _hyper_1_48_chunk servertime traccar
+4308; 2604 22290 DEFAULT _timescaledb_internal _hyper_1_48_chunk accuracy traccar
+4309; 2604 22301 DEFAULT _timescaledb_internal _hyper_1_49_chunk servertime traccar
+4310; 2604 22302 DEFAULT _timescaledb_internal _hyper_1_49_chunk accuracy traccar
+4311; 2604 23259 DEFAULT _timescaledb_internal _hyper_1_51_chunk servertime traccar
+4312; 2604 23260 DEFAULT _timescaledb_internal _hyper_1_51_chunk accuracy traccar
+4269; 2604 19518 DEFAULT _timescaledb_internal _hyper_1_6_chunk servertime traccar
+4270; 2604 19519 DEFAULT _timescaledb_internal _hyper_1_6_chunk accuracy traccar
+4271; 2604 19632 DEFAULT _timescaledb_internal _hyper_1_8_chunk servertime traccar
+4272; 2604 19633 DEFAULT _timescaledb_internal _hyper_1_8_chunk accuracy traccar
+4175; 0 17862 TABLE DATA _timescaledb_catalog hypertable traccar
+4186; 0 17970 TABLE DATA _timescaledb_catalog bgw_job traccar
+4179; 0 17910 TABLE DATA _timescaledb_catalog chunk traccar
+4183; 0 17950 TABLE DATA _timescaledb_catalog chunk_column_stats traccar
+4199; 0 18164 TABLE DATA _timescaledb_catalog compression_chunk_size traccar
+4198; 0 18153 TABLE DATA _timescaledb_catalog compression_settings traccar
+4188; 0 18033 TABLE DATA _timescaledb_catalog continuous_agg traccar
+4189; 0 18059 TABLE DATA _timescaledb_catalog continuous_aggs_bucket_function traccar
+4192; 0 18092 TABLE DATA _timescaledb_catalog continuous_aggs_hypertable_invalidation_log traccar
+4190; 0 18072 TABLE DATA _timescaledb_catalog continuous_aggs_invalidation_threshold traccar
+4195; 0 18114 TABLE DATA _timescaledb_catalog continuous_aggs_jobs_refresh_ranges traccar
+4193; 0 18096 TABLE DATA _timescaledb_catalog continuous_aggs_materialization_invalidation_log traccar
+4194; 0 18105 TABLE DATA _timescaledb_catalog continuous_aggs_materialization_ranges traccar
+4196; 0 18123 TABLE DATA _timescaledb_catalog continuous_aggs_tenant_tracking traccar
+4191; 0 18082 TABLE DATA _timescaledb_catalog continuous_aggs_watermark traccar
+4177; 0 17891 TABLE DATA _timescaledb_catalog dimension traccar
+4181; 0 17929 TABLE DATA _timescaledb_catalog dimension_slice traccar
+4197; 0 18134 TABLE DATA _timescaledb_catalog hypertable_cagg_settings traccar
+4187; 0 18026 TABLE DATA _timescaledb_catalog metadata traccar
+4176; 0 17877 TABLE DATA _timescaledb_catalog tablespace traccar
+5022; 0 19651 TABLE DATA _timescaledb_internal _hyper_1_10_chunk traccar
+5024; 0 19674 TABLE DATA _timescaledb_internal _hyper_1_12_chunk traccar
+5025; 0 19686 TABLE DATA _timescaledb_internal _hyper_1_13_chunk traccar
+5026; 0 19698 TABLE DATA _timescaledb_internal _hyper_1_14_chunk traccar
+5030; 0 19740 TABLE DATA _timescaledb_internal _hyper_1_18_chunk traccar
+5031; 0 19752 TABLE DATA _timescaledb_internal _hyper_1_19_chunk traccar
+5032; 0 19764 TABLE DATA _timescaledb_internal _hyper_1_20_chunk traccar
+5038; 0 19858 TABLE DATA _timescaledb_internal _hyper_1_26_chunk traccar
+5041; 0 19965 TABLE DATA _timescaledb_internal _hyper_1_28_chunk traccar
+5042; 0 19999 TABLE DATA _timescaledb_internal _hyper_1_29_chunk traccar
+5045; 0 20040 TABLE DATA _timescaledb_internal _hyper_1_32_chunk traccar
+5048; 0 20114 TABLE DATA _timescaledb_internal _hyper_1_35_chunk traccar
+5050; 0 20140 TABLE DATA _timescaledb_internal _hyper_1_37_chunk traccar
+5052; 0 20187 TABLE DATA _timescaledb_internal _hyper_1_39_chunk traccar
+5015; 0 19282 TABLE DATA _timescaledb_internal _hyper_1_3_chunk traccar
+5054; 0 21675 TABLE DATA _timescaledb_internal _hyper_1_41_chunk traccar
+5066; 0 22120 TABLE DATA _timescaledb_internal _hyper_1_47_chunk traccar
+5067; 0 22286 TABLE DATA _timescaledb_internal _hyper_1_48_chunk traccar
+5068; 0 22298 TABLE DATA _timescaledb_internal _hyper_1_49_chunk traccar
+5070; 0 23256 TABLE DATA _timescaledb_internal _hyper_1_51_chunk traccar
+5018; 0 19515 TABLE DATA _timescaledb_internal _hyper_1_6_chunk traccar
+5020; 0 19629 TABLE DATA _timescaledb_internal _hyper_1_8_chunk traccar
+5023; 0 19663 TABLE DATA _timescaledb_internal _hyper_2_11_chunk traccar
+5027; 0 19710 TABLE DATA _timescaledb_internal _hyper_2_15_chunk traccar
+5028; 0 19720 TABLE DATA _timescaledb_internal _hyper_2_16_chunk traccar
+5029; 0 19730 TABLE DATA _timescaledb_internal _hyper_2_17_chunk traccar
+5033; 0 19765 TABLE DATA _timescaledb_internal _hyper_2_21_chunk traccar
+5034; 0 19786 TABLE DATA _timescaledb_internal _hyper_2_22_chunk traccar
+5035; 0 19796 TABLE DATA _timescaledb_internal _hyper_2_23_chunk traccar
+5036; 0 19810 TABLE DATA _timescaledb_internal _hyper_2_24_chunk traccar
+5040; 0 19955 TABLE DATA _timescaledb_internal _hyper_2_27_chunk traccar
+5014; 0 19272 TABLE DATA _timescaledb_internal _hyper_2_2_chunk traccar
+5043; 0 20012 TABLE DATA _timescaledb_internal _hyper_2_30_chunk traccar
+5046; 0 20067 TABLE DATA _timescaledb_internal _hyper_2_33_chunk traccar
+5047; 0 20104 TABLE DATA _timescaledb_internal _hyper_2_34_chunk traccar
+5049; 0 20130 TABLE DATA _timescaledb_internal _hyper_2_36_chunk traccar
+5051; 0 20177 TABLE DATA _timescaledb_internal _hyper_2_38_chunk traccar
+5053; 0 21665 TABLE DATA _timescaledb_internal _hyper_2_40_chunk traccar
+5061; 0 22070 TABLE DATA _timescaledb_internal _hyper_2_42_chunk traccar
+5062; 0 22080 TABLE DATA _timescaledb_internal _hyper_2_43_chunk traccar
+5063; 0 22090 TABLE DATA _timescaledb_internal _hyper_2_44_chunk traccar
+5064; 0 22100 TABLE DATA _timescaledb_internal _hyper_2_45_chunk traccar
+5069; 0 23244 TABLE DATA _timescaledb_internal _hyper_2_50_chunk traccar
+5017; 0 19505 TABLE DATA _timescaledb_internal _hyper_2_5_chunk traccar
+5019; 0 19605 TABLE DATA _timescaledb_internal _hyper_2_7_chunk traccar
+5013; 0 19264 TABLE DATA _timescaledb_internal _hyper_3_1_chunk traccar
+5037; 0 19847 TABLE DATA _timescaledb_internal _hyper_3_25_chunk traccar
+5044; 0 20027 TABLE DATA _timescaledb_internal _hyper_3_31_chunk traccar
+5065; 0 22112 TABLE DATA _timescaledb_internal _hyper_3_46_chunk traccar
+5016; 0 19497 TABLE DATA _timescaledb_internal _hyper_3_4_chunk traccar
+5021; 0 19643 TABLE DATA _timescaledb_internal _hyper_3_9_chunk traccar
+4942; 0 18581 TABLE DATA public databasechangelog traccar
+4941; 0 18576 TABLE DATA public databasechangeloglock traccar
+5008; 0 19207 TABLE DATA public tc_actions traccar
+4944; 0 18587 TABLE DATA public tc_attributes traccar
+4946; 0 18595 TABLE DATA public tc_calendars traccar
+4948; 0 18603 TABLE DATA public tc_commands traccar
+5001; 0 19127 TABLE DATA public tc_commands_queue traccar
+4949; 0 18611 TABLE DATA public tc_device_attribute traccar
+4950; 0 18614 TABLE DATA public tc_device_command traccar
+5010; 0 19229 TABLE DATA public tc_device_device traccar
+4951; 0 18617 TABLE DATA public tc_device_driver traccar
+4952; 0 18620 TABLE DATA public tc_device_geofence traccar
+5056; 0 22018 TABLE DATA public tc_device_health traccar
+4953; 0 18623 TABLE DATA public tc_device_maintenance traccar
+4954; 0 18626 TABLE DATA public tc_device_notification traccar
+4997; 0 19092 TABLE DATA public tc_device_order traccar
+5006; 0 19181 TABLE DATA public tc_device_report traccar
+4956; 0 18630 TABLE DATA public tc_devices traccar
+4958; 0 18641 TABLE DATA public tc_drivers traccar
+4960; 0 18651 TABLE DATA public tc_events traccar
+5060; 0 22037 TABLE DATA public tc_fcm_tokens traccar
+4962; 0 18659 TABLE DATA public tc_geofences traccar
+4963; 0 18666 TABLE DATA public tc_group_attribute traccar
+4964; 0 18669 TABLE DATA public tc_group_command traccar
+4965; 0 18672 TABLE DATA public tc_group_driver traccar
+4966; 0 18675 TABLE DATA public tc_group_geofence traccar
+4967; 0 18678 TABLE DATA public tc_group_maintenance traccar
+4968; 0 18681 TABLE DATA public tc_group_notification traccar
+4996; 0 19079 TABLE DATA public tc_group_order traccar
+5005; 0 19168 TABLE DATA public tc_group_report traccar
+4970; 0 18685 TABLE DATA public tc_groups traccar
+4999; 0 19115 TABLE DATA public tc_keystore traccar
+4972; 0 18693 TABLE DATA public tc_maintenances traccar
+5012; 0 19243 TABLE DATA public tc_mobile_messages traccar
+4974; 0 18703 TABLE DATA public tc_notifications traccar
+4994; 0 19059 TABLE DATA public tc_orders traccar
+4976; 0 18712 TABLE DATA public tc_positions traccar
+5039; 0 19889 TABLE DATA public tc_positions_bak_20260903 traccar
+5058; 0 22027 TABLE DATA public tc_recovery_event traccar
+5003; 0 19143 TABLE DATA public tc_reports traccar
+5009; 0 19222 TABLE DATA public tc_revoked_tokens traccar
+4978; 0 18722 TABLE DATA public tc_servers traccar
+4980; 0 18739 TABLE DATA public tc_statistics traccar
+4981; 0 18755 TABLE DATA public tc_user_attribute traccar
+4982; 0 18758 TABLE DATA public tc_user_calendar traccar
+4983; 0 18761 TABLE DATA public tc_user_command traccar
+4984; 0 18764 TABLE DATA public tc_user_device traccar
+4985; 0 18767 TABLE DATA public tc_user_driver traccar
+4986; 0 18770 TABLE DATA public tc_user_geofence traccar
+4987; 0 18773 TABLE DATA public tc_user_group traccar
+4988; 0 18776 TABLE DATA public tc_user_maintenance traccar
+4989; 0 18779 TABLE DATA public tc_user_notification traccar
+4995; 0 19066 TABLE DATA public tc_user_order traccar
+5004; 0 19155 TABLE DATA public tc_user_report traccar
+4990; 0 18782 TABLE DATA public tc_user_user traccar
+4992; 0 18786 TABLE DATA public tc_users traccar
+5189; 0 0 SEQUENCE SET _timescaledb_catalog bgw_job_id_seq traccar
+5190; 0 0 SEQUENCE SET _timescaledb_catalog chunk_column_stats_id_seq traccar
+5191; 0 0 SEQUENCE SET _timescaledb_catalog chunk_id_seq traccar
+5192; 0 0 SEQUENCE SET _timescaledb_catalog dimension_id_seq traccar
+5193; 0 0 SEQUENCE SET _timescaledb_catalog dimension_slice_id_seq traccar
+5194; 0 0 SEQUENCE SET _timescaledb_catalog hypertable_id_seq traccar
+5195; 0 0 SEQUENCE SET public tc_actions_id_seq traccar
+5196; 0 0 SEQUENCE SET public tc_attributes_id_seq traccar
+5197; 0 0 SEQUENCE SET public tc_calendars_id_seq traccar
+5198; 0 0 SEQUENCE SET public tc_commands_id_seq traccar
+5199; 0 0 SEQUENCE SET public tc_commands_queue_id_seq traccar
+5200; 0 0 SEQUENCE SET public tc_device_health_id_seq traccar
+5201; 0 0 SEQUENCE SET public tc_devices_id_seq traccar
+5202; 0 0 SEQUENCE SET public tc_drivers_id_seq traccar
+5203; 0 0 SEQUENCE SET public tc_events_id_seq traccar
+5204; 0 0 SEQUENCE SET public tc_fcm_tokens_id_seq traccar
+5205; 0 0 SEQUENCE SET public tc_geofences_id_seq traccar
+5206; 0 0 SEQUENCE SET public tc_groups_id_seq traccar
+5207; 0 0 SEQUENCE SET public tc_keystore_id_seq traccar
+5208; 0 0 SEQUENCE SET public tc_maintenances_id_seq traccar
+5209; 0 0 SEQUENCE SET public tc_mobile_messages_id_seq traccar
+5210; 0 0 SEQUENCE SET public tc_notifications_id_seq traccar
+5211; 0 0 SEQUENCE SET public tc_orders_id_seq traccar
+5212; 0 0 SEQUENCE SET public tc_positions_id_seq traccar
+5213; 0 0 SEQUENCE SET public tc_recovery_event_id_seq traccar
+5214; 0 0 SEQUENCE SET public tc_reports_id_seq traccar
+5215; 0 0 SEQUENCE SET public tc_servers_id_seq traccar
+5216; 0 0 SEQUENCE SET public tc_statistics_id_seq traccar
+5217; 0 0 SEQUENCE SET public tc_users_id_seq traccar
+4488; 2606 18580 CONSTRAINT public databasechangeloglock databasechangeloglock_pkey traccar
+4490; 2606 18593 CONSTRAINT public tc_attributes tc_attributes_pkey traccar
+4492; 2606 18601 CONSTRAINT public tc_calendars tc_calendars_pkey traccar
+4494; 2606 18610 CONSTRAINT public tc_commands tc_commands_pkey traccar
+4536; 2606 19134 CONSTRAINT public tc_commands_queue tc_commands_queue_pkey traccar
+4674; 2606 22024 CONSTRAINT public tc_device_health tc_device_health_pkey traccar
+4497; 2606 18637 CONSTRAINT public tc_devices tc_devices_pkey traccar
+4499; 2606 18639 CONSTRAINT public tc_devices tc_devices_uniqueid_key traccar
+4502; 2606 18647 CONSTRAINT public tc_drivers tc_drivers_pkey traccar
+4504; 2606 18649 CONSTRAINT public tc_drivers tc_drivers_uniqueid_key traccar
+4679; 2606 22045 CONSTRAINT public tc_fcm_tokens tc_fcm_tokens_pkey traccar
+4509; 2606 18665 CONSTRAINT public tc_geofences tc_geofences_pkey traccar
+4511; 2606 18691 CONSTRAINT public tc_groups tc_groups_pkey traccar
+4533; 2606 19121 CONSTRAINT public tc_keystore tc_keystore_pkey traccar
+4513; 2606 18701 CONSTRAINT public tc_maintenances tc_maintenances_pkey traccar
+4548; 2606 19249 CONSTRAINT public tc_mobile_messages tc_mobile_messages_pkey traccar
+4515; 2606 18710 CONSTRAINT public tc_notifications tc_notifications_pkey traccar
+4531; 2606 19065 CONSTRAINT public tc_orders tc_orders_pkey traccar
+4538; 2606 19149 CONSTRAINT public tc_reports tc_reports_pkey traccar
+4542; 2606 19226 CONSTRAINT public tc_revoked_tokens tc_revoked_tokens_pkey traccar
+4520; 2606 18737 CONSTRAINT public tc_servers tc_servers_pkey traccar
+4522; 2606 18754 CONSTRAINT public tc_statistics tc_statistics_pkey traccar
+4527; 2606 18804 CONSTRAINT public tc_users tc_users_email_key traccar
+4529; 2606 18802 CONSTRAINT public tc_users tc_users_pkey traccar
+4550; 2606 19256 CONSTRAINT public tc_mobile_messages uk_mobile_messages_device_sequence traccar
+4552; 2606 19258 CONSTRAINT public tc_mobile_messages uk_mobile_messages_messageid traccar
+4577; 1259 19661 INDEX _timescaledb_internal _hyper_1_10_chunk_tc_positions_deviceid_fixtime_idx traccar
+4578; 1259 19660 INDEX _timescaledb_internal _hyper_1_10_chunk_tc_positions_fixtime_idx traccar
+4579; 1259 19662 INDEX _timescaledb_internal _hyper_1_10_chunk_tc_positions_id_idx traccar
+4583; 1259 19684 INDEX _timescaledb_internal _hyper_1_12_chunk_tc_positions_deviceid_fixtime_idx traccar
+4584; 1259 19683 INDEX _timescaledb_internal _hyper_1_12_chunk_tc_positions_fixtime_idx traccar
+4585; 1259 19685 INDEX _timescaledb_internal _hyper_1_12_chunk_tc_positions_id_idx traccar
+4586; 1259 19696 INDEX _timescaledb_internal _hyper_1_13_chunk_tc_positions_deviceid_fixtime_idx traccar
+4587; 1259 19695 INDEX _timescaledb_internal _hyper_1_13_chunk_tc_positions_fixtime_idx traccar
+4588; 1259 19697 INDEX _timescaledb_internal _hyper_1_13_chunk_tc_positions_id_idx traccar
+4589; 1259 19708 INDEX _timescaledb_internal _hyper_1_14_chunk_tc_positions_deviceid_fixtime_idx traccar
+4590; 1259 19707 INDEX _timescaledb_internal _hyper_1_14_chunk_tc_positions_fixtime_idx traccar
+4591; 1259 19709 INDEX _timescaledb_internal _hyper_1_14_chunk_tc_positions_id_idx traccar
+4601; 1259 19750 INDEX _timescaledb_internal _hyper_1_18_chunk_tc_positions_deviceid_fixtime_idx traccar
+4602; 1259 19749 INDEX _timescaledb_internal _hyper_1_18_chunk_tc_positions_fixtime_idx traccar
+4603; 1259 19751 INDEX _timescaledb_internal _hyper_1_18_chunk_tc_positions_id_idx traccar
+4604; 1259 19762 INDEX _timescaledb_internal _hyper_1_19_chunk_tc_positions_deviceid_fixtime_idx traccar
+4605; 1259 19761 INDEX _timescaledb_internal _hyper_1_19_chunk_tc_positions_fixtime_idx traccar
+4606; 1259 19763 INDEX _timescaledb_internal _hyper_1_19_chunk_tc_positions_id_idx traccar
+4607; 1259 19784 INDEX _timescaledb_internal _hyper_1_20_chunk_tc_positions_deviceid_fixtime_idx traccar
+4608; 1259 19783 INDEX _timescaledb_internal _hyper_1_20_chunk_tc_positions_fixtime_idx traccar
+4609; 1259 19785 INDEX _timescaledb_internal _hyper_1_20_chunk_tc_positions_id_idx traccar
+4624; 1259 19868 INDEX _timescaledb_internal _hyper_1_26_chunk_tc_positions_deviceid_fixtime_idx traccar
+4625; 1259 19867 INDEX _timescaledb_internal _hyper_1_26_chunk_tc_positions_fixtime_idx traccar
+4626; 1259 19869 INDEX _timescaledb_internal _hyper_1_26_chunk_tc_positions_id_idx traccar
+4630; 1259 19975 INDEX _timescaledb_internal _hyper_1_28_chunk_tc_positions_deviceid_fixtime_idx traccar
+4631; 1259 19974 INDEX _timescaledb_internal _hyper_1_28_chunk_tc_positions_fixtime_idx traccar
+4632; 1259 19976 INDEX _timescaledb_internal _hyper_1_28_chunk_tc_positions_id_idx traccar
+4633; 1259 20009 INDEX _timescaledb_internal _hyper_1_29_chunk_tc_positions_deviceid_fixtime_idx traccar
+4634; 1259 20008 INDEX _timescaledb_internal _hyper_1_29_chunk_tc_positions_fixtime_idx traccar
+4635; 1259 20010 INDEX _timescaledb_internal _hyper_1_29_chunk_tc_positions_id_idx traccar
+4641; 1259 20050 INDEX _timescaledb_internal _hyper_1_32_chunk_tc_positions_deviceid_fixtime_idx traccar
+4642; 1259 20049 INDEX _timescaledb_internal _hyper_1_32_chunk_tc_positions_fixtime_idx traccar
+4643; 1259 20051 INDEX _timescaledb_internal _hyper_1_32_chunk_tc_positions_id_idx traccar
+4650; 1259 20124 INDEX _timescaledb_internal _hyper_1_35_chunk_tc_positions_deviceid_fixtime_idx traccar
+4651; 1259 20123 INDEX _timescaledb_internal _hyper_1_35_chunk_tc_positions_fixtime_idx traccar
+4652; 1259 20125 INDEX _timescaledb_internal _hyper_1_35_chunk_tc_positions_id_idx traccar
+4656; 1259 20150 INDEX _timescaledb_internal _hyper_1_37_chunk_tc_positions_deviceid_fixtime_idx traccar
+4657; 1259 20149 INDEX _timescaledb_internal _hyper_1_37_chunk_tc_positions_fixtime_idx traccar
+4658; 1259 20151 INDEX _timescaledb_internal _hyper_1_37_chunk_tc_positions_id_idx traccar
+4662; 1259 20197 INDEX _timescaledb_internal _hyper_1_39_chunk_tc_positions_deviceid_fixtime_idx traccar
+4663; 1259 20196 INDEX _timescaledb_internal _hyper_1_39_chunk_tc_positions_fixtime_idx traccar
+4664; 1259 20198 INDEX _timescaledb_internal _hyper_1_39_chunk_tc_positions_id_idx traccar
+4558; 1259 19292 INDEX _timescaledb_internal _hyper_1_3_chunk_tc_positions_deviceid_fixtime_idx traccar
+4559; 1259 19291 INDEX _timescaledb_internal _hyper_1_3_chunk_tc_positions_fixtime_idx traccar
+4560; 1259 19293 INDEX _timescaledb_internal _hyper_1_3_chunk_tc_positions_id_idx traccar
+4668; 1259 21685 INDEX _timescaledb_internal _hyper_1_41_chunk_tc_positions_deviceid_fixtime_idx traccar
+4669; 1259 21684 INDEX _timescaledb_internal _hyper_1_41_chunk_tc_positions_fixtime_idx traccar
+4670; 1259 21686 INDEX _timescaledb_internal _hyper_1_41_chunk_tc_positions_id_idx traccar
+4694; 1259 22130 INDEX _timescaledb_internal _hyper_1_47_chunk_tc_positions_deviceid_fixtime_idx traccar
+4695; 1259 22129 INDEX _timescaledb_internal _hyper_1_47_chunk_tc_positions_fixtime_idx traccar
+4696; 1259 22131 INDEX _timescaledb_internal _hyper_1_47_chunk_tc_positions_id_idx traccar
+4697; 1259 22296 INDEX _timescaledb_internal _hyper_1_48_chunk_tc_positions_deviceid_fixtime_idx traccar
+4698; 1259 22295 INDEX _timescaledb_internal _hyper_1_48_chunk_tc_positions_fixtime_idx traccar
+4699; 1259 22297 INDEX _timescaledb_internal _hyper_1_48_chunk_tc_positions_id_idx traccar
+4700; 1259 22308 INDEX _timescaledb_internal _hyper_1_49_chunk_tc_positions_deviceid_fixtime_idx traccar
+4701; 1259 22307 INDEX _timescaledb_internal _hyper_1_49_chunk_tc_positions_fixtime_idx traccar
+4702; 1259 22309 INDEX _timescaledb_internal _hyper_1_49_chunk_tc_positions_id_idx traccar
+4706; 1259 23266 INDEX _timescaledb_internal _hyper_1_51_chunk_tc_positions_deviceid_fixtime_idx traccar
+4707; 1259 23265 INDEX _timescaledb_internal _hyper_1_51_chunk_tc_positions_fixtime_idx traccar
+4708; 1259 23267 INDEX _timescaledb_internal _hyper_1_51_chunk_tc_positions_id_idx traccar
+4566; 1259 19525 INDEX _timescaledb_internal _hyper_1_6_chunk_tc_positions_deviceid_fixtime_idx traccar
+4567; 1259 19524 INDEX _timescaledb_internal _hyper_1_6_chunk_tc_positions_fixtime_idx traccar
+4568; 1259 19526 INDEX _timescaledb_internal _hyper_1_6_chunk_tc_positions_id_idx traccar
+4572; 1259 19639 INDEX _timescaledb_internal _hyper_1_8_chunk_tc_positions_deviceid_fixtime_idx traccar
+4573; 1259 19638 INDEX _timescaledb_internal _hyper_1_8_chunk_tc_positions_fixtime_idx traccar
+4574; 1259 19640 INDEX _timescaledb_internal _hyper_1_8_chunk_tc_positions_id_idx traccar
+4580; 1259 19671 INDEX _timescaledb_internal _hyper_2_11_chunk_tc_events_deviceid_eventtime_idx traccar
+4581; 1259 19670 INDEX _timescaledb_internal _hyper_2_11_chunk_tc_events_eventtime_idx traccar
+4582; 1259 19672 INDEX _timescaledb_internal _hyper_2_11_chunk_tc_events_id_idx traccar
+4592; 1259 19718 INDEX _timescaledb_internal _hyper_2_15_chunk_tc_events_deviceid_eventtime_idx traccar
+4593; 1259 19717 INDEX _timescaledb_internal _hyper_2_15_chunk_tc_events_eventtime_idx traccar
+4594; 1259 19719 INDEX _timescaledb_internal _hyper_2_15_chunk_tc_events_id_idx traccar
+4595; 1259 19728 INDEX _timescaledb_internal _hyper_2_16_chunk_tc_events_deviceid_eventtime_idx traccar
+4596; 1259 19727 INDEX _timescaledb_internal _hyper_2_16_chunk_tc_events_eventtime_idx traccar
+4597; 1259 19729 INDEX _timescaledb_internal _hyper_2_16_chunk_tc_events_id_idx traccar
+4598; 1259 19738 INDEX _timescaledb_internal _hyper_2_17_chunk_tc_events_deviceid_eventtime_idx traccar
+4599; 1259 19737 INDEX _timescaledb_internal _hyper_2_17_chunk_tc_events_eventtime_idx traccar
+4600; 1259 19739 INDEX _timescaledb_internal _hyper_2_17_chunk_tc_events_id_idx traccar
+4610; 1259 19775 INDEX _timescaledb_internal _hyper_2_21_chunk_tc_events_deviceid_eventtime_idx traccar
+4611; 1259 19774 INDEX _timescaledb_internal _hyper_2_21_chunk_tc_events_eventtime_idx traccar
+4612; 1259 19779 INDEX _timescaledb_internal _hyper_2_21_chunk_tc_events_id_idx traccar
+4613; 1259 19794 INDEX _timescaledb_internal _hyper_2_22_chunk_tc_events_deviceid_eventtime_idx traccar
+4614; 1259 19793 INDEX _timescaledb_internal _hyper_2_22_chunk_tc_events_eventtime_idx traccar
+4615; 1259 19795 INDEX _timescaledb_internal _hyper_2_22_chunk_tc_events_id_idx traccar
+4616; 1259 19804 INDEX _timescaledb_internal _hyper_2_23_chunk_tc_events_deviceid_eventtime_idx traccar
+4617; 1259 19803 INDEX _timescaledb_internal _hyper_2_23_chunk_tc_events_eventtime_idx traccar
+4618; 1259 19805 INDEX _timescaledb_internal _hyper_2_23_chunk_tc_events_id_idx traccar
+4619; 1259 19818 INDEX _timescaledb_internal _hyper_2_24_chunk_tc_events_deviceid_eventtime_idx traccar
+4620; 1259 19817 INDEX _timescaledb_internal _hyper_2_24_chunk_tc_events_eventtime_idx traccar
+4621; 1259 19819 INDEX _timescaledb_internal _hyper_2_24_chunk_tc_events_id_idx traccar
+4627; 1259 19963 INDEX _timescaledb_internal _hyper_2_27_chunk_tc_events_deviceid_eventtime_idx traccar
+4628; 1259 19962 INDEX _timescaledb_internal _hyper_2_27_chunk_tc_events_eventtime_idx traccar
+4629; 1259 19964 INDEX _timescaledb_internal _hyper_2_27_chunk_tc_events_id_idx traccar
+4555; 1259 19280 INDEX _timescaledb_internal _hyper_2_2_chunk_tc_events_deviceid_eventtime_idx traccar
+4556; 1259 19279 INDEX _timescaledb_internal _hyper_2_2_chunk_tc_events_eventtime_idx traccar
+4557; 1259 19281 INDEX _timescaledb_internal _hyper_2_2_chunk_tc_events_id_idx traccar
+4636; 1259 20020 INDEX _timescaledb_internal _hyper_2_30_chunk_tc_events_deviceid_eventtime_idx traccar
+4637; 1259 20019 INDEX _timescaledb_internal _hyper_2_30_chunk_tc_events_eventtime_idx traccar
+4638; 1259 20021 INDEX _timescaledb_internal _hyper_2_30_chunk_tc_events_id_idx traccar
+4644; 1259 20075 INDEX _timescaledb_internal _hyper_2_33_chunk_tc_events_deviceid_eventtime_idx traccar
+4645; 1259 20074 INDEX _timescaledb_internal _hyper_2_33_chunk_tc_events_eventtime_idx traccar
+4646; 1259 20076 INDEX _timescaledb_internal _hyper_2_33_chunk_tc_events_id_idx traccar
+4647; 1259 20112 INDEX _timescaledb_internal _hyper_2_34_chunk_tc_events_deviceid_eventtime_idx traccar
+4648; 1259 20111 INDEX _timescaledb_internal _hyper_2_34_chunk_tc_events_eventtime_idx traccar
+4649; 1259 20113 INDEX _timescaledb_internal _hyper_2_34_chunk_tc_events_id_idx traccar
+4653; 1259 20138 INDEX _timescaledb_internal _hyper_2_36_chunk_tc_events_deviceid_eventtime_idx traccar
+4654; 1259 20137 INDEX _timescaledb_internal _hyper_2_36_chunk_tc_events_eventtime_idx traccar
+4655; 1259 20139 INDEX _timescaledb_internal _hyper_2_36_chunk_tc_events_id_idx traccar
+4659; 1259 20185 INDEX _timescaledb_internal _hyper_2_38_chunk_tc_events_deviceid_eventtime_idx traccar
+4660; 1259 20184 INDEX _timescaledb_internal _hyper_2_38_chunk_tc_events_eventtime_idx traccar
+4661; 1259 20186 INDEX _timescaledb_internal _hyper_2_38_chunk_tc_events_id_idx traccar
+4665; 1259 21673 INDEX _timescaledb_internal _hyper_2_40_chunk_tc_events_deviceid_eventtime_idx traccar
+4666; 1259 21672 INDEX _timescaledb_internal _hyper_2_40_chunk_tc_events_eventtime_idx traccar
+4667; 1259 21674 INDEX _timescaledb_internal _hyper_2_40_chunk_tc_events_id_idx traccar
+4680; 1259 22078 INDEX _timescaledb_internal _hyper_2_42_chunk_tc_events_deviceid_eventtime_idx traccar
+4681; 1259 22077 INDEX _timescaledb_internal _hyper_2_42_chunk_tc_events_eventtime_idx traccar
+4682; 1259 22079 INDEX _timescaledb_internal _hyper_2_42_chunk_tc_events_id_idx traccar
+4683; 1259 22088 INDEX _timescaledb_internal _hyper_2_43_chunk_tc_events_deviceid_eventtime_idx traccar
+4684; 1259 22087 INDEX _timescaledb_internal _hyper_2_43_chunk_tc_events_eventtime_idx traccar
+4685; 1259 22089 INDEX _timescaledb_internal _hyper_2_43_chunk_tc_events_id_idx traccar
+4686; 1259 22098 INDEX _timescaledb_internal _hyper_2_44_chunk_tc_events_deviceid_eventtime_idx traccar
+4687; 1259 22097 INDEX _timescaledb_internal _hyper_2_44_chunk_tc_events_eventtime_idx traccar
+4688; 1259 22099 INDEX _timescaledb_internal _hyper_2_44_chunk_tc_events_id_idx traccar
+4689; 1259 22108 INDEX _timescaledb_internal _hyper_2_45_chunk_tc_events_deviceid_eventtime_idx traccar
+4690; 1259 22107 INDEX _timescaledb_internal _hyper_2_45_chunk_tc_events_eventtime_idx traccar
+4691; 1259 22109 INDEX _timescaledb_internal _hyper_2_45_chunk_tc_events_id_idx traccar
+4703; 1259 23252 INDEX _timescaledb_internal _hyper_2_50_chunk_tc_events_deviceid_eventtime_idx traccar
+4704; 1259 23251 INDEX _timescaledb_internal _hyper_2_50_chunk_tc_events_eventtime_idx traccar
+4705; 1259 23253 INDEX _timescaledb_internal _hyper_2_50_chunk_tc_events_id_idx traccar
+4563; 1259 19513 INDEX _timescaledb_internal _hyper_2_5_chunk_tc_events_deviceid_eventtime_idx traccar
+4564; 1259 19512 INDEX _timescaledb_internal _hyper_2_5_chunk_tc_events_eventtime_idx traccar
+4565; 1259 19514 INDEX _timescaledb_internal _hyper_2_5_chunk_tc_events_id_idx traccar
+4569; 1259 19613 INDEX _timescaledb_internal _hyper_2_7_chunk_tc_events_deviceid_eventtime_idx traccar
+4570; 1259 19612 INDEX _timescaledb_internal _hyper_2_7_chunk_tc_events_eventtime_idx traccar
+4571; 1259 19614 INDEX _timescaledb_internal _hyper_2_7_chunk_tc_events_id_idx traccar
+4553; 1259 19270 INDEX _timescaledb_internal _hyper_3_1_chunk_tc_actions_actiontime_idx traccar
+4554; 1259 19271 INDEX _timescaledb_internal _hyper_3_1_chunk_tc_actions_id_idx traccar
+4622; 1259 19853 INDEX _timescaledb_internal _hyper_3_25_chunk_tc_actions_actiontime_idx traccar
+4623; 1259 19854 INDEX _timescaledb_internal _hyper_3_25_chunk_tc_actions_id_idx traccar
+4639; 1259 20033 INDEX _timescaledb_internal _hyper_3_31_chunk_tc_actions_actiontime_idx traccar
+4640; 1259 20034 INDEX _timescaledb_internal _hyper_3_31_chunk_tc_actions_id_idx traccar
+4692; 1259 22118 INDEX _timescaledb_internal _hyper_3_46_chunk_tc_actions_actiontime_idx traccar
+4693; 1259 22119 INDEX _timescaledb_internal _hyper_3_46_chunk_tc_actions_id_idx traccar
+4561; 1259 19503 INDEX _timescaledb_internal _hyper_3_4_chunk_tc_actions_actiontime_idx traccar
+4562; 1259 19504 INDEX _timescaledb_internal _hyper_3_4_chunk_tc_actions_id_idx traccar
+4575; 1259 19649 INDEX _timescaledb_internal _hyper_3_9_chunk_tc_actions_actiontime_idx traccar
+4576; 1259 19650 INDEX _timescaledb_internal _hyper_3_9_chunk_tc_actions_id_idx traccar
+4534; 1259 19140 INDEX public idx_commands_queue_deviceid traccar
+4671; 1259 22025 INDEX public idx_device_health_device_ts traccar
+4672; 1259 22069 INDEX public idx_device_health_unique traccar
+4495; 1259 19108 INDEX public idx_devices_uniqueid traccar
+4500; 1259 19107 INDEX public idx_drivers_uniqueid traccar
+4676; 1259 22046 INDEX public idx_fcm_tokens_device traccar
+4677; 1259 22047 INDEX public idx_fcm_tokens_token traccar
+4543; 1259 19530 INDEX public idx_mobile_messages_updated traccar
+4675; 1259 22030 INDEX public idx_recovery_event_device_ts traccar
+4524; 1259 19109 INDEX public idx_users_email traccar
+4525; 1259 19110 INDEX public idx_users_login traccar
+4544; 1259 19259 INDEX public mobile_messages_device_sequence traccar
+4545; 1259 19262 INDEX public mobile_messages_processing_lease traccar
+4546; 1259 19260 INDEX public mobile_messages_status traccar
+4539; 1259 19220 INDEX public tc_actions_actiontime_idx traccar
+4540; 1259 19221 INDEX public tc_actions_id_idx traccar
+4505; 1259 19217 INDEX public tc_events_deviceid_eventtime_idx traccar
+4506; 1259 19216 INDEX public tc_events_eventtime_idx traccar
+4507; 1259 19219 INDEX public tc_events_id_idx traccar
+4516; 1259 19215 INDEX public tc_positions_deviceid_fixtime_idx traccar
+4517; 1259 19214 INDEX public tc_positions_fixtime_idx traccar
+4518; 1259 19218 INDEX public tc_positions_id_idx traccar
+4523; 1259 19055 INDEX public user_device_user_id traccar
+4765; 2606 19135 FK CONSTRAINT public tc_commands_queue fk_commands_queue_deviceid traccar
+4711; 2606 18805 FK CONSTRAINT public tc_device_command fk_device_command_commandid traccar
+4712; 2606 18810 FK CONSTRAINT public tc_device_command fk_device_command_deviceid traccar
+4773; 2606 19232 FK CONSTRAINT public tc_device_device fk_device_device_deviceid traccar
+4774; 2606 19237 FK CONSTRAINT public tc_device_device fk_device_device_linkeddeviceid traccar
+4713; 2606 18815 FK CONSTRAINT public tc_device_driver fk_device_driver_deviceid traccar
+4714; 2606 18820 FK CONSTRAINT public tc_device_driver fk_device_driver_driverid traccar
+4715; 2606 18825 FK CONSTRAINT public tc_device_geofence fk_device_geofence_deviceid traccar
+4716; 2606 18830 FK CONSTRAINT public tc_device_geofence fk_device_geofence_geofenceid traccar
+4717; 2606 18835 FK CONSTRAINT public tc_device_maintenance fk_device_maintenance_deviceid traccar
+4718; 2606 18840 FK CONSTRAINT public tc_device_maintenance fk_device_maintenance_maintenanceid traccar
+4719; 2606 18845 FK CONSTRAINT public tc_device_notification fk_device_notification_deviceid traccar
+4720; 2606 18850 FK CONSTRAINT public tc_device_notification fk_device_notification_notificationid traccar
+4763; 2606 19095 FK CONSTRAINT public tc_device_order fk_device_order_deviceid traccar
+4764; 2606 19100 FK CONSTRAINT public tc_device_order fk_device_order_orderid traccar
+4771; 2606 19184 FK CONSTRAINT public tc_device_report fk_device_report_deviceid traccar
+4772; 2606 19189 FK CONSTRAINT public tc_device_report fk_device_report_reportid traccar
+4721; 2606 19199 FK CONSTRAINT public tc_devices fk_devices_calendarid traccar
+4722; 2606 18855 FK CONSTRAINT public tc_devices fk_devices_groupid traccar
+4723; 2606 18865 FK CONSTRAINT public tc_geofences fk_geofence_calendar_calendarid traccar
+4724; 2606 18870 FK CONSTRAINT public tc_group_attribute fk_group_attribute_attributeid traccar
+4725; 2606 18875 FK CONSTRAINT public tc_group_attribute fk_group_attribute_groupid traccar
+4726; 2606 18880 FK CONSTRAINT public tc_group_command fk_group_command_commandid traccar
+4727; 2606 18885 FK CONSTRAINT public tc_group_command fk_group_command_groupid traccar
+4728; 2606 18890 FK CONSTRAINT public tc_group_driver fk_group_driver_driverid traccar
+4729; 2606 18895 FK CONSTRAINT public tc_group_driver fk_group_driver_groupid traccar
+4730; 2606 18900 FK CONSTRAINT public tc_group_geofence fk_group_geofence_geofenceid traccar
+4731; 2606 18905 FK CONSTRAINT public tc_group_geofence fk_group_geofence_groupid traccar
+4732; 2606 18910 FK CONSTRAINT public tc_group_maintenance fk_group_maintenance_groupid traccar
+4733; 2606 18915 FK CONSTRAINT public tc_group_maintenance fk_group_maintenance_maintenanceid traccar
+4734; 2606 18920 FK CONSTRAINT public tc_group_notification fk_group_notification_groupid traccar
+4735; 2606 18925 FK CONSTRAINT public tc_group_notification fk_group_notification_notificationid traccar
+4761; 2606 19082 FK CONSTRAINT public tc_group_order fk_group_order_groupid traccar
+4762; 2606 19087 FK CONSTRAINT public tc_group_order fk_group_order_orderid traccar
+4769; 2606 19171 FK CONSTRAINT public tc_group_report fk_group_report_groupid traccar
+4770; 2606 19176 FK CONSTRAINT public tc_group_report fk_group_report_reportid traccar
+4736; 2606 19045 FK CONSTRAINT public tc_groups fk_groups_groupid traccar
+4775; 2606 19250 FK CONSTRAINT public tc_mobile_messages fk_mobile_messages_deviceid traccar
+4737; 2606 18930 FK CONSTRAINT public tc_notifications fk_notification_calendar_calendarid traccar
+4738; 2606 19194 FK CONSTRAINT public tc_notifications fk_notifications_commandid traccar
+4766; 2606 19150 FK CONSTRAINT public tc_reports fk_reports_calendarid traccar
+4739; 2606 18940 FK CONSTRAINT public tc_user_attribute fk_user_attribute_attributeid traccar
+4740; 2606 18945 FK CONSTRAINT public tc_user_attribute fk_user_attribute_userid traccar
+4741; 2606 18950 FK CONSTRAINT public tc_user_calendar fk_user_calendar_calendarid traccar
+4742; 2606 18955 FK CONSTRAINT public tc_user_calendar fk_user_calendar_userid traccar
+4743; 2606 18960 FK CONSTRAINT public tc_user_command fk_user_command_commandid traccar
+4744; 2606 18965 FK CONSTRAINT public tc_user_command fk_user_command_userid traccar
+4709; 2606 18970 FK CONSTRAINT public tc_device_attribute fk_user_device_attribute_attributeid traccar
+4710; 2606 18975 FK CONSTRAINT public tc_device_attribute fk_user_device_attribute_deviceid traccar
+4745; 2606 18980 FK CONSTRAINT public tc_user_device fk_user_device_deviceid traccar
+4746; 2606 18985 FK CONSTRAINT public tc_user_device fk_user_device_userid traccar
+4747; 2606 18990 FK CONSTRAINT public tc_user_driver fk_user_driver_driverid traccar
+4748; 2606 18995 FK CONSTRAINT public tc_user_driver fk_user_driver_userid traccar
+4749; 2606 19000 FK CONSTRAINT public tc_user_geofence fk_user_geofence_geofenceid traccar
+4750; 2606 19005 FK CONSTRAINT public tc_user_geofence fk_user_geofence_userid traccar
+4751; 2606 19010 FK CONSTRAINT public tc_user_group fk_user_group_groupid traccar
+4752; 2606 19015 FK CONSTRAINT public tc_user_group fk_user_group_userid traccar
+4753; 2606 19020 FK CONSTRAINT public tc_user_maintenance fk_user_maintenance_maintenanceid traccar
+4754; 2606 19025 FK CONSTRAINT public tc_user_maintenance fk_user_maintenance_userid traccar
+4755; 2606 19030 FK CONSTRAINT public tc_user_notification fk_user_notification_notificationid traccar
+4756; 2606 19035 FK CONSTRAINT public tc_user_notification fk_user_notification_userid traccar
+4759; 2606 19074 FK CONSTRAINT public tc_user_order fk_user_order_orderid traccar
+4760; 2606 19069 FK CONSTRAINT public tc_user_order fk_user_order_userid traccar
+4767; 2606 19163 FK CONSTRAINT public tc_user_report fk_user_report_reportid traccar
+4768; 2606 19158 FK CONSTRAINT public tc_user_report fk_user_report_userid traccar
+4757; 2606 19050 FK CONSTRAINT public tc_user_user fk_user_user_manageduserid traccar
+4758; 2606 19040 FK CONSTRAINT public tc_user_user fk_user_user_userid traccar
+2944; 826 19954 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES traccar

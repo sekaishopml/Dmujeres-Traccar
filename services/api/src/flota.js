@@ -1,0 +1,201 @@
+// Dominio flota: lista, detalle y configuracion de dispositivos (FASE 4b).
+// El predicado de permisos usa $1 como usuario; NULL = administrador.
+
+import { consultar } from './db.js';
+import { aDispositivo, CLAVES_CONFIGURABLES } from './dto.js';
+import { datosInvalidos, noEncontrado } from './errores.js';
+import { leerCuerpoJson, leerOrden, leerPaginacion, leerRango, respuestaJson } from './http.js';
+import { auditar } from './sesiones.js';
+
+export const SELECT_DISPOSITIVO = `
+  SELECT d.id, d.id_publico, d.nombre, d.identificador, d.habilitado, d.atributos,
+         CASE
+           WHEN NOT d.habilitado THEN 'DESHABILITADO'
+           WHEN d.atributos ? 'mobile.journeyId' AND NOT ja.activa THEN 'DESHABILITADO'
+           WHEN d.ultima_conexion_en IS NULL
+                OR d.ultima_conexion_en < now() - interval '5 minutes' THEN 'SIN_SENAL'
+           WHEN pa.precision_m > 80 THEN 'SENAL_DEBIL'
+           WHEN pa.velocidad_kmh IS NULL OR pa.velocidad_kmh < 1.852 THEN 'DETENIDO'
+           ELSE 'EN_LINEA'
+         END AS estado,
+         d.ultima_conexion_en,
+         pa.atributos->>'motion' AS movimiento,
+         d.atributos->>'mobile.appVersion' AS version_app,
+         d.atributos->>'mobile.pending' AS pendientes,
+         ja.activa AS jornada_activa,
+         bat.porcentaje AS bateria_pct,
+         bat.cargando AS cargando,
+         count(*) OVER() AS total_filas
+  FROM tracking.dmt_dispositivo d
+  LEFT JOIN tracking.dmt_posicion_actual pa ON pa.dispositivo_id = d.id
+  LEFT JOIN LATERAL (
+    SELECT EXISTS (
+      SELECT 1 FROM operations.dmt_jornada j
+      WHERE j.dispositivo_id = d.id AND j.estado = 'abierta'
+    ) AS activa
+  ) ja ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT b.porcentaje, b.cargando
+    FROM telemetry.dmt_bateria b
+    WHERE b.dispositivo_id = d.id
+    ORDER BY b.registrado_en DESC
+    LIMIT 1
+  ) bat ON TRUE
+`;
+
+export const PREDICADO_PERMISO = `(
+  $1::bigint IS NULL OR EXISTS (
+    SELECT 1 FROM operations.dmt_asignacion a
+    WHERE a.dispositivo_id = d.id AND a.usuario_id = $1 AND a.activa
+      AND a.desde_en <= now() AND (a.hasta_en IS NULL OR a.hasta_en > now())
+  )
+)`;
+
+export function permisoDe(usuario) {
+  return usuario && usuario.administrador ? null : usuario?.id ?? null;
+}
+
+const ORDEN_FLOTA = {
+  id: 'd.id',
+  nombre: 'd.nombre',
+  identificadorUnico: 'd.identificador',
+  habilitado: 'd.habilitado',
+  estado: 'estado',
+  ultimaConexion: 'd.ultima_conexion_en',
+  bateriaPct: 'bat.porcentaje',
+};
+
+export async function listarFlota(ctx) {
+  const { url } = ctx;
+  const { pagina, tamano, desplazamiento } = leerPaginacion(url);
+  const orden = leerOrden(url, ORDEN_FLOTA, 'd.ultima_conexion_en DESC NULLS LAST');
+  const rango = leerRango(url, { porDefecto: null, maxDias: 366 });
+  const valores = [permisoDe(ctx.usuario)];
+  const condiciones = ['d.habilitado', PREDICADO_PERMISO];
+  const dispositivoId = url.searchParams.get('dispositivoId');
+  if (dispositivoId) {
+    valores.push(dispositivoId);
+    condiciones.push(`(d.id_publico::text = $${valores.length} OR d.id_legado::text = $${valores.length} OR d.id::text = $${valores.length})`);
+  }
+  if (rango.desde) {
+    valores.push(rango.desde);
+    condiciones.push(`d.ultima_conexion_en >= $${valores.length}`);
+    valores.push(rango.hasta);
+    condiciones.push(`d.ultima_conexion_en < $${valores.length}`);
+  }
+  valores.push(tamano, desplazamiento);
+  const { rows } = await consultar(
+    ctx.pool,
+    `${SELECT_DISPOSITIVO}
+     WHERE ${condiciones.join(' AND ')}
+     ORDER BY ${orden.sql}, d.id
+     LIMIT $${valores.length - 1} OFFSET $${valores.length}`,
+    valores,
+    { signal: ctx.signal },
+  );
+  respuestaJson(ctx.res, 200, {
+    datos: rows.map((fila) => aDispositivo(fila, ctx.usuario)),
+    total: rows.length > 0 ? Number(rows[0].total_filas) : 0,
+    pagina,
+    tamano,
+  });
+}
+
+export async function obtenerDispositivo(ctx) {
+  const fila = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal);
+  if (!fila) throw noEncontrado('El dispositivo no existe o no está visible para la cuenta.');
+  respuestaJson(ctx.res, 200, aDispositivo(fila, ctx.usuario));
+}
+
+// Valida la whitelist y los tipos. Rechaza claves fuera del contrato para que
+// la Web no pueda escribir atributos internos del dispositivo.
+function validarConfiguracion(valor) {
+  if (valor === null || typeof valor !== 'object' || Array.isArray(valor)) {
+    throw datosInvalidos('El campo configuracion debe ser un objeto con claves mobile.* permitidas.');
+  }
+  const entradas = Object.entries(valor);
+  if (entradas.length === 0) {
+    throw datosInvalidos('El campo configuracion no puede estar vacío.');
+  }
+  const limpias = {};
+  for (const [clave, dato] of entradas) {
+    if (!CLAVES_CONFIGURABLES.includes(clave)) {
+      throw datosInvalidos(
+        `La clave ${clave} no es configurable. Permitidas: ${CLAVES_CONFIGURABLES.join(', ')}.`,
+      );
+    }
+    const tipo = typeof dato;
+    if (tipo !== 'string' && tipo !== 'number' && tipo !== 'boolean') {
+      throw datosInvalidos(`El valor de ${clave} debe ser texto, número o booleano.`);
+    }
+    if (tipo === 'number' && !Number.isFinite(dato)) {
+      throw datosInvalidos(`El valor de ${clave} debe ser un número finito.`);
+    }
+    if (tipo === 'string' && dato.length > 500) {
+      throw datosInvalidos(`El valor de ${clave} supera 500 caracteres.`);
+    }
+    limpias[clave] = dato;
+  }
+  return limpias;
+}
+
+function validarNombreDispositivo(valor) {
+  if (typeof valor !== 'string' || valor.trim() === '') {
+    throw datosInvalidos('El campo nombre debe ser un texto no vacío.');
+  }
+  const nombre = valor.trim();
+  if (nombre.length > 200) throw datosInvalidos('El campo nombre supera 200 caracteres.');
+  return nombre;
+}
+
+// PUT /fleet/{id}: administradores o usuarios con el equipo asignado.
+// `atributos || $json` hace merge y nunca pisa claves fuera de la whitelist.
+export async function actualizarDispositivo(ctx) {
+  const cuerpo = await leerCuerpoJson(ctx.req, 32768);
+  const tieneNombre = cuerpo.nombre !== undefined;
+  const tieneConfiguracion = cuerpo.configuracion !== undefined;
+  if (!tieneNombre && !tieneConfiguracion) {
+    throw datosInvalidos('Indique nombre y/o configuracion.');
+  }
+  const nombre = tieneNombre ? validarNombreDispositivo(cuerpo.nombre) : null;
+  const configuracion = tieneConfiguracion ? validarConfiguracion(cuerpo.configuracion) : {};
+  const fila = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal);
+  if (!fila) throw noEncontrado('El dispositivo no existe o no está visible para la cuenta.');
+  await consultar(
+    ctx.pool,
+    `UPDATE tracking.dmt_dispositivo
+     SET nombre = coalesce($2, nombre),
+         atributos = atributos || $3::jsonb,
+         actualizado_en = now()
+     WHERE id = $1`,
+    [Number(fila.id), nombre, JSON.stringify(configuracion)],
+    { signal: ctx.signal },
+  );
+  const actualizado = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal);
+  await auditar(ctx.pool, ctx.log, {
+    usuarioId: ctx.usuario?.id,
+    accion: 'editar_dispositivo',
+    entidad: 'dispositivo',
+    entidadId: actualizado.id,
+    descripcion: `Dispositivo ${actualizado.nombre} actualizado.`,
+    datos: {
+      nombreCambiado: tieneNombre,
+      clavesConfiguradas: Object.keys(configuracion),
+    },
+    req: ctx.req,
+  });
+  respuestaJson(ctx.res, 200, { dispositivo: aDispositivo(actualizado, ctx.usuario) });
+}
+
+export async function buscarDispositivo(pool, usuario, valor, signal) {
+  const { rows } = await consultar(
+    pool,
+    `${SELECT_DISPOSITIVO}
+     WHERE d.habilitado AND ${PREDICADO_PERMISO}
+       AND (d.id_publico::text = $2 OR d.id_legado::text = $2 OR d.id::text = $2)
+     LIMIT 1`,
+    [permisoDe(usuario), String(valor)],
+    { signal },
+  );
+  return rows[0] ?? null;
+}

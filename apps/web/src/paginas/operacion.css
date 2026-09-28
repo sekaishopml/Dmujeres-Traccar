@@ -1,0 +1,308 @@
+/* Operación: estilos propios de Login, Inicio, En vivo, Detalle, Historial y
+   Replay. Solo se agrega lo que global.css no cubre; las clases base
+   (.tarjeta, .rejilla, .metrica, .chip, .tabla, .mapa...) se reutilizan. */
+
+/* --- Métricas de Inicio --- */
+.rejilla.metricas { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 14px; }
+@media (max-width: 1100px) { .rejilla.metricas { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .rejilla.metricas { grid-template-columns: 1fr; } }
+.metrica.aviso-bateria .valor { color: var(--rojo); }
+.metrica.aviso-senal .valor { color: var(--naranja); }
+.tarjeta + .tarjeta { margin-top: 0; }
+.rejilla + .tarjeta { margin-bottom: 14px; }
+.rejilla.avisos { margin-top: 14px; }
+
+.lista-avisos { list-style: none; margin: 0; padding: 0; }
+.lista-avisos li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--linea); }
+.lista-avisos li:last-child { border-bottom: 0; }
+.lista-avisos .num { margin-left: auto; }
+
+/* El DTO puede devolver DESCONOCIDO, que util/formato.ts no colorea. */
+.chip.desconocido { color: var(--gris); background: #f0f2f5; }
+
+/* --- En vivo --- */
+.en-vivo { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; }
+@media (max-width: 1000px) { .en-vivo { grid-template-columns: 1fr; } }
+.panel-equipos { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 190px); }
+.lista-equipos { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.equipo {
+  width: 100%; text-align: left; background: #fff; color: var(--texto);
+  border: 1px solid var(--linea); border-radius: 10px; padding: 9px 10px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.equipo:hover { background: #f7f9fc; border-color: #cdd8e6; }
+.equipo-titulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.equipo-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--apagado); }
+.equipo-meta .barra-bateria { min-width: 96px; max-width: 132px; }
+
+/* Marcadores sobre el mapa */
+.marcador-equipo { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, .45); }
+.maplibregl-popup-content { border-radius: 10px; padding: 10px 12px; }
+.popup-equipo { display: flex; flex-direction: column; gap: 6px; }
+.popup-equipo dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 13px; }
+.popup-equipo dt { color: var(--apagado); }
+.popup-equipo dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --- Detalle --- */
+.lista-datos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+@media (max-width: 700px) { .lista-datos { grid-template-columns: 1fr; } }
+.dato { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px dashed var(--linea); }
+.dato-etiqueta { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--apagado); }
+.dato-valor { font-weight: 600; word-break: break-word; }
+.mini-mapa { height: 320px; min-height: 320px; margin-bottom: 10px; }
+.acciones-detalle { margin: 12px 0 0; }
+
+.cargando-bateria { font-size: 11px; color: var(--apagado); white-space: nowrap; }
+
+/* --- Filtros compartidos (Historial y Replay) --- */
+/* Dos columnas compactas: el equipo ocupa la fila completa y las fechas van
+   lado a lado. En Replay el filtro vive dentro del panel flotante. */
+.filtro-replay { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; align-items: end; margin-bottom: 12px; }
+@media (max-width: 700px) { .filtro-replay { grid-template-columns: 1fr; } }
+.filtro-replay .campo { margin: 0; }
+.filtro-replay .campo span { font-size: 12.5px; }
+.filtro-replay .campo-equipo { grid-column: 1 / -1; }
+.filtro-replay input, .filtro-replay select { font-size: 14px; }
+.pie-tabla { display: flex; align-items: center; gap: 10px; padding-top: 10px; flex-wrap: wrap; }
+
+/* --- Replay --- */
+/* El panel flotante y la franja inferior vienen de global.css; aquí vive su
+   contenido: cabecera, filtro compacto, fichas etiqueta/valor, paradas
+   plegables, detalle del punto, mandos y lectura del punto. Títulos simples y
+   densidad de datos, sin sobrelíneas ni chips decorativos. */
+.replay-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.replay-cabecera h2 { margin: 0; font-size: 15px; }
+/* Acciones de cabecera (exportar CSV y plegar) juntas a la derecha. */
+.replay-acciones { display: inline-flex; align-items: center; gap: 4px; }
+.replay-acciones button { padding: 4px; }
+.replay-panel .plegar-panel { position: static; }
+.replay-panel .cuerpo-panel { display: flex; flex-direction: column; gap: 12px; }
+.replay-panel .cuerpo-panel > .filtro-replay { margin-bottom: 0; }
+/* Panel anclado al borde superior izquierdo del mapa, sin margen flotante:
+   borde fino solo en los lados que dan al mapa y esquina inferior derecha
+   redondeada. La cabecera queda fija y el cuerpo tiene scroll propio, así que
+   la lista de paradas ya no se recorta; la altura máxima deja libre la franja
+   inferior, la única superficie fija del mapa. Sin sombra: no flota, está
+   anclado. El selector con .replay-pantalla gana por especificidad sin
+   depender del orden de importación de las hojas. */
+.replay-pantalla .replay-panel {
+  top: 0; left: 0; width: 372px; max-height: calc(100% - 128px);
+  display: flex; flex-direction: column;
+  overflow: hidden; border-width: 0 1px 1px 0; border-color: var(--linea-3);
+  border-radius: 0 0 10px 0; box-shadow: none;
+}
+.replay-pantalla .replay-panel .cuerpo-panel { overflow-y: auto; min-height: 0; }
+/* Plegado: tira delgada con las acciones; el cuerpo ya lo oculta global.css y
+   el título se retira para que la tira no ocupe más de lo necesario. */
+.replay-pantalla .replay-panel.colapsado { width: auto; padding: 6px 8px; }
+.replay-pantalla .replay-panel.colapsado .replay-cabecera h2 { display: none; }
+@media (max-width: 760px) {
+  /* En pantallas angostas 372 px fijos no dejarían mapa: se conserva el ancho
+     disponible y el panel sigue con scroll en el cuerpo. */
+  .replay-pantalla .replay-panel { width: min(372px, calc(100% - 16px)); max-height: 45%; }
+}
+/* Pantallas bajas (celular en horizontal): el panel se acota a 45% y la franja
+   se compacta, de modo que siempre queda una banda de mapa visible entre los
+   dos; la franja sigue centrada abajo. */
+@media (max-height: 420px) {
+  .replay-timeline { padding: 6px 8px; }
+  .replay-timeline .replay-linea { gap: 4px; }
+  .replay-timeline .replay-bateria { height: 22px; }
+  .replay-pantalla .replay-panel { max-height: 45%; }
+}
+
+/* Títulos de sección y ficha de datos: una fila por etiqueta/valor, con los
+   números alineados a la derecha y tabulares. */
+.replay-seccion h3, .replay-punto h3 {
+  margin: 0 0 6px; font-size: 15px; font-weight: 650; color: var(--navy);
+}
+.replay-ficha {
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px; margin: 0; font-size: 14.5px;
+}
+.replay-ficha dt { color: var(--apagado); }
+.replay-ficha dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.replay-nota { margin: 2px 0 0; font-size: 13px; color: var(--apagado); }
+/* Jornada: una línea de texto con los extremos; no necesita ficha propia. */
+.replay-jornada { margin: 0; font-size: 14.5px; }
+
+/* Botones de rango rápido bajo las fechas: fila completa y compactos, con el
+   activo en navy como el resto de selecciones del panel. */
+.filtro-replay .rango-rapido { grid-column: 1 / -1; display: flex; gap: 6px; }
+.filtro-replay .rango-rapido button { padding: 4px 10px; font-size: 13px; }
+.filtro-replay .rango-rapido button.activo { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+/* Paradas plegables: la cabecera es el botón y la lista solo aparece abierta.
+   La fila es un botón para que el salto llegue con teclado y lleve el mapa a
+   la parada. Se listan todas las paradas: el cuerpo del panel tiene scroll
+   propio. La primera y la última parada llevan un borde del color del extremo
+   del recorrido. */
+.replay-paradas { border-top: 1px solid var(--linea-2); padding-top: 8px; }
+.replay-plegar-paradas {
+  width: 100%; display: flex; align-items: center; gap: 6px;
+  padding: 5px 6px; border: 0; border-radius: 6px; background: none;
+  font: inherit; font-size: 14px; font-weight: 650; color: var(--navy);
+  text-align: left; cursor: pointer;
+}
+.replay-plegar-paradas:hover { background: var(--linea-2); }
+.replay-plegar-paradas .icono { margin-left: auto; transition: transform .15s ease; }
+.replay-plegar-paradas[aria-expanded='true'] .icono { transform: rotate(90deg); }
+.replay-paradas ul { list-style: none; margin: 4px 0 0; padding: 0; }
+.replay-paradas li { border-left: 2px solid transparent; }
+.replay-paradas li.primera { border-left-color: var(--verde); }
+.replay-paradas li.ultima { border-left-color: var(--rojo); }
+.replay-paradas li > button {
+  width: 100%; display: flex; flex-direction: column; gap: 1px;
+  padding: 4px 6px; border: 0; border-radius: 6px; background: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.replay-paradas li > button:hover, .replay-paradas li.activa > button { background: var(--linea-2); }
+.parada-cabecera { display: flex; align-items: baseline; gap: 6px; width: 100%; }
+.parada-hora { font-size: 13.5px; color: var(--navy); font-weight: 650; font-variant-numeric: tabular-nums; }
+.parada-extremo { font-size: 12px; color: var(--apagado); }
+.parada-tiempo { margin-left: auto; font-weight: 650; font-size: 13.5px; }
+.parada-direccion { font-size: 13px; color: var(--apagado); overflow-wrap: anywhere; }
+
+/* Detalle del punto seleccionado: ficha ya definida arriba y acciones en
+   botones pequeños, sin tarjetas sueltas. */
+.replay-punto-acciones { display: flex; gap: 6px; margin-top: 6px; }
+.replay-punto-acciones button { padding: 6px 11px; font-size: 14px; }
+
+/* Leyenda del estado del marcador: junto al mapa, discreta y sin interacción
+   (los colores ya se leen en el marcador y en la ruta). */
+.replay-leyenda {
+  position: absolute; left: 10px; bottom: 34px; z-index: 5;
+  display: flex; flex-direction: column; gap: 3px;
+  background: rgba(255, 255, 255, .92); border: 1px solid var(--linea);
+  border-radius: 6px; padding: 6px 9px; font-size: 12px; color: var(--texto);
+  pointer-events: none;
+}
+.replay-leyenda span { display: flex; align-items: center; gap: 6px; }
+.replay-leyenda .muestra {
+  width: 9px; height: 9px; border-radius: 50%;
+  border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .2);
+}
+.replay-leyenda .movimiento { background: var(--verde); }
+.replay-leyenda .detencion { background: var(--azul); }
+.replay-leyenda .sin-senal { background: var(--naranja); }
+/* Tramo sin datos: la muestra es la línea gris punteada del mapa, no un punto. */
+.replay-leyenda .sin-datos {
+  width: 10px; height: 0; border: 0; border-top: 2px dotted var(--gris);
+  border-radius: 0; box-shadow: none;
+}
+
+/* El marcador actual cambia de color por estado del fix; el navy de global.css
+   queda solo para el arranque. */
+.marcador-actual.estado-movimiento { background: var(--verde); }
+.marcador-actual.estado-detencion { background: var(--azul); }
+.marcador-actual.estado-sin-senal { background: var(--naranja); }
+
+/* Círculo GPS actual: 22 px con borde blanco de 3 px, más visible sobre
+   satélite que los 15 px/2 px de global.css. El color lo fijan las reglas
+   .estado-* de arriba. */
+.replay-pantalla .marcador-actual { width: 22px; height: 22px; border: 3px solid #fff; }
+
+/* Extremos del recorrido: el punto mantiene el ancla de maplibre y la etiqueta
+   cuelga a la derecha, sin desplazar la coordenada marcada. position: absolute
+   es la que espera maplibre: con relative, los marcadores entran en el flujo
+   del contenedor y cada uno se desplaza por la posición de sus hermanos (fin
+   +12 px, jornada +24 px), despegándose del fix. */
+.marcador-extremo { position: absolute; width: 12px; height: 12px; }
+.extremo-punto {
+  position: absolute; inset: 0; border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .25);
+}
+.marcador-extremo.inicio .extremo-punto { background: var(--verde); }
+.marcador-extremo.fin .extremo-punto { background: var(--rojo); }
+/* Jornada: rombo violeta (inicio) y gris pizarra (fin), distinto del círculo
+   verde/rojo del recorrido, con la etiqueta colgando a la derecha. */
+.marcador-extremo.jornada-inicio .extremo-punto,
+.marcador-extremo.jornada-fin .extremo-punto { border-radius: 2px; transform: rotate(45deg); }
+.marcador-extremo.jornada-inicio .extremo-punto { background: #6a1b9a; }
+.marcador-extremo.jornada-fin .extremo-punto { background: #455a64; }
+/* Cuando la jornada y el recorrido arrancan o cierran en el mismo fix (lo
+   habitual), las etiquetas caen una sobre otra; las de jornada cuelgan a la
+   izquierda para que ambas se lean. */
+.marcador-extremo.jornada-inicio .extremo-etiqueta,
+.marcador-extremo.jornada-fin .extremo-etiqueta { left: auto; right: 14px; }
+.marcador-extremo.jornada-inicio .extremo-etiqueta { color: #4a148c; border-color: #ce93d8; }
+.marcador-extremo.jornada-fin .extremo-etiqueta { color: #37474f; border-color: #b0bec5; }
+.extremo-etiqueta {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  white-space: nowrap; font-size: 11px; font-weight: 650; color: var(--navy);
+  background: rgba(255, 255, 255, .92); border: 1px solid var(--linea);
+  border-radius: 5px; padding: 1px 5px;
+}
+
+/* Marcador de parada: círculo hueco naranja, más pequeño que inicio/fin y sin
+   relleno sólido, para leerlo sobre la ruta sin taparla. */
+.marcador-detencion {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid var(--naranja); background: rgba(255, 255, 255, .85);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .2);
+}
+
+/* Franja inferior compacta: bloque flotante centrado de 420 px (un cuarto de
+   un mapa ancho), con gráfico fino, lectura del punto, mandos y slider. El
+   selector con .replay-pantalla gana al ancho completo de global.css. */
+.replay-pantalla .replay-timeline {
+  left: 50%; right: auto; transform: translateX(-50%);
+  width: min(420px, calc(100% - 24px)); padding: 8px 10px;
+}
+.replay-timeline .replay-linea { display: flex; flex-direction: column; gap: 6px; }
+/* Fila superior: gráfico de batería y lectura del punto en curso, agrupados
+   porque ambos describen el instante que se reproduce. El gráfico se lleva el
+   ancho libre y la lectura queda a su derecha. */
+.replay-lectura { display: flex; align-items: center; gap: 10px; }
+.replay-lectura .replay-bateria { flex: 1; min-width: 0; }
+.replay-timeline .replay-bateria { height: 36px; }
+/* Mandos en la franja inferior: transporte a la izquierda y velocidades a la
+   derecha, en una fila bajo la lectura del punto. */
+.replay-timeline .replay-controles {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  justify-content: space-between;
+}
+.replay-controles .icono-solo { padding: 5px; }
+.replay-controles .voltear { display: inline-flex; transform: rotate(180deg); }
+.replay-tiempos { font-size: 12.5px; color: var(--apagado); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.replay-tiempos strong { color: var(--navy); }
+.replay-controles .velocidades { margin-left: auto; display: flex; gap: 4px; }
+.velocidades button { padding: 3px 6px; font-size: 12.5px; }
+button.velocidad-activa { background: var(--navy); border-color: var(--navy); color: #fff; }
+/* Seguir activo: mismo lenguaje visual que la velocidad seleccionada. */
+.replay-controles .seguir-activo { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+/* Slider del recorrido con barra de progreso real: la pista muestra el tramo
+   transcurrido en navy y el resto en gris, con el relleno escrito por frame
+   (variable --progreso) desde ReproductorReplay. Se apaga la apariencia del
+   control y se dibujan las piezas por separado, con los pseudo-elementos de
+   Chromium (webkit) y Firefox (moz), de modo que el mismo lenguaje visual
+   valga en los dos motores. accent-color cubre el caso de un navegador que
+   ignore los pseudo-elementos. El reset de min-height, borde y radio anula el
+   estilo de campo de formulario que global.css da a todo input: sin él, el
+   control medía 32 px y arrastraba una caja blanca con borde. */
+.replay-slider {
+  width: 100%; height: 16px; min-height: 0; margin: 0; padding: 0;
+  appearance: none; -webkit-appearance: none;
+  border: 0; border-radius: 0;
+  background: transparent; accent-color: var(--navy); cursor: pointer;
+}
+.replay-slider::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--navy) 0 var(--progreso, 0%), var(--linea) var(--progreso, 0%) 100%);
+}
+.replay-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px;
+  border: 2px solid #fff; border-radius: 50%; background: var(--navy);
+  box-shadow: 0 0 0 1px var(--linea);
+}
+.replay-slider::-moz-range-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--navy) 0 var(--progreso, 0%), var(--linea) var(--progreso, 0%) 100%);
+}
+.replay-slider::-moz-range-thumb {
+  width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%;
+  background: var(--navy); box-shadow: 0 0 0 1px var(--linea);
+}
+.replay-slider:focus-visible { outline: 2px solid rgba(11, 37, 69, .18); outline-offset: 2px; }
+.replay-slider:disabled { opacity: .5; cursor: default; }

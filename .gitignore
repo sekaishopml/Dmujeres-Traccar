@@ -1,0 +1,8 @@
+# DMujeres Tracking - raiz nueva (por si manana se inicializa git)
+.env
+*.env
+node_modules/
+dist/
+build/
+*.log
+*.dump

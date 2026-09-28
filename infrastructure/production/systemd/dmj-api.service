@@ -1,0 +1,21 @@
+[Unit]
+Description=DMujeres Tracking API propia /api/v1 (base nueva dmt_*)
+Documentation=file:/home/DMujeres-Tracking/docs/api/FASE4-API.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opencode
+Group=opencode
+WorkingDirectory=/home/DMujeres-Tracking/services/api
+EnvironmentFile=/home/DMujeres-Tracking/.env
+ExecStart=/usr/local/bin/node24 src/servidor.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+BEGIN
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:38: NOTICE:  relation "dmt_posicion_2026_08" already exists, skipping
+CREATE TABLE
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:63: NOTICE:  relation "dmt_staging_posicion" already exists, skipping
+CREATE TABLE
+CREATE FUNCTION
+COMMENT
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:90: NOTICE:  relation "uq_dmt_posicion_migracion" already exists, skipping
+CREATE INDEX
+DO
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:207: NOTICE:  ETL posiciones: 80728 filas en staging, id_legado 1..88613, lote de 5000
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:207: NOTICE:  ETL posiciones: 0 filas nuevas insertadas en 18 lotes (idempotente: re-ejecutar no duplica)
+DO
+COMMIT

@@ -1,0 +1,22 @@
+# Conteos de control (produccion intocada: solo SELECT)
+
+## Antes (inicio de FASE 3 parte 2, 2026-09-25 ~21:55 UTC)
+$ docker exec dmj-db psql -U traccar -d traccar -tAc "select count(*) from tc_positions;"
+26683
+$ docker exec dmj-db psql -U traccar -d traccar -tAc "select count(*) from tc_positions_bak_20260903;"
+19602
+$ docker exec dmj-db psql -U traccar -d traccar_qa -tAc "select count(*) from tc_positions;"
+37936
+
+## Despues (ultima verificacion de cierre, 2026-09-25 22:15 UTC)
+$ docker exec dmj-db psql -U traccar -d traccar -tAc "select count(*) from tc_positions;"
+26800
+$ docker exec dmj-db psql -U traccar -d traccar -tAc "select count(*) from tc_positions_bak_20260903;"
+19602
+$ docker exec dmj-db psql -U traccar -d traccar_qa -tAc "select count(*) from tc_positions;"
+37936
+
+Produccion: 26683 -> 26800 (+117), crecimiento por operacion normal del servicio.
+traccar_qa: 37936 -> 37936 (sin cambios).
+tc_positions_bak_20260903: 19602 -> 19602 (sin cambios).
+La migracion solo ejecuto SELECT/COPY TO sobre traccar y traccar_qa.

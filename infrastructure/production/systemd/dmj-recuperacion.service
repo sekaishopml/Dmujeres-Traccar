@@ -1,0 +1,21 @@
+[Unit]
+Description=DMujeres Tracking recuperacion por push FCM (probe HIGH a equipos silenciados, base nueva dmt_*)
+Documentation=file:/home/DMujeres-Tracking/docs/operations/FASE11-RECUPERACION.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opencode
+Group=opencode
+WorkingDirectory=/home/DMujeres-Tracking/services/recuperacion
+EnvironmentFile=/home/DMujeres-Tracking/.env
+ExecStart=/usr/local/bin/node24 src/index.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

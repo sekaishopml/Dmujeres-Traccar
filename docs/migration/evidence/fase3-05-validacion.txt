@@ -1,0 +1,292 @@
+=== FASE 3 parte 3 - validacion OLD vs NEW ===
+2026-09-26 03:35:54 UTC
+Cortes usados (snapshot del ETL): posiciones max fijado_en = 2026-09-25 22:33:51+00 | eventos max id = 32231 | recuperacion max id = 27752 | bateria max registrado_en = 2026-09-25 22:33:21+00
+
+--- 1a. Conteos NEW ---
+          objeto          |   n   
+--------------------------+-------
+ alertas_recuperacion     |  9734
+ asignaciones             |    20
+ bateria_desde_history    |    24
+ bateria_desde_posiciones | 26864
+ bateria_total            | 26888
+ claves_firma             |     1
+ dispositivos             |    19
+ dispositivos_historicos  |    10
+ dispositivos_vivos       |     9
+ eventos                  |  5134
+ fcm                      |     9
+ jornadas                 |    28
+ jornadas_abiertas        |     8
+ jornadas_cerradas        |    20
+ posiciones               | 80809
+ posiciones_invalidas     |   295
+ posiciones_mock_marcadas |     2
+ posiciones_validas       | 80514
+ usuarios                 |     5
+ usuarios_administradores |     1
+ usuarios_habilitados     |     5
+(21 rows)
+
+
+--- 1b. Conteos OLD (solo lectura; con corte donde la tabla viva crece) ---
+                 objeto                  |   n   
+-----------------------------------------+-------
+ alertas_recuperacion (id <= 27752)      |  9734
+ alertas_recuperacion (total vivo)       |  9741
+ asignaciones                            |    20
+ bateria batteryLevel (fixtime <= corte) | 26864
+ claves_firma                            |     1
+ dispositivos                            |     9
+ eventos (id <= 32231)                   |  5134
+ eventos (total vivo)                    |  5138
+ fcm                                     |     9
+ posiciones (<= corte ETL)               | 26868
+ posiciones (total vivo)                 | 26873
+ usuarios                                |     5
+ usuarios_administradores                |     1
+ usuarios_habilitados                    |     5
+(14 rows)
+
+
+--- 2. Posiciones por mes en NEW ---
+   mes   | filas 
+---------+-------
+ 2026-08 | 14207
+ 2026-09 | 66602
+(2 rows)
+
+
+--- 3. Rango del historico NEW ---
+ filas | dispositivos |         min_fijado         |       max_fijado       |       min_registrado       |     max_registrado     
+-------+--------------+----------------------------+------------------------+----------------------------+------------------------
+ 80809 |           17 | 2026-08-17 02:45:22.166+00 | 2026-09-25 22:33:51+00 | 2026-08-17 02:45:22.166+00 | 2026-09-25 22:33:51+00
+(1 row)
+
+
+--- 4. Duplicados (identificadores y claves de posicion) ---
+                    control                     |   n   
+------------------------------------------------+-------
+ identificadores duplicados                     |     0
+ posiciones totales                             | 80809
+ claves (dispositivo, registrado_en) distintas  | 80809
+ claves (dispositivo, registrado_en) duplicadas |     0
+(4 rows)
+
+
+--- 5. Ultima posicion por dispositivo: 9 dispositivos vivos OLD vs NEW ---
+Corte: fijado_en <= 2026-09-25 22:33:51+00
+ deviceid | old_filas_hasta_corte | new_filas |     old_max_fijado     |     new_max_fijado     | max_igual 
+----------+-----------------------+-----------+------------------------+------------------------+-----------
+       47 |                  4612 |      5283 | 2026-09-25 16:44:47+00 | 2026-09-25 16:44:47+00 | t
+       50 |                   166 |      1697 | 2026-09-25 21:57:32+00 | 2026-09-25 21:57:32+00 | t
+       51 |                       |         0 |                        |                        | t
+       52 |                  5596 |      5497 | 2026-09-25 22:33:41+00 | 2026-09-25 22:33:41+00 | t
+       53 |                     5 |         5 | 2026-09-22 17:07:10+00 | 2026-09-22 17:07:10+00 | t
+       54 |                       |         0 |                        |                        | t
+       56 |                 13889 |     13844 | 2026-09-25 22:33:51+00 | 2026-09-25 22:33:51+00 | t
+       58 |                  1251 |      1231 | 2026-09-25 21:06:28+00 | 2026-09-25 21:06:28+00 | t
+       59 |                  1349 |      1246 | 2026-09-25 22:23:06+00 | 2026-09-25 22:23:06+00 | t
+(9 rows)
+
+
+--- 6. Identificadores (uniqueid) de los 9 dispositivos vivos ---
+ id_legado |  nombre  | identificador | old_uniqueid | igual 
+-----------+----------+---------------+--------------+-------
+        47 | qa-f0    | qa-f0         | qa-f0        | t
+        50 | macias   | macias        | macias       | t
+        51 | Jeremy   | jeremy        | jeremy       | t
+        52 | Kevin    | kevin         | kevin        | t
+        53 | Joseph   | joseph        | joseph       | t
+        54 | David    | david         | david        | t
+        56 | Pilay    | pilay         | pilay        | t
+        58 | Manzaba  | manzaba       | manzaba      | t
+        59 | Fernando | fernando      | fernando     | t
+(9 rows)
+
+
+--- 7. Integridad referencial (deben ser 0) ---
+                  control                  | huerfanos 
+-------------------------------------------+-----------
+ alertas con dispositivo y sin dispositivo |         0
+ asignaciones sin dispositivo              |         0
+ asignaciones sin usuario                  |         0
+ bateria sin dispositivo                   |         0
+ eventos con device y sin dispositivo      |         0
+ fcm sin dispositivo                       |         0
+ jornadas sin dispositivo                  |         0
+ posiciones sin dispositivo                |         0
+ usuario_rol sin usuario o rol             |         0
+(9 rows)
+
+
+--- 8. system.dmt_migracion_mapa por tabla origen ---
+                 tabla_origen                 | filas | con_id_destino 
+----------------------------------------------+-------+----------------
+ dump.traccar-pre-purga-recorridos.tc_devices |     2 |              2
+ traccar.public.tc_actions                    |     1 |              0
+ traccar.public.tc_device_health              |     1 |              0
+ traccar.public.tc_devices                    |    10 |              9
+ traccar.public.tc_events                     |     2 |              0
+ traccar.public.tc_fcm_tokens                 |     1 |              0
+ traccar.public.tc_groups                     |     1 |              0
+ traccar.public.tc_keystore                   |     1 |              0
+ traccar.public.tc_mobile_messages            |     1 |              0
+ traccar.public.tc_positions                  |    19 |              0
+ traccar.public.tc_recovery_event             |     1 |              0
+ traccar.public.tc_revoked_tokens             |     1 |              0
+ traccar.public.tc_statistics                 |     1 |              0
+ traccar.public.tc_user_device                |    20 |             20
+ traccar.public.tc_users                      |     5 |              5
+ traccar_qa.public.tc_devices                 |     8 |              8
+(16 rows)
+
+
+--- 9. Produccion: estabilidad (solo lectura; el conteo vivo solo crece por operacion normal) ---
+ERROR:  relation "traccar_qa.tc_positions" does not exist
+LINE 10: ...L SELECT 'traccar_qa.tc_positions', count(*) FROM traccar_qa...
+                                                              ^
+
+--- 9b. Produccion (correccion: QA en su propia base) ---
+               tabla               | filas 
+-----------------------------------+-------
+ traccar.tc_devices                |     9
+ traccar.tc_fcm_tokens             |     9
+ traccar.tc_keystore               |     1
+ traccar.tc_positions (vivo)       | 26875
+ traccar.tc_positions_bak_20260903 | 19602
+ traccar.tc_user_device            |    20
+ traccar.tc_users                  |     5
+ traccar.tc_users (hash no nulo)   |     5
+(8 rows)
+
+          tabla          | filas 
+-------------------------+-------
+ traccar_qa.tc_positions | 37936
+(1 row)
+
+
+--- 10. Bateria NEW: detalle por origen y dispositivo ---
+              origen              | muestras |      min_muestra       |      max_muestra       
+----------------------------------+----------+------------------------+------------------------
+ tc_devices.mobile.batteryHistory |       24 | 2026-09-22 02:01:08+00 | 2026-09-22 02:46:41+00
+ tc_positions.batteryLevel        |    26864 | 2026-09-22 02:58:01+00 | 2026-09-25 22:33:21+00
+(2 rows)
+
+ deviceid | desde_posiciones | desde_history |      min_muestra       |      max_muestra       
+----------+------------------+---------------+------------------------+------------------------
+       47 |             4612 |             0 | 2026-09-22 02:58:01+00 | 2026-09-25 16:44:47+00
+       50 |              166 |            24 | 2026-09-22 02:01:08+00 | 2026-09-25 21:57:32+00
+       52 |             5595 |             0 | 2026-09-23 11:04:04+00 | 2026-09-25 22:32:41+00
+       53 |                5 |             0 | 2026-09-22 17:04:09+00 | 2026-09-22 17:07:10+00
+       56 |            13886 |             0 | 2026-09-22 17:08:35+00 | 2026-09-25 22:33:21+00
+       58 |             1251 |             0 | 2026-09-23 17:41:48+00 | 2026-09-25 21:06:28+00
+       59 |             1349 |             0 | 2026-09-24 17:20:38+00 | 2026-09-25 22:23:06+00
+(7 rows)
+
+
+--- 11. Eventos NEW vs OLD por tipo (corte id <= 32231) ---
+          tipo           | new  
+-------------------------+------
+ deviceMoving            |   61
+ deviceOffline           |    5
+ deviceOnline            |  230
+ deviceStopped           |   60
+ deviceUnknown           |  169
+ mobileBatteryCritical   |    3
+ mobileDiagnostics       |   77
+ mobileGpsDisabled       |    3
+ mobileGpsReenabled      |    2
+ mobileJourneyEnded      |   23
+ mobileJourneyStarted    |   28
+ mobileNetworkLost       |   25
+ mobileNetworkRestored   |   26
+ mobilePresenceOffline   |  141
+ mobilePresenceRecovered |  526
+ mobilePresenceSuspect   |  529
+ mobileStalled           | 3209
+ mobileWifiLost          |   17
+(18 rows)
+
+          tipo           | old  
+-------------------------+------
+ deviceMoving            |   61
+ deviceOffline           |    5
+ deviceOnline            |  230
+ deviceStopped           |   60
+ deviceUnknown           |  170
+ mobileBatteryCritical   |    3
+ mobileDiagnostics       |   77
+ mobileGpsDisabled       |    3
+ mobileGpsReenabled      |    2
+ mobileJourneyEnded      |   23
+ mobileJourneyStarted    |   28
+ mobileNetworkLost       |   25
+ mobileNetworkRestored   |   26
+ mobilePresenceOffline   |  141
+ mobilePresenceRecovered |  526
+ mobilePresenceSuspect   |  529
+ mobileStalled           | 3212
+ mobileWifiLost          |   17
+(18 rows)
+
+
+--- 12. Jornadas: eventos huérfanos y cobertura de mobile.journeyId actual ---
+                          caso                           | n 
+---------------------------------------------------------+---
+ mobileJourneyEnded sin started (jornadas no derivables) | 3
+ mobileJourneyStarted sin ended (jornadas abiertas)      | 8
+(2 rows)
+
+ deviceid | journey_id_actual | tiene_jornada | estado  
+----------+-------------------+---------------+---------
+       47 |     1790231082685 | t             | abierta
+       50 |     1790361151110 | t             | abierta
+       52 |     1790179505394 | t             | abierta
+(3 rows)
+
+
+--- 13. Mocks y valid=false ---
+  id   | dispositivo_id |     registrado_en      | valida | mock 
+-------+----------------+------------------------+--------+------
+ 73893 |             50 | 2026-09-23 21:30:08+00 | f      | true
+ 77605 |             50 | 2026-09-24 11:03:38+00 | f      | true
+(2 rows)
+
+
+--- 11b. Eventos OLD por tipo con corte id <= 32231 (comparacion exacta) ---
+          tipo           | old  
+-------------------------+------
+ deviceMoving            |   61
+ deviceOffline           |    5
+ deviceOnline            |  230
+ deviceStopped           |   60
+ deviceUnknown           |  169
+ mobileBatteryCritical   |    3
+ mobileDiagnostics       |   77
+ mobileGpsDisabled       |    3
+ mobileGpsReenabled      |    2
+ mobileJourneyEnded      |   23
+ mobileJourneyStarted    |   28
+ mobileNetworkLost       |   25
+ mobileNetworkRestored   |   26
+ mobilePresenceOffline   |  141
+ mobilePresenceRecovered |  526
+ mobilePresenceSuspect   |  529
+ mobileStalled           | 3209
+ mobileWifiLost          |   17
+(18 rows)
+
+
+--- 14. Duplicados internos de produccion en la ventana del ETL (explican old_filas > new_filas) ---
+ deviceid | filas_crudas | claves_distintas | duplicados_internos 
+----------+--------------+------------------+---------------------
+       47 |         4612 |             4581 |                  31
+       50 |          166 |              165 |                   1
+       52 |         5596 |             5497 |                  99
+       53 |            5 |                5 |                   0
+       56 |        13889 |            13844 |                  45
+       58 |         1251 |             1231 |                  20
+       59 |         1349 |             1246 |                 103
+(7 rows)
+

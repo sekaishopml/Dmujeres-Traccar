@@ -1,0 +1,151 @@
+/* Piezas propias de las páginas del panel (Inicio, En vivo, Detalle,
+   Historial, Batería, Reportes, Usuarios, Configuración y Sistema). Completan
+   a global.css manteniendo el mismo lenguaje: bordes finos y densidad alta. */
+
+/* ── Utilidades compartidas ─────────────────────────────────────────────── */
+.bloque-sep { margin-top: 12px; }
+.rejilla > .campo { margin-bottom: 0; }
+
+/* Los campos dentro de una barra de herramientas van alineados con los
+   botones: el margen inferior del .campo rompería la fila. El flex permite que
+   el buscador crezca sin dejar el input en su ancho mínimo. */
+.barra-herramientas .campo { margin-bottom: 0; flex: 1 1 240px; }
+
+/* En las tiras de datos el aviso es informativo (naranja) y la alerta exige
+   acción (rojo); el valor por defecto queda en navy para la jerarquía. */
+.tira-datos .dato.aviso .valor { color: var(--naranja); }
+
+/* Las acciones de una cabecera de sección (rangos rápidos, accesos a
+   Auditoría/Replay) son secundarias: van más compactas que el botón base para
+   no competir con el título. */
+.cabecera-seccion .acciones button { padding: 4px 9px; font-size: 12px; }
+
+/* Valores largos (commit, hash) en una tira: tamaño de texto, no de métrica. */
+.tira-datos .valor.mono { font-size: 13.5px; font-weight: 650; }
+
+/* El buscador con lupa: el icono flota sobre el input, el relleno izquierdo
+   deja sitio a la punta de la lupa. */
+.busqueda { position: relative; display: block; }
+.busqueda .icono {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; color: var(--apagado); pointer-events: none;
+}
+.busqueda input { padding-left: 30px; }
+.campo .busqueda { margin-bottom: 0; }
+
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+
+/* ── Inicio ─────────────────────────────────────────────────────────────── */
+.pagina-inicio .lista-avisos { list-style: none; margin: 0; padding: 0; }
+.pagina-inicio .lista-avisos li {
+  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  border-bottom: 1px solid var(--linea-2); font-size: 13px;
+}
+.pagina-inicio .lista-avisos li:last-child { border-bottom: 0; }
+/* El motivo ocupa la derecha y puede encogerse: nunca empuja el nombre fuera
+   de la fila en pantallas estrechas. */
+.pagina-inicio .lista-avisos .motivo {
+  margin-left: auto; color: var(--apagado); text-align: right; min-width: 0;
+}
+@media (max-width: 700px) {
+  .pagina-inicio .lista-avisos li { flex-wrap: wrap; }
+  .pagina-inicio .lista-avisos .motivo { flex-basis: 100%; text-align: left; }
+}
+
+/* ── En vivo ────────────────────────────────────────────────────────────── */
+/* Mapa grande a la izquierda; a la derecha solo el panel operativo: buscador,
+   filtro por estado y lista. El panel comparte el alto del mapa para que la
+   lista haga scroll dentro y ninguno de los dos desborde la vista. */
+.pagina-en-vivo .en-vivo { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .pagina-en-vivo .en-vivo { grid-template-columns: 1fr; } }
+
+.en-vivo .panel-equipos {
+  display: flex; flex-direction: column; gap: 8px;
+  /* El mapa mide calc(100vh - alto-barra - 120px): el panel toma ese mismo
+     alto y la lista hace scroll dentro. */
+  max-height: calc(100vh - 172px);
+}
+.en-vivo .equipos-lista {
+  list-style: none; margin: 0; padding: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.en-vivo button.equipo {
+  width: 100%; text-align: left; background: #fff; color: var(--texto);
+  border: 1px solid var(--linea); border-radius: 7px; padding: 7px 9px;
+  display: flex; flex-direction: column; gap: 4px; font-size: 12.5px;
+}
+.en-vivo button.equipo:hover { background: #f7f9fc; border-color: #cdd8e6; }
+.en-vivo .equipo-titulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.en-vivo .equipo-titulo strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.en-vivo .equipo-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11.5px; color: var(--apagado);
+}
+.en-vivo .equipo-meta .barra-bateria { min-width: 92px; max-width: 126px; }
+
+/* Filtros por estado: botones compactos con el contador dentro, para ubicar
+   de un vistazo dónde está el problema. */
+.pagina-en-vivo .filtro-estados { display: flex; gap: 6px; flex-wrap: wrap; }
+.pagina-en-vivo .filtro-estados button {
+  background: #fff; color: var(--apagado); border: 1px solid var(--linea);
+  border-radius: 999px; padding: 4px 10px; font-size: 12.5px; font-weight: 600;
+}
+.pagina-en-vivo .filtro-estados button:hover { background: var(--linea-2); color: var(--navy); }
+.pagina-en-vivo .filtro-estados button.activa { background: var(--navy); border-color: var(--navy); color: #fff; }
+.pagina-en-vivo .filtro-estados .cuenta { margin-left: 6px; font-variant-numeric: tabular-nums; opacity: .75; }
+
+/* El relleno de la barra es un <span>: necesita block para el ancho porcentual. */
+.barra-bateria .relleno { display: block; }
+.cargando-bateria { font-size: 11px; color: var(--apagado); white-space: nowrap; }
+
+/* Marcadores y popups del mapa. Acotados a las páginas que los usan para no
+   pisar las capas equivalentes de otras vistas. */
+.pagina-en-vivo .marcador-equipo,
+.pagina-detalle .marcador-equipo {
+  width: 15px; height: 15px; border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+}
+.pagina-en-vivo .maplibregl-popup-content,
+.pagina-detalle .maplibregl-popup-content {
+  border: 1px solid var(--linea); border-radius: 8px; padding: 9px 11px;
+  box-shadow: 0 4px 14px rgba(11, 37, 69, .16);
+}
+.pagina-en-vivo .popup-equipo,
+.pagina-detalle .popup-equipo { display: flex; flex-direction: column; gap: 5px; }
+.pagina-en-vivo .popup-equipo dl,
+.pagina-detalle .popup-equipo dl {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 12.5px;
+}
+.pagina-en-vivo .popup-equipo dt,
+.pagina-detalle .popup-equipo dt { color: var(--apagado); }
+.pagina-en-vivo .popup-equipo dd,
+.pagina-detalle .popup-equipo dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Detalle ────────────────────────────────────────────────────────────── */
+/* La ficha etiqueta/valor la pinta global.css (.ficha dt/dd); aquí solo el
+   recuadro del mini mapa de la sección "Última posición". */
+.pagina-detalle .mini-mapa { height: 300px; }
+
+/* ── Historial (Auditoría) ──────────────────────────────────────────────── */
+/* El filtro vive en la barra de herramientas; en compacto su retícula la
+   devuelve al flujo sin margen extra. */
+.pagina-historial .barra-herramientas .filtro-replay { margin-bottom: 0; }
+
+/* La tabla de expedientes es clicable: la fila elegida queda marcada y el
+   cursor advierte la selección. Se usa la tabla base del tema con la
+   elegida en tinte azulado, igual que el resto de selecciones. La fila
+   recibe el foco con teclado (tabIndex 0). */
+.pagina-historial .tabla-datas tbody tr { cursor: pointer; }
+.pagina-historial .tabla-datas tbody tr:hover td { background: #f8fafc; }
+.pagina-historial .tabla-datas tbody tr.seleccionada td { background: #eef3f9; }
+.pagina-historial .tabla-datas tbody tr:focus { outline: none; }
+.pagina-historial .tabla-datas tbody tr:focus td { outline: 2px solid rgba(11, 37, 69, .18); outline-offset: -2px; }
+
+/* Expediente: la cronología lee como historia de la jornada, no como lista
+   de controles; la ficha de datos va debajo sin caja propia. La línea
+   secundaria acompaña al título con el mismo tono apagado del detalle. */
+.pagina-historial .ficha-expediente { margin-top: 10px; }
+.pagina-historial .linea-secundaria {
+  display: block; font-size: 12.5px; color: var(--apagado);
+}
+.pagina-historial .aviso { margin: 0 0 8px; }

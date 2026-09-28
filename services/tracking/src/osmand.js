@@ -1,0 +1,152 @@
+// Protocolo OsmAnd (contrato congelado de la App, docs/api/COMPATIBILIDAD-APP.md
+// seccion 1). Acepta GET y POST en la raiz con parametros en la query (o en el
+// cuerpo application/x-www-form-urlencoded) y responde 200 sin cuerpo cuando la
+// posicion se acepta; el cliente borra el punto de su buffer con cualquier 2xx.
+//
+// Diferencias deliberadas de esta fase (documentadas en
+// docs/operations/FASE4-TRACKING.md): el dispositivo desconocido responde 404
+// (el contrato del fork respondia 400) y un fallo de almacenamiento responde
+// 503 (error recuperable) en lugar de 500.
+
+const LIMITE_CUERPO = 64 * 1024;
+const MAX_ALARMA = 200;
+const MAX_INT_32 = 2147483647;
+
+function responder(res, codigo) {
+  res.writeHead(codigo, { 'cache-control': 'no-store' });
+  res.end();
+}
+
+function numero(valor) {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const convertido = Number(String(valor).trim());
+  return Number.isFinite(convertido) ? convertido : null;
+}
+
+function booleano(valor) {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const texto = String(valor).trim().toLowerCase();
+  if (texto === 'true' || texto === '1') return true;
+  if (texto === 'false' || texto === '0') return false;
+  return null;
+}
+
+// El contrato acepta epoch ms y, si el valor es menor a Integer.MAX_VALUE,
+// epoch segundos; tambien fechas ISO en texto (mismo criterio que el fork).
+function interpretarTimestamp(valor) {
+  if (valor === null || valor === undefined || String(valor).trim() === '') return null;
+  const texto = String(valor).trim();
+  if (/^\d+$/.test(texto)) {
+    let milisegundos = Number.parseInt(texto, 10);
+    if (milisegundos < MAX_INT_32) milisegundos *= 1000;
+    const fecha = new Date(milisegundos);
+    return Number.isNaN(fecha.getTime()) ? null : fecha;
+  }
+  const fecha = new Date(texto);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
+}
+
+async function leerTexto(req, limite) {
+  const trozos = [];
+  let total = 0;
+  let excedido = false;
+  for await (const trozo of req) {
+    if (excedido) continue;
+    total += trozo.length;
+    if (total > limite) {
+      excedido = true;
+      continue;
+    }
+    trozos.push(trozo);
+  }
+  if (excedido) {
+    const error = new Error('cuerpo_demasiado_grande');
+    error.codigo = 'GRANDE';
+    throw error;
+  }
+  return Buffer.concat(trozos).toString('utf8');
+}
+
+async function leerParametros(req) {
+  const url = new URL(req.url, 'http://127.0.0.1');
+  if (url.searchParams.size > 0) return url.searchParams;
+  if (req.method === 'POST') {
+    const texto = await leerTexto(req, LIMITE_CUERPO);
+    return new URLSearchParams(texto);
+  }
+  return url.searchParams;
+}
+
+function construirAtributosPosicion(params) {
+  const atributos = { id_legado: null };
+  const carga = booleano(params.get('charge'));
+  if (carga !== null) atributos.charge = carga;
+  const simulado = booleano(params.get('mock'));
+  if (simulado !== null) atributos.mock = simulado;
+  const alarma = params.get('alarm');
+  if (alarma !== null && alarma.trim() !== '') {
+    atributos.alarm = alarma.trim().slice(0, MAX_ALARMA);
+  }
+  return atributos;
+}
+
+export async function atenderOsmand(req, res, ctx) {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return responder(res, 405);
+  }
+  let params;
+  try {
+    params = await leerParametros(req);
+  } catch {
+    return responder(res, 400);
+  }
+  const identificador = (params.get('id') ?? params.get('deviceid') ?? '').trim();
+  if (!identificador) return responder(res, 400);
+
+  const latitud = numero(params.get('lat'));
+  const longitud = numero(params.get('lon'));
+  const momento = interpretarTimestamp(params.get('timestamp'));
+  if (latitud === null || longitud === null || momento === null) {
+    return responder(res, 400);
+  }
+
+  let dispositivo;
+  try {
+    dispositivo = await ctx.almacen.buscarDispositivo(identificador);
+  } catch (error) {
+    ctx.log.error(`osmand: fallo al buscar dispositivo: ${error.message}`);
+    return responder(res, 503);
+  }
+  if (!dispositivo) return responder(res, 404);
+  // Equipo deshabilitado: la App recibe 200 (drena su búfer) pero no se guarda
+  // nada, igual que hacía el servidor anterior con los equipos deshabilitados.
+  if (dispositivo.habilitado === false) return responder(res, 200);
+
+  const nudos = numero(params.get('speed'));
+  const rumbo = numero(params.get('bearing') ?? params.get('heading'));
+  const bateria = numero(params.get('batt'));
+  const simulado = booleano(params.get('mock'));
+  const posicion = {
+    protocolo: 'osmand',
+    latitud,
+    longitud,
+    altitud: numero(params.get('altitude')),
+    velocidadKmh:
+      nudos !== null && nudos >= 0 ? Math.round(nudos * 1.852 * 1000) / 1000 : null,
+    rumbo: rumbo !== null && rumbo >= 0 ? rumbo : null,
+    precision: numero(params.get('accuracy')),
+    bateria:
+      bateria !== null ? Math.min(100, Math.max(0, bateria)) : null,
+    valida: simulado !== true,
+    registradoEn: momento,
+    atributos: construirAtributosPosicion(params),
+  };
+
+  try {
+    await ctx.almacen.registrarPosicion(dispositivo.id, posicion);
+  } catch (error) {
+    ctx.log.error(`osmand: fallo al guardar posicion: ${error.message}`);
+    return responder(res, 503);
+  }
+  return responder(res, 200);
+}

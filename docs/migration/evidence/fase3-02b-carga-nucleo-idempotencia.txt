@@ -1,0 +1,76 @@
+[03:33:32] Staging: creando/vaciando system.dmt_staging_*
+psql:<stdin>:40: NOTICE:  relation "dmt_staging_usuario" already exists, skipping
+psql:<stdin>:58: NOTICE:  relation "dmt_staging_dispositivo" already exists, skipping
+psql:<stdin>:63: NOTICE:  relation "dmt_staging_asignacion" already exists, skipping
+psql:<stdin>:74: NOTICE:  relation "dmt_staging_evento" already exists, skipping
+psql:<stdin>:86: NOTICE:  relation "dmt_staging_fcm" already exists, skipping
+psql:<stdin>:92: NOTICE:  relation "dmt_staging_keystore" already exists, skipping
+psql:<stdin>:106: NOTICE:  relation "dmt_staging_recuperacion" already exists, skipping
+psql:<stdin>:113: NOTICE:  relation "dmt_staging_bateria_pos" already exists, skipping
+psql:<stdin>:119: NOTICE:  relation "dmt_staging_origen_pendiente" already exists, skipping
+[03:33:33] Usuarios (traccar.tc_users)
+[03:33:33] Dispositivos vivos (traccar.tc_devices)
+[03:33:33] Dispositivos historicos (traccar_qa.tc_devices)
+[03:33:33] Dispositivos solo-dump (traccar-pre-purga-recorridos.dump)
+NOTICE:  database "dmt_devices_scratch" does not exist, skipping
+[03:33:34] Asignaciones (traccar.tc_user_device)
+[03:33:34] Eventos (traccar.tc_events)
+[03:33:34] Bateria desde posiciones (traccar.tc_positions, ultimos 7 dias)
+[03:33:34] Tokens FCM (traccar.tc_fcm_tokens)
+[03:33:35] Claves de firma (traccar.tc_keystore)
+[03:33:35] Recuperacion (traccar.tc_recovery_event)
+[03:33:35] Conteos de tablas pendientes/evaluar
+[03:33:35] Ejecutando 02_cargar_nucleo.sql
+BEGIN
+CREATE FUNCTION
+INSERT 0 0
+INSERT 0 0
+INSERT 0 0
+INSERT 0 2
+INSERT 0 0
+INSERT 0 0
+INSERT 0 0
+INSERT 0 0
+INSERT 0 7
+INSERT 0 0
+INSERT 0 0
+INSERT 0 8
+ setval 
+--------
+      9
+(1 row)
+
+ setval 
+--------
+     59
+(1 row)
+
+ setval 
+--------
+  32231
+(1 row)
+
+INSERT 0 5
+INSERT 0 19
+INSERT 0 20
+INSERT 0 13
+COMMIT
+          objeto          | filas 
+--------------------------+-------
+ alertas_recuperacion     |  9734
+ asignaciones             |    20
+ bateria                  | 26888
+ claves_firma             |     1
+ dispositivos             |    19
+ eventos                  |  5134
+ fcm                      |     9
+ jornadas                 |    28
+ mapa                     |    57
+ roles                    |     3
+ usuario_rol              |     5
+ usuarios                 |     5
+ usuarios_administradores |     1
+ usuarios_habilitados     |     5
+(14 rows)
+
+[03:33:36] Fin de la carga nucleo

@@ -1,0 +1,23 @@
+=== FASE 3 parte 3 - paso 1: particiones ===
+2026-09-26 03:24:58 UTC
+
+--- eventos OLD por mes (define si hace falta dmt_evento_2026_08) ---
+   mes   | eventos |        min_ev         |         max_ev          
+---------+---------+-----------------------+-------------------------
+ 2026-09 |    5131 | 2026-09-15 21:46:40.9 | 2026-09-25 22:22:41.564
+(1 row)
+
+
+--- DDL aplicado: particion 2026_08 de dmt_posicion ---
+CREATE TABLE
+
+--- particiones NEW ---
+ tabla_padre  |      particion       |                                  rango                                   
+--------------+----------------------+--------------------------------------------------------------------------
+ dmt_evento   | dmt_evento_2026_09   | FOR VALUES FROM ('2026-09-01 00:00:00+00') TO ('2026-10-01 00:00:00+00')
+ dmt_evento   | dmt_evento_2026_10   | FOR VALUES FROM ('2026-10-01 00:00:00+00') TO ('2026-11-01 00:00:00+00')
+ dmt_posicion | dmt_posicion_2026_08 | FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00')
+ dmt_posicion | dmt_posicion_2026_09 | FOR VALUES FROM ('2026-09-01 00:00:00+00') TO ('2026-10-01 00:00:00+00')
+ dmt_posicion | dmt_posicion_2026_10 | FOR VALUES FROM ('2026-10-01 00:00:00+00') TO ('2026-11-01 00:00:00+00')
+(5 rows)
+

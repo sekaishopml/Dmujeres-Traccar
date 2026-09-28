@@ -1,0 +1,24 @@
+[Unit]
+Description=DMujeres Tracking panel web (sirve apps/web/dist y proxya /api a services/api)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opencode
+Group=opencode
+WorkingDirectory=/home/DMujeres-Tracking/services/web
+EnvironmentFile=/home/DMujeres-Tracking/.env
+# Bind publico del panel nuevo. Con Nginx delante, la exposicion real la
+# controla el firewall (ufw): 25565 no esta permitido desde Internet.
+Environment=DMJ_WEB_HOST=0.0.0.0
+Environment=DMJ_WEB_PORT=25565
+ExecStart=/usr/local/bin/node24 src/servidor.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

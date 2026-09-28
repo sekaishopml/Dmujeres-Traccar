@@ -1,0 +1,18 @@
+{
+  "name": "@dmujeres/recuperacion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Recuperacion por push FCM de la plataforma nueva: detecta equipos silenciados y envia un data message TRACKING_RECOVERY_PROBE (HTTP v1 sin SDK), auditando en operations.dmt_alerta.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "smoke": "node src/smoke.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

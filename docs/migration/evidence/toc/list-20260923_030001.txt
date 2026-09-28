@@ -1,0 +1,3 @@
+4840; 0 34908 TABLE DATA _timescaledb_internal _hyper_1_52_chunk traccar
+4841; 0 34951 TABLE DATA _timescaledb_internal _hyper_1_53_chunk traccar
+4842; 0 35169 TABLE DATA _timescaledb_internal _hyper_1_54_chunk traccar

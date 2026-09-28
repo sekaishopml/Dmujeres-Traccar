@@ -1,0 +1,155 @@
+=== FASE 3 parte 3 - cierre y limpieza ===
+2026-09-26 03:37:32 UTC
+
+--- 1. Tablas de staging antes de limpiar (solo migracion, no datos de negocio) ---
+           tabla_staging            | filas_estimadas 
+------------------------------------+-----------------
+ dmt_staging_asignacion             |               1
+ dmt_staging_bateria_pos            |               1
+ dmt_staging_dispositivo            |               1
+ dmt_staging_evento                 |               1
+ dmt_staging_fcm                    |               1
+ dmt_staging_keystore               |               1
+ dmt_staging_origen_pendiente       |               1
+ dmt_staging_posicion               |               1
+ dmt_staging_recuperacion           |               1
+ dmt_staging_usuario                |               1
+ dmt_staging_validacion_dispositivo |               1
+ dmt_staging_validacion_ultima      |               1
+(12 rows)
+
+
+--- 2. Bases en el cluster legado (no deben quedar scratch) ---
+  datname   
+------------
+ postgres
+ traccar
+ traccar_qa
+(3 rows)
+
+
+--- 3. Eliminando staging de la base nueva ---
+DROP TABLE
+ tablas_staging_restantes 
+--------------------------
+                        0
+(1 row)
+
+
+--- 4. Tablas finales de la base nueva ---
+  esquema   |         tabla         
+------------+-----------------------
+ audit      | dmt_auditoria
+ iam        | dmt_clave_firma
+ iam        | dmt_rol
+ iam        | dmt_sesion
+ iam        | dmt_token_fcm
+ iam        | dmt_token_revocado
+ iam        | dmt_usuario
+ iam        | dmt_usuario_rol
+ operations | dmt_alerta
+ operations | dmt_asignacion
+ operations | dmt_jornada
+ operations | dmt_jornada_tramo
+ system     | dmt_configuracion
+ system     | dmt_migracion_mapa
+ system     | dmt_version_esquema
+ telemetry  | dmt_bateria
+ telemetry  | dmt_salud_dispositivo
+ telemetry  | dmt_senal
+ tracking   | dmt_dispositivo
+ tracking   | dmt_evento
+ tracking   | dmt_evento_2026_09
+ tracking   | dmt_evento_2026_10
+ tracking   | dmt_posicion
+ tracking   | dmt_posicion_2026_08
+ tracking   | dmt_posicion_2026_09
+ tracking   | dmt_posicion_2026_10
+ tracking   | dmt_posicion_actual
+(27 rows)
+
+
+--- 5. Conteos finales de la base nueva ---
+              tabla              | filas 
+---------------------------------+-------
+ audit.dmt_auditoria             |     0
+ iam.dmt_clave_firma             |     1
+ iam.dmt_rol                     |     3
+ iam.dmt_token_fcm               |     9
+ iam.dmt_token_revocado          |     0
+ iam.dmt_usuario                 |     5
+ iam.dmt_usuario_rol             |     5
+ operations.dmt_alerta           |  9734
+ operations.dmt_asignacion       |    20
+ operations.dmt_jornada          |    28
+ system.dmt_migracion_mapa       |    75
+ telemetry.dmt_bateria           | 26888
+ telemetry.dmt_salud_dispositivo |     0
+ tracking.dmt_dispositivo        |    19
+ tracking.dmt_evento             |  5134
+ tracking.dmt_posicion           | 80809
+(16 rows)
+
+
+--- 6. Mapa: total por tabla origen (estado final) ---
+                 tabla_origen                 | filas 
+----------------------------------------------+-------
+ dump.traccar-pre-purga-recorridos.tc_devices |     2
+ traccar.public.tc_actions                    |     1
+ traccar.public.tc_device_health              |     1
+ traccar.public.tc_devices                    |    10
+ traccar.public.tc_events                     |     2
+ traccar.public.tc_fcm_tokens                 |     1
+ traccar.public.tc_groups                     |     1
+ traccar.public.tc_keystore                   |     1
+ traccar.public.tc_mobile_messages            |     1
+ traccar.public.tc_positions                  |    19
+ traccar.public.tc_recovery_event             |     1
+ traccar.public.tc_revoked_tokens             |     1
+ traccar.public.tc_statistics                 |     1
+ traccar.public.tc_user_device                |    20
+ traccar.public.tc_users                      |     5
+ traccar_qa.public.tc_devices                 |     8
+(16 rows)
+
+
+--- 7. Limpieza en el contenedor legado (archivos temporales) ---
+temporales eliminados
+
+--- 8. Cortando red temporal dmj-db <-> dmt-db ---
+/dmt-db -> dmt_default 
+
+--- 9. Produccion al cierre (solo lectura) ---
+           tabla           | filas 
+---------------------------+-------
+ tc_devices                |     9
+ tc_events                 |  5138
+ tc_fcm_tokens             |     9
+ tc_positions              | 26876
+ tc_positions_bak_20260903 | 19602
+ tc_recovery_event         |  9741
+ tc_user_device            |    20
+ tc_users                  |     5
+(8 rows)
+
+
+--- 10. docker ps ---
+NAMES            STATUS                    PORTS
+dmt-db           Up 39 minutes (healthy)   127.0.0.1:5443->5432/tcp
+dmj-mqtt         Up 6 days (healthy)       4370/tcp, 5369/tcp, 8084/tcp, 127.0.0.1:8083->8083/tcp, 0.0.0.0:1883->1883/tcp, [::]:1883->1883/tcp, 8883/tcp, 127.0.0.1:18083->18083/tcp
+cyhotel-master   Up 6 days                 0.0.0.0:8002->8000/tcp, [::]:8002->8000/tcp
+cyhotel-kiosco   Up 6 days (healthy)       0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+cyhotel-admin    Up 6 days                 0.0.0.0:8001->8000/tcp, [::]:8001->8000/tcp
+cyhotel-db       Up 6 days (healthy)       5432/tcp
+dmj-db           Up 6 days (healthy)       127.0.0.1:5433->5432/tcp
+dmj-redis        Up 6 days (healthy)       127.0.0.1:6379->6379/tcp
+
+--- NOTA sobre la seccion 1 ---
+La columna "filas_estimadas" contaba filas de pg_stat_user_tables (existencia de
+estadisticas), no filas reales de las tablas. Conteos reales del staging al momento
+de la limpieza (tomados de las salidas de la carga):
+  dmt_staging_posicion 80809 | dmt_staging_usuario 5 | dmt_staging_dispositivo 19
+  dmt_staging_asignacion 20 | dmt_staging_evento 5134 | dmt_staging_fcm 9
+  dmt_staging_keystore 1 | dmt_staging_recuperacion 9741 | dmt_staging_bateria_pos 26871
+  dmt_staging_origen_pendiente 5 | dmt_staging_validacion_ultima 7 | dmt_staging_validacion_dispositivo 9
+Todas se eliminaron en el paso 3; la base nueva queda sin tablas de staging.

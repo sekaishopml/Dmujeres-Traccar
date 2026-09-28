@@ -1,0 +1,157 @@
+[03:33:48] Creando scratch dmt_etl_scratch (nunca en traccar / traccar_qa)
+NOTICE:  schema "_timescaledb_internal" already exists, skipping
+NOTICE:  table "pos_20260919_125422" does not exist, skipping
+NOTICE:  table "bak_20260919_125422" does not exist, skipping
+NOTICE:  table "_hyper_1_10_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_12_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_13_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_14_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_18_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_19_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_20_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_26_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_28_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_29_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_32_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_35_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_37_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_39_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_3_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_41_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_47_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_48_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_49_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_51_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_6_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_8_chunk" does not exist, skipping
+[03:33:50] Dump traccar-20260919-125422.dump -> 11759 posiciones | 19602 en bak | chunks: 22
+[03:33:50] AVISO: traccar-20260920-030001.dump tiene 0 bytes; se omite
+[03:33:50] AVISO: traccar-20260921-030001.dump tiene 0 bytes; se omite
+NOTICE:  table "pos_20260922_003135" does not exist, skipping
+NOTICE:  table "bak_20260922_003135" does not exist, skipping
+NOTICE:  table "_hyper_1_10_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_12_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_13_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_14_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_18_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_19_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_20_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_26_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_28_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_29_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_32_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_35_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_37_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_39_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_3_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_41_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_47_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_48_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_49_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_51_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_6_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_8_chunk" does not exist, skipping
+[03:33:52] Dump traccar-20260922-003135.dump -> 15665 posiciones | 19602 en bak | chunks: 22
+NOTICE:  table "pos_20260922_030001" does not exist, skipping
+NOTICE:  table "bak_20260922_030001" does not exist, skipping
+NOTICE:  table "_hyper_1_52_chunk" does not exist, skipping
+[03:33:52] Dump traccar-20260922-030001.dump -> 4 posiciones | 19602 en bak | chunks: 1
+NOTICE:  table "pos_20260923_030001" does not exist, skipping
+NOTICE:  table "bak_20260923_030001" does not exist, skipping
+NOTICE:  table "_hyper_1_52_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_53_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_54_chunk" does not exist, skipping
+[03:33:53] Dump traccar-20260923-030001.dump -> 4189 posiciones | 19602 en bak | chunks: 3
+NOTICE:  table "pos_20260924_030001" does not exist, skipping
+NOTICE:  table "bak_20260924_030001" does not exist, skipping
+NOTICE:  table "_hyper_1_52_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_53_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_54_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_56_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_58_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_59_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_60_chunk" does not exist, skipping
+[03:33:54] Dump traccar-20260924-030001.dump -> 13122 posiciones | 19602 en bak | chunks: 7
+NOTICE:  table "pos_20260925_030001" does not exist, skipping
+NOTICE:  table "bak_20260925_030001" does not exist, skipping
+NOTICE:  table "_hyper_1_52_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_53_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_54_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_56_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_58_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_59_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_60_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_65_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_67_chunk" does not exist, skipping
+[03:33:55] Dump traccar-20260925-030001.dump -> 20149 posiciones | 19602 en bak | chunks: 9
+NOTICE:  table "pos_pre_cambio_usuarios" does not exist, skipping
+NOTICE:  table "bak_pre_cambio_usuarios" does not exist, skipping
+NOTICE:  table "_hyper_1_52_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_53_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_54_chunk" does not exist, skipping
+[03:33:55] Dump traccar-pre-cambio-usuarios.dump -> 1522 posiciones | 19602 en bak | chunks: 3
+NOTICE:  table "pos_pre_purga_recorridos" does not exist, skipping
+NOTICE:  table "bak_pre_purga_recorridos" does not exist, skipping
+NOTICE:  table "_hyper_1_10_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_12_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_13_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_14_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_18_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_19_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_20_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_26_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_28_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_29_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_32_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_35_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_37_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_39_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_3_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_41_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_47_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_48_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_49_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_51_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_6_chunk" does not exist, skipping
+NOTICE:  table "_hyper_1_8_chunk" does not exist, skipping
+[03:33:57] Dump traccar-pre-purga-recorridos.dump -> 15898 posiciones | 19602 en bak | chunks: 22
+[03:33:57] Copiando tc_positions de traccar (SELECT) a la scratch
+NOTICE:  table "u_prod" does not exist, skipping
+COPY 26868
+[03:33:58] Copiando tc_positions de traccar_qa (SELECT) a la scratch
+NOTICE:  table "u_qa" does not exist, skipping
+COPY 37936
+NOTICE:  table "u_bak" does not exist, skipping
+[03:33:58] u_bak cargada desde bak_pre_purga_recorridos
+[03:33:58] Construyendo conjunto unificado (prioridad prod > bak > qa > dumps)
+NOTICE:  table "u_final" does not exist, skipping
+ unificadas | dispositivos |         min_fx          |       max_fx        
+------------+--------------+-------------------------+---------------------
+      80809 |           17 | 2026-08-17 02:45:22.166 | 2026-09-25 22:33:51
+(1 row)
+
+[03:33:59] Exportando CSV a /tmp/dmt_dumps/etl/posiciones_unificadas.csv
+[03:33:59] Cargando staging en la base nueva
+NOTICE:  relation "dmt_staging_posicion" already exists, skipping
+COPY 80809
+[03:34:00] Ejecutando 01_cargar_posiciones.sql
+BEGIN
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:38: NOTICE:  relation "dmt_posicion_2026_08" already exists, skipping
+CREATE TABLE
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:63: NOTICE:  relation "dmt_staging_posicion" already exists, skipping
+CREATE TABLE
+CREATE FUNCTION
+COMMENT
+CREATE INDEX
+DO
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:207: NOTICE:  ETL posiciones: 80809 filas en staging, id_legado 1..88694, lote de 5000
+psql:/tmp/dmt_etl_src/01_cargar_posiciones.sql:207: NOTICE:  ETL posiciones: 80809 filas nuevas insertadas en 18 lotes (idempotente: re-ejecutar no duplica)
+DO
+COMMIT
+ filas_cargadas | dispositivos |          min_reg           |        max_reg         
+----------------+--------------+----------------------------+------------------------
+          80809 |           17 | 2026-08-17 02:45:22.166+00 | 2026-09-25 22:33:51+00
+(1 row)
+
+[03:34:07] Scratch dmt_etl_scratch eliminada
+[03:34:07] Resumen: 8 dumps restaurados; 2 omitidos (ver /tmp/dmt_dumps/etl/logs/dumps-invalidos.txt)

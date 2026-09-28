@@ -1,0 +1,16 @@
+{
+  "percent": 100,
+  "paused": false,
+  "allow": [
+    "qa-f0",
+    "macias",
+    "jeremy",
+    "kevin",
+    "joseph",
+    "david",
+    "pilay",
+    "manzaba",
+    "fernando",
+    "alejandro"
+  ]
+}
