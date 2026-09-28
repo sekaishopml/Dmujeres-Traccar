@@ -106,6 +106,17 @@ class TrackingController(private val context: Context) :
      * marca de recuperación pendiente, se entra en RECOVERING.
      */
     private fun restoreMovementState() {
+        // Un fallo aquí (base corrupta, prefs rotas) no puede matar el
+        // arranque: se arranca en modo seguro (STARTING → primer fix → ACTIVE,
+        // cadencia fina) y se registra. Ante la duda, continuidad.
+        runCatching { restoreMovementStateOrThrow() }
+            .onFailure {
+                Log.e(TAG, "restauración fallida, modo seguro", it)
+                runCatching { machine.onJourneyStarted(System.currentTimeMillis()) }
+            }
+    }
+
+    private fun restoreMovementStateOrThrow() {
         val now = System.currentTimeMillis()
         val journeyOpen = journeyManager.local()?.open == true ||
             preferences.getBoolean(DmujeresApi.KEY_JOURNEY_OPEN, false)
@@ -235,16 +246,15 @@ class TrackingController(private val context: Context) :
     }
 
     fun stop() {
-        networkManager.stop()
-        try {
-            positionProvider.stopUpdates()
-        } catch (e: SecurityException) {
-            Log.w(TAG, e)
-        }
+        // El apagado nunca debe lanzar: si el arranque quedó a medias (o stop
+        // se llama dos veces), un crash aquí convierte cualquier fallo en un
+        // bucle de reinicios. Cada pieza se defiende sola y esto es el seguro.
+        runCatching { networkManager.stop() }.onFailure { Log.w(TAG, "al detener red", it) }
+        runCatching { positionProvider.stopUpdates() }.onFailure { Log.w(TAG, "al detener proveedor", it) }
         MotionMonitor.setTurnListener(null)
         MotionMonitor.setSignificantMotionListener(null)
-        MotionMonitor.unregister(context)
-        handler.removeCallbacksAndMessages(null)
+        runCatching { MotionMonitor.unregister(context) }.onFailure { Log.w(TAG, "al liberar sensores", it) }
+        runCatching { handler.removeCallbacksAndMessages(null) }.onFailure { Log.w(TAG, "al limpiar handler", it) }
     }
 
     override fun onPositionUpdate(position: Position) {

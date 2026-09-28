@@ -27,6 +27,14 @@ class NetworkManager(private val context: Context, private val handler: NetworkH
 
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
+    // El registro es asimétrico por diseño: start() puede no haber corrido
+    // (arranque fallido) o stop() puede llamarse dos veces (onDestroy tras un
+    // stop manual). Sin esta guarda, unregisterReceiver lanza
+    // IllegalArgumentException y convierte cualquier fallo de arranque en un
+    // bucle de crashes (visto en 2.1.74 sobre base de 2.1.73).
+    @Volatile
+    private var registrado = false
+
     interface NetworkHandler {
         fun onNetworkUpdate(isOnline: Boolean)
     }
@@ -38,13 +46,19 @@ class NetworkManager(private val context: Context, private val handler: NetworkH
         }
 
     fun start() {
+        if (registrado) return
         val filter = IntentFilter()
         filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION)
-        context.registerReceiver(this, filter)
+        runCatching { context.registerReceiver(this, filter) }
+            .onSuccess { registrado = true }
+            .onFailure { Log.w(TAG, "no se pudo registrar red", it) }
     }
 
     fun stop() {
-        context.unregisterReceiver(this)
+        if (!registrado) return
+        registrado = false
+        runCatching { context.unregisterReceiver(this) }
+            .onFailure { Log.w(TAG, "red ya liberada", it) }
     }
 
     override fun onReceive(context: Context, intent: Intent) {

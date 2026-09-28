@@ -65,29 +65,69 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
     }
 
     /**
-     * Migración ADITIVA (ADR-004): nunca DROP en upgrade, para no perder la
-     * cola offline ni la secuencia al actualizar la APK en calle. Cada versión
-     * aplica solo sus ALTER/CREATE con IF NOT EXISTS.
+     * Migración IDEMPOTENTE por existencia real, no por número.
+     *
+     * Por qué: la 2.1.73 de calle ya traía DATABASE_VERSION = 5 con OTRO
+     * esquema (sin meta ni columnas nuevas). Al actualizar a una 2.1.74
+     * también marcada como 5, el upgrade nunca corría y todo acceso a `meta`
+     * reventaba en bucle ("no such table"). Desde v6, el número obliga a
+     * pasar por aquí, y el contenido se asegura por PRAGMA: funciona venga de
+     * la 2.1.73 de calle, de una 2.1.74 parcial o de una instalación limpia.
+     * Nunca DROP: el búfer offline no se pierde en una actualización.
      */
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 4) {
-            // Esquema anterior a la política de no-DROP: se conserva el
-            // comportamiento histórico para esas versiones viejas.
-            db.execSQL("DROP TABLE IF EXISTS position;")
-            onCreate(db)
-            return
-        }
-        if (oldVersion < 5) {
-            for (column in POSITION_V5_COLUMNS) {
-                runCatching { db.execSQL("ALTER TABLE position ADD COLUMN $column") }
-            }
-            runCatching { db.execSQL(CREATE_META) }
-        }
+        ensureEsquemaV6(db)
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS position;")
-        onCreate(db)
+        // Un downgrade tampoco borra: el esquema v6 es un superconjunto del
+        // anterior y el código viejo ignora las columnas que no conoce.
+        ensureEsquemaV6(db)
+    }
+
+    /** Nombres de columna reales de una tabla (vacío si no existe). */
+    private fun columnasDe(db: SQLiteDatabase, tabla: String): Set<String> {
+        val columnas = mutableSetOf<String>()
+        runCatching {
+            db.rawQuery("PRAGMA table_info($tabla)", null).use { cursor ->
+                val indice = cursor.getColumnIndex("name")
+                while (cursor.moveToNext()) {
+                    cursor.getString(indice)?.let { columnas.add(it) }
+                }
+            }
+        }.onFailure { Log.e(TAG, "no se pudo leer esquema de $tabla", it) }
+        return columnas
+    }
+
+    /**
+     * Asegura el esquema v6 exista lo que exista: agrega las columnas que
+     * falten y crea `meta`. Se invoca en el upgrade Y en cada apertura
+     * (init), para que ni siquiera una colisión futura de números de versión
+     * deje la base a medias. Barato (PRAGMA + IF NOT EXISTS) y sin efectos si
+     * ya está al día.
+     */
+    private fun ensureEsquemaV6(db: SQLiteDatabase) {
+        val columnas = columnasDe(db, "position").toMutableSet()
+        if (columnas.isNotEmpty()) {
+            for (columna in POSITION_V5_COLUMNS) {
+                val nombre = columna.substringBefore(' ')
+                if (!columnas.contains(nombre)) {
+                    runCatching { db.execSQL("ALTER TABLE position ADD COLUMN $columna") }
+                        .onFailure { Log.e(TAG, "no se pudo agregar $nombre", it) }
+                        .onSuccess { columnas.add(nombre) }
+                }
+            }
+        }
+        runCatching { db.execSQL(CREATE_META) }
+            .onFailure { Log.e(TAG, "no se pudo crear meta", it) }
+    }
+
+    init {
+        // Cinturón y tirantes contra colisiones de versión: aunque el upgrade
+        // no haya corrido (o haya corrido a medias), cada apertura deja el
+        // esquema utilizable sin borrar nada.
+        runCatching { ensureEsquemaV6(db) }
+            .onFailure { Log.e(TAG, "esquema no asegurado al abrir", it) }
     }
 
     fun insertPosition(position: Position) {
@@ -293,20 +333,27 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
     }
 
     // --- Tabla meta: identidad y contadores persistentes ---------------------
+    // Lectura/escritura tolerantes: si el esquema quedó a medias por una
+    // actualización interrumpida, devuelven null / no hacen nada en vez de
+    // reventar el arranque (el init ya intentó asegurarlo; esto es la red).
 
     @SuppressLint("Range")
-    fun getMeta(clave: String): String? {
+    fun getMeta(clave: String): String? = runCatching {
+        ensureEsquemaV6(db)
         readableDatabase.rawQuery("SELECT valor FROM meta WHERE clave = ?", arrayOf(clave)).use { cursor ->
             if (cursor.moveToFirst()) return cursor.getString(0)
         }
-        return null
-    }
+        null
+    }.onFailure { Log.e(TAG, "meta ilegible ($clave)", it) }.getOrNull()
 
     fun putMeta(clave: String, valor: String) {
-        val values = ContentValues()
-        values.put("clave", clave)
-        values.put("valor", valor)
-        db.insertWithOnConflict("meta", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        runCatching {
+            ensureEsquemaV6(db)
+            val values = ContentValues()
+            values.put("clave", clave)
+            values.put("valor", valor)
+            db.insertWithOnConflict("meta", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        }.onFailure { Log.e(TAG, "meta no persistida ($clave)", it) }
     }
 
     private fun addMetaCounter(db: SQLiteDatabase, clave: String, delta: Long) {
@@ -379,7 +426,7 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
     }
 
     companion object {
-        const val DATABASE_VERSION = 5
+        const val DATABASE_VERSION = 6
         const val DATABASE_NAME = "traccar.db"
 
         /** Columnas nuevas de la v5 (migración aditiva). */

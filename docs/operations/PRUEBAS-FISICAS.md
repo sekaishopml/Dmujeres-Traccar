@@ -56,6 +56,45 @@ diálogo de crash dejan a la app en estado detenido, que bloquea
 `BOOT_COMPLETED` hasta que el usuario la abre. Para una prueba limpia hace
 falta abrir la app con un toque real y repetir el reboot.
 
+## Sesión 2026-09-28 (continuación) — 2.1.74 instalada
+
+Se instaló la 2.1.74 (vc 284, misma firma de flota, `adb install -r` sin
+borrar datos) sobre la 2.1.73 del equipo macias.
+
+### Crash de arranque encontrado y corregido en caliente
+
+La primera 2.1.74 entraba en bucle ("continúa fallando"): al actualizar, el
+`onDestroy` llamaba a `unregisterReceiver` de un receiver nunca registrado.
+Causa raíz doble: (1) la 2.1.73 de calle ya traía `DATABASE_VERSION = 5` con
+otro esquema (sin tabla `meta`), así que el upgrade a la 2.1.74 (también 5)
+nunca corría; (2) `stop()` no era idempotente. Corrección aplicada y
+reinstalada: versión 6 con migración idempotente por PRAGMA,
+`ensureSchemaV6()` en cada apertura, `getMeta`/`putMeta` tolerantes, `stop()`
+y `onDestroy` que nunca lanzan, y arranque en modo seguro si la restauración
+falla. Desde entonces: 0 FATALs.
+
+### Kill + force-stop + reapertura (TEST-6)
+
+`am kill` no mata un FGS (protegido); `am force-stop` sí. Al reabrir con un
+toque: proceso nuevo, FGS activo, sin FATALs, posiciones reanudadas
+(15:39:03) sin duplicados en la reanudación. La alarma de 9 min quedó
+programada (`DOZE_RECOVER` visible en `dumpsys alarm`).
+
+### Doze forzado 11 min con 2.1.74 (TEST-8)
+
+`force-idle` 15:42:38 → 15:53:38. La alarma `DOZE_RECOVER` se entregó en Doze
+profundo, el receiver corrió en 59 ms (`despertar de recuperación
+(servicio_activo=true)`) y se rearmó solo. Durante la ventana llegaron fixes
+con la **misma** `boot_id` (`6b400aa6-…`) y secuencia **monótona** 11→15: la
+identidad funciona de extremo a extremo y no hubo duplicados. Cadencia en
+Doze ~1 min (FGS + alarma sostienen la captura).
+
+### Estado al cierre
+
+App 2.1.74 corriendo en el equipo, jornada abierta, buffer en 0, sin crash
+loop. Pendiente (teléfono en mano): reboot limpio con la app ya abierta para
+validar `AutostartReceiver` sin el confusor del force-stop, y campaña larga.
+
 ## Plantilla para próximas sesiones
 
 Fecha / equipo / Android / OEM / app (versión+código) / batería inicial /

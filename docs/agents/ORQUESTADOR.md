@@ -410,6 +410,15 @@ RELEASE y únicamente con todos los gates verdes.
   pendiente revisar el teléfono. Hallazgo: duplicado real en producción
   (fixes 93992/93993 idénticos, reintento sin dedupe). Registro en
   `docs/operations/PRUEBAS-FISICAS.md`.
+- 2026-09-28: **2.1.74 en teléfono real + crash corregido**. La primera 2.1.74
+  entraba en bucle por colisión de `DATABASE_VERSION = 5` (la 2.1.73 de calle
+  ya la traía con otro esquema: upgrade nunca corría, sin tabla `meta`) más
+  `stop()` no idempotente. Fix: versión 6 idempotente por PRAGMA,
+  `ensureSchemaV6()` en cada apertura, meta tolerante, `stop()`/`onDestroy`
+  que nunca lanzan y arranque en modo seguro. Reinstalada: 0 FATALs, FGS
+  activo, posiciones con `boot_id`+secuencia monótona, alarma de 9 min
+  entregada en Doze profundo con re-arme solo. Kill/force-stop + reapertura
+  limpios; reboot pendiente sin el confusor del force-stop.
 - 2026-09-28: **APK 2.1.74 compilado y listo para instalar** (pedido del
   dueño: verdadera prueba con la arquitectura pulida). Build
   `assembleGoogleRelease` en 52 s con el SDK local; claves restauradas de la

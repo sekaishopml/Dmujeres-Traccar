@@ -86,7 +86,10 @@ class TrackingService : Service() {
         Log.i(TAG, "service destroy")
         sendBroadcast(Intent(ACTION_STOPPED).setPackage(packageName))
         StatusActivity.addMessage(getString(R.string.status_service_destroy))
-        trackingController?.stop()
+        // El apagado nunca lanza: si el arranque quedó a medias, un crash aquí
+        // convierte cualquier fallo en un bucle de reinicios del sistema.
+        runCatching { trackingController?.stop() }
+            .onFailure { Log.w(TAG, "al detener controlador", it) }
     }
 
     companion object {
