@@ -2,6 +2,15 @@
   "percent": 100,
   "paused": false,
   "allow": [
-    "macias"
+    "qa-f0",
+    "macias",
+    "jeremy",
+    "kevin",
+    "joseph",
+    "david",
+    "pilay",
+    "manzaba",
+    "fernando",
+    "alejandro"
   ]
 }
