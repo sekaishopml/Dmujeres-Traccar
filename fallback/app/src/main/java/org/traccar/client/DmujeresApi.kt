@@ -265,7 +265,9 @@ object DmujeresApi {
                 val nombre = SessionAuth.extractDisplayName(body)
                 val expiraEnMs = if (expiraEn > 0) System.currentTimeMillis() + expiraEn * 1_000 else 0L
                 SessionStore.save(context, token, user, nombre, expiraEnMs)
-                prefs(context).edit().putString(Prefs.DEVICE, user).apply()
+                // La identidad del equipo (Prefs.DEVICE) NO se toca: la
+                // persona que entra no renombra al equipo; X-Device-Id sigue
+                // siendo el identificador del equipo (p. ej. "macias").
                 val config = SessionAuth.extractConfigBlock(body)
                 RemoteConfig.applySessionConfig(
                     context,
