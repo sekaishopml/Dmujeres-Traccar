@@ -43,6 +43,19 @@ diferencia): reintento del cliente tras POST lento, sin dedupe en servidor
 (la app 2.1.73 no envía `boot_id`/secuencia; la migración 002 ya está
 aplicada y el dedupe actuará con la 2.1.74).
 
+### TEST-7 Reboot (en curso)
+
+Comando: `adb reboot` (15:28:11). El equipo volvió (boot 15:28) y
+`BOOT_COMPLETED` se procesó (15:31), pero la app no arrancó: sin proceso, sin
+alarma programada, sin rastro de `AutostartReceiver`/`DozeAlarmReceiver` en
+logcat y sin posiciones nuevas. A las 15:33 el sistema congeló el paquete
+(`CpuFreezerManagerServiceV2 ... com.dmujeres.traccar, freezeType=2`): este
+ZTE congela apps de terceros aunque estén exentas de Doze.
+Confusor honesto: el `am force-stop` previo y el posible "Cerrar app" del
+diálogo de crash dejan a la app en estado detenido, que bloquea
+`BOOT_COMPLETED` hasta que el usuario la abre. Para una prueba limpia hace
+falta abrir la app con un toque real y repetir el reboot.
+
 ## Plantilla para próximas sesiones
 
 Fecha / equipo / Android / OEM / app (versión+código) / batería inicial /
