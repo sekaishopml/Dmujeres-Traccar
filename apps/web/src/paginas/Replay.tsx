@@ -28,8 +28,10 @@ import {
   normalizarReconstruidos,
   puntosQuietos,
   segmentosDeRecorrido,
+  viajeDeInstante,
+  viajesEntreParadas,
 } from './operacion/replay';
-import type { Parada, TramoReconstruido } from './operacion/replay';
+import type { Parada, TramoReconstruido, Viaje } from './operacion/replay';
 import { finDeDia, inicioDeDia } from './operacion/rango';
 import './operacion.css';
 import type { Hueco, ReplayCalidad } from '@contratos';
@@ -78,6 +80,55 @@ function IntegridadRecorrido({
   );
 }
 
+// Viajes del día entre paradas. Elegir uno lo resalta en el mapa; elegirlo de
+// nuevo (o "Ver el día completo") vuelve a mostrar todo.
+function ListaViajes({
+  viajes,
+  foco,
+  alElegir,
+}: {
+  viajes: Viaje[];
+  foco: number | null;
+  alElegir: (indice: number | null) => void;
+}) {
+  if (viajes.length === 0) return null;
+  return (
+    <section className="replay-viajes">
+      <header>
+        <h3>Viajes ({viajes.length})</h3>
+        {foco != null && (
+          <button type="button" className="enlace" onClick={() => alElegir(null)}>
+            Ver el día completo
+          </button>
+        )}
+      </header>
+      <ol>
+        {viajes.map((viaje) => {
+          const minutos = Math.max(1, Math.round((milisegundos(viaje.fin) - milisegundos(viaje.inicio)) / 60000));
+          return (
+            <li key={viaje.inicio}>
+              <button
+                type="button"
+                className={viaje.indice === foco ? 'activo' : ''}
+                aria-pressed={viaje.indice === foco}
+                onClick={() => alElegir(viaje.indice === foco ? null : viaje.indice)}
+              >
+                <span className="numero">{viaje.indice + 1}</span>
+                <span className="horas">
+                  {horaCorta(viaje.inicio)} – {horaCorta(viaje.fin)}
+                </span>
+                <span className="datos">
+                  {viaje.distanciaKm.toLocaleString('es-EC', { maximumFractionDigits: 1 })} km · {formatoMinutos(minutos)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
 function formatoMinutos(minutos: number): string {
   if (minutos < 60) return `${minutos} min`;
   const horas = Math.floor(minutos / 60);
@@ -97,35 +148,23 @@ function nombreArchivo(id: string): string {
 // así que la punta conserva el filo en pantallas densas.
 const LADO_FLECHA = 64;
 const PIXEL_RATIO_FLECHA = 2;
-// Núcleo claro con filo del color del tramo: el blanco hace legible la marca
-// sobre teselas claras y satélite; el filo mantiene la identidad de la capa.
+// Núcleo claro de la flecha: se lee sobre la línea azul y sobre satélite.
 const NUCLEO_FLECHA = '#ffffff';
-// Grosor del filo en px nativos (3 px lógicos a escala 1): fino para que las
-// muescas de la silueta no se cierren y la punta siga leyéndose a z11.
+// Grosor del filo en px nativos (3 px lógicos a escala 1).
 const FILO_FLECHA = 6;
-// Navy profundo del tramo ajustado a vía: nunca comparte la paleta de velocidad
-// del GPS registrado (ADR-007) ni el gris punteado del estimado. El casing es
-// el mismo navy un paso más claro y translúcido, para asentar la línea sobre
-// teselas claras sin perderla en la imagen de satélite.
-const COLOR_MATCHED = '#0b2545';
-const COLOR_MATCHED_CASING = '#123a5e';
-const ID_FLECHA_MATCHED = 'dir-matched';
-// Sistema de la cinta REAL: calce grafito neutro por debajo (sienta la traza
-// sobre teselas claras y la separa de la imagen oscura) y pliegue blanco tenue
-// por encima (el lomo central que da volumen de cinta). El cuerpo conserva la
-// paleta de velocidad: el color del tramo manda y el calce no inventa colores.
-// MATCHED no lleva pliegue: la cinta plegada es la identidad del GPS
-// registrado y el ajustado a vía se queda como cinta lisa navy.
-const COLOR_CALCE_REAL = '#22303f';
-const COLOR_FILETE_REAL = '#ffffff';
-// Paleta de velocidad sobria (verdes bosque, ocre, teja y rojo apagados). El
-// orden coincide con la banda 0..4 que calcula replay.ts a partir de la
-// velocidad y con los ids de imagen que referencia la capa symbol.
-const COLORES_BANDA = ['#2f7d5f', '#5f8f66', '#a8893a', '#a86a35', '#9c4238'];
-const IDS_FLECHA = COLORES_BANDA.map((_, banda) => `dir-${banda}`);
-// Separación de las marcas de dirección en ciudad: 120 m dan una lectura de
-// rumbo por cuadra sin saturar la traza (replay.ts la recibe por parámetro; su
-// valor por defecto de 150 m queda intacto para otros consumidores).
+// Trazado: una sola línea azul marino con borde blanco, que se lee igual sobre
+// calles y satélite. El viaje elegido pasa a magenta DMujeres y el resto del
+// día se atenúa; así un día de idas y vueltas por las mismas calles se lee de
+// a un viaje. Lo estimado va punteado en el mismo azul y la falta de señal en
+// gris punteado: nunca se confunden con GPS registrado.
+const COLOR_RUTA = '#17365d';
+const COLOR_FOCO = '#eb0045';
+const COLOR_BORDE = '#ffffff';
+const COLOR_SIN_SENAL = '#8a94a3';
+const OPACIDAD_ATENUADA = 0.2;
+const ID_FLECHA = 'dir-ruta';
+const ID_FLECHA_FOCO = 'dir-foco';
+// Una marca de dirección por cuadra (≈120 m) en ciudad.
 const SEPARACION_FLECHAS_M = 120;
 // Descarte de marcas ajustadas sobre una parada: el trazado reconstruido puede
 // cruzar el punto donde el equipo estuvo detenido y una flecha encima de la
@@ -382,6 +421,8 @@ export default function Replay() {
   const [hasta, setHasta] = useState(parametros.get('hasta') ?? fechaAyerLocal());
   const [mapa, setMapa] = useState<TipoMapa | null>(null);
   const [panelRecogido, setPanelRecogido] = useState(false);
+  // Viaje resaltado (índice en `viajes`) o null para ver el día completo.
+  const [viajeFoco, setViajeFoco] = useState<number | null>(null);
   // Ranuras ocupadas por las etiquetas de los extremos (inicio/fin del
   // recorrido y de la jornada): el registro elige una libre cuando dos pines
   // caen juntos. Vive en un ref porque los efectos que crean marcadores son
@@ -498,7 +539,26 @@ export default function Replay() {
     () => segmentosDeRecorrido(posiciones, huecos, reconstruidos),
     [posiciones, huecos, reconstruidos],
   );
-  const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
+  const viajes = useMemo(() => viajesEntreParadas(posiciones, paradas), [posiciones, paradas]);
+  // Cambiar de equipo o de fechas vuelve al día completo.
+  useEffect(() => {
+    setViajeFoco(null);
+  }, [seleccionado, desde, hasta]);
+  // Cada tramo lleva el índice de su viaje (-1 dentro de una parada) para que
+  // las capas resalten el elegido y atenúen el resto sin rehacer la fuente.
+  const coleccion = useMemo(() => {
+    const base = aColeccion(segmentos);
+    return {
+      ...base,
+      features: base.features.map((feature) => ({
+        ...feature,
+        properties: {
+          ...feature.properties,
+          viaje: viajeDeInstante(viajes, Number(feature.properties?.instante)),
+        },
+      })),
+    };
+  }, [segmentos, viajes]);
   // Marcas de dirección espaciadas por distancia (no una por fix); la selección
   // del mapa no depende de ellas, se resuelve por cercanía sobre la línea de
   // acierto. Las marcas que caen sobre una parada se descartan en cualquier
@@ -531,8 +591,14 @@ export default function Replay() {
         }),
       );
     });
-    return features.length === coleccion.features.length ? coleccion : { ...coleccion, features };
-  }, [posiciones, huecos, reconstruidos, paradas, segmentos]);
+    return {
+      ...coleccion,
+      features: features.map((flecha) => ({
+        ...flecha,
+        properties: { ...flecha.properties, viaje: viajeDeInstante(viajes, Number(flecha.properties?.instante)) },
+      })),
+    };
+  }, [posiciones, huecos, reconstruidos, paradas, segmentos, viajes]);
   // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
   // dispersión real sin líneas que la unan.
   const halos = useMemo(() => halosDeParadas(posiciones, paradas), [posiciones, paradas]);
@@ -564,28 +630,17 @@ export default function Replay() {
     if (!mapa.getSource('replay-quieto')) {
       mapa.addSource('replay-quieto', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
-    // Limpieza del estilo anterior (línea única + contorno navy): el corredor
-    // corporativo lo reemplaza por casing y núcleo por modo. Si el mapa se
-    // reutiliza, las capas viejas se retiran para no duplicar la traza.
-    if (mapa.getLayer('replay-linea-base')) mapa.removeLayer('replay-linea-base');
-    if (mapa.getLayer('replay-linea')) mapa.removeLayer('replay-linea');
-    // Sistema visual del corredor corporativo (4 semánticas ADR-007):
-    // REAL vehículo (casing contenido + núcleo definido por banda), REAL a pie
-    // (mismo idioma, más fino), MATCHED (azul propio), ESTIMATED (gris
-    // punteado) y hueco sin datos (gris claro punteado fino). El quieto no
-    // tiene capa de línea: su dispersión se muestra como halo + nube sutil.
-    const COLOR_BANDA: unknown = [
-      'match',
-      ['get', 'banda'],
-      0, '#2f7d5f',
-      1, '#5f8f66',
-      2, '#a8893a',
-      3, '#a86a35',
-      4, '#9c4238',
-      '#0b2545',
-    ];
-    // Sin filtro de modo: cubre toda la traza para la selección, incluida la
-    // dispersión parada y los tramos sin señal. Casi transparente, solo acierto.
+    // Capas de versiones anteriores (paleta por velocidad, cinta plegada):
+    // si el mapa se reutiliza se retiran para no duplicar la traza.
+    for (const vieja of [
+      'replay-linea-base', 'replay-casing-vehiculo', 'replay-casing-caminata', 'replay-casing-matched',
+      'replay-casing-estimated', 'replay-linea-vehiculo', 'replay-filete-vehiculo', 'replay-matched',
+    ]) {
+      if (mapa.getLayer(vieja)) mapa.removeLayer(vieja);
+    }
+    const trazo = ['in', ['get', 'tipo'], ['literal', ['ruta', 'matched', 'estimated']]];
+    const noQuieto = ['!=', ['get', 'modo'], 'quieto'];
+    // Superficie de acierto: toda la traza, casi transparente.
     if (!mapa.getLayer('replay-linea-hit')) {
       mapa.addLayer({
         id: 'replay-linea-hit',
@@ -595,160 +650,72 @@ export default function Replay() {
         paint: { 'line-color': '#000000', 'line-width': 18, 'line-opacity': 0.01 },
       });
     }
-    // Halo de parada: círculo sutil bajo el corredor con la dispersión de
-    // referencia. La dispersión real la dibuja la nube de puntos quietos.
     if (!mapa.getLayer('replay-halo')) {
       mapa.addLayer({
         id: 'replay-halo',
         type: 'circle',
         source: 'replay-halos',
         paint: {
-          'circle-color': '#0b2545',
-          'circle-opacity': 0.07,
-          'circle-stroke-color': '#0b2545',
-          'circle-stroke-opacity': 0.16,
+          'circle-color': COLOR_RUTA,
+          'circle-opacity': 0.06,
+          'circle-stroke-color': COLOR_RUTA,
+          'circle-stroke-opacity': 0.18,
           'circle-stroke-width': 1,
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 14, 16, 34],
         },
       });
     }
-    // Cinta REAL: calce grafito por debajo (debajo de los núcleos) que asienta
-    // la traza sobre teselas claras. El cuerpo de color va encima y el pliegue
-    // blanco cierra el sistema; caminata usa el mismo idioma más fino.
-    if (!mapa.getLayer('replay-casing-vehiculo')) {
+    // Borde blanco bajo la línea: la separa del mapa sin inventar colores.
+    if (!mapa.getLayer('replay-borde')) {
       mapa.addLayer({
-        id: 'replay-casing-vehiculo',
+        id: 'replay-borde',
         type: 'line',
         source: 'replay-recorrido',
-        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['!=', ['get', 'modo'], 'caminata'], ['!=', ['get', 'modo'], 'quieto']],
+        filter: ['all', trazo, noQuieto, ['!=', ['get', 'modo'], 'caminata']] as never,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': COLOR_CALCE_REAL,
-          'line-opacity': 0.45,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 8, 16, 11],
+          'line-color': COLOR_BORDE,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 5, 16, 9],
         },
       });
     }
-    if (!mapa.getLayer('replay-casing-caminata')) {
+    if (!mapa.getLayer('replay-linea')) {
       mapa.addLayer({
-        id: 'replay-casing-caminata',
+        id: 'replay-linea',
         type: 'line',
         source: 'replay-recorrido',
-        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['==', ['get', 'modo'], 'caminata']],
+        filter: ['all', ['in', ['get', 'tipo'], ['literal', ['ruta', 'matched']]], noQuieto, ['!=', ['get', 'modo'], 'caminata']] as never,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': COLOR_CALCE_REAL,
-          'line-opacity': 0.32,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4.5, 16, 6.5],
+          'line-color': COLOR_RUTA,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.6, 16, 5],
         },
       });
     }
-    if (!mapa.getLayer('replay-casing-matched')) {
+    if (!mapa.getLayer('replay-caminata')) {
       mapa.addLayer({
-        id: 'replay-casing-matched',
+        id: 'replay-caminata',
         type: 'line',
         source: 'replay-recorrido',
-        filter: ['==', ['get', 'tipo'], 'matched'],
+        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['==', ['get', 'modo'], 'caminata']] as never,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': COLOR_MATCHED_CASING,
-          'line-opacity': 0.3,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 16, 10.5],
+          'line-color': COLOR_RUTA,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.6, 16, 3],
         },
       });
     }
-    if (!mapa.getLayer('replay-casing-estimated')) {
-      mapa.addLayer({
-        id: 'replay-casing-estimated',
-        type: 'line',
-        source: 'replay-recorrido',
-        filter: ['==', ['get', 'tipo'], 'estimated'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': '#6b7684',
-          'line-opacity': 0.16,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 6, 16, 9],
-        },
-      });
-    }
-    // Núcleos definidos del corredor.
-    if (!mapa.getLayer('replay-linea-vehiculo')) {
-      mapa.addLayer({
-        id: 'replay-linea-vehiculo',
-        type: 'line',
-        source: 'replay-recorrido',
-        // Solo GPS registrado en vehículo (y tramos sin modo por compatibilidad):
-        // los reconstruidos tienen sus capas propias (ADR-007) y el quieto no
-        // dibuja línea.
-        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['!=', ['get', 'modo'], 'caminata'], ['!=', ['get', 'modo'], 'quieto']],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': COLOR_BANDA as string,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3.4, 16, 5.4],
-        },
-      });
-    }
-    if (!mapa.getLayer('replay-linea-caminata')) {
-      mapa.addLayer({
-        id: 'replay-linea-caminata',
-        type: 'line',
-        source: 'replay-recorrido',
-        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['==', ['get', 'modo'], 'caminata']],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': COLOR_BANDA as string,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.8, 16, 2.8],
-        },
-      });
-    }
-    // Pliegue de la cinta REAL: un lomo blanco tenue por el centro del cuerpo.
-    // A z10-12 mide poco más de un píxel y la cinta se lee sólida; de z13 en
-    // adelante separa el cuerpo en dos filetes del color del tramo, la lectura
-    // de "vía" propia del GPS registrado. No se aplica a caminata (demasiado
-    // fina) ni a MATCHED (ADR-007: el ajustado no comparte la identidad REAL).
-    if (!mapa.getLayer('replay-filete-vehiculo')) {
-      mapa.addLayer({
-        id: 'replay-filete-vehiculo',
-        type: 'line',
-        source: 'replay-recorrido',
-        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['!=', ['get', 'modo'], 'caminata'], ['!=', ['get', 'modo'], 'quieto']],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': COLOR_FILETE_REAL,
-          'line-opacity': 0.45,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.9, 16, 1.6],
-        },
-      });
-    }
-    // MATCHED: hueco con observaciones ajustado a vía. Núcleo continuo navy
-    // sobre su casing translúcido, sin pliegue ni coloreado por velocidad: la
-    // traza ajustada se lee como una cinta lisa propia, distinta del GPS.
-    if (!mapa.getLayer('replay-matched')) {
-      mapa.addLayer({
-        id: 'replay-matched',
-        type: 'line',
-        source: 'replay-recorrido',
-        filter: ['==', ['get', 'tipo'], 'matched'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': COLOR_MATCHED,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.6, 16, 4.2],
-        },
-      });
-    }
-    // ESTIMATED: hueco sin observaciones, ruta A→B. Núcleo punteado gris sobre
-    // su casing: se lee como estimación, nunca como GPS registrado.
     if (!mapa.getLayer('replay-estimated')) {
       mapa.addLayer({
         id: 'replay-estimated',
         type: 'line',
         source: 'replay-recorrido',
         filter: ['==', ['get', 'tipo'], 'estimated'],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        layout: { 'line-join': 'round' },
         paint: {
-          'line-color': '#6b7684',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2, 16, 3.2],
-          'line-dasharray': [2, 2],
+          'line-color': COLOR_RUTA,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.2, 16, 4],
+          'line-dasharray': [1.2, 1.2],
         },
       });
     }
@@ -759,90 +726,42 @@ export default function Replay() {
         source: 'replay-recorrido',
         filter: ['==', ['get', 'tipo'], 'hueco'],
         paint: {
-          // Gris claro punteado: el hueco se lee como "sin datos" y no se
-          // confunde con la ruta ni con el estimado (gris medio más grueso).
-          'line-color': '#9aa3af',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2, 16, 3],
-          'line-dasharray': [1, 2],
+          'line-color': COLOR_SIN_SENAL,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 16, 2.5],
+          'line-dasharray': [0.6, 2],
         },
       });
     }
-    // Nube de dispersión parada: puntos quietos integrados al halo, sin filo
-    // blanco ni borde decorativo, sin unirlos con líneas.
+    // Nube de fixes quietos: la deriva parada como puntos, sin líneas.
     if (!mapa.getLayer('replay-quieto')) {
       mapa.addLayer({
         id: 'replay-quieto',
         type: 'circle',
         source: 'replay-quieto',
         paint: {
-          'circle-color': '#0b2545',
+          'circle-color': COLOR_RUTA,
           'circle-opacity': 0.16,
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 16, 3],
         },
       });
     }
-    // Las imágenes de dirección (núcleo blanco y filo del color del tramo)
-    // deben existir antes de crear la capa symbol. Se registran con pixelRatio
-    // 2 para que icon-size trabaje sobre 32 px lógicos y la punta quede nítida.
-    for (let banda = 0; banda < IDS_FLECHA.length; banda += 1) {
-      const id = IDS_FLECHA[banda];
+    // Flechas de sentido: punta blanca con filo del color de su línea.
+    for (const [id, color] of [[ID_FLECHA, COLOR_RUTA], [ID_FLECHA_FOCO, COLOR_FOCO]] as const) {
       if (mapa.hasImage(id)) mapa.removeImage(id);
-      const imagen = imagenDireccion(COLORES_BANDA[banda]);
+      const imagen = imagenDireccion(color);
       if (imagen) mapa.addImage(id, imagen, { pixelRatio: PIXEL_RATIO_FLECHA });
     }
-    if (mapa.hasImage(ID_FLECHA_MATCHED)) mapa.removeImage(ID_FLECHA_MATCHED);
-    {
-      const imagen = imagenDireccion(COLOR_MATCHED);
-      if (imagen) mapa.addImage(ID_FLECHA_MATCHED, imagen, { pixelRatio: PIXEL_RATIO_FLECHA });
-    }
-    const imagenesListas = IDS_FLECHA.every((id) => mapa.hasImage(id)) && mapa.hasImage(ID_FLECHA_MATCHED);
-    if (imagenesListas && !mapa.getLayer('replay-flechas')) {
+    if (mapa.hasImage(ID_FLECHA) && !mapa.getLayer('replay-flechas')) {
       mapa.addLayer({
         id: 'replay-flechas',
         type: 'symbol',
         source: 'replay-flechas',
         layout: {
-          // Marcas espaciadas por distancia (flechasEspaciadas), no una por
-          // fix: la densidad base la trae la fuente y el zoom solo adelgaza
-          // (flechasPorZoom en cada zoomend). Sin solape: en curvas cerradas el
-          // mapa oculta las que choquen en vez de apilar insignias. La rotación
-          // es en coordenadas del mapa para que el icono apunte al rumbo real.
-          // Los ajustados a vía usan su imagen propia, no la banda de
-          // velocidad.
-          'icon-image': [
-            'match',
-            ['get', 'origen'],
-            'matched',
-            ID_FLECHA_MATCHED,
-            ['match', ['get', 'banda'], 0, 'dir-0', 1, 'dir-1', 2, 'dir-2', 3, 'dir-3', 'dir-4'],
-          ],
+          'icon-image': ID_FLECHA,
           'icon-rotate': ['get', 'bearing'],
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
-          // Tamaño por zoom y origen: la punta del GPS real crece de ~13 px en
-          // z11 a ~25 px en z16, para que la auditoría lea el sentido de marcha
-          // desde la salida del domicilio y las muescas aparezcan al acercar;
-          // el ajustado a vía acompaña en proporción (~0.85) y no compite con
-          // la marca real. MapLibre admite una sola subexpresión de zoom, así
-          // que el interpolate es el de afuera y cada parada resuelve el tamaño
-          // por origen: el primero es el ajustado y el último (por defecto) el
-          // real. La curva se aplana en z18 para que la punta no se agigante al
-          // inspeccionar detalle; la densidad la sigue adelgazando
-          // flechasPorZoom en cada zoomend.
-          'icon-size': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            8, ['match', ['get', 'origen'], 'matched', 0.36, 0.42],
-            10, ['match', ['get', 'origen'], 'matched', 0.39, 0.46],
-            12, ['match', ['get', 'origen'], 'matched', 0.49, 0.58],
-            13, ['match', ['get', 'origen'], 'matched', 0.56, 0.66],
-            14, ['match', ['get', 'origen'], 'matched', 0.65, 0.77],
-            15, ['match', ['get', 'origen'], 'matched', 0.75, 0.88],
-            16, ['match', ['get', 'origen'], 'matched', 0.85, 1],
-            17, ['match', ['get', 'origen'], 'matched', 0.88, 1.04],
-            18, ['match', ['get', 'origen'], 'matched', 0.9, 1.06],
-          ],
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.42, 13, 0.6, 16, 0.85, 18, 0.95],
           'icon-allow-overlap': false,
           'icon-ignore-placement': false,
         },
@@ -858,6 +777,48 @@ export default function Replay() {
     if (!mapa) return;
     mapa.getSource<GeoJSONSource>('replay-recorrido')?.setData(coleccion);
   }, [mapa, coleccion]);
+
+  // Resaltado del viaje elegido: su línea pasa a magenta y el resto del día se
+  // atenúa; las flechas quedan solo en el viaje elegido. Sin foco, todo pleno.
+  useEffect(() => {
+    if (!mapa) return;
+    const enFoco = ['==', ['get', 'viaje'], viajeFoco ?? -99];
+    const opacidad = viajeFoco == null ? 1 : ['case', enFoco, 1, OPACIDAD_ATENUADA];
+    const color = viajeFoco == null ? COLOR_RUTA : ['case', enFoco, COLOR_FOCO, COLOR_RUTA];
+    for (const capa of ['replay-linea', 'replay-caminata', 'replay-estimated']) {
+      if (!mapa.getLayer(capa)) continue;
+      mapa.setPaintProperty(capa, 'line-color', color as never);
+      mapa.setPaintProperty(capa, 'line-opacity', opacidad as never);
+    }
+    for (const capa of ['replay-borde', 'replay-hueco']) {
+      if (mapa.getLayer(capa)) mapa.setPaintProperty(capa, 'line-opacity', opacidad as never);
+    }
+    if (mapa.getLayer('replay-flechas')) {
+      mapa.setFilter('replay-flechas', viajeFoco == null ? null : (enFoco as never));
+      mapa.setLayoutProperty('replay-flechas', 'icon-image', viajeFoco == null ? ID_FLECHA : ID_FLECHA_FOCO);
+    }
+  }, [mapa, viajeFoco, coleccion]);
+
+  // Elegir un viaje encuadra sus puntos; volver al día completo no mueve la
+  // cámara (el operador decide dónde mirar).
+  function enfocarViaje(indice: number | null) {
+    setViajeFoco(indice);
+    if (!mapa || indice == null) return;
+    const viaje = viajes[indice];
+    if (!viaje) return;
+    const desdeMs = milisegundos(viaje.inicio);
+    const hastaMs = milisegundos(viaje.fin);
+    const puntos = posiciones.filter((p) => {
+      const t = milisegundos(p.registradoEn);
+      return t >= desdeMs && t <= hastaMs;
+    });
+    if (puntos.length === 0) return;
+    const caja = puntos.reduce(
+      (acumulada, p) => acumulada.extend([p.longitud, p.latitud] as [number, number]),
+      new LngLatBounds([puntos[0].longitud, puntos[0].latitud], [puntos[0].longitud, puntos[0].latitud]),
+    );
+    mapa.fitBounds(caja, { padding: { top: 70, bottom: 150, left: panelRecogido ? 70 : 460, right: 70 }, maxZoom: 16, duration: 600 });
+  }
 
   useEffect(() => {
     if (!mapa) return;
@@ -1002,6 +963,7 @@ export default function Replay() {
           reconstruidos={reconstruidos}
           calidad={replay.data.calidad}
         />
+        <ListaViajes viajes={viajes} foco={viajeFoco} alElegir={enfocarViaje} />
         <PanelPuntoSeleccionado />
         <ListaParadas
           paradas={paradas}

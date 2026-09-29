@@ -155,7 +155,7 @@
 .pagina-historial .tabla-datas tbody tr:hover td { background: #f7f9fb; }
 .pagina-historial .tabla-datas tbody tr.seleccionada td { background: #edf2f8; }
 .pagina-historial .tabla-datas tbody tr:focus { outline: none; }
-.pagina-historial .tabla-datas tbody tr:focus td { outline: 2px solid rgba(31, 122, 77, .3); outline-offset: -2px; }
+.pagina-historial .tabla-datas tbody tr:focus td { outline: 2px solid rgba(31, 90, 150, .3); outline-offset: -2px; }
 
 /* Expediente: la cronología lee como historia de la jornada, no como lista
    de controles; la ficha de datos va debajo sin caja propia. La línea
@@ -165,3 +165,10 @@
   display: block; font-size: 12.5px; color: var(--apagado);
 }
 .pagina-historial .aviso { margin: 0 0 8px; }
+
+/* Tablero de Inicio: la observación puede ser larga y se deja respirar; la
+   acción de la fila queda pegada a la derecha. */
+.pagina-inicio .tira-datos { margin-bottom: 16px; }
+.pagina-inicio .tablero .observacion { color: var(--apagado); font-size: var(--tamano-sm); max-width: 34ch; }
+.pagina-inicio .tablero .acciones-fila { text-align: right; white-space: nowrap; }
+.pagina-inicio .tablero td { vertical-align: top; }

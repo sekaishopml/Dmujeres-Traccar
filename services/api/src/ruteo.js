@@ -129,7 +129,22 @@ function coordenadasValidas(posicion) {
 // (mismo instante, misma coordenada) cuenta como parado.
 function velocidadParaParada(actual, anterior) {
   const reportada = actual?.velocidadKmh;
-  if (typeof reportada === 'number' && Number.isFinite(reportada)) return reportada;
+  if (typeof reportada === 'number' && Number.isFinite(reportada)) {
+    // Apps viejas reportan 0 en marcha: el desplazamiento fiable (>= 30 m,
+    // mayor que la precisión, en <= 5 min) manda si es mayor.
+    if (!anterior) return reportada;
+    try {
+      const segundos = (instanteMs(actual) - instanteMs(anterior)) / 1000;
+      const metros = distanciaM(anterior, actual);
+      const umbral = Math.max(30, Number(actual?.precisionM) || 0);
+      if (segundos > 0 && segundos <= 300 && metros >= umbral) {
+        return Math.max(reportada, (metros / segundos) * 3.6);
+      }
+    } catch {
+      return reportada;
+    }
+    return reportada;
+  }
   if (!anterior) return null;
   const desde = instanteMs(anterior);
   const hasta = instanteMs(actual);

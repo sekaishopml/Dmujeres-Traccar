@@ -574,7 +574,7 @@ function GraficoBateria() {
       datasets: [
         {
           data: serie,
-          borderColor: '#0b2545',
+          borderColor: '#17365d',
           backgroundColor: 'rgba(10, 37, 64, .1)',
           borderWidth: 1.5,
           pointRadius: 0,
@@ -583,8 +583,8 @@ function GraficoBateria() {
         },
         {
           data: serie.map((valor, posicion) => (posicion === indicePunto ? valor : null)),
-          borderColor: '#0b2545',
-          backgroundColor: '#0b2545',
+          borderColor: '#17365d',
+          backgroundColor: '#17365d',
           pointRadius: 3,
           pointHoverRadius: 3,
           showLine: false,

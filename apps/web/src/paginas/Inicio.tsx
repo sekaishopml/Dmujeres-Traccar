@@ -1,16 +1,15 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { Dispositivo, EstadoSalud } from '@contratos';
+import type { Dispositivo } from '@contratos';
 import { consulta } from '../api/cliente';
 import { bateria, duracion, hace, hora, GUION } from '../util/formato';
 import Icono from '../componentes/Icono';
 import EncabezadoPagina from '../componentes/EncabezadoPagina';
-import CabeceraSeccion from '../componentes/CabeceraSeccion';
 import EstadoVacio from '../componentes/EstadoVacio';
 import { traerFlota, traerJornadasFlota, traerSalud, CLAVE_FLOTA, equiposHabilitados } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
-import { claveEstado } from './operacion/estado';
+import { claveEstado, etiquetaEstado } from './operacion/estado';
 import { finDeDia, fechaHoyLocal, inicioDeDia } from './operacion/rango';
 import '../estilos/paginas.css';
 
@@ -19,7 +18,6 @@ const REFRESCO_MS = 15_000;
 // el sondeo va más espaciado que el de flota y se detiene con la pestaña
 // oculta.
 const REFRESCO_JORNADAS_MS = 60_000;
-const MAX_AVISOS = 6;
 // El estado SIN_SENAL de la API ya exige 5 minutos sin conexión; el umbral se
 // repite para no avisar de equipos que acaban de reconectar entre sondeos.
 const MINUTOS_SIN_SENAL = 5;
@@ -48,35 +46,6 @@ interface FilaJornada {
   duracionMin: number | null;
 }
 
-// Chip de salud con las clases existentes: el color ya se lee en el resto del
-// panel y no se agregan estilos nuevos.
-const CLASE_SALUD: Record<EstadoSalud, string> = {
-  HEALTHY: 'enLinea',
-  DEGRADED: 'senalDebil',
-  OFFLINE: 'sinSenal',
-  RECOVERING: 'detenido',
-  MISCONFIGURED: 'deshabilitado',
-};
-
-const ETIQUETA_SALUD: Record<EstadoSalud, string> = {
-  HEALTHY: 'Al día',
-  DEGRADED: 'Con problemas',
-  OFFLINE: 'Sin señal',
-  RECOVERING: 'Reconectando',
-  MISCONFIGURED: 'Mal configurado',
-};
-
-// Edad del último fix en texto corto ("hace 8 min"): la causa explica el
-// porqué y esto pone el cuándo. Sin dato se muestra el guion, nunca un cero
-// inventado.
-function haceSegundos(segundos: number | null | undefined): string {
-  if (segundos == null || !Number.isFinite(segundos)) return GUION;
-  if (segundos < 60) return `hace ${Math.max(0, Math.round(segundos))} s`;
-  const minutos = Math.round(segundos / 60);
-  if (minutos < 60) return `hace ${minutos} min`;
-  return `hace ${Math.floor(minutos / 60)} h ${minutos % 60} min`;
-}
-
 export default function Inicio() {
   // Sondeo de fondo: un 401 aquí no redirige, solo deja el estado de error.
   const flota = useQuery({
@@ -92,7 +61,6 @@ export default function Inicio() {
   // salud se completan con la flota cruda para no perder datos de equipos que
   // se dieron de baja después de operar.
   const dispositivos = useMemo(() => equiposHabilitados(equiposFlota), [equiposFlota]);
-  const idsHabilitados = useMemo(() => new Set(dispositivos.map((equipo) => equipo.id)), [dispositivos]);
 
   const metricas = useMemo(() => {
     const resumen = { enLinea: 0, detenido: 0, sinSenal: 0, deshabilitado: 0, bateriaBaja: 0 };
@@ -177,39 +145,32 @@ export default function Inicio() {
     );
   }, [dispositivos]);
 
-  const avisosVisibles = avisos.slice(0, MAX_AVISOS);
-  const avisosRestantes = avisos.length - avisosVisibles.length;
-
   const actualizado = flota.dataUpdatedAt ? hace(new Date(flota.dataUpdatedAt).toISOString()) : null;
 
-  const unidadesConJornada = useMemo(
-    () => new Set(filasJornadas.map((fila) => fila.unidadId)).size,
-    [filasJornadas],
-  );
-  const cuentaJornadas = jornadas.isPending
-    ? 'Consultando…'
-    : jornadasDisponibles
-      ? `${filasJornadas.length} jornadas · ${unidadesConJornada} equipos`
-      : 'No disponibles';
-
-  // La salud por equipo es estado vivo: los equipos deshabilitados no se
-  // listan. Sin flota cargada no se puede distinguir un habilitado y se
-  // conserva la respuesta tal cual para no vaciar la sección por un fallo de
-  // /fleet.
-  const equiposSalud = useMemo(() => {
-    const datos = salud.data?.datos ?? [];
-    if (!flota.data) return datos;
-    return datos.filter((equipo) => idsHabilitados.has(equipo.dispositivoId));
-  }, [salud.data, flota.data, idsHabilitados]);
-  // Los nombres se completan con la flota cruda: una entrada de salud solo se
-  // pinta si su equipo está habilitado, pero el nombre debe existir aunque el
-  // contrato lo haya omitido.
-  const nombresSalud = useMemo(() => new Map(equiposFlota.map((equipo) => [equipo.id, equipo])), [equiposFlota]);
-  const cuentaSalud = salud.isPending
-    ? 'Consultando…'
-    : salud.error
-      ? 'No disponibles'
-      : `${equiposSalud.length} equipos`;
+  // Tablero: una fila por equipo con todo lo que se mira en el día (estado,
+  // diagnóstico, último reporte, batería y jornada). Primero lo que requiere
+  // atención, después el resto por nombre.
+  const filas = useMemo(() => {
+    const saludPorId = new Map((salud.data?.datos ?? []).map((equipo) => [equipo.dispositivoId, equipo]));
+    const avisoPorId = new Map(avisos.map((aviso) => [aviso.equipo.id, aviso]));
+    const jornadaPorId = new Map<string, FilaJornada>();
+    for (const fila of filasJornadas) if (!jornadaPorId.has(fila.unidadId)) jornadaPorId.set(fila.unidadId, fila);
+    return dispositivos
+      .map((equipo) => {
+        const aviso = avisoPorId.get(equipo.id);
+        const diagnostico = saludPorId.get(equipo.id);
+        const problema = diagnostico != null && diagnostico.estado !== 'HEALTHY';
+        return {
+          equipo,
+          jornada: jornadaPorId.get(equipo.idPublico) ?? null,
+          // "Último GPS hace…" ya está en su columna; la observación queda
+          // para la causa real (señal débil, hueco de captura, batería).
+          nota: (problema ? diagnostico.causa : aviso?.motivos.join(' · ') ?? '').replace(/^Último GPS hace [^.]*\.?\s*/, ''),
+          rango: aviso?.rango ?? (problema ? 3 : 9),
+        };
+      })
+      .sort((a, b) => a.rango - b.rango || a.equipo.nombre.localeCompare(b.equipo.nombre, 'es'));
+  }, [dispositivos, avisos, salud.data, filasJornadas]);
 
   return (
     <section className="pagina-inicio">
@@ -232,75 +193,81 @@ export default function Inicio() {
 
       {flota.data && (
         <>
-          <section className="seccion">
-            <div className="tira-datos">
-              <div className="dato">
-                <div className="valor">{flota.data.total}</div>
-                <div className="etiqueta">Equipos</div>
-              </div>
-              <div className="dato">
-                <div className="valor">{metricas.enLinea}</div>
-                <div className="etiqueta">En línea</div>
-              </div>
-              <div className="dato">
-                <div className="valor">{metricas.detenido}</div>
-                <div className="etiqueta">Detenido</div>
-              </div>
-              <div className={`dato${metricas.sinSenal > 0 ? ' aviso' : ''}`}>
-                <div className="valor">{metricas.sinSenal}</div>
-                <div className="etiqueta">Sin señal / débil</div>
-              </div>
-              <div className={`dato${metricas.bateriaBaja > 0 ? ' alerta' : ''}`}>
-                <div className="valor">{metricas.bateriaBaja}</div>
-                <div className="etiqueta">Batería ≤ 20%</div>
-              </div>
+          <div className="tira-datos">
+            <div className="dato">
+              <div className="valor">{flota.data.total}</div>
+              <div className="etiqueta">Equipos</div>
             </div>
-          </section>
+            <div className="dato">
+              <div className="valor">{metricas.enLinea}</div>
+              <div className="etiqueta">En movimiento</div>
+            </div>
+            <div className="dato">
+              <div className="valor">{metricas.detenido}</div>
+              <div className="etiqueta">Detenidos</div>
+            </div>
+            <div className={`dato${metricas.sinSenal > 0 ? ' aviso' : ''}`}>
+              <div className="valor">{metricas.sinSenal}</div>
+              <div className="etiqueta">Sin señal</div>
+            </div>
+            <div className="dato">
+              <div className="valor">{jornadasDisponibles ? filasJornadas.length : GUION}</div>
+              <div className="etiqueta">Jornadas hoy</div>
+            </div>
+            <div className={`dato${metricas.bateriaBaja > 0 ? ' alerta' : ''}`}>
+              <div className="valor">{metricas.bateriaBaja}</div>
+              <div className="etiqueta">Batería baja</div>
+            </div>
+          </div>
 
-          <section className="seccion">
-            <CabeceraSeccion titulo="Jornadas de hoy" cuenta={cuentaJornadas} />
-            {dispositivos.length === 0 && (
+          <section className="seccion tablero">
+            {dispositivos.length === 0 ? (
               <EstadoVacio icono="historial">No hay equipos asignados a esta cuenta.</EstadoVacio>
-            )}
-            {dispositivos.length > 0 && jornadas.isPending && (
-              <p className="vacio pulso">Consultando las jornadas del día…</p>
-            )}
-            {jornadasDisponibles && filasJornadas.length === 0 && (
-              <EstadoVacio icono="historial">Ningún equipo abrió jornada hoy.</EstadoVacio>
-            )}
-            {!jornadas.isPending && !jornadasDisponibles && (
-              <EstadoVacio icono="historial">El servidor todavía no entrega las jornadas.</EstadoVacio>
-            )}
-            {jornadasDisponibles && filasJornadas.length > 0 && (
+            ) : (
               <div className="tabla-envoltura">
                 <table className="tabla">
                   <thead>
                     <tr>
                       <th>Equipo</th>
-                      <th>Inició</th>
-                      <th>Finalizó</th>
-                      <th className="num">Duración</th>
-                      <th>Historial</th>
+                      <th>Estado</th>
+                      <th>Último reporte</th>
+                      <th className="num">Batería</th>
+                      <th>Jornada de hoy</th>
+                      <th>Observación</th>
+                      <th aria-label="Acciones" />
                     </tr>
                   </thead>
                   <tbody>
-                    {filasJornadas.map((fila) => (
-                      <tr key={`${fila.unidadId}-${fila.inicioEn}`}>
+                    {filas.map(({ equipo, jornada, nota }) => (
+                      <tr key={equipo.id}>
                         <td>
-                          <Link className="enlace-tabla" to={`/unidad/${fila.unidadId}`}>
-                            {fila.nombre}
+                          <Link className="enlace-tabla" to={`/unidad/${equipo.idPublico}`}>
+                            {equipo.nombre}
                           </Link>
-                          <div className="apagado mono">{fila.identificador}</div>
+                          <div className="apagado mono">{equipo.identificadorUnico}</div>
                         </td>
-                        <td>{hora(fila.inicioEn)}</td>
-                        <td>{fila.finEn ? hora(fila.finEn) : 'En curso'}</td>
-                        <td className="num">{fila.duracionMin != null ? duracion(fila.duracionMin * 60) : GUION}</td>
                         <td>
+                          <span className={`chip ${claveEstado(equipo)}`}>{etiquetaEstado(equipo)}</span>
+                        </td>
+                        <td>{equipo.ultimaConexion ? hace(equipo.ultimaConexion) : GUION}</td>
+                        <td className="num">{equipo.bateriaPct != null ? bateria(equipo.bateriaPct) : GUION}</td>
+                        <td>
+                          {jornada
+                            ? jornada.finEn
+                              ? `${hora(jornada.inicioEn)} – ${hora(jornada.finEn)}`
+                              : `Desde ${hora(jornada.inicioEn)}`
+                            : GUION}
+                          {jornada?.duracionMin != null && (
+                            <div className="apagado">{duracion(jornada.duracionMin * 60)}</div>
+                          )}
+                        </td>
+                        <td className="observacion">{nota}</td>
+                        <td className="acciones-fila">
                           <Link
                             className="enlace-tabla"
-                            to={`/historial${consulta({ dispositivo: fila.unidadId, desde: hoy, hasta: hoy })}`}
+                            to={`/replay${consulta({ dispositivo: equipo.idPublico, desde: hoy, hasta: hoy })}`}
                           >
-                            Ver jornada
+                            Replay
                           </Link>
                         </td>
                       </tr>
@@ -309,78 +276,8 @@ export default function Inicio() {
                 </table>
               </div>
             )}
-          </section>
-
-          <section className="seccion">
-            <CabeceraSeccion titulo="Salud de la flota" cuenta={cuentaSalud} />
-            {salud.isPending && <p className="vacio pulso">Consultando la salud de los equipos…</p>}
-            {salud.error && esNoEncontrado(salud.error) && (
-              <EstadoVacio icono="sistema">La salud de los equipos todavía no está disponible.</EstadoVacio>
-            )}
             {salud.error && !esNoEncontrado(salud.error) && (
-              <EstadoVacio icono="sistema">{mensajeError(salud.error)}</EstadoVacio>
-            )}
-            {salud.data && equiposSalud.length === 0 && (
-              <EstadoVacio icono="sistema">Sin equipos para mostrar.</EstadoVacio>
-            )}
-            {salud.data && equiposSalud.length > 0 && (
-              <ul className="lista-avisos">
-                {equiposSalud.map((equipo) => {
-                  const conocido = nombresSalud.get(equipo.dispositivoId);
-                  const nombre = conocido?.nombre ?? `Equipo ${equipo.dispositivoId}`;
-                  const identificador = conocido?.identificadorUnico ?? String(equipo.dispositivoId);
-                  // La causa del servidor ya suele traer la edad ("Último
-                  // GPS hace 8 min", ADR-009); solo se compone desde
-                  // lastFixAgeS cuando viene vacía.
-                  const causa =
-                    equipo.causa ||
-                    (equipo.lastFixAgeS != null
-                      ? `Última posición ${haceSegundos(equipo.lastFixAgeS)}`
-                      : 'Sin causa informada');
-                  return (
-                    <li key={equipo.dispositivoId}>
-                      <span className={`chip ${CLASE_SALUD[equipo.estado]}`}>{ETIQUETA_SALUD[equipo.estado]}</span>
-                      <span>
-                        <strong>{nombre}</strong>{' '}
-                        <span className="mono apagado">{identificador}</span>
-                      </span>
-                      <span className="motivo">{causa}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-          <section className="seccion">
-            <CabeceraSeccion
-              titulo="Requieren atención"
-              cuenta={avisos.length === 0 ? 'Nada pendiente' : `${avisos.length} equipos`}
-              acciones={
-                <>
-                  {avisosRestantes > 0 && <span className="cuenta">y {avisosRestantes} más</span>}
-                  <Link className="boton boton-suave" to="/en-vivo">
-                    Ver en vivo
-                  </Link>
-                </>
-              }
-            />
-            {avisos.length === 0 ? (
-              <EstadoVacio icono="sistema">
-                Ningún equipo requiere atención: todos reportan conexión y batería suficiente.
-              </EstadoVacio>
-            ) : (
-              <ul className="lista-avisos">
-                {avisosVisibles.map(({ equipo, motivos }) => (
-                  <li key={equipo.id}>
-                    <Link className="enlace-tabla" to={`/unidad/${equipo.idPublico}`}>
-                      {equipo.nombre}
-                    </Link>
-                    <span className="mono apagado">{equipo.identificadorUnico}</span>
-                    <span className="motivo">{motivos.join(' · ')}</span>
-                  </li>
-                ))}
-              </ul>
+              <p className="replay-nota">Diagnóstico no disponible: {mensajeError(salud.error)}</p>
             )}
           </section>
         </>

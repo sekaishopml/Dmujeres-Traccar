@@ -4,6 +4,10 @@
 // mismas reglas para reportes y replay. Los umbrales son constantes del codigo.
 
 export const UMBRAL_MOVIMIENTO_KMH = 5;
+// Desplazamiento mínimo entre fixes para confiar en la velocidad calculada
+// (por debajo es jitter del GPS parado) y ventana máxima entre ellos.
+export const MIN_DESPLAZAMIENTO_FIABLE_M = 30;
+export const MAX_INTERVALO_VELOCIDAD_S = 300;
 export const MIN_PARADA_SEGUNDOS = 180;
 // Una parada real (el equipo horas en la base) llegaba fragmentada en decenas
 // de registros: cada micro-movimiento de jitter o cada hueco sin cobertura
@@ -60,11 +64,12 @@ export const ORDEN_PARADAS = {
 // $4 = dispositivo (NULL = todos). Devuelve una fila por tramo con `tipo`.
 export function sqlSegmentos() {
   return `
-    WITH pts AS (
+    WITH crudos_pts AS (
       SELECT p.id, p.id_publico, p.dispositivo_id, p.registrado_en, p.latitud, p.longitud,
-             p.direccion,
-             coalesce(p.velocidad_kmh, 0) AS velocidad,
-             (coalesce(p.velocidad_kmh, 0) > ${UMBRAL_MOVIMIENTO_KMH}) AS en_movimiento
+             p.direccion, p.velocidad_kmh, p.precision_m,
+             lag(p.registrado_en) OVER wp AS t_previo,
+             lag(p.latitud) OVER wp AS lat_prev,
+             lag(p.longitud) OVER wp AS lon_prev
       FROM tracking.dmt_posicion p
       JOIN tracking.dmt_dispositivo d ON d.id = p.dispositivo_id
       WHERE d.habilitado
@@ -74,6 +79,34 @@ export function sqlSegmentos() {
               WHERE a.dispositivo_id = d.id AND a.usuario_id = $1 AND a.activa
                 AND a.desde_en <= now() AND (a.hasta_en IS NULL OR a.hasta_en > now())))
         AND ($4::bigint IS NULL OR p.dispositivo_id = $4)
+      WINDOW wp AS (PARTITION BY p.dispositivo_id ORDER BY p.registrado_en)
+    ),
+    -- Velocidad efectiva: la mayor entre la reportada y la del desplazamiento
+    -- real contra el fix anterior, si ese desplazamiento es fiable (>= ${MIN_DESPLAZAMIENTO_FIABLE_M} m y
+    -- mayor que la precisión del fix, en <= ${MAX_INTERVALO_VELOCIDAD_S} s). Apps viejas reportan 0 en marcha (Pilay 28/09:
+    -- 10 km a 40-100 km/h con velocidad 0) y la parada se tragaba el viaje.
+    pts AS (
+      SELECT c.id, c.id_publico, c.dispositivo_id, c.registrado_en, c.latitud, c.longitud, c.direccion,
+             greatest(coalesce(c.velocidad_kmh, 0), coalesce(v.implicita, 0)) AS velocidad,
+             (greatest(coalesce(c.velocidad_kmh, 0), coalesce(v.implicita, 0)) > ${UMBRAL_MOVIMIENTO_KMH}) AS en_movimiento
+      FROM crudos_pts c
+      CROSS JOIN LATERAL (
+        SELECT CASE
+          WHEN c.t_previo IS NULL THEN NULL
+          WHEN extract(epoch FROM (c.registrado_en - c.t_previo)) NOT BETWEEN 1 AND ${MAX_INTERVALO_VELOCIDAD_S} THEN NULL
+          ELSE (
+            6371000 * 2 * asin(sqrt(
+              power(sin(radians(c.latitud - c.lat_prev) / 2), 2)
+              + cos(radians(c.lat_prev)) * cos(radians(c.latitud))
+                * power(sin(radians(c.longitud - c.lon_prev) / 2), 2)
+            ))
+          ) END AS metros
+      ) d
+      CROSS JOIN LATERAL (
+        SELECT CASE WHEN d.metros >= greatest(${MIN_DESPLAZAMIENTO_FIABLE_M}, coalesce(c.precision_m, 0))
+                    THEN d.metros / extract(epoch FROM (c.registrado_en - c.t_previo)) * 3.6
+               END AS implicita
+      ) v
     ),
     saltos AS (
       SELECT pts.*,

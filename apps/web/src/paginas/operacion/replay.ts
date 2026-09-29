@@ -16,6 +16,9 @@ export interface SegmentoRecorrido {
   // vehículo con casing ancho, caminata con línea fina del mismo idioma y
   // quieto sin línea (la dispersión se muestra como halo de puntos).
   modo?: ModoReal;
+  // Instante (ms) en que empieza el tramo: ubica el tramo en su viaje para
+  // resaltar un viaje y atenuar el resto del día.
+  instante?: number;
 }
 
 // Modo de desplazamiento de un fix o par GPS registrado. No toca el contrato
@@ -247,12 +250,25 @@ function distanciaKm(a: Coordenada, b: Coordenada): number {
 // anterior (distancia/tiempo). Los equipos que no reportan velocidad quedaban
 // fuera de las detenciones aunque estuvieran parados, porque "null < 2" se
 // evaluaba como falso. Sin anterior, o con tiempos iguales, no hay evidencia.
+// Además, si el desplazamiento real contra el fix anterior es fiable (>= 30 m,
+// mayor que la precisión del fix y en <= 5 min), manda la mayor de las dos:
+// apps viejas reportan 0 en marcha (Pilay 28/09 viajó 10 km con velocidad 0).
+// Mismo criterio que las paradas del servidor (segmentos.js).
+const DESPLAZAMIENTO_FIABLE_M = 30;
+const INTERVALO_VELOCIDAD_MAX_H = 5 / 60;
+
 function velocidadEfectivaKmh(posicion: Posicion, anterior: Posicion | null): number | null {
-  if (posicion.velocidadKmh != null && Number.isFinite(posicion.velocidadKmh)) return posicion.velocidadKmh;
-  if (!anterior) return null;
+  const reportada =
+    posicion.velocidadKmh != null && Number.isFinite(posicion.velocidadKmh) ? posicion.velocidadKmh : null;
+  if (!anterior) return reportada;
   const horas = (milisegundos(posicion.registradoEn) - milisegundos(anterior.registradoEn)) / 3600000;
-  if (!(horas > 0)) return null;
-  return distanciaKm(anterior, posicion) / horas;
+  if (!(horas > 0)) return reportada;
+  const metros = distanciaKm(anterior, posicion) * 1000;
+  const umbral = Math.max(DESPLAZAMIENTO_FIABLE_M, posicion.precisionM ?? 0);
+  const implicita = metros / 1000 / horas;
+  if (reportada == null) return implicita;
+  if (metros >= umbral && horas <= INTERVALO_VELOCIDAD_MAX_H) return Math.max(reportada, implicita);
+  return reportada;
 }
 
 // Bandas de color de Traccar: teal <10, verde <25, amarillo <45, naranja <70
@@ -827,6 +843,7 @@ export function segmentosDeRecorrido(
         // Solo presentación: el trazado ajustado a vía y el estimado se
         // redondean; el GPS registrado y los huecos rectos quedan crudos.
         coordenadas: suavizarTrazado(trazado.map(([lon, lat]) => [lon, lat] as [number, number])),
+        instante: milisegundos(tramo.desde),
       });
     }
   }
@@ -851,7 +868,7 @@ export function segmentosDeRecorrido(
       [actual.longitud, actual.latitud],
     ];
     if (paresHueco.has(`${anterior.registradoEn}|${actual.registradoEn}`) || esSaltoSinObservar(anterior, actual)) {
-      segmentos.push({ tipo: 'hueco', coordenadas });
+      segmentos.push({ tipo: 'hueco', coordenadas, instante: milisegundos(anterior.registradoEn) });
       continue;
     }
     segmentos.push({
@@ -859,6 +876,7 @@ export function segmentosDeRecorrido(
       banda: bandaVelocidad(velocidadEfectivaKmh(actual, anterior)),
       modo: modoDePar(quietos, velocidades, i),
       coordenadas,
+      instante: milisegundos(anterior.registradoEn),
     });
   }
   return segmentos;
@@ -919,6 +937,7 @@ export function flechasEspaciadas(
       banda: bandaVelocidad(velocidadEfectivaKmh(par.actual, par.anterior)),
       origen: 'real',
       indice: par.indice,
+      instante: milisegundos(par.anterior.registradoEn),
     },
     geometry: { type: 'Point', coordinates: [longitud, latitud] },
   });
@@ -1050,6 +1069,7 @@ export function flechasEspaciadas(
             banda: 0,
             origen: 'matched',
             indice: indiceTrazado,
+            instante: milisegundos(tramo.desde),
           },
           geometry: { type: 'Point', coordinates: [lonB, latB] },
         });
@@ -1235,6 +1255,7 @@ export function aColeccion(segmentos: SegmentoRecorrido[]): FeatureCollection<Li
         tipo: segmento.tipo,
         ...(segmento.banda == null ? {} : { banda: segmento.banda }),
         ...(segmento.modo == null ? {} : { modo: segmento.modo }),
+        ...(segmento.instante == null ? {} : { instante: segmento.instante }),
       },
       geometry: { type: 'LineString', coordinates: segmento.coordenadas },
     })),
@@ -1365,4 +1386,63 @@ export function estadoDePunto(
   const velocidad = velocidadEfectivaKmh(posicion, anterior);
   if (velocidad != null && Number.isFinite(velocidad) && velocidad < VELOCIDAD_DETENCION_KMH) return 'detencion';
   return 'movimiento';
+}
+
+// Viaje: el tramo del día entre dos paradas. El Replay lista los viajes y al
+// elegir uno lo resalta y atenúa el resto; así un día con decenas de idas y
+// vueltas por las mismas calles se lee de a un viaje.
+export interface Viaje {
+  indice: number;
+  inicio: string;
+  fin: string;
+  distanciaKm: number;
+  puntos: number;
+}
+
+// Viajes entre paradas consecutivas (y antes de la primera / después de la
+// última, si hay fixes ahí). Un intervalo sin fixes no es viaje.
+export function viajesEntreParadas(posiciones: Posicion[], paradas: Parada[]): Viaje[] {
+  if (posiciones.length < 2) return [];
+  const ordenadas = [...paradas].sort((a, b) => milisegundos(a.inicio) - milisegundos(b.inicio));
+  const primero = milisegundos(posiciones[0].registradoEn);
+  const ultimo = milisegundos(posiciones[posiciones.length - 1].registradoEn);
+  const intervalos: [number, number][] = [];
+  let cursor = primero;
+  for (const parada of ordenadas) {
+    const inicio = milisegundos(parada.inicio);
+    if (inicio > cursor) intervalos.push([cursor, inicio]);
+    cursor = Math.max(cursor, milisegundos(parada.fin));
+  }
+  if (ultimo > cursor) intervalos.push([cursor, ultimo]);
+  const viajes: Viaje[] = [];
+  for (const [desde, hasta] of intervalos) {
+    let metros = 0;
+    let puntos = 0;
+    let anterior: Posicion | null = null;
+    for (const posicion of posiciones) {
+      const instante = milisegundos(posicion.registradoEn);
+      if (instante < desde || instante > hasta) continue;
+      if (anterior) metros += distanciaKm(anterior, posicion) * 1000;
+      anterior = posicion;
+      puntos += 1;
+    }
+    // Menos de 100 m o de 2 fixes es deriva junto a la parada, no un viaje.
+    if (puntos < 2 || metros < 100) continue;
+    viajes.push({
+      indice: viajes.length,
+      inicio: new Date(desde).toISOString(),
+      fin: new Date(hasta).toISOString(),
+      distanciaKm: metros / 1000,
+      puntos,
+    });
+  }
+  return viajes;
+}
+
+// Índice del viaje que contiene el instante, o -1 si cae en una parada.
+export function viajeDeInstante(viajes: Viaje[], instante: number): number {
+  for (const viaje of viajes) {
+    if (instante >= milisegundos(viaje.inicio) && instante < milisegundos(viaje.fin)) return viaje.indice;
+  }
+  return -1;
 }

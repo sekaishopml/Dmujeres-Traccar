@@ -26,7 +26,7 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 .logotipo-marca { flex: none; display: block; width: 30px; height: 30px; }
 .logotipo-tile { fill: var(--navy); }
 .logotipo-ruta { stroke: #fff; }
-.logotipo-nodo { fill: var(--acento); }
+.logotipo-nodo { fill: var(--marca); }
 .logotipo-nodo-fin { fill: #fff; }
 .logotipo-texto { display: inline-flex; align-items: baseline; gap: .32em; white-space: nowrap; }
 .logotipo-nombre { font-weight: var(--peso-titulo); color: var(--navy); letter-spacing: -.2px; font-size: 15px; }
@@ -67,7 +67,7 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 .lateral nav a:hover { background: rgba(255,255,255,.06); color: #fff; text-decoration: none; }
 .lateral nav a.activo {
   background: rgba(255,255,255,.08); color: #fff;
-  box-shadow: inset 2px 0 0 var(--acento);
+  box-shadow: inset 3px 0 0 var(--marca);
 }
 .lateral nav a .icono { width: 19px; height: 19px; opacity: .8; }
 .lateral nav a.activo .icono { opacity: 1; color: var(--acento-claro); }
@@ -262,7 +262,7 @@ input, select, textarea {
   border: 1px solid var(--linea-3); border-radius: var(--radio-sm); padding: 6px 9px; background: #fff; min-height: 32px;
   transition: border-color var(--transicion-rapida), box-shadow var(--transicion-rapida);
 }
-input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(31, 122, 77, .18); border-color: var(--acento); }
+input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(31, 90, 150, .2); border-color: var(--acento); }
 .campo { display: block; margin-bottom: 10px; }
 .campo span { display: block; font-size: 11.5px; color: var(--apagado); margin-bottom: 3px; font-weight: 600; }
 .fila-form { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 12px; }

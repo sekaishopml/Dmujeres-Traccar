@@ -7,25 +7,30 @@
 
 :root {
   /* ── Marca ──────────────────────────────────────────────────────────────
-     Navy profundo como color institucional y verde operativo como único
-     acento de marca. El rojo queda reservado a peligro/error. */
-  --navy: #0b1f33;          /* Navy institucional: lateral, títulos y bases oscuras. */
-  --navy-2: #14365c;        /* Navy elevado: hover de botones navy y enlaces. */
-  --acento: #1f7a4d;        /* Verde operativo: acción principal y realces de marca. */
-  --acento-2: #17623d;      /* Verde operativo oscuro: hover de la acción principal. */
-  --acento-claro: #5ecf9b;  /* Verde claro para texto de acento sobre fondos navy. */
-  --acento-suave: #e7f3ed;  /* Tinte verde para fondos de realce muy suaves. */
+     Azul marino oscuro para la estructura (lateral, títulos), azul marino
+     claro para las acciones y el magenta de DMujeres (dmujeres.ec) como sello:
+     logo, selección y el viaje resaltado en el mapa. El magenta nunca se usa
+     para errores; el peligro tiene su propio rojo ladrillo. */
+  --navy: #0c1f3d;          /* Azul marino oscuro: lateral, títulos, cifras. */
+  --navy-2: #17365d;        /* Azul marino medio: hover y trazado del mapa. */
+  --acento: #1f5a96;        /* Azul marino claro: acción principal y enlaces. */
+  --acento-2: #184a7d;      /* Hover de la acción principal. */
+  --acento-claro: #9ec3ec;  /* Texto de realce sobre fondo azul oscuro. */
+  --acento-suave: #e9f1fa;  /* Tinte azul para selección y realces suaves. */
+  --marca: #eb0045;         /* Magenta DMujeres: sello de marca y foco. */
+  --marca-2: #c7003a;       /* Magenta oscuro: hover del sello. */
+  --marca-suave: #fdebf1;   /* Tinte magenta para la fila elegida. */
 
   /* ── Neutros ────────────────────────────────────────────────────────────
-     Escala de grises neutros: fondos, superficies, líneas y texto. */
-  --fondo: #f4f6f8;         /* Fondo general del panel. */
+     Grises con un punto de azul para que conversen con el marino. */
+  --fondo: #f3f5f9;         /* Fondo general del panel. */
   --tarjeta: #ffffff;       /* Superficies: tarjetas, tablas y paneles. */
-  --texto: #1b2733;         /* Texto principal (AA sobre fondos claros). */
-  --apagado: #5d6b7a;       /* Texto secundario y etiquetas (AA sobre blanco y fondo). */
-  --gris: #5f6b78;          /* Gris de estado deshabilitado y puntos neutros. */
-  --linea: #e3e8ee;         /* Bordes y separadores estándar. */
-  --linea-2: #eef2f6;       /* Bordes suaves: filas, divisiones internas. */
-  --linea-3: #ccd6e0;       /* Bordes marcados: paneles flotantes y foco visual. */
+  --texto: #142033;         /* Texto principal (AA sobre fondos claros). */
+  --apagado: #5a6a80;       /* Texto secundario y etiquetas (AA sobre blanco). */
+  --gris: #66758a;          /* Estado deshabilitado y puntos neutros. */
+  --linea: #e2e7ef;         /* Bordes y separadores estándar. */
+  --linea-2: #eef2f7;       /* Bordes suaves: filas, divisiones internas. */
+  --linea-3: #cad4e1;       /* Bordes marcados: paneles flotantes y foco. */
 
   /* ── Semánticos de estado ───────────────────────────────────────────────
      Cada estado trae color base (texto/punto) y tinte de fondo para chips. */
@@ -34,12 +39,12 @@
   --alerta: #a85a00;        /* Sin señal, señal débil, avisos que requieren ojo. */
   --alerta-suave: #fdf1e3;  /* Fondo de chip para alerta. */
   --alerta-borde: #f0d5b0;  /* Borde de bloques de aviso. */
-  --peligro: #c4003b;       /* Error, batería baja, acciones destructivas. */
-  --peligro-2: #9e0030;     /* Hover/activo de peligro. */
-  --peligro-suave: #fdeaef; /* Fondo de chip para peligro. */
-  --peligro-borde: #f2c3d2; /* Borde de bloques y botones de peligro. */
-  --info: #0b6fa4;          /* Detenido, informativo, datos en reposo. */
-  --info-suave: #e8f3f9;    /* Fondo de chip para información. */
+  --peligro: #b42318;       /* Error, batería baja, acciones destructivas. */
+  --peligro-2: #912018;     /* Hover/activo de peligro. */
+  --peligro-suave: #fdecea; /* Fondo de chip para peligro. */
+  --peligro-borde: #f4c7c1; /* Borde de bloques y botones de peligro. */
+  --info: #1f5a96;          /* Detenido, informativo, datos en reposo. */
+  --info-suave: #e9f1fa;    /* Fondo de chip para información. */
 
   /* ── Alias de compatibilidad (no usar en código nuevo) ─────────────────── */
   --rojo: var(--peligro);
