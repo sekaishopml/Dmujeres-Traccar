@@ -31,6 +31,10 @@ export interface UsuarioPlataforma {
   administrador: boolean;
   grupos: GrupoResumen[];
   configApp: ConfigApp;
+  // Equipos que la cuenta puede ver. El servidor puede no devolverlo todavía
+  // mientras el otro frente implementa GET /api/v1/usuarios/:id/equipos; la
+  // web lo trata como ausente y pide ese endpoint como respaldo.
+  dispositivoIds?: (number | string)[];
   // El contrato de lectura no devuelve los roles, pero si el servidor los
   // incluye en el futuro se muestran sin cambiar la pantalla.
   roles?: RolPlataforma[];
@@ -45,6 +49,9 @@ export interface CreacionUsuarioPlataforma {
   cargo?: string;
   grupoIds?: (number | string)[];
   rolIds?: (number | string)[];
+  // Las cuentas de administración nacen con este indicador en fijo; las
+  // operativas no lo mandan.
+  administrador?: boolean;
   configApp?: ConfigApp;
 }
 
@@ -77,6 +84,21 @@ export interface GrupoPlataforma {
 export interface CreacionGrupo {
   nombre: string;
   descripcion?: string;
+}
+
+// Equipo visible para una cuenta (GET /api/v1/usuarios/:id/equipos).
+// El servidor responde {datos:[...]}; la web también acepta un arreglo simple
+// durante la transición, igual que con usuarios y grupos.
+export interface EquipoVisibleUsuario {
+  id: number | string;
+  idPublico?: string;
+  nombre: string;
+}
+
+// Reemplazo de la lista visible (PUT /api/v1/usuarios/:id/equipos). Se manda
+// el id interno cuando se conoce; el servidor también acepta el idPublico.
+export interface EquiposVisiblesUsuario {
+  dispositivoIds: (number | string)[];
 }
 
 export interface MiembrosGrupo {

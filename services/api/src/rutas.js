@@ -1,4 +1,4 @@
-// Tabla de rutas del contrato /api/v1 (41 rutas) y emparejador simple.
+// Tabla de rutas del contrato /api/v1 (43 rutas) y emparejador simple.
 
 import * as auth from './auth.js';
 import * as bateria from './bateria.js';
@@ -44,6 +44,8 @@ export const DEFINICIONES = [
   { metodo: 'GET', ruta: '/api/v1/usuarios/:id', manejar: cuentas.obtenerCuenta },
   { metodo: 'PATCH', ruta: '/api/v1/usuarios/:id', manejar: cuentas.actualizarCuenta },
   { metodo: 'DELETE', ruta: '/api/v1/usuarios/:id', manejar: cuentas.eliminarCuenta },
+  { metodo: 'GET', ruta: '/api/v1/usuarios/:id/equipos', manejar: cuentas.obtenerEquiposCuenta },
+  { metodo: 'PUT', ruta: '/api/v1/usuarios/:id/equipos', manejar: cuentas.reemplazarEquiposCuenta },
   { metodo: 'GET', ruta: '/api/v1/grupos', manejar: grupos.listarGrupos },
   { metodo: 'POST', ruta: '/api/v1/grupos', manejar: grupos.crearGrupo },
   { metodo: 'GET', ruta: '/api/v1/grupos/:id', manejar: grupos.obtenerGrupo },

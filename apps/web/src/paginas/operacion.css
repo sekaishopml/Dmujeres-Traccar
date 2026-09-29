@@ -205,17 +205,23 @@
 .replay-leyenda .corredor-vehiculo,
 .replay-leyenda .corredor-caminata {
   position: relative; border: 0; border-radius: 4px; box-shadow: none;
-  background: rgba(47, 125, 50, .22);
+  background: rgba(47, 125, 95, .16);
 }
 .replay-leyenda .corredor-vehiculo { width: 16px; height: 7px; }
-.replay-leyenda .corredor-caminata { width: 16px; height: 4px; background: rgba(47, 125, 50, .16); }
+.replay-leyenda .corredor-caminata { width: 16px; height: 4px; background: rgba(47, 125, 95, .12); }
 .replay-leyenda .corredor-vehiculo::after,
 .replay-leyenda .corredor-caminata::after {
   content: ''; position: absolute; left: 0; right: 0; top: 50%;
-  border-radius: 2px; background: #2f7d32;
+  border-radius: 2px; background: #2f7d5f;
 }
 .replay-leyenda .corredor-vehiculo::after { height: 3px; margin-top: -1.5px; }
 .replay-leyenda .corredor-caminata::after { height: 1.6px; margin-top: -0.8px; }
+/* Sentido de marcha: cuña plana del verde del corredor, sin pastilla ni borde. */
+.replay-leyenda .direccion {
+  width: 0; height: 0; border: 0; border-radius: 0; box-shadow: none; background: none;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-bottom: 7px solid #2f7d5f;
+}
 .replay-leyenda .halo {
   width: 12px; height: 12px; border-radius: 50%;
   background: rgba(11, 37, 69, .1); border: 1px solid rgba(11, 37, 69, .3);

@@ -249,6 +249,87 @@ async function rolesDe(poolOCiente, usuarioId) {
   }));
 }
 
+// Equipos visibles del usuario: solo asignaciones activas y vigentes, en el
+// mismo sentido que el predicado de visibilidad de flota/replay/en vivo
+// (operations.dmt_asignacion activa con desde_en <= now() y sin hasta_en
+// vencido). Ordenados por nombre para el panel.
+function aEquipo(fila) {
+  return {
+    id: Number(fila.id),
+    idPublico: fila.id_publico,
+    nombre: fila.nombre,
+    identificador: fila.identificador ?? null,
+  };
+}
+
+async function equiposDe(poolOCliente, usuarioId) {
+  const { rows } = await poolOCliente.query(
+    `SELECT d.id, d.id_publico, d.nombre, d.identificador
+       FROM operations.dmt_asignacion a
+       JOIN tracking.dmt_dispositivo d ON d.id = a.dispositivo_id
+      WHERE a.usuario_id = $1 AND a.activa
+        AND a.desde_en <= now() AND (a.hasta_en IS NULL OR a.hasta_en > now())
+      ORDER BY d.nombre, d.id`,
+    [Number(usuarioId)],
+  );
+  return rows.map(aEquipo);
+}
+
+// El panel envía la lista completa de equipos; cada elemento acepta lo mismo
+// que la flota (interno, público, identificador o legado). Obliga el campo,
+// ignora duplicados del cuerpo y conserva el orden de llegada.
+function listaDispositivosObligatoria(valor) {
+  if (valor === undefined || valor === null) {
+    throw datosInvalidos('El campo dispositivoIds es obligatorio.');
+  }
+  if (!Array.isArray(valor)) {
+    throw datosInvalidos('El campo dispositivoIds debe ser una lista.');
+  }
+  const ids = valor.map((elemento) => {
+    if (typeof elemento === 'string' && elemento.trim() !== '') return elemento.trim();
+    if (typeof elemento === 'number' && Number.isInteger(elemento)) return String(elemento);
+    throw datosInvalidos('Cada elemento de dispositivoIds debe ser un id válido.');
+  });
+  return [...new Set(ids)];
+}
+
+// Resuelve cada equipo pedido a su fila interna. Falla con 404 tanto si no
+// existe como si está deshabilitado (igual que la flota: lo no visible se
+// reporta como no encontrado para no filtrar el inventario).
+async function resolverDispositivos(cliente, ids) {
+  if (ids.length === 0) return [];
+  const { rows } = await cliente.query(
+    `SELECT id, id_legado, id_publico, nombre, identificador, habilitado
+       FROM tracking.dmt_dispositivo
+      WHERE id_publico::text = ANY($1) OR id::text = ANY($1)
+         OR identificador = ANY($1) OR id_legado::text = ANY($1)`,
+    [ids],
+  );
+  const porId = new Map();
+  const porPublico = new Map();
+  const porIdentificador = new Map();
+  const porLegado = new Map();
+  for (const fila of rows) {
+    porId.set(String(fila.id), fila);
+    porPublico.set(String(fila.id_publico), fila);
+    if (fila.identificador) porIdentificador.set(fila.identificador, fila);
+    if (fila.id_legado !== null && fila.id_legado !== undefined) {
+      porLegado.set(String(fila.id_legado), fila);
+    }
+  }
+  const resueltos = [];
+  const vistos = new Set();
+  for (const id of ids) {
+    const fila = porId.get(id) ?? porPublico.get(id) ?? porIdentificador.get(id) ?? porLegado.get(id);
+    if (!fila) throw noEncontrado(`El equipo ${id} no existe.`);
+    if (fila.habilitado !== true) throw noEncontrado(`El equipo ${fila.nombre} no está habilitado.`);
+    if (vistos.has(String(fila.id))) continue;
+    vistos.add(String(fila.id));
+    resueltos.push(fila);
+  }
+  return resueltos;
+}
+
 function aCuenta(fila, grupos, roles, dispositivoIds) {
   return {
     id: Number(fila.id),
@@ -614,4 +695,91 @@ export async function eliminarCuenta(ctx) {
     req: ctx.req,
   });
   respuestaSinContenido(ctx.res);
+}
+
+// GET /api/v1/usuarios/:id/equipos: equipos asignados vigentes del usuario.
+// Solo administradores. El :id acepta lo mismo que el resto de cuentas
+// (interno, público o nombre de login). Responde 200 {datos:[...]}.
+export async function obtenerEquiposCuenta(ctx) {
+  await exigirAdministracion(ctx);
+  const texto = String(ctx.params.id);
+  const { rows } = await consultar(
+    ctx.pool,
+    `SELECT u.id
+       FROM iam.dmt_usuario u
+      WHERE u.id_publico::text = $1 OR u.id::text = $1 OR u.nombre_usuario = $1
+      LIMIT 1`,
+    [texto],
+    { signal: ctx.signal },
+  );
+  if (rows.length === 0) throw noEncontrado('El usuario no existe.');
+  const equipos = await equiposDe(ctx.pool, rows[0].id);
+  respuestaJson(ctx.res, 200, { datos: equipos });
+}
+
+// PUT /api/v1/usuarios/:id/equipos: reemplazo total de asignaciones.
+// Solo administradores. Cuerpo {dispositivoIds:[]} obligatorio (vacío = deja
+// al usuario sin equipos). Desactiva las que salen (activa=false, se conserva
+// el historial con hasta_en), activa o crea las que entran y repara la
+// vigencia de las que quedan. Todo en una transacción. Responde con la lista
+// final 200 {datos:[...]} en el mismo formato del GET.
+export async function reemplazarEquiposCuenta(ctx) {
+  await exigirAdministracion(ctx);
+  const cuerpo = await leerCuerpoJson(ctx.req, 16384);
+  const dispositivoIds = listaDispositivosObligatoria(cuerpo.dispositivoIds);
+
+  const resultado = await enTransaccion(ctx.pool, async (cliente) => {
+    const actual = await buscarCuentaInterna(cliente, ctx.params.id);
+    if (!actual) throw noEncontrado('El usuario no existe.');
+    const equipos = await resolverDispositivos(cliente, dispositivoIds);
+    const deseados = equipos.map((equipo) => Number(equipo.id));
+    const { rows: vigentes } = await cliente.query(
+      `SELECT dispositivo_id
+         FROM operations.dmt_asignacion
+        WHERE usuario_id = $1 AND activa`,
+      [actual.id],
+    );
+    const enUso = new Set(vigentes.map((fila) => Number(fila.dispositivo_id)));
+    const deseadosSet = new Set(deseados);
+    const aDesactivar = [...enUso].filter((id) => !deseadosSet.has(id));
+    if (aDesactivar.length > 0) {
+      await cliente.query(
+        `UPDATE operations.dmt_asignacion
+            SET activa = false, hasta_en = now(), actualizado_en = now()
+          WHERE usuario_id = $1 AND dispositivo_id = ANY($2::bigint[]) AND activa`,
+        [actual.id, aDesactivar],
+      );
+    }
+    if (deseados.length > 0) {
+      // Repara la vigencia de las que quedan (activa con hasta_en vencido).
+      await cliente.query(
+        `UPDATE operations.dmt_asignacion
+            SET hasta_en = NULL, actualizado_en = now()
+          WHERE usuario_id = $1 AND dispositivo_id = ANY($2::bigint[]) AND activa
+            AND hasta_en IS NOT NULL AND hasta_en <= now()`,
+        [actual.id, deseados],
+      );
+    }
+    const aCrear = deseados.filter((id) => !enUso.has(id));
+    for (const dispositivoId of aCrear) {
+      await cliente.query(
+        `INSERT INTO operations.dmt_asignacion (usuario_id, dispositivo_id, desde_en, hasta_en, activa)
+         VALUES ($1, $2, now(), NULL, true)`,
+        [actual.id, dispositivoId],
+      );
+    }
+    return { id: Number(actual.id), usuario: actual.nombre_usuario };
+  });
+
+  const equipos = await equiposDe(ctx.pool, resultado.id);
+  await auditar(ctx.pool, ctx.log, {
+    usuarioId: ctx.usuario?.id,
+    accion: 'asignar_equipos',
+    entidad: 'usuario',
+    entidadId: resultado.id,
+    descripcion: `Equipos de ${resultado.usuario} reemplazados (${equipos.length}).`,
+    datos: { totalEquipos: equipos.length },
+    req: ctx.req,
+  });
+  respuestaJson(ctx.res, 200, { datos: equipos });
 }

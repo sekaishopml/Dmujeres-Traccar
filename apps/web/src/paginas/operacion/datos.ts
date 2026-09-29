@@ -4,6 +4,7 @@ import type { Dispositivo, Pagina, Posicion, PosicionesVivas, Replay, ReportePar
 import type { RespuestaJornadasFlota, RespuestaSalud } from '@contratos';
 import type {
   EntradaEsquemaAjustes,
+  EquipoVisibleUsuario,
   GrupoPlataforma,
   RolPlataforma,
   UsuarioPlataforma,
@@ -147,6 +148,31 @@ export async function traerEsquemaAjustes(opciones?: OpcionesPeticion): Promise<
     opciones,
   );
   return comoArreglo(respuesta);
+}
+
+// Equipos que una cuenta puede ver (contrato que otro frente implementa:
+// GET /api/v1/usuarios/:id/equipos → {datos:[{id, idPublico, nombre}]}).
+// Si el endpoint aún no existe, la promesa se rechaza (normalmente 404) y la
+// pantalla lo explica sin romper el diálogo de la cuenta.
+export async function traerEquiposDeUsuario(
+  idEnUrl: string,
+  opciones?: OpcionesPeticion,
+): Promise<EquipoVisibleUsuario[]> {
+  const respuesta = await api.get<EquipoVisibleUsuario[] | { datos: EquipoVisibleUsuario[] }>(
+    `/api/v1/usuarios/${idEnUrl}/equipos`,
+    opciones,
+  );
+  return comoArreglo(respuesta);
+}
+
+// Reemplaza la lista visible (PUT /api/v1/usuarios/:id/equipos
+// {dispositivoIds[]}). Quien llama manda el id interno cuando lo conoce.
+export function guardarEquiposDeUsuario(
+  idEnUrl: string,
+  dispositivoIds: (number | string)[],
+  opciones?: OpcionesPeticion,
+): Promise<void> {
+  return api.put<void>(`/api/v1/usuarios/${idEnUrl}/equipos`, { dispositivoIds }, opciones);
 }
 
 export interface RespuestaDireccion {

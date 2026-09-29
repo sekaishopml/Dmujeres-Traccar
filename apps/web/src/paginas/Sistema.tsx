@@ -90,14 +90,12 @@ function esAdmin(usuario: UsuarioPlataforma, roles: RolPlataforma[]): boolean {
 
 function FormularioAdmin({
   roles,
-  rolesError,
   guardando,
   error,
   onGuardar,
   onCancelar,
 }: {
   roles: RolPlataforma[];
-  rolesError: unknown;
   guardando: boolean;
   error: Error | null;
   onGuardar: (cuerpo: CreacionUsuarioPlataforma) => void;
@@ -107,7 +105,6 @@ function FormularioAdmin({
   const [clave, setClave] = useState('');
   const [verClave, setVerClave] = useState(false);
   const [nombre, setNombre] = useState('');
-  const [rolId, setRolId] = useState('');
   const [validacion, setValidacion] = useState('');
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
@@ -130,13 +127,16 @@ function FormularioAdmin({
       return;
     }
     setValidacion('');
+    // La cuenta nace administradora sin elegir nada: el permiso va fijo en el
+    // cuerpo aunque el servidor aún devuelva roles.
     const cuerpo: CreacionUsuarioPlataforma = {
       usuario: cuenta.trim(),
       clave,
       nombre: nombre.trim(),
+      administrador: true,
     };
-    const rol = roles.find((otro) => String(otro.id) === rolId);
-    if (rol) cuerpo.rolIds = [rol.id];
+    const rolAdmin = roles.find((rol) => rol.nombre.trim().toLowerCase() === 'administrador');
+    if (rolAdmin) cuerpo.rolIds = [rolAdmin.id];
     onGuardar(cuerpo);
   }
 
@@ -175,20 +175,7 @@ function FormularioAdmin({
         <span>Nombre completo</span>
         <input value={nombre} onChange={(evento) => setNombre(evento.target.value)} />
       </label>
-      <label className="campo">
-        <span>Permiso</span>
-        <select value={rolId} onChange={(evento) => setRolId(evento.target.value)}>
-          <option value="">El que corresponda (sin elegir)</option>
-          {roles.map((rol) => (
-            <option key={String(rol.id)} value={String(rol.id)}>
-              {rol.nombre}
-            </option>
-          ))}
-        </select>
-      </label>
-      {rolesError !== null && rolesError !== undefined && (
-        <p className="apagado">No se pudieron traer los permisos; la cuenta se guarda sin permiso elegido.</p>
-      )}
+      <p className="apagado">Esta cuenta nace con permiso de administración, sin elegir nada.</p>
       {validacion !== '' && (
         <p className="error" role="alert">
           {validacion}
@@ -393,22 +380,6 @@ export default function Sistema() {
       <section className="seccion">
         <div className="bloque">
           <header className="cabecera-seccion">
-            <h2>Qué puede cada permiso</h2>
-          </header>
-          <dl className="detalle-datos">
-            <dt>Administrador</dt>
-            <dd>Puede hacer todo: ver y cambiar la flota, crear cuentas y cambiar permisos.</dd>
-            <dt>Operador</dt>
-            <dd>Puede trabajar con la flota y los reportes, pero no puede crear cuentas ni cambiar permisos.</dd>
-            <dt>Solo lectura</dt>
-            <dd>Solo puede ver la información; no puede cambiar nada.</dd>
-          </dl>
-        </div>
-      </section>
-
-      <section className="seccion">
-        <div className="bloque">
-          <header className="cabecera-seccion">
             <h2>Cuentas de administración</h2>
             <span className="cuenta">
               {cuentas.data ? `${admins.length} con permiso alto` : 'Consultando…'}
@@ -499,7 +470,6 @@ export default function Sistema() {
         <Dialogo titulo="Agregar cuenta de administración" onCerrar={() => setModalAdmin(false)}>
           <FormularioAdmin
             roles={listaRoles}
-            rolesError={roles.error}
             guardando={crearAdmin.isPending}
             error={crearAdmin.error}
             onGuardar={(cuerpo) => crearAdmin.mutate(cuerpo)}

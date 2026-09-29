@@ -377,13 +377,6 @@ function rumboEntre(a: Posicion, b: Posicion): number {
   return rumboEntrePuntos(a.latitud, a.longitud, b.latitud, b.longitud);
 }
 
-function rumboDePosicion(posicion: Posicion, anterior: Posicion | null): number {
-  const rumbo = posicion.rumboGrados;
-  if (rumbo != null && Number.isFinite(rumbo) && rumbo > 0) return rumbo;
-  if (!anterior) return 0;
-  return rumboEntre(anterior, posicion);
-}
-
 // El API define cada hueco con los dos fixes que lo rodean, así que basta con
 // marcar exactamente esos pares para partir la línea. Ahora cada par de fixes
 // es una Feature propia: el coloreado por velocidad necesita que cada tramo
@@ -452,103 +445,103 @@ export function segmentosDeRecorrido(
   return segmentos;
 }
 
-// Un punto por fix para la capa de chevrones y la capa de puntos. Se omiten
-// coordenadas no finitas y, sobre recorridos largos (>3000 fixes), se toma uno
-// de cada dos: un punto por segundo no aporta nada visual y evita miles de
-// símbolos solapados. El último fix siempre se conserva.
-export function puntosDeRecorrido(
+// Marcas de dirección espaciadas por distancia, no una por fix: la capa de
+// dirección solo necesita leer el sentido de marcha cada ~150 m. Solo entra
+// movimiento real (pares en vehículo o caminata) con rumbo geométrico fiable:
+// el par que cierra la marca debe medir al menos 12 m, porque con menos el
+// ruido del GPS inventa rumbos. El quieto no lleva marca (parado no hay rumbo
+// y el fix ya se lee en el halo) y los bordes de hueco tampoco: el salto tras
+// una pérdida de señal no es una dirección observada. Los tramos ajustados a
+// vía (MATCHED) reparten sus marcas sobre el trazado con el rumbo entre puntos
+// consecutivos y su color propio, nunca la banda de velocidad: el tramo
+// reconstruido nunca se colorea como GPS registrado. Los tramos estimados
+// (ESTIMATED) no llevan marcas: la línea punteada gris ya los distingue y las
+// flechas los harían pasar por ruta normal.
+export const DISTANCIA_FLECHAS_M = 150;
+export const RUMBO_FIABLE_MIN_M = 12;
+
+export function flechasEspaciadas(
   posiciones: Posicion[],
   huecos: Hueco[],
   reconstruidos: TramoReconstruido[],
+  cadaMetros = DISTANCIA_FLECHAS_M,
 ): FeatureCollection<Point> {
+  const features: Feature<Point>[] = [];
   const paresHueco = new Set(huecos.map((hueco) => `${hueco.desde}|${hueco.hasta}`));
+  const paresReconstruidos = new Set(reconstruidos.map((tramo) => `${tramo.desde}|${tramo.hasta}`));
   const velocidades = velocidadesEfectivas(posiciones);
   const quietos = indicesQuietos(posiciones);
-  const modoDeFix = (indice: number): ModoReal => {
-    if (quietos.has(indice)) return 'quieto';
-    const actual = velocidades[indice];
-    if (actual == null || !Number.isFinite(actual) || actual >= UMBRAL_CAMINATA_KMH) return 'vehiculo';
-    const anterior = indice > 0 ? velocidades[indice - 1] : null;
-    const siguiente = indice < velocidades.length - 1 ? velocidades[indice + 1] : null;
-    const vecinoBajo =
-      (anterior != null && Number.isFinite(anterior) && anterior < UMBRAL_CAMINATA_KMH) ||
-      (siguiente != null && Number.isFinite(siguiente) && siguiente < UMBRAL_CAMINATA_KMH);
-    return vecinoBajo ? 'caminata' : 'vehiculo';
-  };
-  const features: Feature<Point>[] = [];
-  const paso = posiciones.length > 3000 ? 2 : 1;
-  const aPunto = (indice: number): Feature<Point> | null => {
-    const posicion = posiciones[indice];
-    if (!posicion || !Number.isFinite(posicion.latitud) || !Number.isFinite(posicion.longitud)) return null;
-    const anterior = indice > 0 ? posiciones[indice - 1] : null;
-    const siguiente = indice < posiciones.length - 1 ? posiciones[indice + 1] : null;
-    // `indice` viaja en propiedades para que la capa de puntos sea clicable
-    // aunque el muestreo reduzca los puntos dibujados. `hueco` pinta en gris
-    // los fixes que bordean una pérdida de señal: el último antes del corte y
-    // el primero al recuperarla.
-    const enHueco =
-      (anterior != null && paresHueco.has(`${anterior.registradoEn}|${posicion.registradoEn}`)) ||
-      (siguiente != null && paresHueco.has(`${posicion.registradoEn}|${siguiente.registradoEn}`));
-    return {
-      type: 'Feature',
-      properties: {
-        bearing: rumboDePosicion(posicion, anterior),
-        banda: bandaVelocidad(velocidadEfectivaKmh(posicion, anterior)),
-        // Origen del punto para la capa de chevrones: los reales se colorean
-        // por banda de velocidad; los ajustados a vía usan su imagen propia.
-        // `modo` deja a la capa filtrar el quieto: parado no hay rumbo que
-        // mostrar y el fix ya se lee en la nube de dispersión.
-        origen: 'real',
-        modo: modoDeFix(indice),
-        indice,
-        hueco: enHueco,
-      },
-      geometry: { type: 'Point', coordinates: [posicion.longitud, posicion.latitud] },
-    };
-  };
-  let ultimo = -1;
-  for (let i = 0; i < posiciones.length; i += paso) {
-    const punto = aPunto(i);
-    if (!punto) continue;
-    features.push(punto);
-    ultimo = i;
-  }
-  if (ultimo !== posiciones.length - 1) {
-    const punto = aPunto(posiciones.length - 1);
-    if (punto) features.push(punto);
-  }
-  // Chevrones de los tramos ajustados a vía (MATCHED): se reparten a lo largo
-  // del trazado con el rumbo entre puntos consecutivos, como si fueran fixes.
-  // Se acotan a ~24 por tramo y usan la imagen propia del método, no la banda
-  // de velocidad: el tramo reconstruido nunca se colorea como GPS registrado.
-  // Los tramos densos usan el mismo reparto; su trazado corto añade pocos
-  // puntos. Los tramos estimados (ESTIMATED) no llevan chevrones: la línea
-  // punteada gris ya los distingue y las flechas los harían pasar por normal.
-  let indiceTrazado = posiciones.length;
-  for (const tramo of reconstruidos) {
-    if (tramo.metodo !== 'MATCHED') continue;
-    const trazado = tramo.trazado;
-    if (!trazado || trazado.length < 2) continue;
-    const salto = Math.max(1, Math.ceil(trazado.length / 24));
-    for (let i = 0; i < trazado.length; i += salto) {
-      const punto = trazado[i];
-      const puntoSiguiente = trazado[Math.min(i + 1, trazado.length - 1)];
-      if (!Array.isArray(punto) || !Array.isArray(puntoSiguiente)) continue;
-      const [lon, lat] = punto;
-      const [lonSiguiente, latSiguiente] = puntoSiguiente;
-      if (![lon, lat, lonSiguiente, latSiguiente].every(Number.isFinite)) continue;
+  let acumuladoM = 0;
+  for (let i = 1; i < posiciones.length; i += 1) {
+    const anterior = posiciones[i - 1];
+    const actual = posiciones[i];
+    if (
+      !Number.isFinite(anterior.latitud) ||
+      !Number.isFinite(anterior.longitud) ||
+      !Number.isFinite(actual.latitud) ||
+      !Number.isFinite(actual.longitud)
+    ) {
+      acumuladoM = 0;
+      continue;
+    }
+    const clave = `${anterior.registradoEn}|${actual.registradoEn}`;
+    if (paresHueco.has(clave) || paresReconstruidos.has(clave)) {
+      acumuladoM = 0;
+      continue;
+    }
+    if (modoDePar(quietos, velocidades, i) === 'quieto') {
+      acumuladoM = 0;
+      continue;
+    }
+    const tramoM = distanciaKm(anterior, actual) * 1000;
+    if (!(tramoM > 0)) continue;
+    acumuladoM += tramoM;
+    if (acumuladoM >= cadaMetros && tramoM >= RUMBO_FIABLE_MIN_M) {
+      acumuladoM = 0;
       features.push({
         type: 'Feature',
         properties: {
-          bearing: rumboEntrePuntos(lat, lon, latSiguiente, lonSiguiente),
-          banda: 0,
-          origen: 'matched',
-          indice: indiceTrazado,
-          hueco: false,
+          bearing: rumboEntre(anterior, actual),
+          banda: bandaVelocidad(velocidadEfectivaKmh(actual, anterior)),
+          origen: 'real',
+          indice: i,
         },
-        geometry: { type: 'Point', coordinates: [lon, lat] },
+        geometry: { type: 'Point', coordinates: [actual.longitud, actual.latitud] },
       });
-      indiceTrazado += 1;
+    }
+  }
+  let indiceTrazado = posiciones.length;
+  for (const tramo of reconstruidos) {
+    if (tramo.metodo !== 'MATCHED') continue;
+    const trazado = Array.isArray(tramo.trazado)
+      ? tramo.trazado.filter(
+          (par): par is [number, number] =>
+            Array.isArray(par) && Number.isFinite(par[0]) && Number.isFinite(par[1]),
+        )
+      : [];
+    if (trazado.length < 2) continue;
+    let acumuladoTrazadoM = 0;
+    for (let i = 1; i < trazado.length; i += 1) {
+      const [lonA, latA] = trazado[i - 1];
+      const [lonB, latB] = trazado[i];
+      const tramoM =
+        distanciaKm({ latitud: latA, longitud: lonA }, { latitud: latB, longitud: lonB }) * 1000;
+      if (!(tramoM > 0)) continue;
+      acumuladoTrazadoM += tramoM;
+      if (acumuladoTrazadoM >= cadaMetros && tramoM >= RUMBO_FIABLE_MIN_M) {
+        acumuladoTrazadoM = 0;
+        features.push({
+          type: 'Feature',
+          properties: {
+            bearing: rumboEntrePuntos(latA, lonA, latB, lonB),
+            banda: 0,
+            origen: 'matched',
+            indice: indiceTrazado,
+          },
+          geometry: { type: 'Point', coordinates: [lonB, latB] },
+        });
+        indiceTrazado += 1;
+      }
     }
   }
   return { type: 'FeatureCollection', features };
@@ -583,11 +576,11 @@ export function aColeccionHalos(halos: HaloParada[]): FeatureCollection<Point> {
   };
 }
 
-// Paso de decimación de chevrones según el zoom: alejado, cientos de flechas
-// pegadas ensucian la traza y no se distinguen; acercado, hacen falta para leer
-// el sentido de cada tramo. 0 deja la capa sin flechas. Los escalones son finos
-// para que la densidad crezca de a poco al acercar (el tamaño del icono también
-// sube con el zoom) y el cambio de nivel no dé un salto brusco.
+// Paso de decimación de marcas de dirección según el zoom: la base ya viene
+// espaciada por distancia, esto solo adelgaza al alejar para que la traza no se
+// sature. 0 deja la capa sin marcas. Los escalones son finos para que la
+// densidad crezca de a poco al acercar (el tamaño del icono también sube con el
+// zoom) y el cambio de nivel no dé un salto brusco.
 export function pasoFlechas(zoom: number): number {
   if (zoom < 9) return 0;
   if (zoom < 10) return 32;
