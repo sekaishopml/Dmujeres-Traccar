@@ -1,7 +1,7 @@
 {
-  "version": "2.1.82",
-  "versionCode": 292,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.82.apk",
-  "notes": "Al iniciar sesion la app queda bajo el equipo de la cuenta",
-  "sha256": "8e3347f45d9f4f37fc181bab53b8c2e89fc7bebcaab5e2309affb6ede47d0884"
+  "version": "2.1.83",
+  "versionCode": 293,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.83.apk",
+  "notes": "Replay sin doble trazo y cambio de cuenta seguro en el telefono",
+  "sha256": "48721dd532074889c4a1b9c6cf6025f5afd3aa32691289866608bc845c30d211"
 }
