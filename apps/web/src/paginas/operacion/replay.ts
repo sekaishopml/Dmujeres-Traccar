@@ -841,8 +841,27 @@ export function segmentosDeRecorrido(
 // reconstruido nunca se colorea como GPS registrado. Los tramos estimados
 // (ESTIMATED) no llevan marcas: la línea punteada gris ya los distingue y las
 // flechas los harían pasar por ruta normal.
+//
+// Un tramo real corto (menos de 2·separación) produce como mucho una marca por
+// acumulación, y a menudo ninguna (salir del domicilio en dos fixes). Para que
+// esos arranques también tengan lectura de rumbo sin acercar la densidad de un
+// tramo largo, la marca suelta se reemplaza por una sola marca centrada en el
+// punto medio del tramo, sobre el par fiable más próximo al centro. Solo se
+// centra si el tramo supera el umbral de movimiento (la deriva del GPS junto a
+// una parada tiene desplazamiento neto casi nulo). La marca centrada nunca
+// invade un hueco (el tramo se parte en cada corte) y el descarte junto a una
+// parada lo aplica Replay al filtrar la colección.
 export const DISTANCIA_FLECHAS_M = 150;
 export const RUMBO_FIABLE_MIN_M = 12;
+
+// Par válido de un tramo real en curso: índices y extremos para poder medir el
+// centro del tramo y emitir la marca centrada más adelante.
+interface ParReal {
+  indice: number;
+  anterior: Posicion;
+  actual: Posicion;
+  metros: number;
+}
 
 export function flechasEspaciadas(
   posiciones: Posicion[],
@@ -858,7 +877,75 @@ export function flechasEspaciadas(
   const ventanas = ventanasMatched(reconstruidos);
   const velocidades = velocidadesEfectivas(posiciones);
   const quietos = indicesQuietos(posiciones);
-  let acumuladoM = 0;
+  const marcaReal = (par: ParReal, longitud: number, latitud: number): Feature<Point> => ({
+    type: 'Feature',
+    properties: {
+      bearing: rumboEntre(par.anterior, par.actual),
+      banda: bandaVelocidad(velocidadEfectivaKmh(par.actual, par.anterior)),
+      origen: 'real',
+      indice: par.indice,
+    },
+    geometry: { type: 'Point', coordinates: [longitud, latitud] },
+  });
+  // Cierra el tramo real en curso: reparte las marcas normales por distancia;
+  // si el tramo es corto (< 2·separación) y el par fiable más cercano al centro
+  // existe, lo reemplaza por una única marca en el punto medio del par.
+  const cerrarTramo = (pares: ParReal[], metrosTramo: number) => {
+    if (pares.length === 0) return;
+    const normales: Feature<Point>[] = [];
+    let acumuladoM = 0;
+    for (const par of pares) {
+      acumuladoM += par.metros;
+      if (acumuladoM >= cadaMetros && par.metros >= RUMBO_FIABLE_MIN_M) {
+        acumuladoM = 0;
+        normales.push(marcaReal(par, par.actual.longitud, par.actual.latitud));
+      }
+    }
+    if (metrosTramo >= 2 * cadaMetros) {
+      features.push(...normales);
+      return;
+    }
+    // Tramo corto y lento: la deriva del GPS junto a una parada larga junta
+    // fixes que superan el umbral por pares pero no desplazan el equipo. La
+    // velocidad efectiva del tramo (desplazamiento neto entre extremos sobre
+    // el tiempo observado) los descarta con el mismo umbral de detención; las
+    // marcas normales se conservan para no cambiar la densidad previa.
+    const primera = pares[0].anterior;
+    const ultima = pares[pares.length - 1].actual;
+    const duracionHoras =
+      (milisegundos(ultima.registradoEn) - milisegundos(primera.registradoEn)) / 3600000;
+    const velocidadTramoKmh = duracionHoras > 0 ? distanciaKm(primera, ultima) / duracionHoras : 0;
+    if (velocidadTramoKmh < VELOCIDAD_DETENCION_KMH) {
+      features.push(...normales);
+      return;
+    }
+    // Par fiable cuyo centro cae más cerca del centro del tramo.
+    const centroTramoM = metrosTramo / 2;
+    let inicioParM = 0;
+    let elegido: ParReal | null = null;
+    let distanciaCentro = Infinity;
+    for (const par of pares) {
+      if (par.metros >= RUMBO_FIABLE_MIN_M) {
+        const centroParM = inicioParM + par.metros / 2;
+        const distancia = Math.abs(centroParM - centroTramoM);
+        if (distancia < distanciaCentro) {
+          distanciaCentro = distancia;
+          elegido = par;
+        }
+      }
+      inicioParM += par.metros;
+    }
+    if (!elegido) {
+      features.push(...normales);
+      return;
+    }
+    const longitud = (elegido.anterior.longitud + elegido.actual.longitud) / 2;
+    const latitud = (elegido.anterior.latitud + elegido.actual.latitud) / 2;
+    const marca = marcaReal(elegido, longitud, latitud);
+    features.push({ ...marca, properties: { ...marca.properties, puntoMedio: true } });
+  };
+  let paresTramo: ParReal[] = [];
+  let metrosTramo = 0;
   for (let i = 1; i < posiciones.length; i += 1) {
     const anterior = posiciones[i - 1];
     const actual = posiciones[i];
@@ -868,42 +955,39 @@ export function flechasEspaciadas(
       !Number.isFinite(actual.latitud) ||
       !Number.isFinite(actual.longitud)
     ) {
-      acumuladoM = 0;
+      cerrarTramo(paresTramo, metrosTramo);
+      paresTramo = [];
+      metrosTramo = 0;
       continue;
     }
     const clave = `${anterior.registradoEn}|${actual.registradoEn}`;
     if (paresHueco.has(clave) || paresReconstruidos.has(clave)) {
-      acumuladoM = 0;
+      cerrarTramo(paresTramo, metrosTramo);
+      paresTramo = [];
+      metrosTramo = 0;
       continue;
     }
     if (
       enVentanaMatched(ventanas, milisegundos(anterior.registradoEn)) ||
       enVentanaMatched(ventanas, milisegundos(actual.registradoEn))
     ) {
-      acumuladoM = 0;
+      cerrarTramo(paresTramo, metrosTramo);
+      paresTramo = [];
+      metrosTramo = 0;
       continue;
     }
     if (modoDePar(quietos, velocidades, i) === 'quieto') {
-      acumuladoM = 0;
+      cerrarTramo(paresTramo, metrosTramo);
+      paresTramo = [];
+      metrosTramo = 0;
       continue;
     }
     const tramoM = distanciaKm(anterior, actual) * 1000;
     if (!(tramoM > 0)) continue;
-    acumuladoM += tramoM;
-    if (acumuladoM >= cadaMetros && tramoM >= RUMBO_FIABLE_MIN_M) {
-      acumuladoM = 0;
-      features.push({
-        type: 'Feature',
-        properties: {
-          bearing: rumboEntre(anterior, actual),
-          banda: bandaVelocidad(velocidadEfectivaKmh(actual, anterior)),
-          origen: 'real',
-          indice: i,
-        },
-        geometry: { type: 'Point', coordinates: [actual.longitud, actual.latitud] },
-      });
-    }
+    paresTramo.push({ indice: i, anterior, actual, metros: tramoM });
+    metrosTramo += tramoM;
   }
+  cerrarTramo(paresTramo, metrosTramo);
   let indiceTrazado = posiciones.length;
   for (const tramo of reconstruidos) {
     if (tramo.metodo !== 'MATCHED') continue;
@@ -991,12 +1075,16 @@ export function pasoFlechas(zoom: number): number {
 // para el zoom. `indice` (el número de fix original) es la referencia estable
 // para decimar: los puntos ya pueden venir muestreados de dos en dos en
 // recorridos largos. El primer y el último fix se conservan siempre porque son
-// la evidencia de los extremos del recorrido.
+// la evidencia de los extremos del recorrido. La marca centrada de un tramo
+// corto es la única de su tramo: no se adelgaza, porque decimar por `indice`
+// la borraría en la mitad de los zooms y el arranque del recorrido quedaría sin
+// sentido de marcha.
 export function flechasPorZoom(puntos: FeatureCollection<Point>, zoom: number): FeatureCollection<Point> {
   const paso = pasoFlechas(zoom);
   if (paso === 0) return { type: 'FeatureCollection', features: [] };
   if (paso === 1) return puntos;
   const features = puntos.features.filter((punto) => {
+    if (punto.properties?.puntoMedio === true) return true;
     const indice = punto.properties?.indice;
     return typeof indice !== 'number' || indice % paso === 0;
   });

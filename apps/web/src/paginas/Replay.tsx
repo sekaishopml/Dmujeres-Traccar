@@ -245,13 +245,13 @@ export default function Replay() {
   const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
   // Marcas de dirección espaciadas por distancia (no una por fix); la selección
   // del mapa no depende de ellas, se resuelve por cercanía sobre la línea de
-  // acierto. Las marcas ajustadas que caen sobre una parada se descartan para
-  // que el punto detenido no se lea como movimiento.
+  // acierto. Las marcas que caen sobre una parada se descartan en cualquier
+  // origen (ajustadas, GPS real y la marca centrada de un tramo corto): una
+  // flecha encima de la insignia fingiría movimiento en el punto detenido.
   const direccion = useMemo(() => {
     const coleccion = flechasEspaciadas(posiciones, huecos, reconstruidos, SEPARACION_FLECHAS_M);
     if (paradas.length === 0) return coleccion;
     const features = coleccion.features.filter((flecha) => {
-      if (flecha.properties?.origen !== 'matched') return true;
       const [longitud, latitud] = flecha.geometry.coordinates;
       return paradas.every(
         (parada) =>
@@ -526,20 +526,29 @@ export default function Replay() {
           'icon-rotate': ['get', 'bearing'],
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
-          // Escala fina: ~9 px de flecha al alejar y ~21 px en z16, para que
-          // ninguna se vea diminuta ni gigante. Crece con el zoom mientras
-          // flechasPorZoom adelgaza la densidad.
+          // Tamaño por zoom y origen: la flecha del GPS real crece de ~12 px
+          // lógicos en z9-10 a ~27-28 px en z16-17, para que la auditoría lea
+          // el sentido de marcha desde la salida del domicilio; el ajustado a
+          // vía acompaña en proporción (~0.85) y no compite con la marca real.
+          // MapLibre admite una sola subexpresión de zoom, así que el
+          // interpolate es el de afuera y cada parada resuelve el tamaño por
+          // origen: el primero es el ajustado y el último (por defecto) el
+          // real. La curva se aplana en z18 para que la punta no se agigante
+          // al inspeccionar detalle; la densidad la sigue adelgazando
+          // flechasPorZoom en cada zoomend.
           'icon-size': [
             'interpolate',
             ['linear'],
             ['zoom'],
-            9, 0.36,
-            11, 0.44,
-            12, 0.5,
-            13, 0.58,
-            14, 0.66,
-            15, 0.74,
-            16, 0.82,
+            8, ['match', ['get', 'origen'], 'matched', 0.32, 0.38],
+            10, ['match', ['get', 'origen'], 'matched', 0.36, 0.42],
+            12, ['match', ['get', 'origen'], 'matched', 0.46, 0.54],
+            13, ['match', ['get', 'origen'], 'matched', 0.53, 0.62],
+            14, ['match', ['get', 'origen'], 'matched', 0.61, 0.72],
+            15, ['match', ['get', 'origen'], 'matched', 0.7, 0.82],
+            16, ['match', ['get', 'origen'], 'matched', 0.78, 0.92],
+            17, ['match', ['get', 'origen'], 'matched', 0.82, 0.97],
+            18, ['match', ['get', 'origen'], 'matched', 0.85, 1],
           ],
           'icon-allow-overlap': false,
           'icon-ignore-placement': false,
