@@ -567,3 +567,10 @@ RELEASE y únicamente con todos los gates verdes.
   limpio (flush + fin de jornada del equipo anterior) antes de adoptar el
   equipo nuevo. 180 tests google en verde (fallos preexistentes de Firebase
   corregidos con @Config). APK 2.1.83.
+- 2026-09-28: **match urbano afinado** (Fernando 20:03-21:50, 318 fixes):
+  puente de huecos cortos (<=150 s y <150 m: tráfico lento, semáforos y
+  paradas cortas unen la ventana), umbral de desplazamiento 50->25 m, filtro
+  de picos 30/15->25/13 y `accuracy` (precisión mediana de la ventana) al
+  `/match` del ruteo (snap trust = 4*precision acotado 25..60 m). Cobertura
+  ajustada a vía 39 % -> 72 % de los puntos (el resto es tiempo parado), sin
+  desvíos inventados. Sin cambios en la app: sin OTA.

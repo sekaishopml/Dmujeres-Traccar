@@ -36,26 +36,30 @@ const PRESUPUESTO_MS = 3000;
 // Ventanas densas para ajuste a vía (/match) en cadencia fina. Hasta 100
 // puntos o 5 min por ventana: el matcher filtra observaciones cercanas y cada
 // ventana responde en <100 ms en el grafo local. El interior de paradas
-// prolongadas nunca entra a ventanas (se corta antes del inicio y se reanuda
-// después del fin) y los outliers de teleport se apartan del ajuste; además
-// se corta en huecos que ya se tratan como antes (>=45 s), así que nunca se
-// solapa con los candidatos de huecos. Las ventanas paradas (desplazamiento
-// <50 m) se descartan antes de llamar: es jitter, no ruta.
+// nunca entra a ventanas (se aparta el jitter de parado) y los outliers de
+// teleport se apartan del ajuste; un hueco de cobertura >=45 s corta, salvo
+// cuando lo cubre una parada corta (<=120 s): ahí la ventana continúa y el
+// recorrido urbano con semáforos queda ajustado a vía en vez de cortarse en
+// decenas de rectas. Las ventanas con desplazamiento <25 m se descartan.
 const MAX_PUNTOS_VENTANA_DENSA = 100;
 const MAX_DURACION_VENTANA_DENSA_MS = 5 * 60 * 1000;
 const MIN_PUNTOS_VENTANA_DENSA = 3;
-const MIN_DESPLAZAMIENTO_VENTANA_M = 50;
+const MIN_DESPLAZAMIENTO_VENTANA_M = 25;
 const VELOCIDAD_PARADA_KMH = 2;
 const DURACION_PARADA_CORTE_MS = 60 * 1000;
 const MAX_VENTANAS_DENSAS = 200;
 const TANDA_DENSAS = 4;
+// Puente de hueco corto: un hueco entre fixes conservados se puentea si dura
+// <=150 s y no separa un desplazamiento real (<150 m); las paradas largas
+// superan ese tope y el corte natural las separa.
+const PUENTE_HUECO_MAX_SEGUNDOS = 150;
 // Rechazo de teleports antes de /match (el crudo se conserva intacto, solo
 // se aparta el fix del ajuste): velocidad implícita contra el anterior
-// válido mayor a 120 km/h, o pico aislado de precisión >30 m con ambos
-// vecinos <15 m. Si al quitar outliers quedan <3 fixes, se descarta.
+// válido mayor a 120 km/h, o pico aislado de precisión >25 m con ambos
+// vecinos <13 m. Si al quitar outliers quedan <3 fixes, se descarta.
 const VELOCIDAD_MAX_TELEPORT_KMH = 120;
-const PRECISION_PICO_M = 30;
-const PRECISION_VECINA_FIABLE_M = 15;
+const PRECISION_PICO_M = 25;
+const PRECISION_VECINA_FIABLE_M = 13;
 
 const cache = new Map();
 
@@ -273,15 +277,32 @@ function desplazamientoMaximoM(ventana) {
   }
 }
 
+// Un hueco entre fixes conservados se puentea si dura <=150 s y no separa un
+// desplazamiento real (<150 m): así el tráfico lento, las paradas cortas y
+// los semáforos quedan dentro de una misma ventana y el recorrido urbano se
+// ajusta a vía en vez de cortarse en decenas de rectas. Los huecos de ruta
+// real (>=150 m) y las paradas largas (>150 s) cortan: el hueco de ruta lo
+// trata el ruteo de huecos (ESTIMATED) como siempre.
+function puenteHuecoCorto(posiciones, prevIdx, curIdx) {
+  try {
+    const prevMs = instanteMs(posiciones[prevIdx]);
+    const curMs = instanteMs(posiciones[curIdx]);
+    if (!Number.isFinite(prevMs) || !Number.isFinite(curMs)) return false;
+    if ((curMs - prevMs) / 1000 > PUENTE_HUECO_MAX_SEGUNDOS) return false;
+    return distanciaM(posiciones[prevIdx], posiciones[curIdx]) < MIN_DISTANCIA_RUTEO_M;
+  } catch {
+    return false;
+  }
+}
+
 // Parte el track en ventanas matchables: hasta 100 puntos o 5 min, cortando
-// en huecos >=45 s (ya tratados como antes). El interior de paradas
-// prolongadas nunca pertenece a una ventana: se corta antes del inicio y se
-// reanuda después del fin, así que una ventana que empieza dentro de una
-// parada (índice 0 o tras corte de hueco) no arrastra deriva ni el salto
-// siguiente. Después se apartan outliers de teleport de la entrada a /match
-// (el crudo queda intacto). Devuelve listas de fixes ya limpios; el llamador
-// los manda a /match por ventana. No lanza: ante dato inválido devuelve las
-// ventanas que sí pudo partir.
+// en huecos >=45 s salvo que el hueco lo cubra una parada corta (<=120 s):
+// así el recorrido urbano con semáforos queda en pocas ventanas y el trazado
+// se ajusta a vía. El interior de paradas nunca pertenece a una ventana (se
+// aparta el jitter de parado). Después se apartan outliers de teleport de la
+// entrada a /match (el crudo queda intacto). Devuelve listas de fixes ya
+// limpios; el llamador los manda a /match por ventana. No lanza: ante dato
+// inválido devuelve las ventanas que sí pudo partir.
 export function partirVentanasDensas(posiciones) {
   const ventanas = [];
   try {
@@ -304,20 +325,34 @@ export function partirVentanasDensas(posiciones) {
     } catch {
       // Sin conjunto tampoco se rompe: se sigue con partición por huecos.
     }
-    // Tramos libres de parada: se corta antes del inicio y se reanuda
-    // después del fin. Cada tramo se parte luego por huecos y topes.
+    // Índices conservados (sin interior de parada) y cortes por hueco: un
+    // hueco >=45 s corta el tramo salvo que lo cubra una parada corta
+    // (puente). Las paradas largas nunca se puentean.
     const tramosLibres = [];
     try {
-      let actual = [];
+      const conservados = [];
       for (let i = 0; i < posiciones.length; i += 1) {
-        if (enParada.has(i)) {
-          if (actual.length > 0) {
-            tramosLibres.push(actual);
-            actual = [];
+        if (!enParada.has(i)) conservados.push(i);
+      }
+      let actual = [];
+      for (let k = 0; k < conservados.length; k += 1) {
+        const idx = conservados[k];
+        if (actual.length > 0) {
+          const prevIdx = conservados[k - 1];
+          const prevMs = instanteMs(posiciones[prevIdx]);
+          const actualMs = instanteMs(posiciones[idx]);
+          if (Number.isFinite(prevMs) && Number.isFinite(actualMs)) {
+            const segundos = (actualMs - prevMs) / 1000;
+            if (
+              segundos >= MIN_SEPARACION_RUTEO_SEGUNDOS
+              && !puenteHuecoCorto(posiciones, prevIdx, idx)
+            ) {
+              tramosLibres.push(actual);
+              actual = [];
+            }
           }
-          continue;
         }
-        actual.push(posiciones[i]);
+        actual.push(posiciones[idx]);
       }
       if (actual.length > 0) tramosLibres.push(actual);
     } catch {
@@ -330,19 +365,12 @@ export function partirVentanasDensas(posiciones) {
         inicio = fin + 1;
       };
       for (let i = 1; i < tramo.length; i += 1) {
-        const anteriorMs = instanteMs(tramo[i - 1]);
-        const actualMs = instanteMs(tramo[i]);
-        if (Number.isFinite(anteriorMs) && Number.isFinite(actualMs)) {
-          if ((actualMs - anteriorMs) / 1000 >= MIN_SEPARACION_RUTEO_SEGUNDOS) {
-            cerrar(i - 1);
-            continue;
-          }
-        }
         if (i - inicio + 1 > MAX_PUNTOS_VENTANA_DENSA) {
           cerrar(i - 1);
           continue;
         }
         const inicioMs = instanteMs(tramo[inicio]);
+        const actualMs = instanteMs(tramo[i]);
         if (
           Number.isFinite(inicioMs) &&
           Number.isFinite(actualMs) &&
@@ -357,8 +385,8 @@ export function partirVentanasDensas(posiciones) {
     return ventanas;
   }
   // Solo ventanas con movimiento real: al menos 3 fixes, coordenadas finitas
-  // y tiempo creciente, con algún fix a >=50 m del primero. Tras apartar
-  // outliers se reexige >=3 fixes y >=50 m: una ventana que solo pasaba el
+  // y tiempo creciente, con algún fix a >=25 m del primero. Tras apartar
+  // outliers se reexige >=3 fixes y >=25 m: una ventana que solo pasaba el
   // gate gracias al salto (deriva parada + teleport) queda descartada.
   const utiles = [];
   try {
@@ -468,10 +496,32 @@ async function trazarPorRuta(desde, hasta, signal) {
   }
 }
 
+// Precisión mediana (m) de una ventana: viaja como `accuracy` al /match para
+// que el snap sea más exigente con buena señal. Sin datos válidos: null.
+function precisionMedianaM(puntos) {
+  try {
+    const valores = (Array.isArray(puntos) ? puntos : [])
+      .map((p) => Number(p?.precisionM))
+      .filter((v) => Number.isFinite(v) && v > 0)
+      .sort((a, b) => a - b);
+    if (valores.length === 0) return null;
+    const medio = Math.floor(valores.length / 2);
+    const mediana = valores.length % 2 === 0
+      ? (valores[medio - 1] + valores[medio]) / 2
+      : valores[medio];
+    return Number.isFinite(mediana) ? mediana : null;
+  } catch {
+    return null;
+  }
+}
+
 // Ajuste a vía por /match con los puntos del hueco (extremos + intermedios).
-// Devuelve {trazado, mapaVersion} o null si no hay ajuste útil.
+// La precisión mediana de la ventana viaja como `accuracy`: el ruteo ajusta
+// cuánto puede confiar en cada snap (efecto en cañones urbanos). Devuelve
+// {trazado, mapaVersion} o null si no hay ajuste útil.
 async function trazarPorMatch(puntos, signal) {
-  const clave = claveMatch(puntos);
+  const accuracy = precisionMedianaM(puntos);
+  const clave = `${claveMatch(puntos)}|a${accuracy === null ? 'na' : Math.round(accuracy)}`;
   const enCache = leerCache(clave);
   if (enCache !== undefined) return enCache.trazado ? enCache : null;
   const { signal: senal, liberar } = peticionConLimite(signal);
@@ -481,6 +531,7 @@ async function trazarPorMatch(puntos, signal) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         points: puntos.map((p) => [p.longitud, p.latitud]),
+        ...(accuracy === null ? {} : { accuracy }),
       }),
       signal: senal,
     });

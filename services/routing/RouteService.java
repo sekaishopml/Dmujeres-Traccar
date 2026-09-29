@@ -174,7 +174,7 @@ public class RouteService {
                 return;
             }
             List<Observation> observations = new ArrayList<>();
-            for (int i = 0; i < points.size(); i++) {
+            for (int i = 0; i < points.size(); i += 1) {
                 ArrayNode p = (ArrayNode) points.get(i);
                 double lon = p.get(0).asDouble();
                 double lat = p.get(1).asDouble();
@@ -185,9 +185,11 @@ public class RouteService {
                 }
                 observations.add(new Observation(new com.graphhopper.util.shapes.GHPoint(lat, lon)));
             }
+            JsonNode accuracyNode = body.get("accuracy");
+            double snapTrust = snapTrust(accuracyNode == null ? null : accuracyNode.asText());
             List<Observation> filtered = mm.filterObservations(observations);
             HybridResult hybrid = new HybridResult();
-            resilientMatch(mm, filtered, hybrid, 0);
+            resilientMatch(mm, filtered, hybrid, 0, snapTrust);
             ArrayNode matched = JSON.createArrayNode();
             for (double[] coord : hybrid.coords) {
                 ArrayNode point = JSON.createArrayNode();
@@ -253,7 +255,22 @@ public class RouteService {
 
     private static final double SNAP_TRUST_M = 60;
 
-    private static void resilientMatch(MapMatching mm, List<Observation> observations, HybridResult out, int depth) {
+    /** Confianza del snap según la precisión declarada de la ventana:
+     *  poco error -> snap más exigente; mucho error -> hasta el tope previo. */
+    private static double snapTrust(String accuracyRaw) {
+        double accuracy = Double.NaN;
+        try {
+            accuracy = Double.parseDouble(accuracyRaw);
+        } catch (Exception ignored) {
+            // sin dato: comportamiento anterior
+        }
+        if (!Double.isFinite(accuracy) || accuracy <= 0) return SNAP_TRUST_M;
+        double acotada = Math.max(3, Math.min(50, accuracy));
+        return Math.max(25, Math.min(SNAP_TRUST_M, 4 * acotada));
+    }
+
+    private static void resilientMatch(
+            MapMatching mm, List<Observation> observations, HybridResult out, int depth, double snapTrust) {
         if (observations.size() < 2 || depth > 4) {
             out.addAllRaw(observations);
             return;
@@ -263,7 +280,7 @@ public class RouteService {
         while (true) {
             try {
                 MatchResult result = mm.match(current);
-                collectHybrid(result, current, out);
+                collectHybrid(result, current, out, snapTrust);
                 out.distance += result.getMatchLength();
                 return;
             } catch (IllegalArgumentException e) {
@@ -278,14 +295,15 @@ public class RouteService {
                     return;
                 }
                 int mid = current.size() / 2;
-                resilientMatch(mm, current.subList(0, mid), out, depth + 1);
-                resilientMatch(mm, current.subList(mid, current.size()), out, depth + 1);
+                resilientMatch(mm, current.subList(0, mid), out, depth + 1, snapTrust);
+                resilientMatch(mm, current.subList(mid, current.size()), out, depth + 1, snapTrust);
                 return;
             }
         }
     }
 
-    private static void collectHybrid(MatchResult result, List<Observation> observations, HybridResult out) {
+    private static void collectHybrid(
+            MatchResult result, List<Observation> observations, HybridResult out, double snapTrust) {
         List<com.graphhopper.matching.EdgeMatch> edges = result.getEdgeMatches();
         List<com.graphhopper.matching.State> states = new ArrayList<>();
         for (com.graphhopper.matching.EdgeMatch edge : edges) {
@@ -302,7 +320,7 @@ public class RouteService {
                 continue;
             }
             com.graphhopper.util.shapes.GHPoint3D snapped = runCatchingSnapped(snap);
-            if (snapped != null && snap.getQueryDistance() <= SNAP_TRUST_M) {
+            if (snapped != null && snap.getQueryDistance() <= snapTrust) {
                 out.coords.add(new double[]{snapped.getLon(), snapped.getLat()});
                 out.snapped += 1;
             } else {
