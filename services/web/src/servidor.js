@@ -6,7 +6,9 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const AQUI = fileURLToPath(new URL('.', import.meta.url));
-const DIST = resolve(AQUI, '../../../apps/web/dist');
+// DMJ_WEB_DIST permite servir otro build (el panel nuevo en :8999) con el
+// mismo servidor y el mismo proxy de /api.
+const DIST = resolve(process.env.DMJ_WEB_DIST ?? resolve(AQUI, '../../../apps/web/dist'));
 const API = process.env.DMJ_API_URL ?? 'http://127.0.0.1:8081';
 const PUERTO = Number(process.env.DMJ_WEB_PORT ?? 25565);
 const HOST = process.env.DMJ_WEB_HOST ?? '0.0.0.0';

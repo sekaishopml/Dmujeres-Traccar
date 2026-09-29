@@ -1,0 +1,92 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource/poppins/600.css';
+@import '@fontsource/poppins/700.css';
+
+/* Sistema de diseño DMujeres Tracking.
+   Estructura en azul marino (oscuro para la navegación, claro para acciones
+   secundarias y el trazado del mapa) y el magenta oficial de DMujeres
+   (#EB0045, el mismo del ícono de la app) para la marca, la acción principal
+   y la selección. Poppins es la tipografía del logotipo: se usa en títulos y
+   cifras; Inter en el texto de trabajo. Todo color sale de estos tokens. */
+@theme {
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Poppins', 'Inter Variable', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-marino-950: #06101f;
+  --color-marino-900: #0c1f3d;
+  --color-marino-800: #132b50;
+  --color-marino-700: #17365d;
+  --color-marino-600: #1f4a7c;
+  --color-marino-500: #2c5f99;
+  --color-marino-400: #5a86bb;
+  --color-marino-300: #93b2d6;
+  --color-marino-200: #c5d6ea;
+  --color-marino-100: #e3ecf6;
+  --color-marino-50: #f2f6fb;
+
+  --color-marca: #eb0045;
+  --color-marca-oscuro: #c4003a;
+  --color-marca-claro: #ff5c8a;
+  --color-marca-suave: #fdebf1;
+
+  --color-fondo: #f0f2f7;
+  --color-superficie: #ffffff;
+  --color-borde: #e1e7ef;
+  --color-borde-fuerte: #c9d3e0;
+  --color-texto: #122036;
+  --color-texto-2: #52627a;
+  --color-texto-3: #8390a3;
+
+  /* Estados de un equipo: una sola paleta para chips, mapa y gráficos. */
+  --color-movimiento: #16a34a;
+  --color-movimiento-suave: #e8f6ed;
+  --color-detenido: #2563eb;
+  --color-detenido-suave: #e8effd;
+  --color-sin-senal: #d97706;
+  --color-sin-senal-suave: #fdf3e2;
+  --color-deshabilitado: #64748b;
+  --color-deshabilitado-suave: #eef1f5;
+  --color-peligro: #dc2626;
+  --color-peligro-suave: #fdecec;
+
+  --radius-control: 10px;
+  --radius-tarjeta: 16px;
+
+  --shadow-tarjeta: 0 1px 2px rgb(12 31 61 / 0.04), 0 4px 16px -6px rgb(12 31 61 / 0.08);
+  --shadow-flotante: 0 12px 32px rgb(12 31 61 / 0.16), 0 2px 6px rgb(12 31 61 / 0.08);
+
+  --animate-entrar: entrar 180ms cubic-bezier(0.16, 0.84, 0.44, 1);
+  @keyframes entrar {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-fondo font-sans text-[13.5px] leading-[1.5] text-texto antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  h1, h2, h3 { @apply font-display text-marino-900; }
+  :focus-visible { @apply outline-2 outline-offset-2 outline-marca; }
+  ::selection { background: var(--color-marca-suave); }
+}
+
+/* Cifras alineadas en tablas y fichas. */
+@utility cifras {
+  font-variant-numeric: tabular-nums;
+}
+
+/* MapLibre: controles con la misma piel del panel. */
+.maplibregl-ctrl-group {
+  @apply overflow-hidden rounded-control! border border-borde shadow-flotante!;
+}
+.maplibregl-ctrl-scale {
+  @apply rounded-sm border-marino-400! bg-white/85! text-[11px] text-marino-800!;
+}
+.maplibregl-popup-content {
+  @apply rounded-control! px-3! py-2.5! font-sans text-[12.5px] shadow-flotante!;
+}
