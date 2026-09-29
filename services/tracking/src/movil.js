@@ -232,10 +232,33 @@ export async function atenderSesion(req, res, ctx) {
     ...CONFIG_MOVIL_POR_DEFECTO,
     ...filtrarConfigApp(atributos.configApp),
   };
+  // Equipo de la persona: la app adopta su identificador al entrar, asi la
+  // ruta de quien inicia sesion queda bajo su equipo. Sin equipo vinculado
+  // (cuentas antiguas o de flota) el movil conserva su identificador actual.
+  let equipo = null;
+  try {
+    const equipos = await ctx.almacen.pool.query(
+      `SELECT d.identificador, d.nombre
+         FROM operations.dmt_asignacion a
+         JOIN tracking.dmt_dispositivo d ON d.id = a.dispositivo_id
+        WHERE a.usuario_id = $1 AND a.activa
+          AND a.desde_en <= now() AND (a.hasta_en IS NULL OR a.hasta_en > now())
+          AND d.habilitado
+        ORDER BY d.nombre, d.id
+        LIMIT 1`,
+      [fila.id],
+    );
+    if (equipos.rows[0]) {
+      equipo = { identificador: equipos.rows[0].identificador, nombre: equipos.rows[0].nombre };
+    }
+  } catch (error) {
+    ctx.log.warn(`movil/sesion: fallo al leer equipo de la cuenta: ${error.message}`);
+  }
   return responderJson(res, 200, {
     token,
     expiraEn: expiraEn instanceof Date ? expiraEn.toISOString() : new Date(expiraEn).toISOString(),
     usuario: { nombre: fila.nombre },
+    equipo,
     configuracion,
   });
 }

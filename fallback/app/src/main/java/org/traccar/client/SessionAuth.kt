@@ -4,7 +4,8 @@ package org.traccar.client
  * Lógica PURA de la sesión (JVM, sin Android ni org.json).
  *
  * Contrato del servidor (POST /api/mobile/v1/sesion {usuario, clave}):
- * - 200 {token, expiraEn, usuario:{nombre}, configuracion:{...}}
+ * - 200 {token, expiraEn, usuario:{nombre}, equipo:{identificador,nombre}|null,
+ *   configuracion:{...}}
  * - 401 credenciales inválidas.
  * Los endpoints móviles aceptan `Authorization: Bearer <token>` además de la
  * clave compartida actual (compatibilidad con la flota instalada).
@@ -41,6 +42,16 @@ object SessionAuth {
     fun extractDisplayName(body: String): String =
         Regex("\"usuario\"\\s*:\\s*\\{[^}]*\"nombre\"\\s*:\\s*\"([^\"]*)\"")
             .find(body)?.groupValues?.getOrNull(1).orEmpty()
+
+    /**
+     * Identificador del equipo vinculado a la cuenta (`equipo.identificador`).
+     * Al entrar, la app adopta este identificador para que la ruta quede bajo
+     * el equipo de la persona (así aparece en Replay y En vivo). Vacío si la
+     * cuenta no tiene equipo: el móvil conserva su identificador actual.
+     */
+    fun extractEquipoIdentificador(body: String): String =
+        Regex("\"equipo\"\\s*:\\s*\\{[^}]*\"identificador\"\\s*:\\s*\"([^\"]*)\"")
+            .find(body)?.groupValues?.getOrNull(1)?.trim().orEmpty()
 
     /**
      * Bloque `configuracion` del cuerpo 200 (con llaves incluidas).

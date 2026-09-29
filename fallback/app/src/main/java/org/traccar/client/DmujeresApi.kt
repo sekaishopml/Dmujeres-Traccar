@@ -265,9 +265,14 @@ object DmujeresApi {
                 val nombre = SessionAuth.extractDisplayName(body)
                 val expiraEnMs = if (expiraEn > 0) System.currentTimeMillis() + expiraEn * 1_000 else 0L
                 SessionStore.save(context, token, user, nombre, expiraEnMs)
-                // La identidad del equipo (Prefs.DEVICE) NO se toca: la
-                // persona que entra no renombra al equipo; X-Device-Id sigue
-                // siendo el identificador del equipo (p. ej. "macias").
+                // Equipo de la persona: al entrar se adopta su identificador
+                // para que la ruta quede bajo su equipo (aparece en Replay y
+                // En vivo). Sin equipo vinculado, el móvil conserva el suyo.
+                val equipo = SessionAuth.extractEquipoIdentificador(body)
+                if (equipo.isNotBlank()) {
+                    prefs(context).edit().putString(Prefs.DEVICE, equipo.lowercase()).apply()
+                    Log.i(TAG, "la sesión adoptó el equipo $equipo")
+                }
                 val config = SessionAuth.extractConfigBlock(body)
                 RemoteConfig.applySessionConfig(
                     context,

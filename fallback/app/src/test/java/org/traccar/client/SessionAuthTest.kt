@@ -152,4 +152,21 @@ class SessionAuthTest {
         assertTrue(json.contains("\"usuario\":\"ana\""))
         assertTrue(json.contains("\"clave\":\"secreta\""))
     }
+
+    // ── Equipo de la cuenta ─────────────────────────────────────────────────
+
+    @Test
+    fun `extrae el identificador del equipo vinculado`() {
+        val body = """{"token":"t","usuario":{"nombre":"Santiago"},
+            |"equipo":{"identificador":"desarrolladro","nombre":"Desarrolladro"}}""".trimMargin()
+        assertEquals("desarrolladro", SessionAuth.extractEquipoIdentificador(body))
+    }
+
+    @Test
+    fun `sin equipo no hay identificador que adoptar`() {
+        val body = """{"token":"t","usuario":{"nombre":"Ana"},"equipo":null}"""
+        assertEquals("", SessionAuth.extractEquipoIdentificador(body))
+        assertEquals("", SessionAuth.extractEquipoIdentificador("{}"))
+        assertEquals("", SessionAuth.extractEquipoIdentificador(""))
+    }
 }
