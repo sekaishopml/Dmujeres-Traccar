@@ -421,6 +421,72 @@ function enVentanaMatched(ventanas: VentanaMatched[], instante: number): boolean
   return false;
 }
 
+// Suavizado de presentación del trazado reconstruido (MATCHED y ESTIMATED):
+// las esquinas en ángulo recto del ajuste a vía se ven toscas a zoom urbano.
+// Se aplica un corte de vértice acotado en una sola pasada: cada vértice
+// interior B se reemplaza por dos puntos sobre los lados AB y BC, a una
+// distancia d = min(fracción · lado más corto, tope). Los puntos nuevos caen
+// sobre el trazado original, así que la desviación máxima de la línea suavizada
+// respecto a la original es d (la esquina recortada) y nunca supera el tope.
+// Los extremos no se mueven y los vértices casi rectos no se tocan para no
+// llenar la línea de puntos redundantes. Es solo presentación: el GPS
+// registrado y los huecos rectos no pasan por aquí y el dato crudo queda
+// intacto (ADR-007: nada se presenta como GPS si no lo es).
+export const SUAVIZADO_FRACCION = 0.25;
+export const SUAVIZADO_DESPLAZAMIENTO_MAX_M = 8;
+// Por debajo de ~2° de quiebre el corte no redondea nada visible y solo
+// duplica puntos: el vértice se conserva tal cual.
+const SUAVIZADO_SENO_MIN = Math.sin((2 * Math.PI) / 180);
+
+export function suavizarTrazado(
+  coordenadas: [number, number][],
+  desplazamientoMaxM = SUAVIZADO_DESPLAZAMIENTO_MAX_M,
+  fraccion = SUAVIZADO_FRACCION,
+): [number, number][] {
+  if (coordenadas.length < 3 || !(desplazamientoMaxM > 0) || !(fraccion > 0)) return coordenadas;
+  const salida: [number, number][] = [coordenadas[0]];
+  for (let i = 1; i < coordenadas.length - 1; i += 1) {
+    const [lonA, latA] = coordenadas[i - 1];
+    const [lonB, latB] = coordenadas[i];
+    const [lonC, latC] = coordenadas[i + 1];
+    if (![lonA, latA, lonB, latB, lonC, latC].every((valor) => Number.isFinite(valor))) {
+      salida.push([lonB, latB]);
+      continue;
+    }
+    const largoPrevioM =
+      distanciaKm({ latitud: latA, longitud: lonA }, { latitud: latB, longitud: lonB }) * 1000;
+    const largoSiguienteM =
+      distanciaKm({ latitud: latB, longitud: lonB }, { latitud: latC, longitud: lonC }) * 1000;
+    if (!(largoPrevioM > 0) || !(largoSiguienteM > 0)) {
+      salida.push([lonB, latB]);
+      continue;
+    }
+    // Quiebre del vértice en metros locales (equirectangular: a ≤ 8 m sobra).
+    const cosLat = Math.cos((latB * Math.PI) / 180);
+    const ux = (lonB - lonA) * cosLat;
+    const uy = latB - latA;
+    const vx = (lonC - lonB) * cosLat;
+    const vy = latC - latB;
+    const modulo = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+    const seno = modulo > 0 ? Math.abs(ux * vy - uy * vx) / modulo : 0;
+    if (seno < SUAVIZADO_SENO_MIN) {
+      salida.push([lonB, latB]);
+      continue;
+    }
+    const corteM = Math.min(fraccion * Math.min(largoPrevioM, largoSiguienteM), desplazamientoMaxM);
+    salida.push([
+      lonA + (lonB - lonA) * (corteM / largoPrevioM),
+      latA + (latB - latA) * (corteM / largoPrevioM),
+    ]);
+    salida.push([
+      lonB + (lonC - lonB) * (corteM / largoSiguienteM),
+      latB + (latC - latB) * (corteM / largoSiguienteM),
+    ]);
+  }
+  salida.push(coordenadas[coordenadas.length - 1]);
+  return salida;
+}
+
 export function segmentosDeRecorrido(
   posiciones: Posicion[],
   huecos: Hueco[],
@@ -454,7 +520,9 @@ export function segmentosDeRecorrido(
     if (trazado.length >= 2) {
       segmentos.push({
         tipo: tramo.metodo === 'MATCHED' ? 'matched' : 'estimated',
-        coordenadas: trazado.map(([lon, lat]) => [lon, lat] as [number, number]),
+        // Solo presentación: el trazado ajustado a vía y el estimado se
+        // redondean; el GPS registrado y los huecos rectos quedan crudos.
+        coordenadas: suavizarTrazado(trazado.map(([lon, lat]) => [lon, lat] as [number, number])),
       });
     }
   }

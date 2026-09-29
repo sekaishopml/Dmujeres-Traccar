@@ -75,6 +75,11 @@
   display: flex; flex-direction: column; gap: 4px; font-size: 12.5px;
 }
 .en-vivo button.equipo:hover { background: #f7f9fc; border-color: #cdd8e6; }
+/* Unidad elegida: mismo tinte de selección que usa el resto del panel. */
+.en-vivo button.equipo.seleccionado,
+.en-vivo button.equipo.seleccionado:hover {
+  background: #eef3f9; border-color: var(--navy); color: var(--texto);
+}
 .en-vivo .equipo-titulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .en-vivo .equipo-titulo strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .en-vivo .equipo-meta {
@@ -104,6 +109,12 @@
 .pagina-detalle .marcador-equipo {
   width: 15px; height: 15px; border-radius: 50%; border: 2px solid #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+}
+/* Unidad elegida: aro navy y por encima del resto para distinguirla sin
+   cambiar su tamaño (maplibre posiciona el elemento con transform). */
+.pagina-en-vivo .marcador-equipo.seleccionado {
+  box-shadow: 0 0 0 3px rgba(11, 31, 51, .4), 0 1px 4px rgba(0, 0, 0, .4);
+  z-index: 2;
 }
 .pagina-en-vivo .maplibregl-popup-content,
 .pagina-detalle .maplibregl-popup-content {

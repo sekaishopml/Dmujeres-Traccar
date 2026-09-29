@@ -5,7 +5,12 @@ import { LngLatBounds, Marker } from 'maplibre-gl';
 import type { GeoJSONSource, Map as TipoMapa } from 'maplibre-gl';
 import Icono from '../componentes/Icono';
 import MapaRaster from './operacion/MapaRaster';
-import ReproductorReplay, { LineaTiempoReplay, ListaParadas, PanelPuntoSeleccionado } from './operacion/ReproductorReplay';
+import ReproductorReplay, {
+  InsigniasParadas,
+  LineaTiempoReplay,
+  ListaParadas,
+  PanelPuntoSeleccionado,
+} from './operacion/ReproductorReplay';
 import FiltroReplay from './operacion/FiltroReplay';
 import { traerFlota, traerJornadas, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
@@ -25,7 +30,6 @@ import {
   segmentosDeRecorrido,
 } from './operacion/replay';
 import type { Parada, TramoReconstruido } from './operacion/replay';
-import { duracion } from '../util/formato';
 import { fechaHoyLocal, finDeDia, inicioDeDia } from './operacion/rango';
 import './operacion.css';
 
@@ -547,33 +551,6 @@ export default function Replay() {
     };
   }, [mapa, posiciones]);
 
-  // Paradas como insignias circulares numeradas con duración: el número sigue
-  // el orden del recorrido y la píldora muestra la duración observada. El halo
-  // de dispersión y la nube de puntos quietos ya están en sus capas; la
-  // insignia solo rotula. No tocan el encuadre y se retiran al cambiar de
-  // consulta.
-  useEffect(() => {
-    if (!mapa) return;
-    const marcadores = paradas.map((parada, orden) => {
-      const elemento = document.createElement('div');
-      elemento.className = 'marcador-parada';
-      elemento.title = `Parada ${orden + 1}: ${horaCorta(parada.inicio)} a ${horaCorta(parada.fin)} (${duracion(parada.duracionMin * 60)})`;
-      const insignia = document.createElement('span');
-      insignia.className = 'parada-insignia';
-      insignia.textContent = String(orden + 1);
-      const etiqueta = document.createElement('span');
-      etiqueta.className = 'parada-duracion';
-      etiqueta.textContent = duracion(parada.duracionMin * 60);
-      elemento.append(insignia, etiqueta);
-      return new Marker({ element: elemento, anchor: 'center' })
-        .setLngLat([parada.longitud, parada.latitud])
-        .addTo(mapa);
-    });
-    return () => {
-      for (const marcador of marcadores) marcador.remove();
-    };
-  }, [mapa, paradas]);
-
   // Inicio y fin de jornada. El endpoint solo trae horas, así que cada extremo
   // se ancla al fix más cercano en el tiempo y solo si cae dentro del tramo
   // cargado: indiceCercaDeInstante devuelve null cuando la jornada empezó antes
@@ -660,6 +637,10 @@ export default function Replay() {
         {/* El mapa ocupa la pantalla completa; panel, leyenda y franja flotan
             encima con las clases que definen global.css y operacion.css. */}
         <MapaRaster clase="mapa" alListo={setMapa} />
+        {/* Insignias de parada sobre el mapa, dentro del proveedor del
+            reproductor: comparten selección con la lista y llevan el mapa a la
+            parada con un vuelo suave al pulsarlas. No pintan nada en el DOM. */}
+        <InsigniasParadas mapa={mapa} paradas={paradas} />
         {/* Leyenda del sistema visual: estado del marcador, corredor GPS por
             modo (vehículo y a pie) con su sentido de marcha, dispersión parada
             con su insignia, capas reconstruidas con identidad propia (ADR-007)

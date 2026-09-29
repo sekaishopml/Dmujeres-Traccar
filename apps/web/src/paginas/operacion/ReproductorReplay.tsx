@@ -42,6 +42,18 @@ const VELOCIDADES = [0.5, 1, 2, 4, 8, 16];
 // duplicaba renders de React y del gráfico.
 const INTERVALO_PINTADO_MS = 200;
 
+// Vuelo al seleccionar una parada: zoom urbano (15-16) pedido por operación y
+// animación de ~900 ms con curva suave. Si el mapa ya está más cerca, no se
+// aleja más allá del techo. Con prefers-reduced-motion el salto es directo.
+const ZOOM_PARADA_MIN = 15;
+const ZOOM_PARADA_MAX = 16;
+const DURACION_VUELO_PARADA_MS = 900;
+const CURVA_VUELO_PARADA = 1.42;
+
+function movimientoReducido(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 // Factor base adaptativo: con una ruta de 14 h el reloj a 1× avanzaba casi en
 // tiempo real y el play parecía roto. La ruta completa se recorre en ~60 s a
 // 1×, con piso 1× para no acelerar rutas cortas y techo 300× para que una ruta
@@ -116,6 +128,9 @@ interface Reproductor {
   velocidad: number;
   seguir: boolean;
   seleccionado: number | null;
+  // Parada elegida en la lista o en su insignia del mapa: la fila y la
+  // insignia se resaltan juntas.
+  paradaSeleccionada: number | null;
   // El slider del tiempo es no controlado: el reproductor escribe su valor y
   // su relleno de progreso por frame durante la reproducción (60 fps), así el
   // avance se ve continuo y no a saltos del repintado de React (5 Hz).
@@ -128,9 +143,10 @@ interface Reproductor {
   pausar: () => void;
   // Salto a un instante de la línea de tiempo pedido desde fuera (paradas).
   irA: (instante: number) => void;
-  // Salto a una parada: pausa, ubica el reloj, selecciona el fix y centra el
-  // mapa en ella, igual que elegir un colaborador en En vivo.
-  irAPunto: (latitud: number, longitud: number, instante: number) => void;
+  // Selección de una parada: pausa, ubica el reloj, selecciona su fix, marca
+  // la parada y lleva el mapa hasta ella con un vuelo suave (salto directo con
+  // movimiento reducido), igual que elegir un colaborador en En vivo.
+  seleccionarParada: (indiceParada: number, latitud: number, longitud: number, instante: number) => void;
   // Selección de un fix al pulsar la ruta: pausa y ubica el reproductor.
   seleccionar: (indice: number) => void;
   quitarSeleccion: () => void;
@@ -153,6 +169,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
   // que el usuario pida acompañar el marcador.
   const [seguir, setSeguir] = useState(false);
   const [seleccionado, setSeleccionado] = useState<number | null>(null);
+  const [paradaSeleccionada, setParadaSeleccionada] = useState<number | null>(null);
   const marcadorActual = useRef<Marker | null>(null);
   // El reloj y el índice viven en refs para que el bucle de animación no se
   // reinicie en cada avance; el estado solo provoca el repintado de la interfaz.
@@ -194,6 +211,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     setIndice(0);
     setReproduciendo(false);
     setSeleccionado(null);
+    setParadaSeleccionada(null);
   }
 
   useLayoutEffect(() => {
@@ -361,11 +379,40 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
       setReproduciendo(false);
       setIndice(acotado);
       setSeleccionado(acotado);
+      // Un fix suelto de la ruta ya no es la parada elegida.
+      setParadaSeleccionada(null);
     },
     [posiciones, sincronizarSlider],
   );
 
   const quitarSeleccion = useCallback(() => setSeleccionado(null), []);
+
+  // Selección de parada desde la lista o desde su insignia en el mapa: pausa,
+  // ubica el reloj en el inicio de la parada, resalta la fila y la insignia y
+  // vuela el mapa hasta ella. El vuelo mantiene el zoom actual si ya está en la
+  // banda urbana (15-16); con movimiento reducido el encuadre es instantáneo.
+  const seleccionarParada = useCallback(
+    (indiceParada: number, latitud: number, longitud: number, instante: number) => {
+      if (posiciones.length === 0) return;
+      seleccionar(indicePorInstante(posiciones, instante));
+      setParadaSeleccionada(indiceParada);
+      if (!mapa) return;
+      const zoom = Math.min(Math.max(mapa.getZoom(), ZOOM_PARADA_MIN), ZOOM_PARADA_MAX);
+      const centro: [number, number] = [longitud, latitud];
+      if (movimientoReducido()) {
+        mapa.jumpTo({ center: centro, zoom });
+        return;
+      }
+      mapa.flyTo({
+        center: centro,
+        zoom,
+        duration: DURACION_VUELO_PARADA_MS,
+        curve: CURVA_VUELO_PARADA,
+        essential: true,
+      });
+    },
+    [posiciones, mapa, seleccionar],
+  );
 
   useEffect(() => {
     if (!mapa) return;
@@ -449,17 +496,6 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     moverA(indicePorInstante(posiciones, instante));
   }
 
-  // Salto a una parada concreta: pausa, ubica el reloj, deja seleccionado el
-  // fix (la ficha muestra su detalle) y centra el mapa en la parada. Es el
-  // mismo gesto que elegir un colaborador en En vivo: el mapa te lleva al
-  // punto sin tener que buscarlo.
-  function irAParada(latitud: number, longitud: number, instante: number) {
-    if (posiciones.length === 0) return;
-    irAInstante(instante);
-    setSeleccionado(indiceRef.current);
-    if (mapa) mapa.easeTo({ center: [longitud, latitud], duration: 350 });
-  }
-
   const estado: Reproductor = {
     posiciones,
     huecos,
@@ -471,6 +507,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     velocidad: velocidadReproduccion,
     seguir,
     seleccionado,
+    paradaSeleccionada,
     sliderRef,
     alternar: alternarReproduccion,
     alternarSeguir: () => setSeguir((activo) => !activo),
@@ -479,7 +516,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     mover: moverA,
     pausar,
     irA: irAInstante,
-    irAPunto: irAParada,
+    seleccionarParada,
     seleccionar,
     quitarSeleccion,
   };
@@ -651,23 +688,23 @@ export function PanelPuntoSeleccionado() {
   );
 }
 
-// Fila de parada: inicio, duración, extremo del recorrido y dirección. El
+// Fila de parada: desde/hasta, duración, extremo del recorrido y dirección. El
 // geocode se pide solo para la primera fila (referencia de la zona) y para la
 // seleccionada; el resto muestra la dirección que ya trajo el servidor.
 function FilaParada({
   parada,
+  indice,
   primera,
   ultima,
   activa,
-  alPulsar,
 }: {
   parada: Parada;
+  indice: number;
   primera: boolean;
   ultima: boolean;
   activa: boolean;
-  alPulsar: () => void;
 }) {
-  const { irAPunto } = useReproductor();
+  const { seleccionarParada } = useReproductor();
   const pideDireccion = (primera || activa) && !parada.direccion;
   const geocodificada = useDireccion(
     pideDireccion ? parada.latitud : null,
@@ -680,14 +717,13 @@ function FilaParada({
     <li className={clases}>
       <button
         type="button"
-        onClick={() => {
-          alPulsar();
-          irAPunto(parada.latitud, parada.longitud, milisegundos(parada.inicio));
-        }}
-        title={`${horaCorta(parada.inicio)} a ${horaCorta(parada.fin)}`}
+        onClick={() => seleccionarParada(indice, parada.latitud, parada.longitud, milisegundos(parada.inicio))}
+        title={`Desde ${horaCorta(parada.inicio)} hasta ${horaCorta(parada.fin)} (${duracion(parada.duracionMin * 60)})`}
       >
         <span className="parada-cabecera">
-          <span className="parada-hora">{horaCorta(parada.inicio)}</span>
+          <span className="parada-hora">
+            Desde {horaCorta(parada.inicio)} hasta {horaCorta(parada.fin)}
+          </span>
           {(primera || ultima) && <span className="parada-extremo">{primera ? 'Primera' : 'Última'}</span>}
           <span className="parada-tiempo">{duracion(parada.duracionMin * 60)}</span>
         </span>
@@ -711,7 +747,9 @@ export function ListaParadas({
   total?: number;
 }) {
   const [abiertas, setAbiertas] = useState(false);
-  const [activa, setActiva] = useState<number | null>(null);
+  // La parada activa vive en el reproductor: elegirla desde su insignia del
+  // mapa también resalta su fila, y viceversa.
+  const { paradaSeleccionada } = useReproductor();
   if (paradas.length === 0) return null;
   // El total del servidor puede superar las filas cargadas (tope de la
   // consulta): "y N más" cuenta lo que quedó fuera de la carga.
@@ -735,10 +773,10 @@ export function ListaParadas({
               <FilaParada
                 key={`${parada.inicio}-${posicion}`}
                 parada={parada}
+                indice={posicion}
                 primera={posicion === 0}
                 ultima={posicion === paradas.length - 1}
-                activa={activa === posicion}
-                alPulsar={() => setActiva(posicion)}
+                activa={paradaSeleccionada === posicion}
               />
             ))}
           </ul>
@@ -747,6 +785,53 @@ export function ListaParadas({
       )}
     </section>
   );
+}
+
+// Insignias numeradas de parada sobre el mapa. Se recrean solo al cambiar de
+// recorrido (o de mapa); al cambiar la parada elegida apenas se alterna la
+// clase activa, sin recrear marcadores. Pulsar una insignia es el mismo gesto
+// que pulsar su fila en la lista: pausa, ubica el reloj, resalta la parada
+// (fila e insignia) y vuela el mapa hasta ella. Vive junto al reproductor para
+// leer el contexto de selección; Replay solo la monta dentro.
+export function InsigniasParadas({ mapa, paradas }: { mapa: TipoMapa | null; paradas: Parada[] }) {
+  const { paradaSeleccionada, seleccionarParada } = useReproductor();
+  const elementos = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
+    if (!mapa) return;
+    const almacen = elementos.current;
+    const marcadores = paradas.map((parada, orden) => {
+      const elemento = document.createElement('div');
+      elemento.className = 'marcador-parada';
+      elemento.title = `Parada ${orden + 1}: desde ${horaCorta(parada.inicio)} hasta ${horaCorta(parada.fin)} (${duracion(parada.duracionMin * 60)})`;
+      const insignia = document.createElement('span');
+      insignia.className = 'parada-insignia';
+      insignia.textContent = String(orden + 1);
+      const etiqueta = document.createElement('span');
+      etiqueta.className = 'parada-duracion';
+      etiqueta.textContent = duracion(parada.duracionMin * 60);
+      elemento.append(insignia, etiqueta);
+      elemento.addEventListener('click', () => {
+        seleccionarParada(orden, parada.latitud, parada.longitud, milisegundos(parada.inicio));
+      });
+      almacen.set(orden, elemento);
+      return new Marker({ element: elemento, anchor: 'center' })
+        .setLngLat([parada.longitud, parada.latitud])
+        .addTo(mapa);
+    });
+    return () => {
+      for (const marcador of marcadores) marcador.remove();
+      almacen.clear();
+    };
+  }, [mapa, paradas, seleccionarParada]);
+
+  useEffect(() => {
+    for (const [orden, elemento] of elementos.current) {
+      elemento.classList.toggle('activa', orden === paradaSeleccionada);
+    }
+  }, [paradas, paradaSeleccionada]);
+
+  return null;
 }
 
 // Mandos del reproductor: play/pausa, seguir, saltos de hueco y velocidades.

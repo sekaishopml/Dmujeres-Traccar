@@ -157,6 +157,10 @@
   font: inherit; color: inherit; text-align: left; cursor: pointer;
 }
 .replay-paradas li > button:hover, .replay-paradas li.activa > button { background: var(--linea-2); }
+/* Parada elegida (en la lista o por su insignia): tinte del acento de
+   selección y hora en el mismo color, para que se lea cuál está centrada. */
+.replay-paradas li.activa > button { background: rgba(235, 0, 69, .08); }
+.replay-paradas li.activa .parada-hora { color: #eb0045; }
 .parada-cabecera { display: flex; align-items: baseline; gap: 6px; width: 100%; }
 .parada-hora { font-size: 13.5px; color: var(--navy); font-weight: 650; font-variant-numeric: tabular-nums; }
 .parada-extremo { font-size: 12px; color: var(--apagado); }
@@ -279,7 +283,7 @@
    coordenada, con la duración en píldora a la derecha. La dispersión parada
    ya la muestran el halo y la nube de puntos quietos; la insignia solo
    rotula sin tapar el corredor. */
-.marcador-parada { position: absolute; width: 22px; height: 22px; }
+.marcador-parada { position: absolute; width: 22px; height: 22px; cursor: pointer; }
 .parada-insignia {
   position: absolute; inset: 0; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -293,6 +297,13 @@
   background: rgba(255, 255, 255, .94); border: 1px solid var(--linea-3);
   border-radius: 20px; padding: 1px 7px; font-variant-numeric: tabular-nums;
 }
+/* Parada seleccionada en el mapa (el mismo acento del aro del punto elegido):
+   insignia rellena y aro suave, con la píldora de duración en el mismo color. */
+.marcador-parada.activa .parada-insignia {
+  background: #eb0045;
+  box-shadow: 0 0 0 3px rgba(235, 0, 69, .25), 0 1px 6px rgba(4, 18, 31, .45);
+}
+.marcador-parada.activa .parada-duracion { border-color: #eb0045; color: #eb0045; }
 /* Clase anterior sin uso (el círculo hueco naranja): se conserva por si un
    mapa reutilizado aún la referencia. */
 .marcador-detencion {

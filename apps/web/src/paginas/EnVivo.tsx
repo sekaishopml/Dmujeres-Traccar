@@ -15,6 +15,27 @@ import '../estilos/paginas.css';
 
 const REFRESCO_MS = 5000;
 
+// Zoom "urbano" al que viaja el mapa al elegir una unidad y duración del
+// vuelo: alcanza para ubicar la calle sin desorientar a la operadora.
+const ZOOM_UNIDAD = 15.5;
+const VUELO_MS = 900;
+const CURVA_VUELO = 1.42;
+
+function movimientoReducido(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// Vuelo a la posición viva de una unidad. Solo lo dispara una orden explícita
+// (clic en la lista o en el marcador), nunca el sondeo de 5 s. Con movimiento
+// reducido se centra de inmediato, sin animación.
+function volarA(mapa: MapaMaplibre, centro: [number, number]) {
+  if (movimientoReducido()) {
+    mapa.jumpTo({ center: centro, zoom: ZOOM_UNIDAD });
+    return;
+  }
+  mapa.flyTo({ center: centro, zoom: ZOOM_UNIDAD, duration: VUELO_MS, curve: CURVA_VUELO });
+}
+
 // Filtros de operación: "sin señal" agrupa SIN_SENAL, SEÑAL_DÉBIL y
 // DESCONOCIDO porque los tres exigen revisar el equipo igual. "Fuera de
 // jornada" solo agrupa equipos habilitados con jornada cerrada:
@@ -40,6 +61,9 @@ export default function EnVivo() {
   const [mapa, setMapa] = useState<MapaMaplibre | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todas');
+  // Unidad elegida en la lista o en el marcador: mantiene el resaltado y la
+  // ficha abierta aunque llegue un sondeo nuevo.
+  const [seleccionado, setSeleccionado] = useState<number | null>(null);
   const marcadores = useRef(new Map<number, Marker>());
   // Los eventos del popup (open) necesitan los datos más recientes sin volver a
   // crear el marcador; este ref se sincroniza en el efecto que los actualiza.
@@ -47,6 +71,9 @@ export default function EnVivo() {
     dispositivos: [],
     posiciones: new Map(),
   });
+  // Los manejadores de clic de los marcadores se registran una sola vez, al
+  // crearlos: este ref les entrega siempre la versión vigente de seleccionar.
+  const seleccionarRef = useRef<(id: number) => void>(() => {});
 
   // Sondeo de fondo cada 5 s: un 401 aquí no redirige (redirigir401: false),
   // solo deja el estado de error; la comprobación de sesión decide.
@@ -75,6 +102,10 @@ export default function EnVivo() {
       ),
     [vivas.data, idsHabilitados],
   );
+
+  // Si la unidad elegida sale de la flota habilitada, la selección deja de
+  // tener sentido: se ignora en el render en vez de dejar un resaltado huérfano.
+  const seleccionActual = seleccionado != null && idsHabilitados.has(seleccionado) ? seleccionado : null;
 
   const reconsultarFlota = flota.refetch;
   const reconsultarPosiciones = vivas.refetch;
@@ -121,6 +152,13 @@ export default function EnVivo() {
           .setLngLat([posicion.longitud, posicion.latitud])
           .setPopup(popup)
           .addTo(mapa);
+        // Clic en el marcador: elige la unidad igual que la lista lateral. Se
+        // corta la propagación para que el mapa no lea el clic como "vacío"
+        // (quitaría la selección y alternaría el popup recién abierto).
+        marcador.on('click', (evento) => {
+          evento.originalEvent.stopPropagation();
+          seleccionarRef.current(dispositivo.id);
+        });
         marcadores.current.set(dispositivo.id, marcador);
       } else {
         // Actualización en sitio: recrear los marcadores en cada refresco de 5 s
@@ -130,6 +168,8 @@ export default function EnVivo() {
         const popup = marcador.getPopup();
         if (popup?.isOpen()) popup.setDOMContent(contenidoPopup(dispositivo, posicion));
       }
+      // La selección se refleja en el marcador y sobrevive a cada sondeo.
+      marcador.getElement().classList.toggle('seleccionado', dispositivo.id === seleccionActual);
     }
     for (const [id, marcador] of marcadores.current) {
       if (!vigentes.has(id)) {
@@ -137,7 +177,31 @@ export default function EnVivo() {
         marcadores.current.delete(id);
       }
     }
-  }, [mapa, dispositivos, posiciones]);
+  }, [mapa, dispositivos, posiciones, seleccionActual]);
+
+  // El manejador de clic de cada marcador vive más que un render: este efecto
+  // mantiene el ref apuntando a la selección vigente del componente.
+  useEffect(() => {
+    seleccionarRef.current = seleccionarPorId;
+  });
+
+  // Clic en el mapa vacío: quita la selección y cierra la ficha. Los clics del
+  // marcador no llegan aquí (detienen la propagación) y el popup no pasa por el
+  // lienzo, así que cualquier clic recibido es sobre mapa vacío.
+  useEffect(() => {
+    if (!mapa) return;
+    const alClic = () => {
+      if (seleccionActual != null) {
+        const popup = marcadores.current.get(seleccionActual)?.getPopup();
+        if (popup?.isOpen()) popup.remove();
+      }
+      setSeleccionado(null);
+    };
+    mapa.on('click', alClic);
+    return () => {
+      mapa.off('click', alClic);
+    };
+  }, [mapa, seleccionActual]);
 
   const conteos = useMemo(() => {
     const acumulado = { enLinea: 0, detenido: 0, sinSenal: 0, deshabilitado: 0 };
@@ -172,13 +236,34 @@ export default function EnVivo() {
     mapa.fitBounds(limites, { padding: 48, maxZoom: 15 });
   }
 
-  function centrarEn(dispositivo: Dispositivo) {
-    const posicion = posiciones.get(dispositivo.id);
+  function quitarSeleccion() {
+    if (seleccionActual != null) {
+      const popup = marcadores.current.get(seleccionActual)?.getPopup();
+      if (popup?.isOpen()) popup.remove();
+    }
+    setSeleccionado(null);
+  }
+
+  // Vuela a la posición viva de la unidad y abre su ficha. El sondeo de 5 s
+  // sigue moviendo el marcador y refrescando el popup, pero no vuelve a volar:
+  // el encuadre solo cambia con una nueva orden de la operadora.
+  function seleccionarPorId(id: number) {
+    if (seleccionActual != null && seleccionActual !== id) {
+      const previo = marcadores.current.get(seleccionActual)?.getPopup();
+      if (previo?.isOpen()) previo.remove();
+    }
+    setSeleccionado(id);
+    const posicion = posiciones.get(id);
     if (!mapa || !posicion) return;
-    mapa.flyTo({ center: [posicion.longitud, posicion.latitud], zoom: Math.max(mapa.getZoom(), 15) });
-    const marcador = marcadores.current.get(dispositivo.id);
+    volarA(mapa, [posicion.longitud, posicion.latitud]);
+    const marcador = marcadores.current.get(id);
     const popup = marcador?.getPopup();
     if (marcador && popup && !popup.isOpen()) marcador.togglePopup();
+  }
+
+  function verTodaLaFlota() {
+    quitarSeleccion();
+    centrarFlota();
   }
 
   const error = flota.error ?? vivas.error;
@@ -196,6 +281,12 @@ export default function EnVivo() {
           </p>
         </div>
         <span className="empuja" />
+        {seleccionActual != null && (
+          <button type="button" className="suave con-icono" onClick={verTodaLaFlota}>
+            <Icono nombre="capas" />
+            Ver toda la flota
+          </button>
+        )}
         <button type="button" className="suave con-icono" onClick={centrarFlota} disabled={!mapa || posiciones.size === 0}>
           <Icono nombre="enVivo" />
           Centrar flota
@@ -249,7 +340,13 @@ export default function EnVivo() {
                 const posicion = posiciones.get(equipo.id);
                 return (
                   <li key={equipo.id}>
-                    <button type="button" className="equipo" title={`Centrar ${equipo.nombre}`} onClick={() => centrarEn(equipo)}>
+                    <button
+                      type="button"
+                      className={`equipo${seleccionActual === equipo.id ? ' seleccionado' : ''}`}
+                      title={`Centrar ${equipo.nombre}`}
+                      aria-pressed={seleccionActual === equipo.id}
+                      onClick={() => seleccionarPorId(equipo.id)}
+                    >
                       <span className="equipo-titulo">
                         <strong>{equipo.nombre}</strong>
                         <ChipEstado dispositivo={equipo} />
