@@ -6,6 +6,9 @@ import { api, consulta } from '../api/cliente';
 import { useSesion } from '../store/sesion';
 import { CLAVE_FLOTA } from './operacion/datos';
 import Icono from '../componentes/Icono';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import { CACHE_FLOTA_CONSULTA_MS, ChipEstado, MensajeError } from './admin/comunes';
 import { Toast } from './admin/Toast';
 import type { ClaveConfiguracionEquipo, DispositivoGestion, ValorConfiguracionEquipo } from './admin/tipos';
@@ -237,12 +240,11 @@ export default function Configuracion() {
 
   return (
     <section>
-      <header className="cabecera-pagina">
-        <div>
-          <h1>Configuración</h1>
-          <p className="sub">Parámetros de la aplicación móvil por equipo. Solo administradores.</p>
-        </div>
-      </header>
+      <EncabezadoPagina
+        contexto="Administración"
+        titulo="Configuración"
+        sub="Parámetros de la aplicación móvil por equipo. Solo administradores."
+      />
 
       {!administrador && (
         <p className="aviso">Necesitas permisos de administrador para cambiar la configuración; el formulario está deshabilitado.</p>
@@ -250,12 +252,7 @@ export default function Configuracion() {
 
       <section className="seccion">
         <div className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Equipos</h2>
-            <span className="cuenta">
-              {flota.length} de {equipos.data?.total ?? 0}
-            </span>
-          </header>
+          <CabeceraSeccion titulo="Equipos" cuenta={`${flota.length} de ${equipos.data?.total ?? 0}`} />
           <label className="campo">
             <span>Buscar equipo</span>
             <span className="busqueda">
@@ -271,7 +268,7 @@ export default function Configuracion() {
           {equipos.isPending && <p className="vacio pulso">Cargando equipos…</p>}
           {equipos.error && <MensajeError error={equipos.error} />}
           {equipos.data && flota.length === 0 && (
-            <p className="vacio">No hay equipos que coincidan con la búsqueda.</p>
+            <EstadoVacio icono="buscar">No hay equipos que coincidan con la búsqueda.</EstadoVacio>
           )}
           {flota.length > 0 && (
             <div className="tabla-envoltura">
@@ -315,11 +312,13 @@ export default function Configuracion() {
 
       <section className="seccion">
         <div className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Configuración del equipo</h2>
-            <span className="cuenta">{seleccionado ? seleccionado.nombre : 'Sin equipo seleccionado'}</span>
-          </header>
-          {!seleccionado && <p className="vacio">Selecciona un equipo para ver y editar su configuración.</p>}
+          <CabeceraSeccion
+            titulo="Configuración del equipo"
+            cuenta={seleccionado ? seleccionado.nombre : 'Sin equipo seleccionado'}
+          />
+          {!seleccionado && (
+            <EstadoVacio icono="configuracion">Selecciona un equipo para ver y editar su configuración.</EstadoVacio>
+          )}
           {seleccionado && borrador && (
             <form onSubmit={enviar}>
               <p className="ayuda-campo">

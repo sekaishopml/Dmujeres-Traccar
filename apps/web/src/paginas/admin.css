@@ -19,14 +19,14 @@
    la barra de filtros que lo precede. */
 .rango-efectivo { margin: 6px 0 12px; font-size: 12.5px; color: var(--apagado); }
 
-/* Pestañas de Reportes */
-.pestanas { display: flex; gap: 2px; border-bottom: 1px solid var(--linea); margin-bottom: 10px; }
+/* Pestañas de Reportes: subrayado de tinta, sin caja */
+.pestanas { display: flex; gap: 4px; border-bottom: 1px solid var(--linea-3); margin-bottom: 12px; }
 .pestanas button {
   background: transparent; color: var(--apagado); border: 0; border-radius: 0;
-  border-bottom: 2px solid transparent; padding: 7px 11px; font-size: 13px;
+  border-bottom: 2px solid transparent; padding: 7px 10px; font-size: var(--tamano-base);
 }
 .pestanas button:hover { background: var(--linea-2); color: var(--navy); }
-.pestanas button.activa { color: var(--navy); border-bottom-color: var(--acento); font-weight: 650; }
+.pestanas button.activa { color: var(--navy); border-bottom-color: var(--navy); font-weight: var(--peso-fuerte); }
 
 .paginacion {
   display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap;
@@ -48,7 +48,7 @@
 /* Estados binarios (carga, dependencias, capacidades) */
 .si { color: var(--verde); font-weight: 650; }
 .no { color: var(--rojo); font-weight: 650; }
-.chip.error { color: var(--rojo); background: #fdeaef; }
+.chip.error { color: var(--rojo); }
 
 /* Bloque resaltado cuando /ready falla o queda degradado */
 .bloque.fallo { border-color: #f2c3d2; background: #fffafb; }
@@ -77,8 +77,8 @@
 }
 .dialogo::backdrop { background: rgba(11, 37, 69, .42); }
 .dialogo-caja {
-  background: var(--tarjeta); border: 1px solid var(--linea); border-radius: var(--radio);
-  padding: 14px 16px; box-shadow: 0 8px 24px rgba(11, 37, 69, .16);
+  background: var(--tarjeta); border: 1px solid var(--linea-3); border-radius: var(--radio);
+  padding: 14px 16px; box-shadow: var(--sombra-2);
   max-height: calc(100vh - 48px); overflow: auto;
 }
 .dialogo-cab { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -104,8 +104,8 @@
   position: fixed; right: 16px; bottom: 16px; z-index: 60;
   display: flex; align-items: center; gap: 12px;
   background: #fff; color: var(--texto); padding: 9px 10px 9px 13px;
-  border: 1px solid var(--linea); border-left: 3px solid var(--verde);
-  border-radius: 7px; box-shadow: 0 6px 18px rgba(11, 37, 69, .14); font-size: 13px;
+  border: 1px solid var(--linea-3); border-left: 3px solid var(--verde);
+  border-radius: var(--radio-xs); box-shadow: var(--sombra-2); font-size: var(--tamano-sm);
 }
 .toast button { background: transparent; border-color: transparent; color: var(--navy-2); padding: 4px 8px; font-size: 12px; }
 .toast button:hover { background: var(--linea-2); }
@@ -128,7 +128,7 @@
 
 input[type='checkbox'], input[type='radio'] { width: auto; min-height: 0; padding: 0; }
 
-.grupo-equipos { border: 1px solid var(--linea); border-radius: 7px; padding: 6px 10px 8px; margin: 0 0 10px; }
+.grupo-equipos { border: 1px solid var(--linea); border-radius: var(--radio-xs); padding: 8px 10px 10px; margin: 0 0 12px; }
 .grupo-equipos legend {
   font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
   color: var(--apagado); font-weight: 650; padding: 0 4px;

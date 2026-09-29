@@ -8,6 +8,9 @@ import type { ChartData, ChartOptions } from 'chart.js';
 import type { Bateria as SerieBateria, MuestraBateria } from '@contratos';
 import { api, consulta } from '../api/cliente';
 import { GUION, bateria as pctTexto, fechaHora, hace } from '../util/formato';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import {
   BarraBateria,
   ChipEstado,
@@ -149,71 +152,68 @@ export default function Bateria() {
 
   return (
     <section>
-      <header className="cabecera-pagina">
-        <div>
-          <h1>Batería</h1>
-          <p className="sub">Consumo de batería: nivel de la flota y detalle por equipo en el rango elegido.</p>
-        </div>
-      </header>
+      <EncabezadoPagina
+        contexto="Operación"
+        titulo="Batería"
+        sub="Consumo de batería: nivel de la flota y detalle por equipo en el rango elegido."
+      />
 
       <section className="seccion">
-        <div className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Estado de la flota</h2>
-            <span className="cuenta">{flota.length} equipos · ordenados de menor a mayor carga</span>
-          </header>
-          {equipos.isPending && <p className="vacio pulso">Cargando flota…</p>}
-          {equipos.error && <MensajeError error={equipos.error} />}
-          {equipos.data && (
-            <>
-              <div className="tabla-envoltura">
-                <table className="tabla">
-                  <thead>
-                    <tr>
-                      <th>Equipo</th>
-                      <th>Identificador</th>
-                      <th>Estado</th>
-                      <th>Batería</th>
-                      <th>Cargando</th>
-                      <th>Última conexión</th>
+        <CabeceraSeccion
+          titulo="Estado de la flota"
+          cuenta={`${flota.length} equipos · ordenados de menor a mayor carga`}
+        />
+        {equipos.isPending && <p className="vacio pulso">Cargando flota…</p>}
+        {equipos.error && <MensajeError error={equipos.error} />}
+        {equipos.data && (
+          <>
+            <div className="tabla-envoltura">
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Equipo</th>
+                    <th>Identificador</th>
+                    <th>Estado</th>
+                    <th>Batería</th>
+                    <th>Cargando</th>
+                    <th>Última conexión</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {flota.map((d) => (
+                    <tr key={d.idPublico} className={d.idPublico === seleccion ? 'seleccionada' : ''}>
+                      <td>
+                        <button type="button" className="enlace-fila" onClick={() => setSeleccionManual(d.idPublico)}>
+                          {d.nombre}
+                        </button>
+                      </td>
+                      <td className="mono">{d.identificadorUnico}</td>
+                      <td>
+                        <ChipEstado estado={d.estado} />
+                      </td>
+                      <td>
+                        <BarraBateria pct={d.bateriaPct} />
+                      </td>
+                      <td>
+                        <TextoCarga cargando={d.cargando} />
+                      </td>
+                      <td title={d.ultimaConexion ?? undefined}>{hace(d.ultimaConexion)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {flota.map((d) => (
-                      <tr key={d.idPublico} className={d.idPublico === seleccion ? 'seleccionada' : ''}>
-                        <td>
-                          <button type="button" className="enlace-fila" onClick={() => setSeleccionManual(d.idPublico)}>
-                            {d.nombre}
-                          </button>
-                        </td>
-                        <td className="mono">{d.identificadorUnico}</td>
-                        <td>
-                          <ChipEstado estado={d.estado} />
-                        </td>
-                        <td>
-                          <BarraBateria pct={d.bateriaPct} />
-                        </td>
-                        <td>
-                          <TextoCarga cargando={d.cargando} />
-                        </td>
-                        <td title={d.ultimaConexion ?? undefined}>{hace(d.ultimaConexion)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {flota.length === 0 && <p className="vacio">No hay equipos en la flota.</p>}
-            </>
-          )}
-        </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {flota.length === 0 && <EstadoVacio icono="bateria">No hay equipos en la flota.</EstadoVacio>}
+          </>
+        )}
       </section>
 
       <section className="seccion">
-        <div className="bloque">
-          <header className="cabecera-seccion">
-            <h2>{equipoSeleccionado ? equipoSeleccionado.nombre : 'Historial de batería'}</h2>
-            <span className="cuenta mono">{equipoSeleccionado ? equipoSeleccionado.identificadorUnico : GUION}</span>
-            <span className="acciones">
+        <CabeceraSeccion
+          titulo={equipoSeleccionado ? equipoSeleccionado.nombre : 'Historial de batería'}
+          cuenta={<span className="mono">{equipoSeleccionado ? equipoSeleccionado.identificadorUnico : GUION}</span>}
+          acciones={
+            <>
               <button type="button" className="suave" onClick={() => setRango(rangoDeHoras(24))}>
                 Últimas 24 h
               </button>
@@ -223,39 +223,41 @@ export default function Bateria() {
               <button type="button" className="suave" onClick={() => setRango(rangoDeHoras(24 * 30))}>
                 30 días
               </button>
-            </span>
-          </header>
-          <div className="tira-datos">
-            <div className="dato">
-              <div className="valor">{pctTexto(serie.data?.actual)}</div>
-              <div className="etiqueta">Actual</div>
-            </div>
-            <div className="dato">
-              <div className="valor">{pctTexto(minima)}</div>
-              <div className="etiqueta">Mínima del rango</div>
-            </div>
-            <div className="dato">
-              <div className="valor">{serie.data ? muestras.length : GUION}</div>
-              <div className="etiqueta">Lecturas</div>
-            </div>
-            <div className="dato">
-              <div className="valor">{textoTendencia}</div>
-              <div className="etiqueta">Tendencia</div>
-            </div>
+            </>
+          }
+        />
+        <div className="tira-datos">
+          <div className="dato">
+            <div className="valor">{pctTexto(serie.data?.actual)}</div>
+            <div className="etiqueta">Actual</div>
           </div>
-
-          {serie.isPending && seleccion !== '' && <p className="vacio pulso">Cargando historial…</p>}
-          {serie.error && <MensajeError error={serie.error} />}
-          {serie.data && muestras.length === 0 && <p className="vacio">No hay lecturas de batería en el rango.</p>}
-          {serie.data && muestras.length > 0 && valores.length === 0 && (
-            <p className="vacio">Las lecturas del rango no traen porcentaje de batería.</p>
-          )}
-          {serie.data && valores.length > 0 && (
-            <div className="grafico bloque-sep">
-              <Line data={datosGrafico} options={opcionesGrafico} />
-            </div>
-          )}
+          <div className="dato">
+            <div className="valor">{pctTexto(minima)}</div>
+            <div className="etiqueta">Mínima del rango</div>
+          </div>
+          <div className="dato">
+            <div className="valor">{serie.data ? muestras.length : GUION}</div>
+            <div className="etiqueta">Lecturas</div>
+          </div>
+          <div className="dato">
+            <div className="valor">{textoTendencia}</div>
+            <div className="etiqueta">Tendencia</div>
+          </div>
         </div>
+
+        {serie.isPending && seleccion !== '' && <p className="vacio pulso">Cargando historial…</p>}
+        {serie.error && <MensajeError error={serie.error} />}
+        {serie.data && muestras.length === 0 && (
+          <EstadoVacio icono="bateria">No hay lecturas de batería en el rango.</EstadoVacio>
+        )}
+        {serie.data && muestras.length > 0 && valores.length === 0 && (
+          <EstadoVacio icono="bateria">Las lecturas del rango no traen porcentaje de batería.</EstadoVacio>
+        )}
+        {serie.data && valores.length > 0 && (
+          <div className="bloque grafico bloque-sep">
+            <Line data={datosGrafico} options={opcionesGrafico} />
+          </div>
+        )}
       </section>
     </section>
   );

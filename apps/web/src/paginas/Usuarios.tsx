@@ -14,6 +14,9 @@ import { api } from '../api/cliente';
 import { useSesion } from '../store/sesion';
 import { GUION } from '../util/formato';
 import Icono from '../componentes/Icono';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import {
   CACHE_FLOTA_CONSULTA_MS,
   CACHE_PLATAFORMA_MS,
@@ -616,125 +619,115 @@ export default function Usuarios() {
   if (!administrador || esErrorDeEstado(usuarios.error, 403)) {
     return (
       <section>
-        <header className="cabecera-pagina">
-          <div>
-            <h1>Usuarios</h1>
-          </div>
-        </header>
-        <div className="bloque">
-          <p className="aviso">Necesitas permisos de administrador para gestionar cuentas.</p>
-        </div>
+        <EncabezadoPagina contexto="Administración" titulo="Usuarios" />
+        <p className="aviso">Necesitas permisos de administrador para gestionar cuentas.</p>
       </section>
     );
   }
 
   return (
     <section>
-      <header className="cabecera-pagina">
-        <div>
-          <h1>Usuarios</h1>
-          <p className="sub">Cuentas de acceso, personas y grupos. Solo administradores.</p>
-        </div>
-        <div className="empuja" />
-        <button type="button" className="principal con-icono" onClick={abrirCrear}>
-          <Icono nombre="mas" />
-          Agregar cuenta
-        </button>
-      </header>
+      <EncabezadoPagina
+        contexto="Administración"
+        titulo="Usuarios"
+        sub="Cuentas de acceso, personas y grupos. Solo administradores."
+        acciones={
+          <button type="button" className="principal con-icono" onClick={abrirCrear}>
+            <Icono nombre="mas" />
+            Agregar cuenta
+          </button>
+        }
+      />
 
       <section className="seccion">
-        <div className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Cuentas de acceso</h2>
-            <span className="cuenta">
-              {usuarios.data ? `${total} registradas` : 'Consultando…'}
-            </span>
-          </header>
-          {usuarios.isPending && <p className="vacio pulso">Cargando cuentas…</p>}
-          {usuarios.error && <MensajeError error={usuarios.error} />}
-          {usuarios.data && total === 0 && <p className="vacio">Todavía no hay cuentas.</p>}
-          {visibles.length > 0 && (
-            <>
-              <div className="tabla-envoltura">
-                <table className="tabla">
-                  <thead>
-                    <tr>
-                      <th>Cuenta</th>
-                      <th>Persona</th>
-                      <th>Teléfono</th>
-                      <th>Puesto</th>
-                      <th>Grupos</th>
-                      <th>Equipos</th>
-                      <th>Estado</th>
-                      <th>Acciones</th>
+        <CabeceraSeccion
+          titulo="Cuentas de acceso"
+          cuenta={usuarios.data ? `${total} registradas` : 'Consultando…'}
+        />
+        {usuarios.isPending && <p className="vacio pulso">Cargando cuentas…</p>}
+        {usuarios.error && <MensajeError error={usuarios.error} />}
+        {usuarios.data && total === 0 && <EstadoVacio icono="usuarios">Todavía no hay cuentas.</EstadoVacio>}
+        {visibles.length > 0 && (
+          <>
+            <div className="tabla-envoltura">
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Cuenta</th>
+                    <th>Persona</th>
+                    <th>Teléfono</th>
+                    <th>Puesto</th>
+                    <th>Grupos</th>
+                    <th>Equipos</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibles.map((usuario) => (
+                    <tr key={usuario.idPublico}>
+                      <td>{usuario.usuario}</td>
+                      <td>{usuario.nombre}</td>
+                      <td>{usuario.telefono ?? GUION}</td>
+                      <td>{usuario.cargo ?? GUION}</td>
+                      <td>{textoGrupos(usuario)}</td>
+                      <td>{textoEquipos(usuario, listaEquipos)}</td>
+                      <td>
+                        <ChipHabilitado habilitado={usuario.habilitado} />
+                      </td>
+                      <td>
+                        <div className="fila-botones">
+                          <button
+                            type="button"
+                            className="accion-icono"
+                            title="Cambiar los datos de la cuenta"
+                            aria-label={`Cambiar los datos de ${usuario.nombre}`}
+                            onClick={() => abrirEditar(usuario)}
+                          >
+                            <Icono nombre="editar" />
+                          </button>
+                          <button
+                            type="button"
+                            className="accion-icono"
+                            title="Cambiar los ajustes de la aplicación móvil"
+                            aria-label={`Cambiar los ajustes de ${usuario.nombre}`}
+                            onClick={() => abrirAjustes(usuario)}
+                          >
+                            <Icono nombre="configuracion" />
+                          </button>
+                          {usuario.habilitado ? (
+                            <button
+                              type="button"
+                              className="accion-icono peligro"
+                              title="Dar de baja la cuenta"
+                              aria-label={`Dar de baja a ${usuario.nombre}`}
+                              onClick={() => abrirBaja(usuario)}
+                            >
+                              <Icono nombre="basura" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="suave"
+                              title="Reactivar la cuenta"
+                              aria-label={`Reactivar la cuenta de ${usuario.nombre}`}
+                              onClick={() => reactivar.mutate(usuario)}
+                              disabled={reactivar.isPending}
+                            >
+                              {reactivar.isPending ? 'Reactivando…' : 'Reactivar'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {visibles.map((usuario) => (
-                      <tr key={usuario.idPublico}>
-                        <td>{usuario.usuario}</td>
-                        <td>{usuario.nombre}</td>
-                        <td>{usuario.telefono ?? GUION}</td>
-                        <td>{usuario.cargo ?? GUION}</td>
-                        <td>{textoGrupos(usuario)}</td>
-                        <td>{textoEquipos(usuario, listaEquipos)}</td>
-                        <td>
-                          <ChipHabilitado habilitado={usuario.habilitado} />
-                        </td>
-                        <td>
-                          <div className="fila-botones">
-                            <button
-                              type="button"
-                              className="accion-icono"
-                              title="Cambiar los datos de la cuenta"
-                              aria-label={`Cambiar los datos de ${usuario.nombre}`}
-                              onClick={() => abrirEditar(usuario)}
-                            >
-                              <Icono nombre="editar" />
-                            </button>
-                            <button
-                              type="button"
-                              className="accion-icono"
-                              title="Cambiar los ajustes de la aplicación móvil"
-                              aria-label={`Cambiar los ajustes de ${usuario.nombre}`}
-                              onClick={() => abrirAjustes(usuario)}
-                            >
-                              <Icono nombre="configuracion" />
-                            </button>
-                            {usuario.habilitado ? (
-                              <button
-                                type="button"
-                                className="accion-icono peligro"
-                                title="Dar de baja la cuenta"
-                                aria-label={`Dar de baja a ${usuario.nombre}`}
-                                onClick={() => abrirBaja(usuario)}
-                              >
-                                <Icono nombre="basura" />
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="suave"
-                                title="Reactivar la cuenta"
-                                aria-label={`Reactivar la cuenta de ${usuario.nombre}`}
-                                onClick={() => reactivar.mutate(usuario)}
-                                disabled={reactivar.isPending}
-                              >
-                                {reactivar.isPending ? 'Reactivando…' : 'Reactivar'}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <Paginacion pagina={paginaSegura} tamano={TAMANO} total={total} onPagina={setPagina} />
-            </>
-          )}
-          {reactivar.error && <MensajeError error={reactivar.error} />}
-        </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paginacion pagina={paginaSegura} tamano={TAMANO} total={total} onPagina={setPagina} />
+          </>
+        )}
+        {reactivar.error && <MensajeError error={reactivar.error} />}
       </section>
 
       {modal?.modo === 'crear' && (

@@ -7,6 +7,9 @@ import type { Map as TipoMapa } from 'maplibre-gl';
 import { bateria, fechaHora, hace, velocidad, GUION } from '../util/formato';
 import { consulta } from '../api/cliente';
 import Icono from '../componentes/Icono';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import MapaRaster from './operacion/MapaRaster';
 import ChipEstado from './operacion/ChipEstado';
 import BarraBateria from './operacion/BarraBateria';
@@ -88,8 +91,8 @@ export default function Detalle() {
   }, [mapa, posicion, equipo]);
 
   if (consultaEquipo.isPending) return <p className="vacio pulso">Cargando…</p>;
-  if (consultaEquipo.error) return <p className="vacio">{mensajeError(consultaEquipo.error)}</p>;
-  if (!equipo) return <p className="vacio">El equipo no está disponible.</p>;
+  if (consultaEquipo.error) return <EstadoVacio icono="sistema">{mensajeError(consultaEquipo.error)}</EstadoVacio>;
+  if (!equipo) return <EstadoVacio icono="sistema">El equipo no está disponible.</EstadoVacio>;
 
   const hoy = fechaHoyLocal();
   const enlaceReplay = `/replay${consulta({ dispositivo: equipo.idPublico, desde: hoy, hasta: hoy })}`;
@@ -97,24 +100,24 @@ export default function Detalle() {
 
   return (
     <section className="pagina-detalle">
-      <header className="cabecera-pagina">
-        <div>
-          <h1>{equipo.nombre}</h1>
-          <p className="sub mono">{equipo.identificadorUnico}</p>
-        </div>
-        <ChipEstado dispositivo={equipo} />
-        <span className="empuja" />
-        <Link className="boton boton-suave con-icono" to="/en-vivo">
-          <Icono nombre="enVivo" />
-          Ver en el mapa
-        </Link>
-      </header>
+      <EncabezadoPagina
+        contexto="Operación"
+        titulo={equipo.nombre}
+        sub={<span className="mono">{equipo.identificadorUnico}</span>}
+        acciones={
+          <>
+            <ChipEstado dispositivo={equipo} />
+            <Link className="boton boton-suave con-icono" to="/en-vivo">
+              <Icono nombre="enVivo" />
+              Ver en el mapa
+            </Link>
+          </>
+        }
+      />
 
       <div className="rejilla cols-2">
         <section className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Estado</h2>
-          </header>
+          <CabeceraSeccion titulo="Estado" />
           <dl className="ficha">
             <Dato etiqueta="ID interno">{entero(equipo.id)}</Dato>
             <Dato etiqueta="ID público">
@@ -135,9 +138,7 @@ export default function Detalle() {
         </section>
 
         <section className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Batería</h2>
-          </header>
+          <CabeceraSeccion titulo="Batería" />
           <dl className="ficha">
             <Dato etiqueta="Nivel actual">
               <BarraBateria porcentaje={equipo.bateriaPct} cargando={equipo.cargando} />
@@ -150,19 +151,21 @@ export default function Detalle() {
       </div>
 
       <section className="bloque bloque-sep">
-        <header className="cabecera-seccion">
-          <h2>Última posición</h2>
-          <span className="acciones">
-            <Link className="boton boton-suave con-icono" to={enlaceAuditoria}>
-              <Icono nombre="historial" />
-              Historial del día
-            </Link>
-            <Link className="boton con-icono" to={enlaceReplay}>
-              <Icono nombre="replay" />
-              Replay del día
-            </Link>
-          </span>
-        </header>
+        <CabeceraSeccion
+          titulo="Última posición"
+          acciones={
+            <>
+              <Link className="boton boton-suave con-icono" to={enlaceAuditoria}>
+                <Icono nombre="historial" />
+                Historial del día
+              </Link>
+              <Link className="boton con-icono" to={enlaceReplay}>
+                <Icono nombre="replay" />
+                Replay del día
+              </Link>
+            </>
+          }
+        />
         <div className="rejilla cols-2">
           <div>
             {posicion && (
@@ -171,14 +174,13 @@ export default function Detalle() {
               </div>
             )}
             {!posicion && (
-              <p className="vacio">
-                <Icono nombre="enVivo" />
+              <EstadoVacio icono="enVivo">
                 {consultaPosicion.isPending
                   ? 'Cargando posición…'
                   : consultaPosicion.error
                     ? mensajeError(consultaPosicion.error)
                     : 'El equipo no tiene posición conocida.'}
-              </p>
+              </EstadoVacio>
             )}
           </div>
           <dl className="ficha">

@@ -4,6 +4,9 @@ import { LngLatBounds, Map as MapaMaplibre, Marker, Popup } from 'maplibre-gl';
 import type { Dispositivo, Posicion } from '@contratos';
 import { hace } from '../util/formato';
 import Icono from '../componentes/Icono';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import MapaRaster from './operacion/MapaRaster';
 import ChipEstado from './operacion/ChipEstado';
 import BarraBateria from './operacion/BarraBateria';
@@ -271,44 +274,39 @@ export default function EnVivo() {
 
   return (
     <section className="pagina-en-vivo">
-      <header className="cabecera-pagina">
-        <div>
-          <h1>En vivo</h1>
-          <p className="sub">
-            {flota.data?.total ?? 0} equipos
-            {actualizado ? ` · actualizado ${actualizado}` : ''}
-            {vivas.isFetching || flota.isFetching ? ' · actualizando…' : ''}
-          </p>
-        </div>
-        <span className="empuja" />
-        {seleccionActual != null && (
-          <button type="button" className="suave con-icono" onClick={verTodaLaFlota}>
-            <Icono nombre="capas" />
-            Ver toda la flota
-          </button>
-        )}
-        <button type="button" className="suave con-icono" onClick={centrarFlota} disabled={!mapa || posiciones.size === 0}>
-          <Icono nombre="enVivo" />
-          Centrar flota
-        </button>
-      </header>
+      <EncabezadoPagina
+        contexto="Operación"
+        titulo="En vivo"
+        sub={`${flota.data?.total ?? 0} equipos${actualizado ? ` · actualizado ${actualizado}` : ''}${
+          vivas.isFetching || flota.isFetching ? ' · actualizando…' : ''
+        }`}
+        acciones={
+          <>
+            {seleccionActual != null && (
+              <button type="button" className="suave con-icono" onClick={verTodaLaFlota}>
+                <Icono nombre="capas" />
+                Ver toda la flota
+              </button>
+            )}
+            <button
+              type="button"
+              className="suave con-icono"
+              onClick={centrarFlota}
+              disabled={!mapa || posiciones.size === 0}
+            >
+              <Icono nombre="enVivo" />
+              Centrar flota
+            </button>
+          </>
+        }
+      />
 
-      {error && (
-        <p className="vacio">
-          <Icono nombre="sistema" />
-          {mensajeError(error)}
-        </p>
-      )}
+      {error && <EstadoVacio icono="sistema">{mensajeError(error)}</EstadoVacio>}
 
       <div className="en-vivo">
         <MapaRaster clase="mapa mapa-caja" alListo={setMapa} />
-        <aside className="bloque panel-equipos">
-          <header className="cabecera-seccion">
-            <h2>Equipos</h2>
-            <span className="cuenta">
-              {listado.length} de {dispositivos.length}
-            </span>
-          </header>
+        <aside className="panel-equipos">
+          <CabeceraSeccion titulo="Equipos" cuenta={`${listado.length} de ${dispositivos.length}`} />
           <label className="busqueda">
             <Icono nombre="buscar" />
             <input
@@ -368,7 +366,7 @@ export default function EnVivo() {
             </ul>
           )}
           {!flota.isPending && listado.length === 0 && (
-            <p className="vacio">Ningún equipo coincide con el filtro o la búsqueda.</p>
+            <EstadoVacio icono="buscar">Ningún equipo coincide con el filtro o la búsqueda.</EstadoVacio>
           )}
         </aside>
       </div>

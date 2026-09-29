@@ -3,6 +3,9 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { Pagina, ReporteParada, ReporteViaje, ResumenReporte } from '@contratos';
 import { api, consulta } from '../api/cliente';
 import { GUION, duracion, fechaHora, kilometros, velocidad } from '../util/formato';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import { MensajeError, Paginacion, SelectorEquipo, useEquipos } from './admin/comunes';
 import { CACHE_AUDITORIA_MS } from './operacion/datos';
 import './admin.css';
@@ -107,12 +110,11 @@ export default function Reportes() {
 
   return (
     <section>
-      <header className="cabecera-pagina">
-        <div>
-          <h1>Reportes</h1>
-          <p className="sub">Viajes, paradas y resumen por equipo en el rango elegido.</p>
-        </div>
-      </header>
+      <EncabezadoPagina
+        contexto="Operación"
+        titulo="Reportes"
+        sub="Viajes, paradas y resumen por equipo en el rango elegido."
+      />
 
       <div className="barra-herramientas">
         <SelectorEquipo
@@ -171,14 +173,16 @@ export default function Reportes() {
       </div>
 
       {pestana === 'viajes' && (
-        <section className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Viajes</h2>
-            <span className="cuenta">{viajes.data ? `${viajes.data.total} registros` : 'Consultando…'}</span>
-          </header>
+        <section className="seccion">
+          <CabeceraSeccion
+            titulo="Viajes"
+            cuenta={viajes.data ? `${viajes.data.total} registros` : 'Consultando…'}
+          />
           {viajes.isPending && <p className="vacio pulso">Cargando viajes…</p>}
           {viajes.error && <MensajeError error={viajes.error} />}
-          {viajes.data && viajes.data.datos.length === 0 && <p className="vacio">No hay viajes en el rango.</p>}
+          {viajes.data && viajes.data.datos.length === 0 && (
+            <EstadoVacio icono="reportes">No hay viajes en el rango.</EstadoVacio>
+          )}
           {viajes.data && viajes.data.datos.length > 0 && (
             <>
               <div className="tabla-envoltura">
@@ -223,14 +227,16 @@ export default function Reportes() {
       )}
 
       {pestana === 'paradas' && (
-        <section className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Paradas</h2>
-            <span className="cuenta">{paradas.data ? `${paradas.data.total} registros` : 'Consultando…'}</span>
-          </header>
+        <section className="seccion">
+          <CabeceraSeccion
+            titulo="Paradas"
+            cuenta={paradas.data ? `${paradas.data.total} registros` : 'Consultando…'}
+          />
           {paradas.isPending && <p className="vacio pulso">Cargando paradas…</p>}
           {paradas.error && <MensajeError error={paradas.error} />}
-          {paradas.data && paradas.data.datos.length === 0 && <p className="vacio">No hay paradas en el rango.</p>}
+          {paradas.data && paradas.data.datos.length === 0 && (
+            <EstadoVacio icono="reportes">No hay paradas en el rango.</EstadoVacio>
+          )}
           {paradas.data && paradas.data.datos.length > 0 && (
             <>
               <div className="tabla-envoltura">
@@ -270,13 +276,11 @@ export default function Reportes() {
       )}
 
       {pestana === 'resumen' && (
-        <section className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Resumen por equipo</h2>
-            <span className="cuenta">
-              {resumen.data ? `${resumen.data.porDispositivo.length} equipos` : 'Consultando…'}
-            </span>
-          </header>
+        <section className="seccion">
+          <CabeceraSeccion
+            titulo="Resumen por equipo"
+            cuenta={resumen.data ? `${resumen.data.porDispositivo.length} equipos` : 'Consultando…'}
+          />
           {resumen.isPending && <p className="vacio pulso">Cargando resumen…</p>}
           {resumen.error && <MensajeError error={resumen.error} />}
           {resumen.data && (
@@ -308,7 +312,7 @@ export default function Reportes() {
                 </table>
               </div>
               {resumen.data.porDispositivo.length === 0 && (
-                <p className="vacio">No hay actividad de equipos en el rango.</p>
+                <EstadoVacio icono="reportes">No hay actividad de equipos en el rango.</EstadoVacio>
               )}
             </>
           )}

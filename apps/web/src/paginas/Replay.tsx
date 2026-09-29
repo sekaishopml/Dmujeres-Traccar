@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LngLatBounds, Marker } from 'maplibre-gl';
 import type { GeoJSONSource, Map as TipoMapa } from 'maplibre-gl';
 import Icono from '../componentes/Icono';
-import MapaRaster from './operacion/MapaRaster';
+import MapaRaster, { CAPAS_REPLAY } from './operacion/MapaRaster';
 import ReproductorReplay, {
   InsigniasParadas,
   LineaTiempoReplay,
@@ -30,7 +30,7 @@ import {
   segmentosDeRecorrido,
 } from './operacion/replay';
 import type { Parada, TramoReconstruido } from './operacion/replay';
-import { fechaHoyLocal, finDeDia, inicioDeDia } from './operacion/rango';
+import { finDeDia, inicioDeDia } from './operacion/rango';
 import './operacion.css';
 
 // Nombre de archivo sin caracteres problemáticos para el sistema de archivos.
@@ -109,17 +109,161 @@ function imagenDireccion(borde: string): ImageData | null {
   return contexto.getImageData(0, 0, LADO_FLECHA, LADO_FLECHA);
 }
 
+// Ranura de la etiqueta respecto del pin. Los extremos que caen en la misma
+// zona (ida y vuelta al domicilio, jornada que arranca y cierra en el mismo
+// lugar, arranques con deriva GPS) comparten pantalla y sus etiquetas se
+// encimaban: cada tipo prueba primero su lado natural y, si está ocupado,
+// avanza por una cascada de desplazamientos verticales (o laterales, en las
+// ranuras de arriba/abajo) hasta encontrar un hueco libre. Nunca hay dos
+// textos superpuestos.
+type UbicacionEtiqueta = 'derecha' | 'izquierda' | 'arriba' | 'abajo';
+
+// Orden de lados por tipo: el extremo del recorrido cuelga a la derecha y el
+// de la jornada a la izquierda, de modo que un pin compartido quede flanqueado.
+const ORDEN_UBICACIONES: Record<string, UbicacionEtiqueta[]> = {
+  inicio: ['derecha', 'arriba', 'abajo', 'izquierda'],
+  fin: ['derecha', 'abajo', 'arriba', 'izquierda'],
+  'jornada-inicio': ['izquierda', 'arriba', 'abajo', 'derecha'],
+  'jornada-fin': ['izquierda', 'abajo', 'arriba', 'derecha'],
+};
+
+// Cascada de separación: la primera pasada cuelga a la altura del pin; las
+// siguientes apilan la píldora una fila arriba/abajo (34 px = píldora + aire).
+// El inicio prefiere subir y el fin bajar, como en una lista.
+const DESPLAZAMIENTOS_INICIO = [0, -34, 34, -68, 68];
+const DESPLAZAMIENTOS_FIN = [0, 34, -34, 68, -68];
+
+// La colisión se decide en píxeles de pantalla, no en metros: a zoom de ciudad
+// dos pines pueden estar a más de un kilómetro y sus píldoras solaparse igual.
+// Los offsets replican operacion.css: 14 px al lado de un pin de 18 px dejan la
+// píldora a 5 px del centro, y 15 px arriba/abajo a 6 px. El alto es 24 px
+// medidos y el ancho se sobreestima un poco para no decidir de menos.
+const ALTO_ETIQUETA = 26;
+const FUERA_HORIZONTAL = 5;
+const FUERA_VERTICAL = 6;
+
+function anchoEtiqueta(texto: string): number {
+  return 12 + texto.length * 6.4;
+}
+
+interface RanuraEtiqueta {
+  ubicacion: UbicacionEtiqueta;
+  desplazamiento: number;
+}
+
+interface CajaEtiqueta {
+  izquierda: number;
+  arriba: number;
+  derecha: number;
+  abajo: number;
+}
+
+function cajaRanura(ranura: RanuraEtiqueta, x: number, y: number, ancho: number): CajaEtiqueta {
+  const { ubicacion, desplazamiento } = ranura;
+  switch (ubicacion) {
+    case 'izquierda':
+      return {
+        izquierda: x - FUERA_HORIZONTAL - ancho,
+        arriba: y - ALTO_ETIQUETA / 2 + desplazamiento,
+        derecha: x - FUERA_HORIZONTAL,
+        abajo: y + ALTO_ETIQUETA / 2 + desplazamiento,
+      };
+    case 'arriba':
+      return {
+        izquierda: x - ancho / 2 + desplazamiento,
+        arriba: y - FUERA_VERTICAL - ALTO_ETIQUETA,
+        derecha: x + ancho / 2 + desplazamiento,
+        abajo: y - FUERA_VERTICAL,
+      };
+    case 'abajo':
+      return {
+        izquierda: x - ancho / 2 + desplazamiento,
+        arriba: y + FUERA_VERTICAL,
+        derecha: x + ancho / 2 + desplazamiento,
+        abajo: y + FUERA_VERTICAL + ALTO_ETIQUETA,
+      };
+    default:
+      return {
+        izquierda: x + FUERA_HORIZONTAL,
+        arriba: y - ALTO_ETIQUETA / 2 + desplazamiento,
+        derecha: x + FUERA_HORIZONTAL + ancho,
+        abajo: y + ALTO_ETIQUETA / 2 + desplazamiento,
+      };
+  }
+}
+
+function cajasCruzan(a: CajaEtiqueta, b: CajaEtiqueta): boolean {
+  return a.izquierda < b.derecha && b.izquierda < a.derecha && a.arriba < b.abajo && b.arriba < a.abajo;
+}
+
+interface EtiquetaExtremo {
+  clave: string;
+  caja: CajaEtiqueta;
+}
+
+// Prueba la cascada del tipo (cada lado por cada desplazamiento) y devuelve la
+// primera ranura cuya caja proyectada no cruce ninguna ya colocada; la
+// registra y reemplaza la anterior del mismo extremo. Con todas ocupadas (no
+// ocurre con cuatro extremos) usa la natural como último recurso.
+function elegirRanura(
+  registro: { current: EtiquetaExtremo[] },
+  mapa: TipoMapa,
+  clase: string,
+  texto: string,
+  latitud: number,
+  longitud: number,
+): RanuraEtiqueta {
+  const lados = ORDEN_UBICACIONES[clase] ?? ORDEN_UBICACIONES.inicio;
+  const desplazamientos = clase.endsWith('fin') ? DESPLAZAMIENTOS_FIN : DESPLAZAMIENTOS_INICIO;
+  const candidatas: RanuraEtiqueta[] = lados.flatMap((ubicacion) =>
+    desplazamientos.map((desplazamiento) => ({ ubicacion, desplazamiento })),
+  );
+  const punto = mapa.project([longitud, latitud]);
+  const ancho = anchoEtiqueta(texto);
+  const elegida =
+    candidatas.find((ranura) =>
+      registro.current.every(
+        (etiqueta) => !cajasCruzan(cajaRanura(ranura, punto.x, punto.y, ancho), etiqueta.caja),
+      ),
+    ) ?? candidatas[0];
+  registro.current = registro.current.filter((etiqueta) => etiqueta.clave !== clase);
+  registro.current.push({ clave: clase, caja: cajaRanura(elegida, punto.x, punto.y, ancho) });
+  return elegida;
+}
+
+// Libera las ranuras de los extremos retirados (cambio de recorrido o de
+// mapa) para que el siguiente encuadre reparta desde cero.
+function liberarUbicaciones(registro: { current: EtiquetaExtremo[] }, claves: string[]): void {
+  registro.current = registro.current.filter((etiqueta) => !claves.includes(etiqueta.clave));
+}
+
 // Marcador de extremo con etiqueta flotante ("Inicio 08:12"): el punto queda
-// anclado a la coordenada y la etiqueta cuelga a la derecha sin desplazar el
-// ancla, que maplibre calcula sobre el elemento completo.
-function marcadorExtremo(mapa: TipoMapa, clase: string, texto: string, latitud: number, longitud: number): Marker {
+// anclado a la coordenada y la etiqueta cuelga de la ranura asignada sin
+// desplazar el ancla, que maplibre calcula sobre el elemento completo. El
+// desplazamiento de la cascada se aplica como margen para no pelear con el
+// transform que centra cada ranura.
+function marcadorExtremo(
+  mapa: TipoMapa,
+  clase: string,
+  texto: string,
+  latitud: number,
+  longitud: number,
+  ranura: RanuraEtiqueta,
+): Marker {
   const elemento = document.createElement('div');
-  elemento.className = `marcador-extremo ${clase}`;
+  elemento.className = `marcador-extremo ${clase} etiqueta-${ranura.ubicacion}`;
   const punto = document.createElement('span');
   punto.className = 'extremo-punto';
   const etiqueta = document.createElement('span');
   etiqueta.className = 'extremo-etiqueta';
   etiqueta.textContent = texto;
+  if (ranura.desplazamiento !== 0) {
+    if (ranura.ubicacion === 'derecha' || ranura.ubicacion === 'izquierda') {
+      etiqueta.style.marginTop = `${ranura.desplazamiento}px`;
+    } else {
+      etiqueta.style.marginLeft = `${ranura.desplazamiento}px`;
+    }
+  }
   elemento.append(punto, etiqueta);
   return new Marker({ element: elemento, anchor: 'center' }).setLngLat([longitud, latitud]).addTo(mapa);
 }
@@ -127,10 +271,19 @@ function marcadorExtremo(mapa: TipoMapa, clase: string, texto: string, latitud: 
 export default function Replay() {
   const [parametros] = useSearchParams();
   const [dispositivoId, setDispositivoId] = useState(parametros.get('dispositivo') ?? '');
+  // La ventana por defecto es el día anterior completo: la operación audita lo
+  // acontecido ayer, no el día en curso. Desde y Hasta quedan en la misma fecha
+  // y el chip "Ayer" del filtro aparece activo; la URL o el ajuste manual la
+  // pueden cambiar.
   const [desde, setDesde] = useState(parametros.get('desde') ?? fechaAyerLocal());
-  const [hasta, setHasta] = useState(parametros.get('hasta') ?? fechaHoyLocal());
+  const [hasta, setHasta] = useState(parametros.get('hasta') ?? fechaAyerLocal());
   const [mapa, setMapa] = useState<TipoMapa | null>(null);
   const [panelRecogido, setPanelRecogido] = useState(false);
+  // Ranuras ocupadas por las etiquetas de los extremos (inicio/fin del
+  // recorrido y de la jornada): el registro elige una libre cuando dos pines
+  // caen juntos. Vive en un ref porque los efectos que crean marcadores son
+  // independientes y no deben re-renderizar por él.
+  const etiquetasExtremos = useRef<EtiquetaExtremo[]>([]);
 
   const flota = useQuery({ queryKey: CLAVE_FLOTA, queryFn: () => traerFlota() });
   // Solo la flota habilitada alimenta el selector y las consultas: un equipo
@@ -602,16 +755,38 @@ export default function Replay() {
     if (!mapa || posiciones.length === 0) return;
     const primera = posiciones[0];
     const ultima = posiciones[posiciones.length - 1];
-    const inicio = marcadorExtremo(mapa, 'inicio', `Inicio ${horaCorta(primera.registradoEn)}`, primera.latitud, primera.longitud);
-    const fin = marcadorExtremo(mapa, 'fin', `Fin ${horaCorta(ultima.registradoEn)}`, ultima.latitud, ultima.longitud);
+    // El encuadre se fija antes de colocar los pines: las ranuras de etiqueta
+    // se deciden con la proyección de pantalla definitiva. cameraForBounds +
+    // jumpTo aplica la cámara en el acto (fitBounds la agenda al siguiente
+    // cuadro y la proyección quedaría en el encuadre anterior).
     const limites = posiciones.reduce(
       (caja, posicion) => caja.extend([posicion.longitud, posicion.latitud] as [number, number]),
       new LngLatBounds([primera.longitud, primera.latitud], [primera.longitud, primera.latitud]),
     );
-    mapa.fitBounds(limites, { padding: 64, maxZoom: 14, duration: 0 });
+    const camara = mapa.cameraForBounds(limites, { padding: 64, maxZoom: 14 });
+    if (camara) mapa.jumpTo(camara);
+    const textoInicio = `Inicio ${horaCorta(primera.registradoEn)}`;
+    const textoFin = `Fin ${horaCorta(ultima.registradoEn)}`;
+    const inicio = marcadorExtremo(
+      mapa,
+      'inicio',
+      textoInicio,
+      primera.latitud,
+      primera.longitud,
+      elegirRanura(etiquetasExtremos, mapa, 'inicio', textoInicio, primera.latitud, primera.longitud),
+    );
+    const fin = marcadorExtremo(
+      mapa,
+      'fin',
+      textoFin,
+      ultima.latitud,
+      ultima.longitud,
+      elegirRanura(etiquetasExtremos, mapa, 'fin', textoFin, ultima.latitud, ultima.longitud),
+    );
     return () => {
       inicio.remove();
       fin.remove();
+      liberarUbicaciones(etiquetasExtremos, ['inicio', 'fin']);
     };
   }, [mapa, posiciones]);
 
@@ -632,12 +807,14 @@ export default function Replay() {
       const indice = indiceCercaDeInstante(posiciones, milisegundos(instante));
       if (indice == null) return;
       const posicion = posiciones[indice];
-      marcadores.push(marcadorExtremo(mapa, clase, texto, posicion.latitud, posicion.longitud));
+      const ranura = elegirRanura(etiquetasExtremos, mapa, clase, texto, posicion.latitud, posicion.longitud);
+      marcadores.push(marcadorExtremo(mapa, clase, texto, posicion.latitud, posicion.longitud, ranura));
     };
     agregar('jornada-inicio', 'Inicio jornada', primera.inicioEn);
     if (!ultima.abierta) agregar('jornada-fin', 'Fin jornada', ultima.finEn);
     return () => {
       for (const marcador of marcadores) marcador.remove();
+      liberarUbicaciones(etiquetasExtremos, ['jornada-inicio', 'jornada-fin']);
     };
   }, [mapa, jornadas, posiciones]);
 
@@ -698,72 +875,40 @@ export default function Replay() {
       dispositivo={replay.data?.dispositivo ?? null}
     >
       <section className="replay-pantalla">
-        {/* El mapa ocupa la pantalla completa; panel, leyenda y franja flotan
-            encima con las clases que definen global.css y operacion.css. */}
-        <MapaRaster clase="mapa" alListo={setMapa} />
+        {/* El mapa ocupa la pantalla completa; panel y franja flotan encima
+            con las clases que definen global.css y operacion.css. Replay pide
+            el set de capas sin "Mapa" (Satélite inicial) y el zoom abajo a la
+            derecha, con el selector pegado al top bar. */}
+        <MapaRaster clase="mapa" alListo={setMapa} capas={CAPAS_REPLAY} zoomAbajoDerecha />
         {/* Insignias de parada sobre el mapa, dentro del proveedor del
             reproductor: comparten selección con la lista y llevan el mapa a la
             parada con un vuelo suave al pulsarlas. No pintan nada en el DOM. */}
         <InsigniasParadas mapa={mapa} paradas={paradas} />
-        {/* Leyenda del sistema visual: estado del marcador, corredor GPS por
-            modo (vehículo y a pie) con su sentido de marcha, dispersión parada
-            con su insignia, capas reconstruidas con identidad propia (ADR-007)
-            y hueco sin datos. */}
-        <div className="replay-leyenda" aria-hidden="true">
-          <span>
-            <span className="muestra movimiento" /> En movimiento
-          </span>
-          <span>
-            <span className="muestra detencion" /> Detenido
-          </span>
-          <span>
-            <span className="muestra sin-senal" /> Sin señal
-          </span>
-          <span>
-            <span className="muestra corredor-vehiculo" /> Recorrido en vehículo
-          </span>
-          <span>
-            <span className="muestra corredor-caminata" /> Recorrido a pie (hasta 8 km/h)
-          </span>
-          <span>
-            <span className="muestra direccion" /> Sentido de marcha
-          </span>
-          <span>
-            <span className="muestra halo" /> Parada (puntos registrados)
-          </span>
-          <span>
-            <span className="muestra ajustado" /> Ajustado a vía
-          </span>
-          <span>
-            <span className="muestra estimado" /> Tramo estimado
-          </span>
-          <span>
-            <span className="muestra sin-datos" /> Tramo sin datos
-          </span>
-        </div>
         <aside className={`replay-panel${panelRecogido ? ' colapsado' : ''}`}>
           <header className="replay-cabecera">
             <h2>Replay</h2>
             <span className="replay-acciones">
               <button
                 type="button"
-                className="suave icono-solo"
+                className="suave replay-csv"
                 onClick={exportarCsv}
                 disabled={!hayRecorrido}
                 title="Descargar el recorrido (CSV)"
                 aria-label="Descargar el recorrido (CSV)"
               >
-                <Icono nombre="reportes" tamano={15} />
+                <Icono nombre="reportes" tamano={14} />
+                CSV
               </button>
+              <span className="replay-separador" aria-hidden="true" />
               <button
                 type="button"
-                className="plegar-panel suave icono-solo"
+                className="suave icono-solo"
                 onClick={() => setPanelRecogido((valor) => !valor)}
                 title={panelRecogido ? 'Mostrar panel' : 'Ocultar panel'}
                 aria-label={panelRecogido ? 'Mostrar panel' : 'Ocultar panel'}
                 aria-expanded={!panelRecogido}
               >
-                <Icono nombre={panelRecogido ? 'flecha' : 'cerrar'} />
+                <Icono nombre={panelRecogido ? 'adelante' : 'atras'} />
               </button>
             </span>
           </header>

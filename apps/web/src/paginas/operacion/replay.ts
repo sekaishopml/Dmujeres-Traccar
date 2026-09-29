@@ -186,11 +186,29 @@ export function milisegundos(iso: string): number {
 
 // Hora en 24 h para la lectura del reproductor y las etiquetas del mapa:
 // util/formato.hora añade "a. m./p. m." y alarga la franja compacta y los
-// rótulos. La ficha del punto conserva fechaHora, que sí necesita el día.
+// rótulos. horaCorta se queda solo con la hora y fechaHoraCorta (abajo) con el
+// día, para la ficha del punto.
 const HORA_CORTA = new Intl.DateTimeFormat('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 export function horaCorta(valor?: string | null): string {
   return valor ? HORA_CORTA.format(new Date(valor)) : GUION;
+}
+
+// Fecha y hora en 24 h para la ficha del punto: util/formato.fechaHora usa el
+// formato de es-EC con "a. m./p. m.", así que el Replay no comparte ese
+// formateador. Componentes explícitos en vez de dateStyle/timeStyle para fijar
+// el orden y los dos dígitos; el año a dos dígitos mantiene la fila compacta.
+const FECHA_HORA_CORTA = new Intl.DateTimeFormat('es-EC', {
+  day: '2-digit',
+  month: '2-digit',
+  year: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+export function fechaHoraCorta(valor?: string | null): string {
+  return valor ? FECHA_HORA_CORTA.format(new Date(valor)) : GUION;
 }
 
 // Fecha local de ayer (YYYY-MM-DD): alimenta el rango por defecto de Replay y

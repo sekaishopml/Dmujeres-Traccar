@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { GUION, fecha } from '../util/formato';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import FiltroReplay from './operacion/FiltroReplay';
 import { traerDireccion, traerFlota, traerJornadasFlota, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
@@ -180,10 +183,10 @@ export function ExpedienteJornada({ nombre, inicioEn, finEn, idNumerico, idPubli
 
   return (
     <article className="expediente">
-      <header className="cabecera-seccion">
-        <h2>Jornada de {nombre}</h2>
-        <span className="cuenta">{fecha(inicioEn)}</span>
-        <span className="acciones">
+      <CabeceraSeccion
+        titulo={`Jornada de ${nombre}`}
+        cuenta={fecha(inicioEn)}
+        acciones={
           <Link
             className="boton-suave"
             to={`/replay?dispositivo=${encodeURIComponent(idPublico)}&desde=${encodeURIComponent(
@@ -192,8 +195,8 @@ export function ExpedienteJornada({ nombre, inicioEn, finEn, idNumerico, idPubli
           >
             Ir a Replay
           </Link>
-        </span>
-      </header>
+        }
+      />
       {replay.isError && !esNoEncontrado(replay.error) && <p className="aviso">{mensajeError(replay.error)}</p>}
       {paradas.isError && (
         <p className="aviso">No se pudo cargar el detalle de paradas; pueden faltar paradas en la cronología.</p>
@@ -269,12 +272,11 @@ export default function Historial() {
 
   return (
     <section className="pagina-historial">
-      <header className="cabecera-pagina">
-        <div>
-          <h1>Historial</h1>
-          <p className="sub">Cada jornada de inicio a fin: paradas, duración y tramos sin señal.</p>
-        </div>
-      </header>
+      <EncabezadoPagina
+        contexto="Operación"
+        titulo="Historial"
+        sub="Cada jornada de inicio a fin: paradas, duración y tramos sin señal."
+      />
 
       <section className="seccion">
         <div className="barra-herramientas">
@@ -300,8 +302,8 @@ export default function Historial() {
             }}
           />
         </div>
-        {rangoValido && flota.error && <p className="vacio">{mensajeError(flota.error)}</p>}
-        {rangoValido && jornadas.error && <p className="vacio">{mensajeError(jornadas.error)}</p>}
+        {rangoValido && flota.error && <EstadoVacio icono="sistema">{mensajeError(flota.error)}</EstadoVacio>}
+        {rangoValido && jornadas.error && <EstadoVacio icono="sistema">{mensajeError(jornadas.error)}</EstadoVacio>}
         {rangoValido && !flota.error && !jornadas.error && (
           <div className="tira-datos">
             <div className="dato">
@@ -326,17 +328,13 @@ export default function Historial() {
         )}
       </section>
 
-      {rangoValido && !flota.error && !jornadas.error && (
-        <section className="seccion">
-          <header className="cabecera-seccion">
-            <h2>Jornadas del día</h2>
-            <span className="cuenta">{fecha(inicioDeDia(desde))}</span>
-          </header>
-          <div className="bloque">
+        {rangoValido && !flota.error && !jornadas.error && (
+          <section className="seccion">
+            <CabeceraSeccion titulo="Jornadas del día" cuenta={fecha(inicioDeDia(desde))} />
             {jornadas.isPending ? (
               <p className="vacio pulso">Cargando jornadas…</p>
             ) : filas.length === 0 ? (
-              <p className="vacio">Sin jornadas registradas ese día.</p>
+              <EstadoVacio icono="historial">Sin jornadas registradas ese día.</EstadoVacio>
             ) : (
               <div className="tabla-envoltura">
                 <table className="tabla tabla-datas">
@@ -372,9 +370,8 @@ export default function Historial() {
                 </table>
               </div>
             )}
-          </div>
-        </section>
-      )}
+          </section>
+        )}
 
       {seleccion != null &&
         (() => {

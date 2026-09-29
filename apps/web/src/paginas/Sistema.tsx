@@ -6,6 +6,9 @@ import { api } from '../api/cliente';
 import { useSesion } from '../store/sesion';
 import { GUION, fechaHora, hace } from '../util/formato';
 import Icono from '../componentes/Icono';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import { CACHE_PLATAFORMA_MS, ChipHabilitado, MensajeError, esErrorDeEstado, mensajeDeError } from './admin/comunes';
 import { Dialogo } from './admin/Dialogo';
 import { Toast } from './admin/Toast';
@@ -292,19 +295,16 @@ export default function Sistema() {
 
   return (
     <section className="pagina-sistema">
-      <header className="cabecera-pagina">
-        <div>
-          <h1>Sistema</h1>
-          <p className="sub">Estado del servicio y versión desplegada. Se revisa cada 15 s.</p>
-        </div>
-      </header>
+      <EncabezadoPagina
+        contexto="Administración"
+        titulo="Sistema"
+        sub="Estado del servicio y versión desplegada. Se revisa cada 15 s."
+      />
 
       {listoFalla && (
         <section className="seccion">
           <div className="bloque fallo">
-            <header className="cabecera-seccion">
-              <h2>Servicio con problemas</h2>
-            </header>
+            <CabeceraSeccion titulo="Servicio con problemas" />
             {listo.error && (
               <p role="alert">No se pudo comprobar el estado del servicio: {mensajeDeError(listo.error)}.</p>
             )}
@@ -349,123 +349,117 @@ export default function Sistema() {
       </section>
 
       <section className="seccion">
-        <div className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Dependencias</h2>
-            <span className="cuenta">{disponibles} de 3 disponibles</span>
-            <span className="acciones">
-              <span className="cuenta">
-                {salud.dataUpdatedAt > 0 ? `Consultado ${hace(new Date(salud.dataUpdatedAt).toISOString())}` : ''}
-              </span>
+        <CabeceraSeccion
+          titulo="Dependencias"
+          cuenta={`${disponibles} de 3 disponibles`}
+          acciones={
+            <span className="cuenta">
+              {salud.dataUpdatedAt > 0 ? `Consultado ${hace(new Date(salud.dataUpdatedAt).toISOString())}` : ''}
             </span>
-          </header>
-          <FilaDependencia
-            nombre="Servicio"
-            estado={estadoProceso}
-            significado={SIGNIFICADO.proceso[estadoProceso]}
-          />
-          <FilaDependencia
-            nombre="Base de datos"
-            estado={estadoBaseDatos}
-            significado={SIGNIFICADO.baseDatos[estadoBaseDatos]}
-          />
-          <FilaDependencia
-            nombre="Motor de seguimiento"
-            estado={estadoTracking}
-            significado={SIGNIFICADO.tracking[estadoTracking]}
-          />
-          {salud.error && <MensajeError error={salud.error} />}
-          {listo.error && <MensajeError error={listo.error} />}
-        </div>
+          }
+        />
+        <FilaDependencia
+          nombre="Servicio"
+          estado={estadoProceso}
+          significado={SIGNIFICADO.proceso[estadoProceso]}
+        />
+        <FilaDependencia
+          nombre="Base de datos"
+          estado={estadoBaseDatos}
+          significado={SIGNIFICADO.baseDatos[estadoBaseDatos]}
+        />
+        <FilaDependencia
+          nombre="Motor de seguimiento"
+          estado={estadoTracking}
+          significado={SIGNIFICADO.tracking[estadoTracking]}
+        />
+        {salud.error && <MensajeError error={salud.error} />}
+        {listo.error && <MensajeError error={listo.error} />}
       </section>
 
       <section className="seccion">
-        <div className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Cuentas de administración</h2>
-            <span className="cuenta">
-              {cuentas.data ? `${admins.length} con permiso de administración` : 'Consultando…'}
-            </span>
-            <span className="acciones">
-              {administrador && (
-                <button
-                  type="button"
-                  className="principal con-icono"
-                  onClick={() => {
-                    crearAdmin.reset();
-                    setModalAdmin(true);
-                  }}
-                >
-                  <Icono nombre="mas" />
-                  Agregar cuenta
-                </button>
-              )}
-            </span>
-          </header>
-          {sinPermiso && (
-            <p className="aviso">Necesitas permisos de administrador para ver y cambiar estas cuentas.</p>
-          )}
-          {!sinPermiso && cuentas.isPending && <p className="vacio pulso">Cargando cuentas…</p>}
-          {!sinPermiso && cuentas.error && <MensajeError error={cuentas.error} />}
-          {!sinPermiso && cuentas.data && admins.length === 0 && (
-            <p className="vacio">Todavía no hay cuentas con permiso de administración.</p>
-          )}
-          {!sinPermiso && admins.length > 0 && (
-            <div className="tabla-envoltura">
-              <table className="tabla">
-                <thead>
-                  <tr>
-                    <th>Cuenta</th>
-                    <th>Nombre completo</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
+        <CabeceraSeccion
+          titulo="Cuentas de administración"
+          cuenta={cuentas.data ? `${admins.length} con permiso de administración` : 'Consultando…'}
+          acciones={
+            administrador ? (
+              <button
+                type="button"
+                className="principal con-icono"
+                onClick={() => {
+                  crearAdmin.reset();
+                  setModalAdmin(true);
+                }}
+              >
+                <Icono nombre="mas" />
+                Agregar cuenta
+              </button>
+            ) : undefined
+          }
+        />
+        {sinPermiso && (
+          <p className="aviso">Necesitas permisos de administrador para ver y cambiar estas cuentas.</p>
+        )}
+        {!sinPermiso && cuentas.isPending && <p className="vacio pulso">Cargando cuentas…</p>}
+        {!sinPermiso && cuentas.error && <MensajeError error={cuentas.error} />}
+        {!sinPermiso && cuentas.data && admins.length === 0 && (
+          <EstadoVacio icono="usuarios">Todavía no hay cuentas con permiso de administración.</EstadoVacio>
+        )}
+        {!sinPermiso && admins.length > 0 && (
+          <div className="tabla-envoltura">
+            <table className="tabla">
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th>Nombre completo</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {admins.map((usuario) => (
+                  <tr key={usuario.idPublico}>
+                    <td>{usuario.usuario}</td>
+                    <td>{usuario.nombre}</td>
+                    <td>
+                      <ChipHabilitado habilitado={usuario.habilitado} />
+                    </td>
+                    <td>
+                      <div className="fila-botones">
+                        {usuario.habilitado ? (
+                          <button
+                            type="button"
+                            className="accion-icono peligro"
+                            title="Dar de baja la cuenta"
+                            aria-label={`Dar de baja a ${usuario.nombre}`}
+                            onClick={() => bajaAdmin.mutate(usuario)}
+                            disabled={bajaAdmin.isPending}
+                          >
+                            <Icono nombre="basura" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="suave"
+                            onClick={() => altaAdmin.mutate(usuario)}
+                            disabled={altaAdmin.isPending}
+                          >
+                            {altaAdmin.isPending ? 'Reactivando…' : 'Reactivar'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {admins.map((usuario) => (
-                    <tr key={usuario.idPublico}>
-                      <td>{usuario.usuario}</td>
-                      <td>{usuario.nombre}</td>
-                      <td>
-                        <ChipHabilitado habilitado={usuario.habilitado} />
-                      </td>
-                      <td>
-                        <div className="fila-botones">
-                          {usuario.habilitado ? (
-                            <button
-                              type="button"
-                              className="accion-icono peligro"
-                              title="Dar de baja la cuenta"
-                              aria-label={`Dar de baja a ${usuario.nombre}`}
-                              onClick={() => bajaAdmin.mutate(usuario)}
-                              disabled={bajaAdmin.isPending}
-                            >
-                              <Icono nombre="basura" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="suave"
-                              onClick={() => altaAdmin.mutate(usuario)}
-                              disabled={altaAdmin.isPending}
-                            >
-                              {altaAdmin.isPending ? 'Reactivando…' : 'Reactivar'}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {!sinPermiso && bajaAdmin.error && <MensajeError error={bajaAdmin.error} />}
-          {!sinPermiso && altaAdmin.error && <MensajeError error={altaAdmin.error} />}
-          {!sinPermiso && roles.error && (
-            <p className="apagado">No se pudieron cargar los permisos; la lista se armó con lo disponible.</p>
-          )}
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!sinPermiso && bajaAdmin.error && <MensajeError error={bajaAdmin.error} />}
+        {!sinPermiso && altaAdmin.error && <MensajeError error={altaAdmin.error} />}
+        {!sinPermiso && roles.error && (
+          <p className="apagado">No se pudieron cargar los permisos; la lista se armó con lo disponible.</p>
+        )}
       </section>
 
       {modalAdmin && (

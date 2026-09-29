@@ -38,50 +38,55 @@
 /* ── Inicio ─────────────────────────────────────────────────────────────── */
 .pagina-inicio .lista-avisos { list-style: none; margin: 0; padding: 0; }
 .pagina-inicio .lista-avisos li {
-  display: flex; align-items: center; gap: 8px; padding: 6px 0;
-  border-bottom: 1px solid var(--linea-2); font-size: 13px;
+  display: flex; align-items: center; gap: 10px; padding: 7px 0;
+  border-bottom: 1px solid var(--linea-2); font-size: var(--tamano-base);
 }
 .pagina-inicio .lista-avisos li:last-child { border-bottom: 0; }
 /* El motivo ocupa la derecha y puede encogerse: nunca empuja el nombre fuera
    de la fila en pantallas estrechas. */
 .pagina-inicio .lista-avisos .motivo {
   margin-left: auto; color: var(--apagado); text-align: right; min-width: 0;
+  font-size: var(--tamano-sm);
 }
+.pagina-inicio .lista-avisos .chip { flex: none; }
 @media (max-width: 700px) {
   .pagina-inicio .lista-avisos li { flex-wrap: wrap; }
   .pagina-inicio .lista-avisos .motivo { flex-basis: 100%; text-align: left; }
 }
 
 /* ── En vivo ────────────────────────────────────────────────────────────── */
-/* Mapa grande a la izquierda; a la derecha solo el panel operativo: buscador,
-   filtro por estado y lista. El panel comparte el alto del mapa para que la
-   lista haga scroll dentro y ninguno de los dos desborde la vista. */
-.pagina-en-vivo .en-vivo { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+/* Mapa grande a la izquierda; a la derecha el panel operativo como una hoja
+   con filo fino: buscador, filtros y lista densa con líneas de fila. */
+.pagina-en-vivo .en-vivo { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .pagina-en-vivo .en-vivo { grid-template-columns: 1fr; } }
 
 .en-vivo .panel-equipos {
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--tarjeta); border: 1px solid var(--linea); border-radius: var(--radio-xs);
+  padding: 12px;
   /* El mapa mide calc(100vh - alto-barra - 120px): el panel toma ese mismo
      alto y la lista hace scroll dentro. */
   max-height: calc(100vh - 172px);
 }
+.en-vivo .panel-equipos .cabecera-seccion { margin-bottom: 0; }
 .en-vivo .equipos-lista {
-  list-style: none; margin: 0; padding: 0; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 4px;
+  list-style: none; margin: 0 -12px; padding: 0; overflow-y: auto;
+  display: flex; flex-direction: column;
 }
 .en-vivo button.equipo {
-  width: 100%; text-align: left; background: #fff; color: var(--texto);
-  border: 1px solid var(--linea); border-radius: 7px; padding: 7px 9px;
-  display: flex; flex-direction: column; gap: 4px; font-size: 12.5px;
+  width: 100%; text-align: left; background: transparent; color: var(--texto);
+  border: 0; border-bottom: 1px solid var(--linea-2); border-radius: 0;
+  padding: 8px 12px; display: flex; flex-direction: column; gap: 3px; font-size: var(--tamano-sm);
 }
-.en-vivo button.equipo:hover { background: #f7f9fc; border-color: #cdd8e6; }
-/* Unidad elegida: mismo tinte de selección que usa el resto del panel. */
+.en-vivo .equipos-lista li:last-child button.equipo { border-bottom: 0; }
+.en-vivo button.equipo:hover { background: #f7f9fb; }
+/* Unidad elegida: mismo tinte y filo de selección que el resto del panel. */
 .en-vivo button.equipo.seleccionado,
 .en-vivo button.equipo.seleccionado:hover {
-  background: #eef3f9; border-color: var(--navy); color: var(--texto);
+  background: #edf2f8; box-shadow: inset 2px 0 0 var(--navy); color: var(--texto);
 }
 .en-vivo .equipo-titulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.en-vivo .equipo-titulo strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.en-vivo .equipo-titulo strong { font-size: var(--tamano-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .en-vivo .equipo-meta {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   font-size: 11.5px; color: var(--apagado);
@@ -92,8 +97,8 @@
    de un vistazo dónde está el problema. */
 .pagina-en-vivo .filtro-estados { display: flex; gap: 6px; flex-wrap: wrap; }
 .pagina-en-vivo .filtro-estados button {
-  background: #fff; color: var(--apagado); border: 1px solid var(--linea);
-  border-radius: 999px; padding: 4px 10px; font-size: 12.5px; font-weight: 600;
+  background: #fff; color: var(--apagado); border: 1px solid var(--linea-3);
+  border-radius: var(--radio-xs); padding: 4px 9px; font-size: var(--tamano-sm); font-weight: var(--peso-medio);
 }
 .pagina-en-vivo .filtro-estados button:hover { background: var(--linea-2); color: var(--navy); }
 .pagina-en-vivo .filtro-estados button.activa { background: var(--navy); border-color: var(--navy); color: #fff; }
@@ -147,8 +152,8 @@
    elegida en tinte azulado, igual que el resto de selecciones. La fila
    recibe el foco con teclado (tabIndex 0). */
 .pagina-historial .tabla-datas tbody tr { cursor: pointer; }
-.pagina-historial .tabla-datas tbody tr:hover td { background: #f8fafc; }
-.pagina-historial .tabla-datas tbody tr.seleccionada td { background: #eef3f9; }
+.pagina-historial .tabla-datas tbody tr:hover td { background: #f7f9fb; }
+.pagina-historial .tabla-datas tbody tr.seleccionada td { background: #edf2f8; }
 .pagina-historial .tabla-datas tbody tr:focus { outline: none; }
 .pagina-historial .tabla-datas tbody tr:focus td { outline: 2px solid rgba(31, 122, 77, .3); outline-offset: -2px; }
 

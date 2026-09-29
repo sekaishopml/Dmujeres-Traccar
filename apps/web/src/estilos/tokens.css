@@ -49,15 +49,22 @@
   --azul: var(--info);
 
   /* ── Tipografía ─────────────────────────────────────────────────────────
-     Stack del sistema (sin dependencias ni webfonts) con escala fija. */
+     Stack del sistema (sin dependencias ni webfonts) con escala fija.
+     La jerarquía del dash (rediseño editorial) tiene cuatro escalones que no
+     se mezclan: título de página 20, título de sección 14, dato 23 y etiqueta
+     10.5. Los tokens con nombre evitan números sueltos en las hojas. */
   --fuente: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --fuente-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --tamano-xs: 11px;        /* Sobrelíneas, etiquetas de chip. */
+  --tamano-etiqueta: 10.5px; /* Etiquetas de dato y cabeceras de tabla. */
   --tamano-sm: 12.5px;      /* Texto secundario y cabeceras de tabla. */
   --tamano-base: 13.5px;    /* Texto de trabajo del panel. */
-  --tamano-md: 15px;        /* Títulos de sección. */
-  --tamano-lg: 17px;        /* Título de página. */
-  --tamano-xl: 22px;        /* Métricas y cifras destacadas. */
+  --tamano-seccion: 14px;   /* Título de sección. */
+  --tamano-md: 15px;        /* Títulos de sección (uso heredado en Replay). */
+  --tamano-lg: 17px;        /* Título intermedio (acceso y estados). */
+  --tamano-titulo: 20px;    /* Título de página del dash. */
+  --tamano-dato: 23px;      /* Cifra de tira de datos o métrica. */
+  --tamano-xl: 22px;        /* Métricas heredadas. */
   --tamano-2xl: 27px;       /* Titular del panel de acceso. */
   --interlinea: 1.45;       /* Interlinea base del panel (denso pero legible). */
   --peso-medio: 550;        /* Navegación y énfasis intermedio. */
@@ -74,18 +81,22 @@
   --espacio-7: 32px;        /* Márgenes de página amplios. */
   --espacio-8: 40px;        /* Aire en pantallas de acceso/carga. */
 
-  /* ── Radios ────────────────────────────────────────────────────────────── */
-  --radio-xs: 4px;          /* Detalles internos y píldoras de datos. */
-  --radio-sm: 6px;          /* Botones pequeños e inputs compactos. */
-  --radio: 8px;             /* Radio estándar de controles y tarjetas. */
-  --radio-md: 10px;         /* Tarjetas de acceso y paneles flotantes. */
-  --radio-lg: 12px;         /* Superficies de primer nivel. */
-  --radio-pill: 999px;      /* Chips y píldoras de estado. */
+  /* ── Radios ──────────────────────────────────────────────────────────────
+     Contenidos a propósito: el dash es una herramienta de trabajo, no una
+     landing. La píldora queda reservada a chips y contadores. */
+  --radio-xs: 3px;          /* Superficies del dash: hojas, tablas, estados. */
+  --radio-sm: 5px;          /* Controles pequeños e inputs compactos. */
+  --radio: 6px;             /* Radio estándar de controles y hojas. */
+  --radio-md: 8px;          /* Paneles flotantes y diálogos. */
+  --radio-lg: 10px;         /* Superficies de primer nivel (acceso). */
+  --radio-pill: 999px;      /* Chips y filtros tipo píldora. */
 
-  /* ── Sombras ───────────────────────────────────────────────────────────── */
-  --sombra-1: 0 1px 2px rgba(11, 31, 51, .06), 0 1px 3px rgba(11, 31, 51, .06); /* Reposo de tarjetas. */
-  --sombra-2: 0 6px 18px rgba(11, 31, 51, .12); /* Paneles flotantes y diálogos. */
-  --sombra-3: 0 14px 34px rgba(11, 31, 51, .16); /* Presentaciones y marca grande. */
+  /* ── Sombras ─────────────────────────────────────────────────────────────
+     El reposo no proyecta sombra: la jerarquía la hacen las líneas. Solo
+     flotan diálogos, menús y avisos. */
+  --sombra-1: 0 1px 0 rgba(11, 31, 51, .05); /* Reposo: apenas un filo. */
+  --sombra-2: 0 8px 22px rgba(11, 31, 51, .10); /* Paneles flotantes y diálogos. */
+  --sombra-3: 0 14px 34px rgba(11, 31, 51, .14); /* Presentaciones y marca grande. */
 
   /* ── Movimiento ──────────────────────────────────────────────────────────
      Lenguaje único de animación: duraciones y curvas para todo el panel.
@@ -108,5 +119,5 @@
   /* ── Estructura del panel ──────────────────────────────────────────────── */
   --lateral: 236px;        /* Ancho de la barra lateral desplegada. */
   --lateral-min: 64px;     /* Ancho del riel de íconos (tablet/plegado). */
-  --alto-barra: 52px;      /* Alto de la barra superior y de la marca. */
+  --alto-barra: 48px;      /* Alto de la barra superior y de la marca. */
 }

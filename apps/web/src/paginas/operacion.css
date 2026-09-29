@@ -70,36 +70,57 @@
    contenido: cabecera, filtro compacto, fichas etiqueta/valor, paradas
    plegables, detalle del punto, mandos y lectura del punto. Títulos simples y
    densidad de datos, sin sobrelíneas ni chips decorativos. */
-.replay-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.replay-cabecera h2 { margin: 0; font-size: 15px; }
-/* Acciones de cabecera (exportar CSV y plegar) juntas a la derecha. */
-.replay-acciones { display: inline-flex; align-items: center; gap: 4px; }
-.replay-acciones button { padding: 4px; }
-.replay-panel .plegar-panel { position: static; }
+/* Cabecera del panel: título y acciones sobre una línea con separador fino que
+   cruza el panel de lado a lado (márgenes negativos contra el padding de
+   global.css); en plegado se retira el separador. */
+.replay-cabecera {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: -12px -12px 10px; padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--linea-2);
+}
+.replay-cabecera h2 { margin: 0; font-size: 15px; font-weight: 650; color: var(--navy); }
+/* Acciones de cabecera: exportar CSV con etiqueta y plegar, separadas por una
+   línea de un píxel. */
+.replay-acciones { display: inline-flex; align-items: center; gap: 6px; }
+.replay-acciones .icono-solo { padding: 4px; }
+.replay-separador { width: 1px; height: 16px; background: var(--linea); }
+.replay-csv {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 8px; font-size: 12.5px; color: var(--apagado);
+}
+.replay-csv:hover { color: var(--navy); }
 .replay-panel .cuerpo-panel { display: flex; flex-direction: column; gap: 12px; }
 .replay-panel .cuerpo-panel > .filtro-replay { margin-bottom: 0; }
-/* Panel anclado al borde superior izquierdo del mapa, sin margen flotante:
-   borde fino solo en los lados que dan al mapa y esquina inferior derecha
-   redondeada. La cabecera queda fija y el cuerpo tiene scroll propio, así que
-   la lista de paradas ya no se recorta; la altura máxima deja libre la franja
-   inferior, la única superficie fija del mapa. Sin sombra: no flota, está
-   anclado. El selector con .replay-pantalla gana por especificidad sin
-   depender del orden de importación de las hojas. */
+/* Panel anclado a los bordes superior e inferior del mapa, sin margen flotante:
+   borde fino solo en el lado que da al mapa. La cabecera queda fija y el cuerpo
+   tiene scroll propio, así que la lista de paradas ya no se recorta. Sin
+   sombra: no flota, está anclado. El selector con .replay-pantalla gana por
+   especificidad sin depender del orden de importación de las hojas. */
 .replay-pantalla .replay-panel {
-  top: 0; left: 0; width: 372px; max-height: calc(100% - 128px);
+  top: 0; left: 0; bottom: 0; width: 372px; max-height: none;
   display: flex; flex-direction: column;
-  overflow: hidden; border-width: 0 1px 1px 0; border-color: var(--linea-3);
-  border-radius: 0 0 10px 0; box-shadow: none;
+  overflow: hidden; border-width: 0 1px 0 0; border-color: var(--linea-3);
+  border-radius: 0; box-shadow: none;
 }
 .replay-pantalla .replay-panel .cuerpo-panel { overflow-y: auto; min-height: 0; }
-/* Plegado: tira delgada con las acciones; el cuerpo ya lo oculta global.css y
-   el título se retira para que la tira no ocupe más de lo necesario. */
-.replay-pantalla .replay-panel.colapsado { width: auto; padding: 6px 8px; }
+/* Plegado: tira delgada con las acciones; el cuerpo ya lo oculta global.css, el
+   título se retira y la tira solo ocupa lo necesario (vuelve a alto automático
+   para no estirarse con el anclaje inferior). */
+.replay-pantalla .replay-panel.colapsado { width: auto; height: auto; bottom: auto; padding: 6px 8px; }
+.replay-pantalla .replay-panel.colapsado .replay-cabecera {
+  margin: 0; padding: 0; border-bottom: 0;
+}
 .replay-pantalla .replay-panel.colapsado .replay-cabecera h2 { display: none; }
+/* Selector de capas pegado al top bar: la esquina superior del mapa queda
+   flush (sin bordes propios contra el navbar) y con el filo solo abajo y a la
+   izquierda. */
+.replay-pantalla .mapa-selector {
+  top: 0; right: 0; border-width: 0 0 1px 1px; border-radius: 0 0 0 7px;
+}
 @media (max-width: 760px) {
   /* En pantallas angostas 372 px fijos no dejarían mapa: se conserva el ancho
      disponible y el panel sigue con scroll en el cuerpo. */
-  .replay-pantalla .replay-panel { width: min(372px, calc(100% - 16px)); max-height: 45%; }
+  .replay-pantalla .replay-panel { width: min(372px, calc(100% - 16px)); max-height: 45%; bottom: auto; }
 }
 /* Pantallas bajas (celular en horizontal): el panel se acota a 45% y la franja
    se compacta, de modo que siempre queda una banda de mapa visible entre los
@@ -108,7 +129,7 @@
   .replay-timeline { padding: 6px 8px; }
   .replay-timeline .replay-linea { gap: 4px; }
   .replay-timeline .replay-bateria { height: 22px; }
-  .replay-pantalla .replay-panel { max-height: 45%; }
+  .replay-pantalla .replay-panel { max-height: 45%; bottom: auto; }
 }
 
 /* Títulos de sección y ficha de datos: una fila por etiqueta/valor, con los
@@ -172,84 +193,6 @@
 .replay-punto-acciones { display: flex; gap: 6px; margin-top: 6px; }
 .replay-punto-acciones button { padding: 6px 11px; font-size: 14px; }
 
-/* Leyenda del estado del marcador: junto al mapa, discreta y sin interacción
-   (los colores ya se leen en el marcador y en la ruta). */
-.replay-leyenda {
-  position: absolute; left: 10px; bottom: 34px; z-index: 5;
-  display: flex; flex-direction: column; gap: 3px;
-  background: rgba(255, 255, 255, .92); border: 1px solid var(--linea);
-  border-radius: 6px; padding: 6px 9px; font-size: 12px; color: var(--texto);
-  pointer-events: none;
-}
-.replay-leyenda span { display: flex; align-items: center; gap: 6px; }
-.replay-leyenda .muestra {
-  width: 9px; height: 9px; border-radius: 50%;
-  border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .2);
-}
-.replay-leyenda .movimiento { background: var(--verde); }
-.replay-leyenda .detencion { background: var(--azul); }
-.replay-leyenda .sin-senal { background: var(--naranja); }
-/* Tramo sin datos: la muestra es la línea gris clara punteada del mapa. */
-.replay-leyenda .sin-datos {
-  width: 12px; height: 0; border: 0; border-top: 2px dotted #9aa3af;
-  border-radius: 0; box-shadow: none;
-}
-/* Sistema visual del corredor (ADR-007 intacto): muestras de línea, no de
-   punto. El GPS distingue vehículo (corredor ancho) y a pie (mismo idioma,
-   más fino); el halo representa la dispersión parada; ajustado y estimado
-   conservan su identidad propia y nunca se leen como GPS registrado. La
-   muestra de ajustado replica el núcleo navy profundo del mapa. */
-.replay-leyenda .real,
-.replay-leyenda .ajustado,
-.replay-leyenda .estimado {
-  width: 12px; height: 0; border: 0; border-radius: 0; box-shadow: none;
-}
-.replay-leyenda .real { border-top: 3px solid var(--verde); }
-.replay-leyenda .ajustado { border-top: 3px solid #0b2545; }
-.replay-leyenda .estimado { border-top: 3px dotted var(--gris); }
-.replay-leyenda .corredor-vehiculo,
-.replay-leyenda .corredor-caminata {
-  position: relative; border: 0; border-radius: 4px; box-shadow: none;
-  background: rgba(47, 125, 95, .16);
-}
-.replay-leyenda .corredor-vehiculo { width: 16px; height: 7px; }
-.replay-leyenda .corredor-caminata { width: 16px; height: 4px; background: rgba(47, 125, 95, .12); }
-.replay-leyenda .corredor-vehiculo::after,
-.replay-leyenda .corredor-caminata::after {
-  content: ''; position: absolute; left: 0; right: 0; top: 50%;
-  border-radius: 2px; background: #2f7d5f;
-}
-.replay-leyenda .corredor-vehiculo::after { height: 3px; margin-top: -1.5px; }
-.replay-leyenda .corredor-caminata::after { height: 1.6px; margin-top: -0.8px; }
-/* Sentido de marcha: flecha de núcleo blanco con filo del color del tramo, a
-   juego con la marca del mapa (navy en el ajustado, banda en el registrado;
-   la muestra usa el verde del corredor). Triángulos encajados: el de abajo
-   hace de filo y el blanco de arriba deja ver 1.5 px de contorno. */
-.replay-leyenda .direccion {
-  position: relative; width: 10px; height: 9px;
-  border: 0; border-radius: 0; box-shadow: none; background: none;
-}
-.replay-leyenda .direccion::before,
-.replay-leyenda .direccion::after {
-  content: ''; position: absolute; left: 50%; transform: translateX(-50%);
-  width: 0; height: 0;
-}
-.replay-leyenda .direccion::before {
-  top: 0;
-  border-left: 5px solid transparent; border-right: 5px solid transparent;
-  border-bottom: 9px solid #2f7d5f;
-}
-.replay-leyenda .direccion::after {
-  top: 1px;
-  border-left: 3.5px solid transparent; border-right: 3.5px solid transparent;
-  border-bottom: 6.5px solid #fff;
-}
-.replay-leyenda .halo {
-  width: 12px; height: 12px; border-radius: 50%;
-  background: rgba(11, 37, 69, .1); border: 1px solid rgba(11, 37, 69, .3);
-  box-shadow: none;
-}
-
 /* El marcador actual cambia de color por estado del fix; el navy de global.css
    queda solo para el arranque. */
 .marcador-actual.estado-movimiento { background: var(--verde); }
@@ -262,12 +205,13 @@
 .replay-pantalla .marcador-actual { width: 22px; height: 22px; border: 3px solid #fff; }
 
 /* Pines corporativos de inicio/fin: el punto mantiene el ancla de maplibre y
-   la etiqueta cuelga a la derecha, sin desplazar la coordenada marcada.
-   position: absolute es la que espera maplibre: con relative, los marcadores
-   entran en el flujo del contenedor y cada uno se desplaza por la posición de
-   sus hermanos, despegándose del fix. Pin de 18 px con aro blanco grueso y
-   sombra corporativa; inicio en verde bosque y fin en rojo corporativo, con la
-   etiqueta en píldora y filo del color del extremo. */
+   la etiqueta cuelga de la ranura que le asigna Replay (evita encimar textos
+   cuando los extremos caen en el mismo sitio), sin desplazar la coordenada
+   marcada. position: absolute es la que espera maplibre: con relative, los
+   marcadores entran en el flujo del contenedor y cada uno se desplaza por la
+   posición de sus hermanos, despegándose del fix. Pin de 18 px con aro blanco
+   grueso y sombra corporativa; inicio en verde bosque y fin en rojo
+   corporativo, con la etiqueta en píldora y filo del color del extremo. */
 .marcador-extremo { position: absolute; width: 18px; height: 18px; }
 .extremo-punto {
   position: absolute; inset: 0; border-radius: 50%; border: 3px solid #fff;
@@ -278,24 +222,32 @@
 .marcador-extremo.inicio .extremo-etiqueta { border-left: 3px solid #1e7a3c; }
 .marcador-extremo.fin .extremo-etiqueta { border-left: 3px solid #b3261e; }
 /* Jornada: rombo violeta (inicio) y gris pizarra (fin), distinto del círculo
-   verde/rojo del recorrido, con la etiqueta colgando a la derecha. */
+   verde/rojo del recorrido, con su etiqueta en la ranura asignada. */
 .marcador-extremo.jornada-inicio .extremo-punto,
 .marcador-extremo.jornada-fin .extremo-punto { border-radius: 2px; transform: rotate(45deg); }
 .marcador-extremo.jornada-inicio .extremo-punto { background: #6a1b9a; }
 .marcador-extremo.jornada-fin .extremo-punto { background: #455a64; }
-/* Cuando la jornada y el recorrido arrancan o cierran en el mismo fix (lo
-   habitual), las etiquetas caen una sobre otra; las de jornada cuelgan a la
-   izquierda para que ambas se lean. */
-.marcador-extremo.jornada-inicio .extremo-etiqueta,
-.marcador-extremo.jornada-fin .extremo-etiqueta { left: auto; right: 14px; }
 .marcador-extremo.jornada-inicio .extremo-etiqueta { color: #4a148c; border-color: #ce93d8; }
 .marcador-extremo.jornada-fin .extremo-etiqueta { color: #37474f; border-color: #b0bec5; }
 .extremo-etiqueta {
-  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-  white-space: nowrap; font-size: 11px; font-weight: 650; color: var(--navy);
+  position: absolute; white-space: nowrap; font-size: 11px; font-weight: 650; color: var(--navy);
   background: rgba(255, 255, 255, .92); border: 1px solid var(--linea);
   border-radius: 5px; padding: 1px 5px;
 }
+/* Ranuras de etiqueta: derecha e izquierda cuelgan a la altura del pin; arriba
+   y abajo se centran sobre él. Replay elige la primera libre según la caja
+   proyectada en pantalla, así dos pines juntos nunca enciman sus textos. */
+.marcador-extremo.etiqueta-derecha .extremo-etiqueta { left: 14px; top: 50%; transform: translateY(-50%); }
+.marcador-extremo.etiqueta-izquierda .extremo-etiqueta { right: 14px; top: 50%; transform: translateY(-50%); }
+.marcador-extremo.etiqueta-arriba .extremo-etiqueta { left: 50%; bottom: 15px; transform: translateX(-50%); }
+.marcador-extremo.etiqueta-abajo .extremo-etiqueta { left: 50%; top: 15px; transform: translateX(-50%); }
+/* Al colgar a la izquierda el filo del color del extremo pasa al lado que
+   toca el pin, para que la píldora siga señalando su punto. */
+.marcador-extremo.etiqueta-izquierda .extremo-etiqueta {
+  border-left: 1px solid var(--linea); border-right: 3px solid var(--linea-3);
+}
+.marcador-extremo.inicio.etiqueta-izquierda .extremo-etiqueta { border-right-color: #1e7a3c; }
+.marcador-extremo.fin.etiqueta-izquierda .extremo-etiqueta { border-right-color: #b3261e; }
 
 /* Insignia circular de parada: número blanco sobre navy anclado a la
    coordenada, con la duración en píldora a la derecha. La dispersión parada
@@ -395,15 +347,14 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
 .replay-slider:focus-visible { outline: 2px solid rgba(31, 122, 77, .28); outline-offset: 2px; }
 .replay-slider:disabled { opacity: .5; cursor: default; }
 
-/* Aparición del panel, la leyenda y la franja del Replay: solo al montar la
-   página; el plegado del panel y la reproducción no repiten la animación. El
-   panel entra con escala sobria desde su esquina; la leyenda y la franja, con
-   fundido para no mover nada sobre el mapa. */
+/* Aparición del panel y la franja del Replay: solo al montar la página; el
+   plegado del panel y la reproducción no repiten la animación. El panel entra
+   con escala sobria desde su esquina; la franja, con fundido para no mover
+   nada sobre el mapa. */
 .replay-panel {
   transform-origin: top left;
   animation: dmj-entrada-panel var(--dmj-mov-media) var(--dmj-mov-curva-entrada);
 }
-.replay-leyenda { animation: dmj-aparecer var(--dmj-mov-lenta) var(--dmj-mov-curva-entrada); }
 .replay-timeline { animation: dmj-aparecer var(--dmj-mov-media) var(--dmj-mov-curva-entrada); }
 @keyframes dmj-entrada-panel {
   from { opacity: 0; transform: scale(var(--dmj-mov-escala)); }

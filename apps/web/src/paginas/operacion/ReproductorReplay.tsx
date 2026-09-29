@@ -8,13 +8,14 @@ import type { ChartData, ChartOptions } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import type { FeatureCollection, Point } from 'geojson';
 import type { Dispositivo, Hueco, Posicion } from '@contratos';
-import { bateria, duracion, fechaHora, GUION, velocidad } from '../../util/formato';
+import { bateria, duracion, GUION, velocidad } from '../../util/formato';
 import Icono from '../../componentes/Icono';
 import { traerDireccion } from './datos';
 import {
   ETIQUETA_METODO_TRAMO,
   ETIQUETA_MODO_REAL,
   estadoDePunto,
+  fechaHoraCorta,
   horaCorta,
   indiceBateriaConocida,
   indiceMasCercano,
@@ -137,7 +138,8 @@ interface Reproductor {
   sliderRef: RefObject<HTMLInputElement | null>;
   alternar: () => void;
   alternarSeguir: () => void;
-  saltarHueco: (direccion: 1 | -1) => void;
+  // Paso a paso por el recorrido: ±1 punto reproducible por pulsación.
+  moverPunto: (direccion: 1 | -1) => void;
   cambiarVelocidad: (valor: number) => void;
   mover: (indice: number) => void;
   pausar: () => void;
@@ -168,7 +170,11 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
   // Seguir apagado por defecto: el encuadre inicial del recorrido manda hasta
   // que el usuario pida acompañar el marcador.
   const [seguir, setSeguir] = useState(false);
-  const [seleccionado, setSeleccionado] = useState<number | null>(null);
+  // El primer punto del recorrido queda seleccionado por defecto: la ficha
+  // abre con el detalle del arranque y el mapa lo refleja con su aro, sin
+  // vuelo (el encuadre inicial del recorrido manda hasta que el usuario pida
+  // otra cosa).
+  const [seleccionado, setSeleccionado] = useState<number | null>(posiciones.length > 0 ? 0 : null);
   const [paradaSeleccionada, setParadaSeleccionada] = useState<number | null>(null);
   const marcadorActual = useRef<Marker | null>(null);
   // El reloj y el índice viven en refs para que el bucle de animación no se
@@ -204,13 +210,14 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
   // la API): al cambiar de equipo o de rango se reinicia el índice, la
   // reproducción y la selección en el mismo render, como recomienda React para
   // estado que depende de una prop, y el reloj en un efecto de layout que corre
-  // antes de los efectos del marcador y del bucle.
+  // antes de los efectos del marcador y del bucle. La selección vuelve al
+  // primer punto del recorrido nuevo (o se suelta si no hay ninguno).
   const [recorrido, setRecorrido] = useState(posiciones);
   if (recorrido !== posiciones) {
     setRecorrido(posiciones);
     setIndice(0);
     setReproduciendo(false);
-    setSeleccionado(null);
+    setSeleccionado(posiciones.length > 0 ? 0 : null);
     setParadaSeleccionada(null);
   }
 
@@ -476,15 +483,16 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     setIndice(indiceRef.current);
   }
 
-  function saltarHueco(direccion: 1 | -1) {
-    if (!punto) return;
-    const instante = milisegundos(punto.registradoEn);
-    const candidatos =
-      direccion === 1
-        ? huecos.filter((hueco) => milisegundos(hueco.desde) > instante)
-        : huecos.filter((hueco) => milisegundos(hueco.desde) < instante);
-    const elegido = direccion === 1 ? candidatos[0] : candidatos[candidatos.length - 1];
-    if (elegido) moverA(indicePorInstante(posiciones, milisegundos(elegido.desde)));
+  // Paso a paso por el recorrido: cada pulsación mueve exactamente un punto
+  // reproducible (±1 sobre el índice verdadero del reloj, nunca sobre la
+  // colección de flechas, que está decimada por zoom). Reutiliza la selección
+  // para pausar y sincronizar ficha, aro del mapa, reloj y slider con el mismo
+  // gesto; en los extremos se ancla al primero o al último sin dar la vuelta y
+  // con el recorrido vacío no hace nada.
+  function moverPunto(direccion: 1 | -1) {
+    if (posiciones.length === 0) return;
+    const destino = Math.min(Math.max(indiceRef.current + direccion, 0), posiciones.length - 1);
+    seleccionar(destino);
   }
 
   // Salto desde la lista de paradas: se pausa, igual que al arrastrar la barra,
@@ -511,7 +519,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     sliderRef,
     alternar: alternarReproduccion,
     alternarSeguir: () => setSeguir((activo) => !activo),
-    saltarHueco,
+    moverPunto,
     cambiarVelocidad: (valor) => setVelocidadReproduccion(valor),
     mover: moverA,
     pausar,
@@ -651,7 +659,7 @@ export function PanelPuntoSeleccionado() {
       <h3>Detalle del punto</h3>
       <dl className="replay-ficha">
         <dt>Hora</dt>
-        <dd>{fechaHora(punto.registradoEn)}</dd>
+        <dd>{fechaHoraCorta(punto.registradoEn)}</dd>
         <dt>Dirección</dt>
         <dd>{direccion ?? GUION}</dd>
         <dt>Velocidad</dt>
@@ -733,9 +741,10 @@ function FilaParada({
   );
 }
 
-// Lista de paradas plegable. `origen` distingue la segmentación del servidor
-// del respaldo local para avisar de la caída sin ruido cuando todo va bien.
-// Se listan todas las paradas cargadas: el cuerpo del panel tiene scroll
+// Lista de paradas plegable, abierta por defecto: la auditoría revisa las
+// paradas apenas carga el recorrido. `origen` distingue la segmentación del
+// servidor del respaldo local para avisar de la caída sin ruido cuando todo va
+// bien. Se listan todas las paradas cargadas: el cuerpo del panel tiene scroll
 // propio, así que la lista ya no se recorta ni resume el resto en una línea.
 export function ListaParadas({
   paradas,
@@ -746,7 +755,7 @@ export function ListaParadas({
   origen: 'servidor' | 'local';
   total?: number;
 }) {
-  const [abiertas, setAbiertas] = useState(false);
+  const [abiertas, setAbiertas] = useState(true);
   // La parada activa vive en el reproductor: elegirla desde su insignia del
   // mapa también resalta su fila, y viceversa.
   const { paradaSeleccionada } = useReproductor();
@@ -834,28 +843,29 @@ export function InsigniasParadas({ mapa, paradas }: { mapa: TipoMapa | null; par
   return null;
 }
 
-// Mandos del reproductor: play/pausa, seguir, saltos de hueco y velocidades.
-// Van en la franja inferior, entre la lectura del punto y el slider, como
-// estaban antes de moverlos al panel.
+// Mandos del reproductor: play/pausa, seguir, paso a paso por el recorrido y
+// velocidades. Van en la franja inferior, entre la lectura del punto y el
+// slider, como estaban antes de moverlos al panel.
 function ControlesReplay() {
   const {
     posiciones,
-    huecos,
+    indice,
     reproduciendo,
     velocidad: velocidadReproduccion,
     seguir,
     alternar,
     alternarSeguir,
-    saltarHueco,
+    moverPunto,
     cambiarVelocidad,
   } = useReproductor();
+  const unico = posiciones.length < 2;
   return (
     <div className="replay-controles">
       <button
         type="button"
         className="suave icono-solo"
         onClick={alternar}
-        disabled={posiciones.length < 2}
+        disabled={unico}
         title={reproduciendo ? 'Pausar' : 'Reproducir'}
         aria-label={reproduciendo ? 'Pausar' : 'Reproducir'}
       >
@@ -865,7 +875,7 @@ function ControlesReplay() {
         type="button"
         className={`suave icono-solo${seguir ? ' seguir-activo' : ''}`}
         onClick={alternarSeguir}
-        disabled={posiciones.length < 2}
+        disabled={unico}
         title={seguir ? 'Dejar de seguir el punto' : 'Seguir el punto en el mapa'}
         aria-label={seguir ? 'Dejar de seguir el punto' : 'Seguir el punto en el mapa'}
         aria-pressed={seguir}
@@ -875,10 +885,10 @@ function ControlesReplay() {
       <button
         type="button"
         className="suave icono-solo"
-        onClick={() => saltarHueco(-1)}
-        disabled={huecos.length === 0}
-        title="Tramo sin datos anterior"
-        aria-label="Tramo sin datos anterior"
+        onClick={() => moverPunto(-1)}
+        disabled={unico || indice <= 0}
+        title="Punto anterior"
+        aria-label="Punto anterior"
       >
         <span className="voltear">
           <Icono nombre="flecha" />
@@ -887,10 +897,10 @@ function ControlesReplay() {
       <button
         type="button"
         className="suave icono-solo"
-        onClick={() => saltarHueco(1)}
-        disabled={huecos.length === 0}
-        title="Tramo sin datos siguiente"
-        aria-label="Tramo sin datos siguiente"
+        onClick={() => moverPunto(1)}
+        disabled={unico || indice >= posiciones.length - 1}
+        title="Punto siguiente"
+        aria-label="Punto siguiente"
       >
         <Icono nombre="flecha" />
       </button>

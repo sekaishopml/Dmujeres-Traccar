@@ -7,20 +7,14 @@ import Cargando from './Cargando';
 import { useSesion } from '../store/sesion';
 import { alNoAutorizado } from '../api/cliente';
 
-const ENLACES: { ruta: string; texto: string; icono: NombreIcono; fin?: boolean }[] = [
-  { ruta: '/', texto: 'Inicio', icono: 'inicio', fin: true },
-  { ruta: '/en-vivo', texto: 'En vivo', icono: 'enVivo' },
-  { ruta: '/historial', texto: 'Historial', icono: 'historial' },
-  { ruta: '/replay', texto: 'Replay', icono: 'replay' },
-  { ruta: '/bateria', texto: 'Batería', icono: 'bateria' },
-  { ruta: '/reportes', texto: 'Reportes', icono: 'reportes' },
-  { ruta: '/usuarios', texto: 'Usuarios', icono: 'usuarios' },
-  { ruta: '/grupos', texto: 'Grupos', icono: 'grupos' },
-  { ruta: '/configuracion', texto: 'Configuración', icono: 'configuracion' },
-  { ruta: '/sistema', texto: 'Sistema', icono: 'sistema' },
-];
+interface Enlace {
+  ruta: string;
+  texto: string;
+  icono: NombreIcono;
+  fin?: boolean;
+}
 
-const GRUPOS: { titulo: string; enlaces: typeof ENLACES }[] = [
+const GRUPOS: { titulo: string; enlaces: Enlace[] }[] = [
   {
     titulo: 'Operación',
     enlaces: [
@@ -43,7 +37,17 @@ const GRUPOS: { titulo: string; enlaces: typeof ENLACES }[] = [
   },
 ];
 
-const TITULOS: Record<string, string> = Object.fromEntries(ENLACES.map((e) => [e.ruta, e.texto]));
+// Título y grupo de cada ruta, derivados del menú: una sola fuente de verdad
+// para la lateral y para las migas de la barra superior.
+const PAGINAS = new Map(
+  GRUPOS.flatMap((grupo) => grupo.enlaces.map((enlace) => [enlace.ruta, { texto: enlace.texto, grupo: grupo.titulo }])),
+);
+
+// Accesos rápidos de la barra superior: lo que un operador consulta a diario.
+const ACCESOS = [
+  { ruta: '/en-vivo', texto: 'En vivo' },
+  { ruta: '/historial', texto: 'Historial' },
+];
 
 // La lateral cambia con el ancho: riel de íconos en tablet (641-860 px, lo
 // resuelve el CSS) y capa deslizable en móvil angosto, donde el menú se monta
@@ -70,8 +74,9 @@ function iniciales(nombre: string, correo: string): string {
 }
 
 // Marco del panel: barra lateral fija (estilo panel de flota) + barra superior
-// con el título y la cuenta. En Replay la lateral se recoge sola para que el
-// mapa ocupe toda la pantalla; el resto de páginas respetan la preferencia.
+// con migas de ubicación, accesos de operación, la cuenta y la salida. En
+// Replay la lateral se recoge sola para que el mapa ocupe toda la pantalla;
+// el resto de páginas respetan la preferencia.
 export default function Disposicion() {
   const { usuario, cargando, cargar, salir } = useSesion();
   const navegar = useNavigate();
@@ -119,7 +124,10 @@ export default function Disposicion() {
     return <Cargando texto="Comprobando sesión…" />;
   }
 
-  const titulo = ubicacion.pathname.startsWith('/unidad/') ? 'Detalle del equipo' : TITULOS[ubicacion.pathname] ?? '';
+  // El título y el grupo del menú alimentan las migas de la barra superior.
+  const pagina = ubicacion.pathname.startsWith('/unidad/')
+    ? { texto: 'Detalle del equipo', grupo: 'Operación' }
+    : PAGINAS.get(ubicacion.pathname) ?? { texto: '', grupo: '' };
 
   function alternarMenu() {
     if (angosta) setMenuAbierto((v) => !v);
@@ -148,12 +156,6 @@ export default function Disposicion() {
             </div>
           ))}
         </nav>
-        <div className="pie">
-          <button type="button" onClick={salir} title="Salir">
-            <Icono nombre="salir" />
-            <span>Salir</span>
-          </button>
-        </div>
       </aside>
 
       <div className="main">
@@ -166,9 +168,28 @@ export default function Disposicion() {
           >
             <Icono nombre="menu" />
           </button>
-          <span className="titulo">{titulo}</span>
+          <nav className="miga" aria-label="Ubicación">
+            {pagina.grupo !== '' && (
+              <>
+                <span className="miga-grupo">{pagina.grupo}</span>
+                <span className="miga-sep" aria-hidden="true" />
+              </>
+            )}
+            <span className="miga-pagina" aria-current="page">{pagina.texto}</span>
+          </nav>
           <span className="empuja" />
-          <span className="usuario">
+          <nav className="barra-acciones" aria-label="Accesos de operación">
+            {ACCESOS.map((acceso) => (
+              <NavLink key={acceso.ruta} to={acceso.ruta}>
+                {acceso.texto}
+              </NavLink>
+            ))}
+          </nav>
+          <span className="barra-sep" aria-hidden="true" />
+          <div className="cuenta-chip" title={usuario.correo ?? undefined}>
+            <span className="usuario-avatar" aria-hidden="true">
+              {iniciales(usuario.nombre ?? '', usuario.correo ?? '')}
+            </span>
             <span className="usuario-ficha">
               <span className="usuario-nombre">{usuario.nombre || usuario.correo}</span>
               {(usuario.administrador || usuario.soloLectura) && (
@@ -178,10 +199,12 @@ export default function Disposicion() {
                 </span>
               )}
             </span>
-            <span className="usuario-avatar" aria-hidden="true">
-              {iniciales(usuario.nombre ?? '', usuario.correo ?? '')}
-            </span>
-          </span>
+          </div>
+          <span className="barra-sep" aria-hidden="true" />
+          <button type="button" className="salir-barra" onClick={salir} title="Salir">
+            <Icono nombre="salir" tamano={16} />
+            <span>Salir</span>
+          </button>
         </header>
         <main className="contenido">
           <Outlet />

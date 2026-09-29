@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Map as MapaMaplibre, NavigationControl, ScaleControl, setWorkerUrl } from 'maplibre-gl';
 import type { MapOptions } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -30,8 +30,13 @@ export const CAPAS_MAPA = [
   },
 ] as const;
 
-type IdCapa = (typeof CAPAS_MAPA)[number]['id'];
-const CAPA_INICIAL: IdCapa = 'google-mapa';
+export type IdCapa = (typeof CAPAS_MAPA)[number]['id'];
+// Set que pide Replay: sin la capa "Mapa" (no se entiende frente a Satélite u
+// OpenStreetMap) y con Satélite como primera opción, es decir, la inicial.
+export const CAPAS_REPLAY = ['google-satelite', 'google-hibrido', 'osm'] as const satisfies readonly IdCapa[];
+// Orden completo del panel; constante para que la prop por defecto no cambie
+// de identidad en cada render y memo() siga evitando repintados.
+const IDS_CAPAS: readonly IdCapa[] = CAPAS_MAPA.map((capa) => capa.id);
 
 // Duración del fundido entre capas base, leída del token de movimiento
 // (--dmj-mov-media) para no duplicar el valor; con movimiento reducido el
@@ -47,7 +52,7 @@ function duracionFundidoMs(): number {
 // El estilo se arma por instancia porque la transición global de pintura usa
 // la duración del token: con ella, cambiar la opacidad de una capa con
 // setPaintProperty funde el cambio sin agregar ni quitar capas.
-function estiloMapa(duracionFundido: number): NonNullable<MapOptions['style']> {
+function estiloMapa(duracionFundido: number, capaInicial: IdCapa): NonNullable<MapOptions['style']> {
   return {
     version: 8,
     transition: { duration: duracionFundido, delay: 0 },
@@ -61,7 +66,7 @@ function estiloMapa(duracionFundido: number): NonNullable<MapOptions['style']> {
       id: capa.id,
       type: 'raster',
       source: capa.id,
-      layout: { visibility: capa.id === CAPA_INICIAL ? 'visible' : 'none' },
+      layout: { visibility: capa.id === capaInicial ? 'visible' : 'none' },
     })),
   };
 }
@@ -75,21 +80,34 @@ interface Props {
   // El callback recibe null al desmontar el mapa para que quien guarde la
   // instancia (marcadores, capas) sepa que ya no sirve.
   alListo?: (mapa: MapaMaplibre | null) => void;
+  // Ids visibles en el selector y primera capa (la inicial). Por defecto, las
+  // cuatro del panel con Mapa al frente; Replay pasa CAPAS_REPLAY.
+  capas?: readonly IdCapa[];
+  // Replay pide el zoom abajo a la derecha: la esquina superior queda libre
+  // para el selector de capas pegado al top bar.
+  zoomAbajoDerecha?: boolean;
 }
 
 // memo: las páginas de mapa se repintan con cada sondeo (5/10 s) y sus props
 // son estables (clase literal y setState), así que el contenedor del mapa no
 // vuelve a renderizar; maplibre sigue gobernado por sus efectos y estado.
-export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIAL, zoom = 6, alListo }: Props) {
+export default memo(function MapaRaster({
+  clase = 'mapa',
+  centro = CENTRO_INICIAL,
+  zoom = 6,
+  alListo,
+  capas = IDS_CAPAS,
+  zoomAbajoDerecha = false,
+}: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const instancia = useRef<MapaMaplibre | null>(null);
   const avisoListo = useRef(alListo);
-  const [capaActiva, setCapaActiva] = useState<IdCapa>(CAPA_INICIAL);
+  const [capaActiva, setCapaActiva] = useState<IdCapa>(() => capas[0] ?? 'google-mapa');
   // Estado del fundido: duración vigente, capa pedida mientras el estilo aún
   // carga y temporizador que retira las capas salientes al terminar.
   const duracionFundido = useRef(180);
   const cargado = useRef(false);
-  const capaDestino = useRef<IdCapa>(CAPA_INICIAL);
+  const capaDestino = useRef<IdCapa>(capas[0] ?? 'google-mapa');
   const temporizadorCapa = useRef<number | null>(null);
 
   useEffect(() => {
@@ -103,7 +121,7 @@ export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIA
     cargado.current = false;
     const mapa = new MapaMaplibre({
       container: nodo,
-      style: estiloMapa(duracionFundido.current),
+      style: estiloMapa(duracionFundido.current, capaDestino.current),
       center: centro,
       zoom,
       attributionControl: { compact: true },
@@ -113,7 +131,9 @@ export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIA
     // brusco desorienta y hace perder el encuadre de la unidad.
     mapa.scrollZoom.setZoomRate(1 / 450);
     mapa.scrollZoom.setWheelZoomRate(1 / 450);
-    mapa.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+    // Replay deja el zoom abajo a la derecha para que el selector de capas,
+    // pegado al top bar, no lo tape.
+    mapa.addControl(new NavigationControl({ showCompass: false }), zoomAbajoDerecha ? 'bottom-right' : 'top-right');
     mapa.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
     // El mapa se entrega recién con el estilo cargado: maplibre lanza
     // "Style is not done loading" si se agregan fuentes o capas antes.
@@ -136,9 +156,10 @@ export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIA
       instancia.current = null;
       mapa.remove();
     };
-    // centro y zoom son el encuadre inicial; si cambiaran, el mapa se recrea.
-    // Las páginas los dejan por defecto y reencuadran al llegar los datos.
-  }, [centro, zoom]);
+    // centro y zoom son el encuadre inicial y el lado del control de zoom es de
+    // creación: si cambiaran, el mapa se recrea. Las páginas los dejan por
+    // defecto y reencuadran al llegar los datos.
+  }, [centro, zoom, zoomAbajoDerecha]);
 
   // Cambia la capa base fundiendo la entrante desde opacidad 0 y apagando las
   // salientes; al terminar, las salientes salen del render. No agrega ni quita
@@ -191,11 +212,16 @@ export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIA
     aplicarCapa(id, true);
   }
 
+  // Selector en el orden del panel, restringido al set vigente: Replay no
+  // muestra "Mapa". El estilo sigue definiendo las cuatro capas por si el
+  // mapa se reutiliza en otra página, pero aquí solo se ofrecen las pedidas.
+  const definiciones = useMemo(() => CAPAS_MAPA.filter((capa) => capas.includes(capa.id)), [capas]);
+
   return (
     <div className={`${clase} mapa-envoltura`}>
       <div ref={contenedor} style={{ position: 'absolute', inset: 0 }} />
       <div className="mapa-selector" role="group" aria-label="Capa del mapa">
-        {CAPAS_MAPA.map((capa) => (
+        {definiciones.map((capa) => (
           <button
             key={capa.id}
             type="button"

@@ -5,6 +5,9 @@ import type { Dispositivo, EstadoSalud } from '@contratos';
 import { consulta } from '../api/cliente';
 import { bateria, duracion, hace, hora, GUION } from '../util/formato';
 import Icono from '../componentes/Icono';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import { traerFlota, traerJornadasFlota, traerSalud, CLAVE_FLOTA, equiposHabilitados } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
 import { claveEstado } from './operacion/estado';
@@ -210,29 +213,22 @@ export default function Inicio() {
 
   return (
     <section className="pagina-inicio">
-      <header className="cabecera-pagina">
-        <div>
-          <h1>Inicio</h1>
-          <p className="sub">
-            Resumen de la operación de hoy
-            {actualizado ? ` · actualizado ${actualizado}` : ' · sin datos todavía'}
-            {flota.isFetching ? ' · actualizando…' : ''}
-          </p>
-        </div>
-        <span className="empuja" />
-        <Link className="boton boton-suave con-icono" to="/en-vivo">
-          <Icono nombre="enVivo" />
-          Ver mapa en vivo
-        </Link>
-      </header>
+      <EncabezadoPagina
+        contexto="Operación"
+        titulo="Inicio"
+        sub={`Resumen de la operación de hoy${actualizado ? ` · actualizado ${actualizado}` : ' · sin datos todavía'}${
+          flota.isFetching ? ' · actualizando…' : ''
+        }`}
+        acciones={
+          <Link className="boton boton-suave con-icono" to="/en-vivo">
+            <Icono nombre="enVivo" />
+            Ver mapa en vivo
+          </Link>
+        }
+      />
 
       {flota.isPending && <p className="vacio pulso">Cargando…</p>}
-      {flota.error && (
-        <p className="vacio">
-          <Icono nombre="sistema" />
-          {mensajeError(flota.error)}
-        </p>
-      )}
+      {flota.error && <EstadoVacio icono="sistema">{mensajeError(flota.error)}</EstadoVacio>}
 
       {flota.data && (
         <>
@@ -262,159 +258,130 @@ export default function Inicio() {
           </section>
 
           <section className="seccion">
-            <div className="bloque">
-              <header className="cabecera-seccion">
-                <h2>Jornadas de hoy</h2>
-                <span className="cuenta">{cuentaJornadas}</span>
-              </header>
-              {dispositivos.length === 0 && (
-                <p className="vacio">
-                  <Icono nombre="historial" />
-                  No hay equipos asignados a esta cuenta.
-                </p>
-              )}
-              {dispositivos.length > 0 && jornadas.isPending && (
-                <p className="vacio pulso">Consultando las jornadas del día…</p>
-              )}
-              {jornadasDisponibles && filasJornadas.length === 0 && (
-                <p className="vacio">
-                  <Icono nombre="historial" />
-                  Ningún equipo abrió jornada hoy.
-                </p>
-              )}
-              {!jornadas.isPending && !jornadasDisponibles && (
-                <p className="vacio">
-                  <Icono nombre="historial" />
-                  El servidor todavía no entrega las jornadas.
-                </p>
-              )}
-              {jornadasDisponibles && filasJornadas.length > 0 && (
-                <div className="tabla-envoltura">
-                  <table className="tabla">
-                    <thead>
-                      <tr>
-                        <th>Equipo</th>
-                        <th>Inició</th>
-                        <th>Finalizó</th>
-                        <th className="num">Duración</th>
-                        <th>Historial</th>
+            <CabeceraSeccion titulo="Jornadas de hoy" cuenta={cuentaJornadas} />
+            {dispositivos.length === 0 && (
+              <EstadoVacio icono="historial">No hay equipos asignados a esta cuenta.</EstadoVacio>
+            )}
+            {dispositivos.length > 0 && jornadas.isPending && (
+              <p className="vacio pulso">Consultando las jornadas del día…</p>
+            )}
+            {jornadasDisponibles && filasJornadas.length === 0 && (
+              <EstadoVacio icono="historial">Ningún equipo abrió jornada hoy.</EstadoVacio>
+            )}
+            {!jornadas.isPending && !jornadasDisponibles && (
+              <EstadoVacio icono="historial">El servidor todavía no entrega las jornadas.</EstadoVacio>
+            )}
+            {jornadasDisponibles && filasJornadas.length > 0 && (
+              <div className="tabla-envoltura">
+                <table className="tabla">
+                  <thead>
+                    <tr>
+                      <th>Equipo</th>
+                      <th>Inició</th>
+                      <th>Finalizó</th>
+                      <th className="num">Duración</th>
+                      <th>Historial</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filasJornadas.map((fila) => (
+                      <tr key={`${fila.unidadId}-${fila.inicioEn}`}>
+                        <td>
+                          <Link className="enlace-tabla" to={`/unidad/${fila.unidadId}`}>
+                            {fila.nombre}
+                          </Link>
+                          <div className="apagado mono">{fila.identificador}</div>
+                        </td>
+                        <td>{hora(fila.inicioEn)}</td>
+                        <td>{fila.finEn ? hora(fila.finEn) : 'En curso'}</td>
+                        <td className="num">{fila.duracionMin != null ? duracion(fila.duracionMin * 60) : GUION}</td>
+                        <td>
+                          <Link
+                            className="enlace-tabla"
+                            to={`/historial${consulta({ dispositivo: fila.unidadId, desde: hoy, hasta: hoy })}`}
+                          >
+                            Ver jornada
+                          </Link>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {filasJornadas.map((fila) => (
-                        <tr key={`${fila.unidadId}-${fila.inicioEn}`}>
-                          <td>
-                            <Link className="enlace-tabla" to={`/unidad/${fila.unidadId}`}>
-                              {fila.nombre}
-                            </Link>
-                            <div className="apagado mono">{fila.identificador}</div>
-                          </td>
-                          <td>{hora(fila.inicioEn)}</td>
-                          <td>{fila.finEn ? hora(fila.finEn) : 'En curso'}</td>
-                          <td className="num">{fila.duracionMin != null ? duracion(fila.duracionMin * 60) : GUION}</td>
-                          <td>
-                            <Link
-                              className="enlace-tabla"
-                              to={`/historial${consulta({ dispositivo: fila.unidadId, desde: hoy, hasta: hoy })}`}
-                            >
-                              Ver jornada
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
 
           <section className="seccion">
-            <div className="bloque">
-              <header className="cabecera-seccion">
-                <h2>Salud de la flota</h2>
-                <span className="cuenta">{cuentaSalud}</span>
-              </header>
-              {salud.isPending && <p className="vacio pulso">Consultando la salud de los equipos…</p>}
-              {salud.error && esNoEncontrado(salud.error) && (
-                <p className="vacio">
-                  <Icono nombre="sistema" />
-                  La salud de los equipos todavía no está disponible.
-                </p>
-              )}
-              {salud.error && !esNoEncontrado(salud.error) && (
-                <p className="vacio">
-                  <Icono nombre="sistema" />
-                  {mensajeError(salud.error)}
-                </p>
-              )}
-              {salud.data && equiposSalud.length === 0 && (
-                <p className="vacio">
-                  <Icono nombre="sistema" />
-                  Sin equipos para mostrar.
-                </p>
-              )}
-              {salud.data && equiposSalud.length > 0 && (
-                <ul className="lista-avisos">
-                  {equiposSalud.map((equipo) => {
-                    const conocido = nombresSalud.get(equipo.dispositivoId);
-                    const nombre = conocido?.nombre ?? `Equipo ${equipo.dispositivoId}`;
-                    const identificador = conocido?.identificadorUnico ?? String(equipo.dispositivoId);
-                    // La causa del servidor ya suele traer la edad ("Último
-                    // GPS hace 8 min", ADR-009); solo se compone desde
-                    // lastFixAgeS cuando viene vacía.
-                    const causa =
-                      equipo.causa ||
-                      (                      equipo.lastFixAgeS != null
-                        ? `Última posición ${haceSegundos(equipo.lastFixAgeS)}`
-                        : 'Sin causa informada');
-                    return (
-                      <li key={equipo.dispositivoId}>
-                        <span className={`chip ${CLASE_SALUD[equipo.estado]}`}>{ETIQUETA_SALUD[equipo.estado]}</span>
-                        <span>
-                          <strong>{nombre}</strong>{' '}
-                          <span className="mono apagado">{identificador}</span>
-                        </span>
-                        <span className="motivo">{causa}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
+            <CabeceraSeccion titulo="Salud de la flota" cuenta={cuentaSalud} />
+            {salud.isPending && <p className="vacio pulso">Consultando la salud de los equipos…</p>}
+            {salud.error && esNoEncontrado(salud.error) && (
+              <EstadoVacio icono="sistema">La salud de los equipos todavía no está disponible.</EstadoVacio>
+            )}
+            {salud.error && !esNoEncontrado(salud.error) && (
+              <EstadoVacio icono="sistema">{mensajeError(salud.error)}</EstadoVacio>
+            )}
+            {salud.data && equiposSalud.length === 0 && (
+              <EstadoVacio icono="sistema">Sin equipos para mostrar.</EstadoVacio>
+            )}
+            {salud.data && equiposSalud.length > 0 && (
+              <ul className="lista-avisos">
+                {equiposSalud.map((equipo) => {
+                  const conocido = nombresSalud.get(equipo.dispositivoId);
+                  const nombre = conocido?.nombre ?? `Equipo ${equipo.dispositivoId}`;
+                  const identificador = conocido?.identificadorUnico ?? String(equipo.dispositivoId);
+                  // La causa del servidor ya suele traer la edad ("Último
+                  // GPS hace 8 min", ADR-009); solo se compone desde
+                  // lastFixAgeS cuando viene vacía.
+                  const causa =
+                    equipo.causa ||
+                    (equipo.lastFixAgeS != null
+                      ? `Última posición ${haceSegundos(equipo.lastFixAgeS)}`
+                      : 'Sin causa informada');
+                  return (
+                    <li key={equipo.dispositivoId}>
+                      <span className={`chip ${CLASE_SALUD[equipo.estado]}`}>{ETIQUETA_SALUD[equipo.estado]}</span>
+                      <span>
+                        <strong>{nombre}</strong>{' '}
+                        <span className="mono apagado">{identificador}</span>
+                      </span>
+                      <span className="motivo">{causa}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </section>
 
           <section className="seccion">
-            <div className="bloque">
-              <header className="cabecera-seccion">
-                <h2>Requieren atención</h2>
-                <span className="cuenta">{avisos.length === 0 ? 'Nada pendiente' : `${avisos.length} equipos`}</span>
-                <span className="acciones">
+            <CabeceraSeccion
+              titulo="Requieren atención"
+              cuenta={avisos.length === 0 ? 'Nada pendiente' : `${avisos.length} equipos`}
+              acciones={
+                <>
                   {avisosRestantes > 0 && <span className="cuenta">y {avisosRestantes} más</span>}
                   <Link className="boton boton-suave" to="/en-vivo">
                     Ver en vivo
                   </Link>
-                </span>
-              </header>
-              {avisos.length === 0 ? (
-                <p className="vacio">
-                  <Icono nombre="sistema" />
-                  Ningún equipo requiere atención: todos reportan conexión y batería suficiente.
-                </p>
-              ) : (
-                <ul className="lista-avisos">
-                  {avisosVisibles.map(({ equipo, motivos }) => (
-                    <li key={equipo.id}>
-                      <Link className="enlace-tabla" to={`/unidad/${equipo.idPublico}`}>
-                        {equipo.nombre}
-                      </Link>
-                      <span className="mono apagado">{equipo.identificadorUnico}</span>
-                      <span className="motivo">{motivos.join(' · ')}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                </>
+              }
+            />
+            {avisos.length === 0 ? (
+              <EstadoVacio icono="sistema">
+                Ningún equipo requiere atención: todos reportan conexión y batería suficiente.
+              </EstadoVacio>
+            ) : (
+              <ul className="lista-avisos">
+                {avisosVisibles.map(({ equipo, motivos }) => (
+                  <li key={equipo.id}>
+                    <Link className="enlace-tabla" to={`/unidad/${equipo.idPublico}`}>
+                      {equipo.nombre}
+                    </Link>
+                    <span className="mono apagado">{equipo.identificadorUnico}</span>
+                    <span className="motivo">{motivos.join(' · ')}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         </>
       )}

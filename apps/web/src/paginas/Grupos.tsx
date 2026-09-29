@@ -6,6 +6,9 @@ import { api } from '../api/cliente';
 import { useSesion } from '../store/sesion';
 import { GUION } from '../util/formato';
 import Icono from '../componentes/Icono';
+import EncabezadoPagina from '../componentes/EncabezadoPagina';
+import CabeceraSeccion from '../componentes/CabeceraSeccion';
+import EstadoVacio from '../componentes/EstadoVacio';
 import {
   CACHE_PLATAFORMA_MS,
   MensajeError,
@@ -296,93 +299,82 @@ export default function Grupos() {
   if (!administrador || esErrorDeEstado(grupos.error, 403)) {
     return (
       <section>
-        <header className="cabecera-pagina">
-          <div>
-            <h1>Grupos</h1>
-          </div>
-        </header>
-        <div className="bloque">
-          <p className="aviso">Necesitas permisos de administrador para gestionar grupos.</p>
-        </div>
+        <EncabezadoPagina contexto="Administración" titulo="Grupos" />
+        <p className="aviso">Necesitas permisos de administrador para gestionar grupos.</p>
       </section>
     );
   }
 
   return (
     <section>
-      <header className="cabecera-pagina">
-        <div>
-          <h1>Grupos</h1>
-          <p className="sub">Agrupan personas para organizar turnos y zonas. Solo administradores.</p>
-        </div>
-        <div className="empuja" />
-        <button type="button" className="principal con-icono" onClick={abrirCrear}>
-          <Icono nombre="mas" />
-          Agregar grupo
-        </button>
-      </header>
+      <EncabezadoPagina
+        contexto="Administración"
+        titulo="Grupos"
+        sub="Agrupan personas para organizar turnos y zonas. Solo administradores."
+        acciones={
+          <button type="button" className="principal con-icono" onClick={abrirCrear}>
+            <Icono nombre="mas" />
+            Agregar grupo
+          </button>
+        }
+      />
 
       <section className="seccion">
-        <div className="bloque">
-          <header className="cabecera-seccion">
-            <h2>Lista de grupos</h2>
-            <span className="cuenta">{grupos.data ? `${total} registrados` : 'Consultando…'}</span>
-          </header>
-          {grupos.isPending && <p className="vacio pulso">Cargando grupos…</p>}
-          {grupos.error && <MensajeError error={grupos.error} />}
-          {grupos.data && total === 0 && <p className="vacio">Todavía no hay grupos. Crea el primero.</p>}
-          {visibles.length > 0 && (
-            <>
-              <div className="tabla-envoltura">
-                <table className="tabla">
-                  <thead>
-                    <tr>
-                      <th>Grupo</th>
-                      <th>Descripción</th>
-                      <th>Personas</th>
-                      <th>Acciones</th>
+        <CabeceraSeccion titulo="Lista de grupos" cuenta={grupos.data ? `${total} registrados` : 'Consultando…'} />
+        {grupos.isPending && <p className="vacio pulso">Cargando grupos…</p>}
+        {grupos.error && <MensajeError error={grupos.error} />}
+        {grupos.data && total === 0 && <EstadoVacio icono="grupos">Todavía no hay grupos. Crea el primero.</EstadoVacio>}
+        {visibles.length > 0 && (
+          <>
+            <div className="tabla-envoltura">
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Grupo</th>
+                    <th>Descripción</th>
+                    <th>Personas</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibles.map((grupo) => (
+                    <tr key={String(grupo.idPublico ?? grupo.id)}>
+                      <td>{grupo.nombre}</td>
+                      <td>{grupo.descripcion ?? GUION}</td>
+                      <td>{nombresMiembros(grupo, listaUsuarios)}</td>
+                      <td>
+                        <div className="fila-botones">
+                          <button
+                            type="button"
+                            className="accion-icono"
+                            title="Cambiar quiénes están en el grupo"
+                            aria-label={`Cambiar quiénes están en ${grupo.nombre}`}
+                            onClick={() => abrirMiembros(grupo)}
+                          >
+                            <Icono nombre="usuarios" />
+                          </button>
+                          <button
+                            type="button"
+                            className="accion-icono peligro"
+                            title="Eliminar el grupo"
+                            aria-label={`Eliminar el grupo ${grupo.nombre}`}
+                            onClick={() => abrirEliminar(grupo)}
+                          >
+                            <Icono nombre="basura" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {visibles.map((grupo) => (
-                      <tr key={String(grupo.idPublico ?? grupo.id)}>
-                        <td>{grupo.nombre}</td>
-                        <td>{grupo.descripcion ?? GUION}</td>
-                        <td>{nombresMiembros(grupo, listaUsuarios)}</td>
-                        <td>
-                          <div className="fila-botones">
-                            <button
-                              type="button"
-                              className="accion-icono"
-                              title="Cambiar quiénes están en el grupo"
-                              aria-label={`Cambiar quiénes están en ${grupo.nombre}`}
-                              onClick={() => abrirMiembros(grupo)}
-                            >
-                              <Icono nombre="usuarios" />
-                            </button>
-                            <button
-                              type="button"
-                              className="accion-icono peligro"
-                              title="Eliminar el grupo"
-                              aria-label={`Eliminar el grupo ${grupo.nombre}`}
-                              onClick={() => abrirEliminar(grupo)}
-                            >
-                              <Icono nombre="basura" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <Paginacion pagina={paginaSegura} tamano={TAMANO} total={total} onPagina={setPagina} />
-            </>
-          )}
-          {usuarios.error && (
-            <p className="apagado">No se pudieron cargar las personas para mostrar los nombres del grupo.</p>
-          )}
-        </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paginacion pagina={paginaSegura} tamano={TAMANO} total={total} onPagina={setPagina} />
+          </>
+        )}
+        {usuarios.error && (
+          <p className="apagado">No se pudieron cargar las personas para mostrar los nombres del grupo.</p>
+        )}
       </section>
 
       {modal?.modo === 'crear' && (
