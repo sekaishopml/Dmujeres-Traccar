@@ -21,7 +21,7 @@ export function contenidoPopup(dispositivo: Dispositivo, posicion: Posicion): HT
     ['Batería', bateria(dispositivo.bateriaPct ?? posicion.bateriaPct)],
     ['Velocidad', velocidad(posicion.velocidadKmh)],
     ['Precisión', posicion.precisionM == null ? GUION : `${Math.round(posicion.precisionM)} m`],
-    ['Último fix', hace(posicion.registradoEn)],
+    ['Última posición', hace(posicion.registradoEn)],
   ];
   const lista = document.createElement('dl');
   for (const [etiqueta, valor] of filas) {

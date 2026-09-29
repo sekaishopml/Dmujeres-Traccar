@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Icono from './Icono';
 import type { NombreIcono } from './Icono';
+import Logotipo from './Logotipo';
 import Cargando from './Cargando';
 import { useSesion } from '../store/sesion';
 import { alNoAutorizado } from '../api/cliente';
@@ -14,7 +15,7 @@ const ENLACES: { ruta: string; texto: string; icono: NombreIcono; fin?: boolean 
   { ruta: '/bateria', texto: 'Batería', icono: 'bateria' },
   { ruta: '/reportes', texto: 'Reportes', icono: 'reportes' },
   { ruta: '/usuarios', texto: 'Usuarios', icono: 'usuarios' },
-  { ruta: '/grupos', texto: 'Grupos', icono: 'usuarios' },
+  { ruta: '/grupos', texto: 'Grupos', icono: 'grupos' },
   { ruta: '/configuracion', texto: 'Configuración', icono: 'configuracion' },
   { ruta: '/sistema', texto: 'Sistema', icono: 'sistema' },
 ];
@@ -35,7 +36,7 @@ const GRUPOS: { titulo: string; enlaces: typeof ENLACES }[] = [
     titulo: 'Administración',
     enlaces: [
       { ruta: '/usuarios', texto: 'Usuarios', icono: 'usuarios' },
-      { ruta: '/grupos', texto: 'Grupos', icono: 'usuarios' },
+      { ruta: '/grupos', texto: 'Grupos', icono: 'grupos' },
       { ruta: '/configuracion', texto: 'Configuración', icono: 'configuracion' },
       { ruta: '/sistema', texto: 'Sistema', icono: 'sistema' },
     ],
@@ -57,6 +58,15 @@ function usePantallaAngosta(): boolean {
     return () => consulta.removeEventListener('change', alCambiar);
   }, []);
   return angosta;
+}
+
+// Iniciales para el avatar de la cuenta: nombre y apellido si existen, o las
+// dos primeras letras del correo. Solo presentación; no altera la sesión.
+function iniciales(nombre: string, correo: string): string {
+  const base = (nombre.trim() || correo.trim()).replace(/\s+/g, ' ');
+  const partes = base.split(' ').filter(Boolean);
+  if (partes.length >= 2) return (partes[0][0] + partes[1][0]).toUpperCase();
+  return base.slice(0, 2).toUpperCase();
 }
 
 // Marco del panel: barra lateral fija (estilo panel de flota) + barra superior
@@ -109,7 +119,7 @@ export default function Disposicion() {
     return <Cargando texto="Comprobando sesión…" />;
   }
 
-  const titulo = ubicacion.pathname.startsWith('/unidad/') ? 'Detalle de unidad' : TITULOS[ubicacion.pathname] ?? '';
+  const titulo = ubicacion.pathname.startsWith('/unidad/') ? 'Detalle del equipo' : TITULOS[ubicacion.pathname] ?? '';
 
   function alternarMenu() {
     if (angosta) setMenuAbierto((v) => !v);
@@ -122,11 +132,8 @@ export default function Disposicion() {
       <button type="button" className="velo-menu" aria-label="Cerrar menú" onClick={() => setMenuAbierto(false)} />
       <aside className="lateral">
         <div className="marca">
-          <img src="/logo.png" alt="DMujeres" />
-          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
-            <span>DMujeres Tracking</span>
-            <span className="lema">Plataforma de flota</span>
-          </div>
+          <Logotipo claro />
+          <span className="lema">Plataforma de flota</span>
         </div>
         <nav>
           {GRUPOS.map((grupo) => (
@@ -162,9 +169,18 @@ export default function Disposicion() {
           <span className="titulo">{titulo}</span>
           <span className="empuja" />
           <span className="usuario">
-            {usuario.nombre || usuario.correo}
-            {usuario.administrador && <em>admin</em>}
-            {usuario.soloLectura && <em>solo lectura</em>}
+            <span className="usuario-ficha">
+              <span className="usuario-nombre">{usuario.nombre || usuario.correo}</span>
+              {(usuario.administrador || usuario.soloLectura) && (
+                <span className="usuario-roles">
+                  {usuario.administrador && <em className="rol admin">admin</em>}
+                  {usuario.soloLectura && <em className="rol lectura">solo lectura</em>}
+                </span>
+              )}
+            </span>
+            <span className="usuario-avatar" aria-hidden="true">
+              {iniciales(usuario.nombre ?? '', usuario.correo ?? '')}
+            </span>
           </span>
         </header>
         <main className="contenido">

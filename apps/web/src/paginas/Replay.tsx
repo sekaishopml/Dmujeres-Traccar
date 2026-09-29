@@ -7,7 +7,7 @@ import Icono from '../componentes/Icono';
 import MapaRaster from './operacion/MapaRaster';
 import ReproductorReplay, { LineaTiempoReplay, ListaParadas, PanelPuntoSeleccionado } from './operacion/ReproductorReplay';
 import FiltroReplay from './operacion/FiltroReplay';
-import { traerFlota, traerJornadas, traerParadas, traerReplay, CLAVE_FLOTA, equiposHabilitados } from './operacion/datos';
+import { traerFlota, traerJornadas, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
 import {
   aColeccion,
@@ -128,6 +128,7 @@ export default function Replay() {
     queryKey: ['replay', seleccionado, desde, hasta],
     queryFn: () => traerReplay(seleccionado, inicioDeDia(desde), finDeDia(hasta)),
     enabled: seleccionado !== '' && rangoValido,
+    staleTime: CACHE_AUDITORIA_MS,
   });
 
   // Paradas del servidor en paralelo al recorrido. Si la consulta falla, el
@@ -137,6 +138,7 @@ export default function Replay() {
     queryKey: ['paradas', seleccionado, desde, hasta],
     queryFn: () => traerParadas(seleccionado, inicioDeDia(desde), finDeDia(hasta)),
     enabled: seleccionado !== '' && rangoValido,
+    staleTime: CACHE_AUDITORIA_MS,
   });
 
   // Jornadas del equipo en la ventana: alimentan los marcadores de
@@ -149,6 +151,7 @@ export default function Replay() {
     queryFn: () => traerJornadas(seleccionado, inicioDeDia(desde), finDeDia(hasta)),
     enabled: seleccionado !== '' && rangoValido,
     retry: false,
+    staleTime: CACHE_AUDITORIA_MS,
   });
 
   const posiciones = useMemo(() => {
@@ -625,8 +628,8 @@ export default function Replay() {
   }
 
   function cuerpoPanel() {
-    if (seleccionado === '') return <p className="vacio">No hay equipos visibles para esta cuenta.</p>;
-    if (!rangoValido) return <p className="vacio">El rango de fechas no es válido.</p>;
+    if (seleccionado === '') return <p className="vacio">No hay equipos asignados a esta cuenta.</p>;
+    if (!rangoValido) return <p className="vacio">Revisa las fechas: el inicio no puede ser posterior al fin.</p>;
     if (replay.isPending) return <p className="vacio">Cargando…</p>;
     if (replay.error) {
       if (esNoEncontrado(replay.error)) return <p className="vacio">Sin recorrido en el rango seleccionado.</p>;
@@ -672,16 +675,16 @@ export default function Replay() {
             <span className="muestra sin-senal" /> Sin señal
           </span>
           <span>
-            <span className="muestra corredor-vehiculo" /> GPS en vehículo
+            <span className="muestra corredor-vehiculo" /> Recorrido en vehículo
           </span>
           <span>
-            <span className="muestra corredor-caminata" /> GPS a pie (&lt;8 km/h)
+            <span className="muestra corredor-caminata" /> Recorrido a pie (hasta 8 km/h)
           </span>
           <span>
             <span className="muestra direccion" /> Sentido de marcha
           </span>
           <span>
-            <span className="muestra halo" /> Parada (dispersión GPS)
+            <span className="muestra halo" /> Parada (puntos registrados)
           </span>
           <span>
             <span className="muestra ajustado" /> Ajustado a vía
@@ -702,8 +705,8 @@ export default function Replay() {
                 className="suave icono-solo"
                 onClick={exportarCsv}
                 disabled={!hayRecorrido}
-                title="Exportar CSV"
-                aria-label="Exportar CSV"
+                title="Descargar el recorrido (CSV)"
+                aria-label="Descargar el recorrido (CSV)"
               >
                 <Icono nombre="reportes" tamano={15} />
               </button>

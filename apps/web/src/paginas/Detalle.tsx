@@ -89,7 +89,7 @@ export default function Detalle() {
 
   if (consultaEquipo.isPending) return <p className="vacio">Cargando…</p>;
   if (consultaEquipo.error) return <p className="vacio">{mensajeError(consultaEquipo.error)}</p>;
-  if (!equipo) return <p className="vacio">La unidad no está disponible.</p>;
+  if (!equipo) return <p className="vacio">El equipo no está disponible.</p>;
 
   const hoy = fechaHoyLocal();
   const enlaceReplay = `/replay${consulta({ dispositivo: equipo.idPublico, desde: hoy, hasta: hoy })}`;
@@ -125,7 +125,7 @@ export default function Detalle() {
             <Dato etiqueta="Estado">
               <ChipEstado dispositivo={equipo} />
             </Dato>
-            <Dato etiqueta="Habilitado">{siNo(equipo.habilitado)}</Dato>
+            <Dato etiqueta="Activo">{siNo(equipo.habilitado)}</Dato>
             <Dato etiqueta="Jornada activa">{siNo(equipo.jornadaActiva)}</Dato>
             <Dato etiqueta="Versión de la app">{equipo.versionApp ?? GUION}</Dato>
             <Dato etiqueta="Última conexión">
@@ -143,8 +143,8 @@ export default function Detalle() {
               <BarraBateria porcentaje={equipo.bateriaPct} cargando={equipo.cargando} />
             </Dato>
             <Dato etiqueta="Cargando">{siNo(equipo.cargando)}</Dato>
-            <Dato etiqueta="Nivel en el último fix">{bateria(posicion?.bateriaPct)}</Dato>
-            <Dato etiqueta="Pendientes por enviar">{entero(equipo.pendientes)}</Dato>
+            <Dato etiqueta="Batería en la última posición">{bateria(posicion?.bateriaPct)}</Dato>
+            <Dato etiqueta="Posiciones sin enviar">{entero(equipo.pendientes)}</Dato>
           </dl>
         </section>
       </div>
@@ -155,7 +155,7 @@ export default function Detalle() {
           <span className="acciones">
             <Link className="boton boton-suave con-icono" to={enlaceAuditoria}>
               <Icono nombre="historial" />
-              Auditoría del día
+              Historial del día
             </Link>
             <Link className="boton con-icono" to={enlaceReplay}>
               <Icono nombre="replay" />
@@ -177,7 +177,7 @@ export default function Detalle() {
                   ? 'Cargando posición…'
                   : consultaPosicion.error
                     ? mensajeError(consultaPosicion.error)
-                    : 'La unidad no tiene posición conocida.'}
+                    : 'El equipo no tiene posición conocida.'}
               </p>
             )}
           </div>
@@ -188,11 +188,11 @@ export default function Detalle() {
             <Dato etiqueta="Rumbo">{grados(posicion?.rumboGrados)}</Dato>
             <Dato etiqueta="Precisión">{metros(posicion?.precisionM)}</Dato>
             <Dato etiqueta="Batería">{bateria(posicion?.bateriaPct)}</Dato>
-            <Dato etiqueta="Registrada">
+            <Dato etiqueta="Registrada por el equipo">
               {posicion?.registradoEn ? `${fechaHora(posicion.registradoEn)} · ${hace(posicion.registradoEn)}` : GUION}
             </Dato>
-            <Dato etiqueta="Recibida">{posicion ? fechaHora(posicion.recibidoEn) : GUION}</Dato>
-            <Dato etiqueta="Válida">{siNo(posicion?.valida)}</Dato>
+            <Dato etiqueta="Recibida en el servidor">{posicion ? fechaHora(posicion.recibidoEn) : GUION}</Dato>
+            <Dato etiqueta="Posición válida">{siNo(posicion?.valida)}</Dato>
           </dl>
         </div>
       </section>

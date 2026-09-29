@@ -4,6 +4,7 @@ import type { Pagina, ReporteParada, ReporteViaje, ResumenReporte } from '@contr
 import { api, consulta } from '../api/cliente';
 import { GUION, duracion, fechaHora, kilometros, velocidad } from '../util/formato';
 import { MensajeError, Paginacion, SelectorEquipo, useEquipos } from './admin/comunes';
+import { CACHE_AUDITORIA_MS } from './operacion/datos';
 import './admin.css';
 import '../estilos/paginas.css';
 
@@ -57,6 +58,7 @@ export default function Reportes() {
     queryKey: ['reportes', 'viajes', filtros, paginaViajes],
     enabled: pestana === 'viajes',
     placeholderData: keepPreviousData,
+    staleTime: CACHE_AUDITORIA_MS,
     queryFn: () =>
       api.get<Pagina<ReporteViaje>>(
         `/api/v1/reports/trips${consulta({ ...filtros, pagina: paginaViajes, tamano: TAMANO, orden: '-inicio' })}`,
@@ -67,6 +69,7 @@ export default function Reportes() {
     queryKey: ['reportes', 'paradas', filtros, paginaParadas],
     enabled: pestana === 'paradas',
     placeholderData: keepPreviousData,
+    staleTime: CACHE_AUDITORIA_MS,
     queryFn: () =>
       api.get<Pagina<ReporteParada>>(
         `/api/v1/reports/stops${consulta({ ...filtros, pagina: paginaParadas, tamano: TAMANO, orden: '-inicio' })}`,
@@ -78,6 +81,7 @@ export default function Reportes() {
   const resumen = useQuery({
     queryKey: ['reportes', 'resumen', filtros],
     placeholderData: keepPreviousData,
+    staleTime: CACHE_AUDITORIA_MS,
     queryFn: () => api.get<ResumenReporte>(`/api/v1/reports/summary${consulta(filtros)}`),
   });
 
@@ -106,7 +110,7 @@ export default function Reportes() {
       <header className="cabecera-pagina">
         <div>
           <h1>Reportes</h1>
-          <p className="sub">Viajes, paradas y resumen por unidad en el rango elegido.</p>
+          <p className="sub">Viajes, paradas y resumen por equipo en el rango elegido.</p>
         </div>
       </header>
 
@@ -115,7 +119,7 @@ export default function Reportes() {
           equipos={equipos.data?.datos ?? []}
           valor={equipo}
           onCambio={cambiarEquipo}
-          etiqueta="Unidad"
+          etiqueta="Equipo"
           incluirTodos
         />
         <label className="campo">
@@ -130,9 +134,9 @@ export default function Reportes() {
       {equipos.error && <MensajeError error={equipos.error} />}
       <p className="rango-efectivo">
         {resumen.data
-          ? `Rango efectivo: ${fechaHora(resumen.data.desde)} — ${fechaHora(resumen.data.hasta)}`
+          ? `Rango consultado: ${fechaHora(resumen.data.desde)} — ${fechaHora(resumen.data.hasta)}`
           : resumen.error
-            ? 'Rango no disponible: no se pudo calcular el resumen.'
+            ? 'No se pudo calcular el resumen del rango.'
             : 'Consultando el rango seleccionado…'}
       </p>
 
@@ -174,20 +178,20 @@ export default function Reportes() {
           </header>
           {viajes.isPending && <p className="vacio">Cargando viajes…</p>}
           {viajes.error && <MensajeError error={viajes.error} />}
-          {viajes.data && viajes.data.datos.length === 0 && <p className="vacio">Sin viajes en el rango.</p>}
+          {viajes.data && viajes.data.datos.length === 0 && <p className="vacio">No hay viajes en el rango.</p>}
           {viajes.data && viajes.data.datos.length > 0 && (
             <>
               <div className="tabla-envoltura">
                 <table className="tabla">
                   <thead>
                     <tr>
-                      <th>Unidad</th>
+                      <th>Equipo</th>
                       <th>Inició</th>
                       <th>Finalizó</th>
                       <th className="num">Duración</th>
                       <th className="num">Distancia</th>
-                      <th className="num">Vel. promedio</th>
-                      <th className="num">Vel. máxima</th>
+                      <th className="num">Velocidad promedio</th>
+                      <th className="num">Velocidad máxima</th>
                       <th className="num">Paradas</th>
                     </tr>
                   </thead>
@@ -226,14 +230,14 @@ export default function Reportes() {
           </header>
           {paradas.isPending && <p className="vacio">Cargando paradas…</p>}
           {paradas.error && <MensajeError error={paradas.error} />}
-          {paradas.data && paradas.data.datos.length === 0 && <p className="vacio">Sin paradas en el rango.</p>}
+          {paradas.data && paradas.data.datos.length === 0 && <p className="vacio">No hay paradas en el rango.</p>}
           {paradas.data && paradas.data.datos.length > 0 && (
             <>
               <div className="tabla-envoltura">
                 <table className="tabla">
                   <thead>
                     <tr>
-                      <th>Unidad</th>
+                      <th>Equipo</th>
                       <th>Inició</th>
                       <th>Finalizó</th>
                       <th className="num">Duración</th>
@@ -268,9 +272,9 @@ export default function Reportes() {
       {pestana === 'resumen' && (
         <section className="bloque">
           <header className="cabecera-seccion">
-            <h2>Resumen por unidad</h2>
+            <h2>Resumen por equipo</h2>
             <span className="cuenta">
-              {resumen.data ? `${resumen.data.porDispositivo.length} unidades` : 'Consultando…'}
+              {resumen.data ? `${resumen.data.porDispositivo.length} equipos` : 'Consultando…'}
             </span>
           </header>
           {resumen.isPending && <p className="vacio">Cargando resumen…</p>}
@@ -281,7 +285,7 @@ export default function Reportes() {
                 <table className="tabla">
                   <thead>
                     <tr>
-                      <th>Unidad</th>
+                      <th>Equipo</th>
                       <th className="num">Distancia</th>
                       <th className="num">Duración</th>
                       <th className="num">Viajes</th>
@@ -304,7 +308,7 @@ export default function Reportes() {
                 </table>
               </div>
               {resumen.data.porDispositivo.length === 0 && (
-                <p className="vacio">Sin actividad por unidad en el rango.</p>
+                <p className="vacio">No hay actividad de equipos en el rango.</p>
               )}
             </>
           )}

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { GUION, fecha } from '../util/formato';
 import FiltroReplay from './operacion/FiltroReplay';
-import { traerDireccion, traerFlota, traerJornadasFlota, traerParadas, traerReplay, CLAVE_FLOTA } from './operacion/datos';
+import { traerDireccion, traerFlota, traerJornadasFlota, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
 import { fechaHoyLocal, finDeDia, inicioDeDia } from './operacion/rango';
 import { milisegundos } from './operacion/replay';
@@ -98,11 +98,13 @@ export function ExpedienteJornada({ nombre, inicioEn, finEn, idNumerico, idPubli
     queryKey: ['expediente-paradas', idNumerico, inicioEn, finEn],
     queryFn: () => traerParadas(idPublico, inicioEn, hastaTramo),
     retry: false,
+    staleTime: CACHE_AUDITORIA_MS,
   });
   const replay = useQuery({
     queryKey: ['expediente-replay', idNumerico, inicioEn, finEn],
     queryFn: () => traerReplay(idPublico, inicioEn, hastaTramo),
     retry: false,
+    staleTime: CACHE_AUDITORIA_MS,
   });
 
   const resumen = replay.data?.resumen ?? null;
@@ -194,7 +196,7 @@ export function ExpedienteJornada({ nombre, inicioEn, finEn, idNumerico, idPubli
       </header>
       {replay.isError && !esNoEncontrado(replay.error) && <p className="aviso">{mensajeError(replay.error)}</p>}
       {paradas.isError && (
-        <p className="aviso">El reporte de paradas no está disponible; la cronología puede estar incompleta.</p>
+        <p className="aviso">No se pudo cargar el detalle de paradas; pueden faltar paradas en la cronología.</p>
       )}
       <ul className="cronologia">
         {momentos.map((momento, indice) => (
@@ -228,7 +230,7 @@ export function ExpedienteJornada({ nombre, inicioEn, finEn, idNumerico, idPubli
   );
 }
 
-// Página de auditoría: filtro de unidad o toda la flota, fecha del día que se
+// Página de histórico: filtro de equipo o toda la flota, fecha del día que se
 // audita, contadores del día y la lista de expedientes; al elegir una jornada
 // se abre su expediente debajo con la cronología y el enlace al Replay.
 export default function Historial() {
@@ -247,6 +249,7 @@ export default function Historial() {
     queryKey: ['jornadas-flota', dispositivoId, desde, hasta],
     queryFn: () => traerJornadasFlota(inicioDeDia(desde), finDeDia(hasta), dispositivoId || undefined),
     enabled: rangoValido,
+    staleTime: CACHE_AUDITORIA_MS,
   });
 
   const filas = jornadas.data?.datos ?? [];
@@ -268,8 +271,8 @@ export default function Historial() {
     <section className="pagina-historial">
       <header className="cabecera-pagina">
         <div>
-          <h1>Auditoría</h1>
-          <p className="sub">Recorrido de cada jornada de inicio a fin: paradas, duración y huecos de señal.</p>
+          <h1>Historial</h1>
+          <p className="sub">Cada jornada de inicio a fin: paradas, duración y tramos sin señal.</p>
         </div>
       </header>
 
@@ -313,7 +316,7 @@ export default function Historial() {
             </div>
             <div className="dato">
               <div className="valor">{jornadas.isPending ? GUION : unidades}</div>
-              <div className="etiqueta">Unidades</div>
+              <div className="etiqueta">Equipos</div>
             </div>
             <div className="dato">
               <div className="valor">{filas.length === 0 ? GUION : minutosTexto(totalMinutos)}</div>
@@ -326,7 +329,7 @@ export default function Historial() {
       {rangoValido && !flota.error && !jornadas.error && (
         <section className="seccion">
           <header className="cabecera-seccion">
-            <h2>Expedientes del día</h2>
+            <h2>Jornadas del día</h2>
             <span className="cuenta">{fecha(inicioDeDia(desde))}</span>
           </header>
           <div className="bloque">
@@ -342,7 +345,7 @@ export default function Historial() {
                       <th>Hora inicio</th>
                       <th>Hora fin</th>
                       <th className="num">Duración</th>
-                      <th>Unidad</th>
+                      <th>Equipo</th>
                       <th>Estado</th>
                     </tr>
                   </thead>
@@ -356,7 +359,7 @@ export default function Historial() {
                           if (evento.key === 'Enter' || evento.key === ' ') elegir(String(fila.id));
                         }}
                         tabIndex={0}
-                        title="Abrir el expediente de la jornada"
+                        title="Abrir el detalle de la jornada"
                       >
                         <td>{horaReloj(fila.inicioEn)}</td>
                         <td>{fila.finEn == null ? 'En curso' : horaFin(fila.inicioEn, fila.finEn)}</td>

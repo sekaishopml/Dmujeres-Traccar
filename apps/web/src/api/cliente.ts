@@ -47,7 +47,7 @@ async function pedir<T>(metodo: string, ruta: string, cuerpo?: unknown, opciones
   const texto = await res.text();
   const datos = texto ? JSON.parse(texto) : null;
   if (!res.ok) {
-    const error: ErrorApi = datos?.error ?? { codigo: 'ERROR_INTERNO', mensaje: `Error ${res.status}` };
+    const error: ErrorApi = datos?.error ?? { codigo: 'ERROR_INTERNO', mensaje: `No se pudo completar la operación (código ${res.status}).` };
     if (res.status === 401 && !ruta.endsWith('/auth/login') && !ruta.endsWith('/auth/me')) {
       if (opciones.redirigir401 !== false) {
         if (manejadorNoAutorizado) manejadorNoAutorizado();

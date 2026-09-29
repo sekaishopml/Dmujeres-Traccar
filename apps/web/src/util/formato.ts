@@ -52,11 +52,11 @@ export function bateria(pct?: number | null): string {
 
 // Estados operativos: mismos nombres que la app y el panel anterior.
 export const ETIQUETA_ESTADO: Record<string, string> = {
-  deshabilitado: 'DESHABILITADO',
-  sinSenal: 'SIN CONEXIÓN',
-  senalDebil: 'SEÑAL DÉBIL',
-  detenido: 'DETENIDO',
-  enLinea: 'EN LÍNEA',
+  deshabilitado: 'Fuera de jornada',
+  sinSenal: 'Sin señal',
+  senalDebil: 'Señal débil',
+  detenido: 'Detenido',
+  enLinea: 'En línea',
 };
 
 export const COLOR_ESTADO: Record<string, string> = {

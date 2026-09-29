@@ -152,7 +152,7 @@ export default function Bateria() {
       <header className="cabecera-pagina">
         <div>
           <h1>Batería</h1>
-          <p className="sub">Auditoría de consumo: nivel de la flota y serie por unidad en el rango elegido.</p>
+          <p className="sub">Consumo de batería: nivel de la flota y detalle por equipo en el rango elegido.</p>
         </div>
       </header>
 
@@ -160,7 +160,7 @@ export default function Bateria() {
         <div className="bloque">
           <header className="cabecera-seccion">
             <h2>Estado de la flota</h2>
-            <span className="cuenta">{flota.length} unidades · ordenadas de menor a mayor carga</span>
+            <span className="cuenta">{flota.length} equipos · ordenados de menor a mayor carga</span>
           </header>
           {equipos.isPending && <p className="vacio">Cargando flota…</p>}
           {equipos.error && <MensajeError error={equipos.error} />}
@@ -170,11 +170,11 @@ export default function Bateria() {
                 <table className="tabla">
                   <thead>
                     <tr>
-                      <th>Unidad</th>
+                      <th>Equipo</th>
                       <th>Identificador</th>
                       <th>Estado</th>
                       <th>Batería</th>
-                      <th>Carga</th>
+                      <th>Cargando</th>
                       <th>Última conexión</th>
                     </tr>
                   </thead>
@@ -202,7 +202,7 @@ export default function Bateria() {
                   </tbody>
                 </table>
               </div>
-              {flota.length === 0 && <p className="vacio">No hay unidades en la flota.</p>}
+              {flota.length === 0 && <p className="vacio">No hay equipos en la flota.</p>}
             </>
           )}
         </div>
@@ -211,7 +211,7 @@ export default function Bateria() {
       <section className="seccion">
         <div className="bloque">
           <header className="cabecera-seccion">
-            <h2>{equipoSeleccionado ? equipoSeleccionado.nombre : 'Serie de batería'}</h2>
+            <h2>{equipoSeleccionado ? equipoSeleccionado.nombre : 'Historial de batería'}</h2>
             <span className="cuenta mono">{equipoSeleccionado ? equipoSeleccionado.identificadorUnico : GUION}</span>
             <span className="acciones">
               <button type="button" className="suave" onClick={() => setRango(rangoDeHoras(24))}>
@@ -236,7 +236,7 @@ export default function Bateria() {
             </div>
             <div className="dato">
               <div className="valor">{serie.data ? muestras.length : GUION}</div>
-              <div className="etiqueta">Muestras</div>
+              <div className="etiqueta">Lecturas</div>
             </div>
             <div className="dato">
               <div className="valor">{textoTendencia}</div>
@@ -246,9 +246,9 @@ export default function Bateria() {
 
           {serie.isPending && seleccion !== '' && <p className="vacio">Cargando historial…</p>}
           {serie.error && <MensajeError error={serie.error} />}
-          {serie.data && muestras.length === 0 && <p className="vacio">Sin historial de batería en el rango</p>}
+          {serie.data && muestras.length === 0 && <p className="vacio">No hay lecturas de batería en el rango.</p>}
           {serie.data && muestras.length > 0 && valores.length === 0 && (
-            <p className="vacio">Las muestras del rango no incluyen porcentaje de batería</p>
+            <p className="vacio">Las lecturas del rango no traen porcentaje de batería.</p>
           )}
           {serie.data && valores.length > 0 && (
             <div className="grafico bloque-sep">

@@ -16,18 +16,18 @@ import '../estilos/paginas.css';
 const REFRESCO_MS = 5000;
 
 // Filtros de operación: "sin señal" agrupa SIN_SENAL, SEÑAL_DÉBIL y
-// DESCONOCIDO porque los tres exigen revisar la unidad igual. "Deshabilitado"
-// solo agrupa equipos habilitados con jornada cerrada (estado DESHABILITADO):
+// DESCONOCIDO porque los tres exigen revisar el equipo igual. "Fuera de
+// jornada" solo agrupa equipos habilitados con jornada cerrada:
 // un equipo dado de baja (habilitado=false) se filtra antes de llegar aquí y no
 // aparece en ningún filtro, ni en la lista, ni en el mapa.
 type FiltroEstado = 'todas' | 'enLinea' | 'detenido' | 'sinSenal' | 'deshabilitado';
 
 const FILTROS: { valor: FiltroEstado; etiqueta: string }[] = [
-  { valor: 'todas', etiqueta: 'Todas' },
+  { valor: 'todas', etiqueta: 'Todos' },
   { valor: 'enLinea', etiqueta: 'En línea' },
   { valor: 'detenido', etiqueta: 'Detenido' },
   { valor: 'sinSenal', etiqueta: 'Sin señal / débil' },
-  { valor: 'deshabilitado', etiqueta: 'Deshabilitado' },
+  { valor: 'deshabilitado', etiqueta: 'Fuera de jornada' },
 ];
 
 function coincideFiltro(clave: string, filtro: FiltroEstado): boolean {
@@ -190,7 +190,7 @@ export default function EnVivo() {
         <div>
           <h1>En vivo</h1>
           <p className="sub">
-            {flota.data?.total ?? 0} unidades
+            {flota.data?.total ?? 0} equipos
             {actualizado ? ` · actualizado ${actualizado}` : ''}
             {vivas.isFetching || flota.isFetching ? ' · actualizando…' : ''}
           </p>
@@ -213,7 +213,7 @@ export default function EnVivo() {
         <MapaRaster clase="mapa mapa-caja" alListo={setMapa} />
         <aside className="bloque panel-equipos">
           <header className="cabecera-seccion">
-            <h2>Unidades</h2>
+            <h2>Equipos</h2>
             <span className="cuenta">
               {listado.length} de {dispositivos.length}
             </span>
@@ -259,7 +259,7 @@ export default function EnVivo() {
                         <BarraBateria porcentaje={equipo.bateriaPct} cargando={equipo.cargando} />
                       </span>
                       <span className="equipo-meta">
-                        <span>{posicion ? `Último fix ${hace(posicion.registradoEn)}` : 'Sin posición conocida'}</span>
+                        <span>{posicion ? `Última posición ${hace(posicion.registradoEn)}` : 'Sin posición conocida'}</span>
                         <span className={equipo.jornadaActiva ? '' : 'apagado'}>
                           {equipo.jornadaActiva ? 'Jornada activa' : 'Jornada cerrada'}
                         </span>
@@ -271,7 +271,7 @@ export default function EnVivo() {
             </ul>
           )}
           {!flota.isPending && listado.length === 0 && (
-            <p className="vacio">Ninguna unidad coincide con el filtro o la búsqueda.</p>
+            <p className="vacio">Ningún equipo coincide con el filtro o la búsqueda.</p>
           )}
         </aside>
       </div>

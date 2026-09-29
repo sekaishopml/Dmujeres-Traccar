@@ -1,10 +1,11 @@
 // Iconos propios en SVG (trazo 1.7, 24x24). Sin librerías ni emojis: el panel
 // usa un lenguaje visual sobrio y consistente.
+import { memo } from 'react';
 import type { ReactElement } from 'react';
 
 export type NombreIcono =
   | 'inicio' | 'enVivo' | 'historial' | 'replay' | 'bateria' | 'reportes'
-  | 'usuarios' | 'configuracion' | 'sistema' | 'salir' | 'menu' | 'buscar'
+  | 'usuarios' | 'grupos' | 'configuracion' | 'sistema' | 'salir' | 'menu' | 'buscar'
   | 'capas' | 'play' | 'pausa' | 'atras' | 'adelante' | 'cerrar' | 'editar'
   | 'basura' | 'mas' | 'flecha';
 
@@ -16,6 +17,7 @@ const TRAZOS: Record<NombreIcono, ReactElement> = {
   bateria: <><rect x="3" y="8" width="15" height="8" rx="2" /><path d="M20 11v2" /><path d="M6 11v2M9 11v2M12 11v2" /></>,
   reportes: <><path d="M4 20h16" /><path d="M7 16V9M12 16V5M17 16v-4" /></>,
   usuarios: <><circle cx="9" cy="9" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M16 6.5a3 3 0 0 1 0 5.8" /><path d="M17 19a5.5 5.5 0 0 0-2-4.3" /></>,
+  grupos: <><circle cx="12" cy="12" r="2.4" /><circle cx="5.5" cy="3.9" r="1.9" /><circle cx="18.5" cy="3.9" r="1.9" /><circle cx="5.5" cy="20.1" r="1.9" /><circle cx="18.5" cy="20.1" r="1.9" /><path d="M7 5.2l2.9 3.6M17 5.2l-2.9 3.6M7 18.8l2.9-3.6M17 18.8l-2.9-3.6" /></>,
   configuracion: <><path d="M4 7h10M18 7h2M4 12h4M12 12h8M4 17h12M20 17h0" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="17" r="2" /></>,
   sistema: <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>,
   salir: <><path d="M14 5h5v14h-5" /><path d="M4 12h10" /><path d="M11 9l3 3-3 3" /></>,
@@ -33,11 +35,13 @@ const TRAZOS: Record<NombreIcono, ReactElement> = {
   flecha: <><path d="M9 6l6 6-6 6" /></>,
 };
 
-export default function Icono({ nombre, tamano = 17 }: { nombre: NombreIcono; tamano?: number }) {
+// memo: el marco, las tablas y las listas se repintan con cada sondeo y los
+// iconos solo dependen de nombre y tamaño (primitivas).
+export default memo(function Icono({ nombre, tamano = 17 }: { nombre: NombreIcono; tamano?: number }) {
   return (
     <svg className="icono" width={tamano} height={tamano} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {TRAZOS[nombre]}
     </svg>
   );
-}
+});

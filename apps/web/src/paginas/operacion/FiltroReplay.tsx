@@ -20,7 +20,7 @@ interface Props {
   conTodas?: boolean;
 }
 
-// Selector compartido por Auditoría y Replay: ambos necesitan equipo + rango y
+// Selector compartido por Historial y Replay: ambos necesitan equipo + rango y
 // mantener la misma forma de elegir evita que las pantallas diverjan.
 export default function FiltroReplay({
   equipos,
@@ -45,13 +45,13 @@ export default function FiltroReplay({
   return (
     <div className={compacto ? 'filtro-replay' : 'tarjeta filtro-replay'}>
       <label className="campo campo-equipo">
-        <span>Unidad</span>
+        <span>Equipo</span>
         <select
           value={dispositivoId}
           onChange={(evento) => alCambiarDispositivo(evento.target.value)}
           disabled={cargandoEquipos || equipos.length === 0}
         >
-          {conTodas && <option value="">Todas</option>}
+          {conTodas && <option value="">Todos los equipos</option>}
           {equipos.length === 0 && !conTodas && (
             <option value="">{cargandoEquipos ? 'Cargando equipos…' : 'Sin equipos visibles'}</option>
           )}

@@ -5,8 +5,8 @@ import { ApiError } from '../../api/cliente';
 // Error, así que el texto viaja en `message` (no existe `mensaje`).
 export function mensajeError(error: unknown): string {
   if (error instanceof ApiError) return error.message;
-  if (error instanceof Error && error.name === 'AbortError') return 'Consulta cancelada.';
-  return 'No se pudo conectar con el servidor.';
+  if (error instanceof Error && error.name === 'AbortError') return 'Se canceló la consulta.';
+  return 'No hubo respuesta del servidor. Inténtalo de nuevo en unos momentos.';
 }
 
 // Un 404 en replay/posición no es un fallo: significa que no hay datos en la

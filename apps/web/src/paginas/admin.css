@@ -7,7 +7,7 @@
   background: none; border: none; padding: 0; font: inherit; font-weight: 600;
   color: var(--navy-2); cursor: pointer;
 }
-.enlace-fila:hover { background: none; color: var(--rojo); text-decoration: underline; }
+.enlace-fila:hover { background: none; color: var(--acento); text-decoration: underline; }
 .tabla .fila-botones { margin-bottom: 0; gap: 4px; }
 
 /* Acción destructiva en tablas: mismo botón que .accion-icono pero en rojo,
@@ -26,7 +26,7 @@
   border-bottom: 2px solid transparent; padding: 7px 11px; font-size: 13px;
 }
 .pestanas button:hover { background: var(--linea-2); color: var(--navy); }
-.pestanas button.activa { color: var(--navy); border-bottom-color: var(--rojo); font-weight: 650; }
+.pestanas button.activa { color: var(--navy); border-bottom-color: var(--acento); font-weight: 650; }
 
 .paginacion {
   display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap;

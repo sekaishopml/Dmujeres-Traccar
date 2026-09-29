@@ -604,14 +604,14 @@ export function PanelPuntoSeleccionado() {
   if (!punto || seleccionado == null) {
     return (
       <section className="replay-punto">
-        <h3>Detalles de ruta</h3>
+        <h3>Detalle del punto</h3>
         <p className="replay-nota">Pulsa un punto del recorrido o una parada para ver su detalle.</p>
       </section>
     );
   }
   return (
     <section className="replay-punto">
-      <h3>Detalles de ruta</h3>
+      <h3>Detalle del punto</h3>
       <dl className="replay-ficha">
         <dt>Hora</dt>
         <dd>{fechaHora(punto.registradoEn)}</dd>
@@ -627,10 +627,10 @@ export function PanelPuntoSeleccionado() {
         <dd>
           {tramo
             ? `${ETIQUETA_METODO_TRAMO[tramo.metodo] ?? 'Tramo reconstruido'}${tramo.mapaVersion ? ` · mapa ${tramo.mapaVersion}` : ''}`
-            : `GPS registrado${modo ? ` · ${ETIQUETA_MODO_REAL[modo]}` : ''}`}
+            : `Registrado por el equipo${modo ? ` · ${ETIQUETA_MODO_REAL[modo]}` : ''}`}
         </dd>
         <dt>Equipo</dt>
-        <dd>{dispositivo ? (dispositivo.habilitado ? 'Habilitado' : 'Deshabilitado') : GUION}</dd>
+        <dd>{dispositivo ? (dispositivo.habilitado ? 'Activo' : 'Dado de baja') : GUION}</dd>
       </dl>
       <div className="replay-punto-acciones">
         <button
@@ -727,7 +727,7 @@ export function ListaParadas({
         Paradas ({paradas.length})
         <Icono nombre="flecha" />
       </button>
-      {origen === 'local' && <p className="replay-nota">Calculadas localmente: la consulta de paradas no respondió.</p>}
+      {origen === 'local' && <p className="replay-nota">Calculadas con los datos del recorrido: el servidor no respondió.</p>}
       {abiertas && (
         <>
           <ul>
@@ -792,8 +792,8 @@ function ControlesReplay() {
         className="suave icono-solo"
         onClick={() => saltarHueco(-1)}
         disabled={huecos.length === 0}
-        title="Hueco anterior"
-        aria-label="Hueco anterior"
+        title="Tramo sin datos anterior"
+        aria-label="Tramo sin datos anterior"
       >
         <span className="voltear">
           <Icono nombre="flecha" />
@@ -804,8 +804,8 @@ function ControlesReplay() {
         className="suave icono-solo"
         onClick={() => saltarHueco(1)}
         disabled={huecos.length === 0}
-        title="Hueco siguiente"
-        aria-label="Hueco siguiente"
+        title="Tramo sin datos siguiente"
+        aria-label="Tramo sin datos siguiente"
       >
         <Icono nombre="flecha" />
       </button>

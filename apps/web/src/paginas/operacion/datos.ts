@@ -14,6 +14,14 @@ import type {
 // clave de caché mantiene los datos coherentes entre páginas.
 export const CLAVE_FLOTA = ['flota'] as const;
 
+// Consultas de auditoría (replay, paradas, jornadas, expedientes, reportes):
+// traen ventanas completas de datos y son estables dentro de la misma consulta.
+// 30 s evita releerlas al ir y volver entre Historial, Replay y Reportes sin
+// retrasar la vista del día en curso más que un sondeo de Inicio. Los sondeos
+// (refetchInterval) no dependen del staleTime: dejan intactas las cadencias de
+// Inicio, En vivo, Detalle y Sistema.
+export const CACHE_AUDITORIA_MS = 30_000;
+
 // Defensa en profundidad: el servidor ya omite los equipos dados de baja
 // (habilitado=false) en /fleet, pero la caché puede conservar una respuesta
 // anterior al dar de baja una cuenta y los endpoints vivos podrían devolver un

@@ -7,6 +7,7 @@ import { useSesion } from '../store/sesion';
 import { GUION } from '../util/formato';
 import Icono from '../componentes/Icono';
 import {
+  CACHE_PLATAFORMA_MS,
   MensajeError,
   Paginacion,
   esErrorDeEstado,
@@ -178,10 +179,10 @@ function FormularioMiembros({
   return (
     <form onSubmit={enviar} noValidate>
       <p className="ayuda-campo">Marca quiénes pertenecen a este grupo. Se guarda la lista completa.</p>
-      {usuarios.length === 0 && <p className="vacio">No hay cuentas para asignar.</p>}
+      {usuarios.length === 0 && <p className="vacio">No hay personas para asignar.</p>}
       {usuarios.length > 0 && (
         <fieldset className="grupo-equipos">
-          <legend>Cuentas</legend>
+          <legend>Personas</legend>
           <div className="equipos-asignados">
             {usuarios.map((usuario) => (
               <label key={claveUsuario(usuario)}>
@@ -224,11 +225,13 @@ export default function Grupos() {
     queryKey: ['grupos'],
     enabled: administrador,
     queryFn: () => traerGrupos(),
+    staleTime: CACHE_PLATAFORMA_MS,
   });
   const usuarios = useQuery({
     queryKey: ['usuarios-plataforma'],
     enabled: administrador,
     queryFn: () => traerUsuariosPlataforma(),
+    staleTime: CACHE_PLATAFORMA_MS,
   });
 
   const lista = useMemo(() => grupos.data ?? [], [grupos.data]);
@@ -254,7 +257,7 @@ export default function Grupos() {
     mutationFn: (grupo: GrupoPlataforma) => api.borrar<void>(`/api/v1/grupos/${idEnUrl(grupo)}`),
     onSuccess: () => {
       cliente.invalidateQueries({ queryKey: ['grupos'] });
-      setExito('Grupo eliminado. Las cuentas no se borran.');
+      setExito('Grupo eliminado. Las personas no se borran.');
       setModal(null);
     },
   });
@@ -310,7 +313,7 @@ export default function Grupos() {
       <header className="cabecera-pagina">
         <div>
           <h1>Grupos</h1>
-          <p className="sub">Agrupan cuentas para organizar turnos y zonas. Solo administradores.</p>
+          <p className="sub">Agrupan personas para organizar turnos y zonas. Solo administradores.</p>
         </div>
         <div className="empuja" />
         <button type="button" className="principal con-icono" onClick={abrirCrear}>
@@ -377,7 +380,7 @@ export default function Grupos() {
             </>
           )}
           {usuarios.error && (
-            <p className="apagado">No se pudieron traer las cuentas para mostrar los nombres del grupo.</p>
+            <p className="apagado">No se pudieron cargar las personas para mostrar los nombres del grupo.</p>
           )}
         </div>
       </section>
@@ -396,7 +399,7 @@ export default function Grupos() {
       {modal?.modo === 'eliminar' && (
         <Dialogo titulo="Eliminar el grupo" onCerrar={cerrarModal}>
           <p>
-            ¿Eliminar el grupo <b>{modal.grupo.nombre}</b>? Las cuentas no se borran, solo quedan sin ese
+            ¿Eliminar el grupo <b>{modal.grupo.nombre}</b>? Las personas no se borran, solo quedan sin ese
             grupo.
           </p>
           {eliminar.error !== null && <MensajeError error={eliminar.error} />}
@@ -413,10 +416,10 @@ export default function Grupos() {
 
       {modal?.modo === 'miembros' && (
         <Dialogo titulo={`Quiénes están en ${modal.grupo.nombre}`} onCerrar={cerrarModal}>
-          {usuarios.isPending && <p className="vacio">Cargando cuentas…</p>}
+          {usuarios.isPending && <p className="vacio">Cargando personas…</p>}
           {usuarios.error && (
             <div>
-              <p>No se pudieron traer las cuentas. Inténtalo más tarde.</p>
+              <p>No se pudieron cargar las personas. Inténtalo más tarde.</p>
               <MensajeError error={usuarios.error} />
               <div className="dialogo-pie">
                 <button type="button" className="suave" onClick={cerrarModal}>

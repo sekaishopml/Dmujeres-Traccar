@@ -6,7 +6,7 @@ import { api, consulta } from '../api/cliente';
 import { useSesion } from '../store/sesion';
 import { CLAVE_FLOTA } from './operacion/datos';
 import Icono from '../componentes/Icono';
-import { ChipEstado, MensajeError } from './admin/comunes';
+import { CACHE_FLOTA_CONSULTA_MS, ChipEstado, MensajeError } from './admin/comunes';
 import { Toast } from './admin/Toast';
 import type { ClaveConfiguracionEquipo, DispositivoGestion, ValorConfiguracionEquipo } from './admin/tipos';
 import './admin.css';
@@ -108,19 +108,19 @@ function parsearCampo(campo: CampoConfig, texto: string, original: ValorConfigur
   const limpio = texto.trim();
   if (limpio === '') {
     if (original !== null) {
-      return { ok: false, error: `${campo.clave} ya está definido y la API no permite eliminarlo; escribe un valor nuevo.` };
+      return { ok: false, error: `${campo.clave} ya tiene valor y no se puede quitar; escribe uno nuevo.` };
     }
     return { ok: true, valor: null };
   }
   if (campo.tipo === 'numero') {
     const numero = Number(limpio);
-    if (!Number.isFinite(numero)) return { ok: false, error: `${campo.clave} debe ser un número válido.` };
+    if (!Number.isFinite(numero)) return { ok: false, error: `${campo.clave} debe ser un número.` };
     return { ok: true, valor: numero };
   }
   if (campo.tipo === 'booleano') {
     if (limpio === 'true') return { ok: true, valor: true };
     if (limpio === 'false') return { ok: true, valor: false };
-    return { ok: false, error: `${campo.clave} tiene un valor inesperado.` };
+    return { ok: false, error: `${campo.clave}: usa "true" o "false".` };
   }
   return { ok: true, valor: limpio };
 }
@@ -173,6 +173,7 @@ export default function Configuracion() {
   const equipos = useQuery({
     queryKey: CLAVE_FLOTA,
     queryFn: () => api.get<Pagina<DispositivoGestion>>(`/api/v1/fleet${consulta({ tamano: 200 })}`),
+    staleTime: CACHE_FLOTA_CONSULTA_MS,
   });
 
   const guardar = useMutation({
@@ -239,7 +240,7 @@ export default function Configuracion() {
       <header className="cabecera-pagina">
         <div>
           <h1>Configuración</h1>
-          <p className="sub">Parámetros de la aplicación móvil por unidad. Solo administradores.</p>
+          <p className="sub">Parámetros de la aplicación móvil por equipo. Solo administradores.</p>
         </div>
       </header>
 
@@ -250,13 +251,13 @@ export default function Configuracion() {
       <section className="seccion">
         <div className="bloque">
           <header className="cabecera-seccion">
-            <h2>Unidades</h2>
+            <h2>Equipos</h2>
             <span className="cuenta">
               {flota.length} de {equipos.data?.total ?? 0}
             </span>
           </header>
           <label className="campo">
-            <span>Buscar unidad</span>
+            <span>Buscar equipo</span>
             <span className="busqueda">
               <Icono nombre="buscar" />
               <input
@@ -267,10 +268,10 @@ export default function Configuracion() {
               />
             </span>
           </label>
-          {equipos.isPending && <p className="vacio">Cargando unidades…</p>}
+          {equipos.isPending && <p className="vacio">Cargando equipos…</p>}
           {equipos.error && <MensajeError error={equipos.error} />}
           {equipos.data && flota.length === 0 && (
-            <p className="vacio">No hay unidades que coincidan con la búsqueda.</p>
+            <p className="vacio">No hay equipos que coincidan con la búsqueda.</p>
           )}
           {flota.length > 0 && (
             <div className="tabla-envoltura">
@@ -278,7 +279,7 @@ export default function Configuracion() {
                 <thead>
                   <tr>
                     <th>Selección</th>
-                    <th>Unidad</th>
+                    <th>Equipo</th>
                     <th>Identificador</th>
                     <th>Estado</th>
                   </tr>
@@ -316,13 +317,14 @@ export default function Configuracion() {
         <div className="bloque">
           <header className="cabecera-seccion">
             <h2>Configuración del equipo</h2>
-            <span className="cuenta">{seleccionado ? seleccionado.nombre : 'Sin unidad seleccionada'}</span>
+            <span className="cuenta">{seleccionado ? seleccionado.nombre : 'Sin equipo seleccionado'}</span>
           </header>
-          {!seleccionado && <p className="vacio">Selecciona una unidad para ver y editar su configuración.</p>}
+          {!seleccionado && <p className="vacio">Selecciona un equipo para ver y editar su configuración.</p>}
           {seleccionado && borrador && (
             <form onSubmit={enviar}>
               <p className="ayuda-campo">
-                Solo se envían los campos modificados. Vacío significa que el parámetro no está definido.
+                Solo se guardan los campos que cambies; un campo vacío queda sin definir. Los nombres son
+                los que usa la aplicación móvil.
               </p>
               <label className="campo">
                 <span>Nombre del equipo</span>

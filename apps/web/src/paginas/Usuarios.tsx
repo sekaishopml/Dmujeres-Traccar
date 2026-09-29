@@ -15,6 +15,8 @@ import { useSesion } from '../store/sesion';
 import { GUION } from '../util/formato';
 import Icono from '../componentes/Icono';
 import {
+  CACHE_FLOTA_CONSULTA_MS,
+  CACHE_PLATAFORMA_MS,
   ChipHabilitado,
   MensajeError,
   Paginacion,
@@ -191,7 +193,7 @@ function FormularioCuenta({
         </label>
       )}
       <label className="campo">
-        <span>{usuario ? 'Contraseña nueva (vacía para no cambiarla)' : 'Contraseña'}</span>
+        <span>{usuario ? 'Contraseña nueva (déjala vacía para no cambiarla)' : 'Contraseña'}</span>
         <span className="clave-caja">
           <input
             type={verClave ? 'text' : 'password'}
@@ -210,7 +212,7 @@ function FormularioCuenta({
         </span>
       </label>
       <label className="campo">
-        <span>Nombre completo</span>
+        <span>Nombre de la persona</span>
         <input value={nombre} onChange={(evento) => setNombre(evento.target.value)} />
       </label>
       <div className="fila-form">
@@ -223,14 +225,14 @@ function FormularioCuenta({
           <input
             value={cargo}
             onChange={(evento) => setCargo(evento.target.value)}
-            placeholder="Por ejemplo: Ruta norte"
+            placeholder="Por ejemplo: Zona norte"
           />
         </label>
       </div>
       <fieldset className="grupo-equipos">
         <legend>Grupos</legend>
         {gruposError !== null && gruposError !== undefined && (
-          <p className="apagado">No se pudieron traer los grupos; puedes guardar sin cambiarlos.</p>
+          <p className="apagado">No se pudieron cargar los grupos; puedes guardar sin cambiarlos.</p>
         )}
         {grupos.length === 0 && gruposError == null && (
           <p className="apagado">Todavía no hay grupos creados.</p>
@@ -356,7 +358,7 @@ function EditorAjustes({
   if (cargandoEsquema) {
     return (
       <div>
-        <p className="vacio">Trayendo los ajustes disponibles…</p>
+        <p className="vacio">Cargando los ajustes disponibles…</p>
         <div className="dialogo-pie">
           <button type="button" className="suave" onClick={onCancelar}>
             Cerrar
@@ -369,7 +371,7 @@ function EditorAjustes({
   if (errorEsquema) {
     return (
       <div>
-        <p>Todavía no se pudieron traer los ajustes de esta cuenta. Inténtalo más tarde.</p>
+        <p>No se pudieron cargar los ajustes de esta cuenta. Inténtalo más tarde.</p>
         <MensajeError error={errorEsquema} />
         <div className="dialogo-pie">
           <button type="button" className="suave" onClick={onCancelar}>
@@ -396,7 +398,7 @@ function EditorAjustes({
   return (
     <form onSubmit={enviar} noValidate>
       <p className="ayuda-campo">
-        Cambia solo lo necesario. Vacío significa que ese ajuste queda sin definir.
+        Solo se guarda lo que cambies. Un campo vacío deja ese ajuste sin definir.
       </p>
       {esquema.map((entrada) => (
         <label className="campo" key={entrada.clave}>
@@ -459,16 +461,19 @@ export default function Usuarios() {
     queryKey: ['usuarios-plataforma'],
     enabled: administrador,
     queryFn: () => traerUsuariosPlataforma(),
+    staleTime: CACHE_PLATAFORMA_MS,
   });
   const grupos = useQuery({
     queryKey: ['grupos'],
     enabled: administrador,
     queryFn: () => traerGrupos(),
+    staleTime: CACHE_PLATAFORMA_MS,
   });
   const esquema = useQuery({
     queryKey: ['esquema-ajustes'],
     enabled: administrador,
     queryFn: () => traerEsquemaAjustes(),
+    staleTime: CACHE_PLATAFORMA_MS,
   });
   // La flota resuelve los nombres de la columna "Equipo(s)": la caché se
   // comparte con el resto de páginas mediante la clave común.
@@ -476,6 +481,7 @@ export default function Usuarios() {
     queryKey: CLAVE_FLOTA,
     enabled: administrador,
     queryFn: () => traerFlota(),
+    staleTime: CACHE_FLOTA_CONSULTA_MS,
   });
 
   // Orden del plantel: primero las cuentas habilitadas y al final las dadas de
@@ -516,7 +522,7 @@ export default function Usuarios() {
       invalidarFlota(cliente);
       setExito(
         equipo
-          ? `Cuenta y equipo creados. “${equipo.nombre}” ya aparece en Replay y En vivo.`
+          ? `Cuenta y equipo creados. “${equipo.nombre}” ya aparece en En vivo y Replay.`
           : 'Cuenta creada.',
       );
       setModal(null);
@@ -627,7 +633,7 @@ export default function Usuarios() {
       <header className="cabecera-pagina">
         <div>
           <h1>Usuarios</h1>
-          <p className="sub">Cuentas de acceso, grupos y ajustes. Solo administradores.</p>
+          <p className="sub">Cuentas de acceso, personas y grupos. Solo administradores.</p>
         </div>
         <div className="empuja" />
         <button type="button" className="principal con-icono" onClick={abrirCrear}>
@@ -646,7 +652,7 @@ export default function Usuarios() {
           </header>
           {usuarios.isPending && <p className="vacio">Cargando cuentas…</p>}
           {usuarios.error && <MensajeError error={usuarios.error} />}
-          {usuarios.data && total === 0 && <p className="vacio">No hay cuentas registradas.</p>}
+          {usuarios.data && total === 0 && <p className="vacio">Todavía no hay cuentas.</p>}
           {visibles.length > 0 && (
             <>
               <div className="tabla-envoltura">
@@ -654,11 +660,11 @@ export default function Usuarios() {
                   <thead>
                     <tr>
                       <th>Cuenta</th>
-                      <th>Nombre completo</th>
+                      <th>Persona</th>
                       <th>Teléfono</th>
                       <th>Puesto</th>
-                      <th>Grupo(s)</th>
-                      <th>Equipo(s)</th>
+                      <th>Grupos</th>
+                      <th>Equipos</th>
                       <th>Estado</th>
                       <th>Acciones</th>
                     </tr>
@@ -689,7 +695,7 @@ export default function Usuarios() {
                             <button
                               type="button"
                               className="accion-icono"
-                              title="Cambiar los ajustes de la aplicación"
+                              title="Cambiar los ajustes de la aplicación móvil"
                               aria-label={`Cambiar los ajustes de ${usuario.nombre}`}
                               onClick={() => abrirAjustes(usuario)}
                             >

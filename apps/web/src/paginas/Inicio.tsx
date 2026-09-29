@@ -56,10 +56,10 @@ const CLASE_SALUD: Record<EstadoSalud, string> = {
 };
 
 const ETIQUETA_SALUD: Record<EstadoSalud, string> = {
-  HEALTHY: 'Saludable',
-  DEGRADED: 'Degradado',
+  HEALTHY: 'Al día',
+  DEGRADED: 'Con problemas',
   OFFLINE: 'Sin señal',
-  RECOVERING: 'Recuperando',
+  RECOVERING: 'Reconectando',
   MISCONFIGURED: 'Mal configurado',
 };
 
@@ -155,7 +155,7 @@ export default function Inicio() {
         if (minutos == null || minutos > MINUTOS_SIN_SENAL) {
           rango = 0;
           motivos.push(
-            equipo.ultimaConexion ? `Sin reportar desde las ${hora(equipo.ultimaConexion)}` : 'Sin conexión registrada',
+            equipo.ultimaConexion ? `Sin reportar desde las ${hora(equipo.ultimaConexion)}` : 'Nunca ha reportado',
           );
         }
       }
@@ -165,7 +165,7 @@ export default function Inicio() {
       }
       if (clave === 'deshabilitado') {
         rango = Math.min(rango, 2);
-        motivos.push(equipo.habilitado ? 'Jornada cerrada' : 'Deshabilitado en la cuenta');
+        motivos.push(equipo.habilitado ? 'Jornada cerrada' : 'Dado de baja');
       }
       if (motivos.length > 0) lista.push({ equipo, rango, motivos });
     }
@@ -186,8 +186,8 @@ export default function Inicio() {
   const cuentaJornadas = jornadas.isPending
     ? 'Consultando…'
     : jornadasDisponibles
-      ? `${filasJornadas.length} jornadas · ${unidadesConJornada} unidades`
-      : 'Sin datos del servidor';
+      ? `${filasJornadas.length} jornadas · ${unidadesConJornada} equipos`
+      : 'No disponibles';
 
   // La salud por equipo es estado vivo: los equipos deshabilitados no se
   // listan. Sin flota cargada no se puede distinguir un habilitado y se
@@ -205,7 +205,7 @@ export default function Inicio() {
   const cuentaSalud = salud.isPending
     ? 'Consultando…'
     : salud.error
-      ? 'Sin datos del servidor'
+      ? 'No disponibles'
       : `${equiposSalud.length} equipos`;
 
   return (
@@ -214,7 +214,7 @@ export default function Inicio() {
         <div>
           <h1>Inicio</h1>
           <p className="sub">
-            Cola de auditoría del día
+            Resumen de la operación de hoy
             {actualizado ? ` · actualizado ${actualizado}` : ' · sin datos todavía'}
             {flota.isFetching ? ' · actualizando…' : ''}
           </p>
@@ -240,7 +240,7 @@ export default function Inicio() {
             <div className="tira-datos">
               <div className="dato">
                 <div className="valor">{flota.data.total}</div>
-                <div className="etiqueta">Total</div>
+                <div className="etiqueta">Equipos</div>
               </div>
               <div className="dato">
                 <div className="valor">{metricas.enLinea}</div>
@@ -270,7 +270,7 @@ export default function Inicio() {
               {dispositivos.length === 0 && (
                 <p className="vacio">
                   <Icono nombre="historial" />
-                  No hay unidades visibles para esta cuenta.
+                  No hay equipos asignados a esta cuenta.
                 </p>
               )}
               {dispositivos.length > 0 && jornadas.isPending && (
@@ -279,13 +279,13 @@ export default function Inicio() {
               {jornadasDisponibles && filasJornadas.length === 0 && (
                 <p className="vacio">
                   <Icono nombre="historial" />
-                  Ninguna unidad abrió jornada hoy.
+                  Ningún equipo abrió jornada hoy.
                 </p>
               )}
               {!jornadas.isPending && !jornadasDisponibles && (
                 <p className="vacio">
                   <Icono nombre="historial" />
-                  Las jornadas todavía no están disponibles en el servidor.
+                  El servidor todavía no entrega las jornadas.
                 </p>
               )}
               {jornadasDisponibles && filasJornadas.length > 0 && (
@@ -293,11 +293,11 @@ export default function Inicio() {
                   <table className="tabla">
                     <thead>
                       <tr>
-                        <th>Unidad</th>
+                        <th>Equipo</th>
                         <th>Inició</th>
                         <th>Finalizó</th>
                         <th className="num">Duración</th>
-                        <th>Auditoría</th>
+                        <th>Historial</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -317,7 +317,7 @@ export default function Inicio() {
                               className="enlace-tabla"
                               to={`/historial${consulta({ dispositivo: fila.unidadId, desde: hoy, hasta: hoy })}`}
                             >
-                              Auditar
+                              Ver jornada
                             </Link>
                           </td>
                         </tr>
@@ -339,7 +339,7 @@ export default function Inicio() {
               {salud.error && esNoEncontrado(salud.error) && (
                 <p className="vacio">
                   <Icono nombre="sistema" />
-                  La salud por equipo aún no está disponible en el servidor.
+                  La salud de los equipos todavía no está disponible.
                 </p>
               )}
               {salud.error && !esNoEncontrado(salud.error) && (
@@ -365,8 +365,8 @@ export default function Inicio() {
                     // lastFixAgeS cuando viene vacía.
                     const causa =
                       equipo.causa ||
-                      (equipo.lastFixAgeS != null
-                        ? `Último GPS ${haceSegundos(equipo.lastFixAgeS)}`
+                      (                      equipo.lastFixAgeS != null
+                        ? `Última posición ${haceSegundos(equipo.lastFixAgeS)}`
                         : 'Sin causa informada');
                     return (
                       <li key={equipo.dispositivoId}>
@@ -388,7 +388,7 @@ export default function Inicio() {
             <div className="bloque">
               <header className="cabecera-seccion">
                 <h2>Requieren atención</h2>
-                <span className="cuenta">{avisos.length === 0 ? 'Nada pendiente' : `${avisos.length} unidades`}</span>
+                <span className="cuenta">{avisos.length === 0 ? 'Nada pendiente' : `${avisos.length} equipos`}</span>
                 <span className="acciones">
                   {avisosRestantes > 0 && <span className="cuenta">y {avisosRestantes} más</span>}
                   <Link className="boton boton-suave" to="/en-vivo">
@@ -399,7 +399,7 @@ export default function Inicio() {
               {avisos.length === 0 ? (
                 <p className="vacio">
                   <Icono nombre="sistema" />
-                  Ninguna unidad requiere atención: todas reportan conexión y batería suficiente.
+                  Ningún equipo requiere atención: todos reportan conexión y batería suficiente.
                 </p>
               ) : (
                 <ul className="lista-avisos">

@@ -6,7 +6,7 @@ import { api } from '../api/cliente';
 import { useSesion } from '../store/sesion';
 import { GUION, fechaHora, hace } from '../util/formato';
 import Icono from '../componentes/Icono';
-import { ChipHabilitado, MensajeError, esErrorDeEstado, mensajeDeError } from './admin/comunes';
+import { CACHE_PLATAFORMA_MS, ChipHabilitado, MensajeError, esErrorDeEstado, mensajeDeError } from './admin/comunes';
 import { Dialogo } from './admin/Dialogo';
 import { Toast } from './admin/Toast';
 import { traerRoles, traerUsuariosPlataforma } from './operacion/datos';
@@ -26,18 +26,18 @@ type EstadoDependencia = 'ok' | 'error' | 'desconocido';
 // un "Ok" suelto: el personal de oficina necesita saber qué deja de funcionar.
 const SIGNIFICADO: Record<'proceso' | 'baseDatos' | 'tracking', Record<EstadoDependencia, string>> = {
   proceso: {
-    ok: 'El proceso de la API responde a las peticiones del panel.',
-    error: 'La API no responde: el panel no carga ni guarda datos.',
-    desconocido: 'Comprobando si la API responde…',
+    ok: 'El servicio responde: el panel puede cargar y guardar datos.',
+    error: 'El servicio no responde: el panel no puede cargar ni guardar datos.',
+    desconocido: 'Comprobando si el servicio responde…',
   },
   baseDatos: {
-    ok: 'PostgreSQL acepta consultas: flota e histórico disponibles.',
-    error: 'PostgreSQL no responde: sin datos de flota ni histórico.',
-    desconocido: 'Sin confirmación de PostgreSQL.',
+    ok: 'La base de datos responde: flota e historial disponibles.',
+    error: 'La base de datos no responde: no hay datos de flota ni historial.',
+    desconocido: 'Sin confirmación de la base de datos.',
   },
   tracking: {
     ok: 'El motor de seguimiento está conectado: las posiciones llegan.',
-    error: 'El motor de seguimiento no responde: las unidades dejarán de actualizarse.',
+    error: 'El motor de seguimiento no responde: los equipos dejarán de actualizarse.',
     desconocido: 'Sin confirmación del motor de seguimiento.',
   },
 };
@@ -66,7 +66,7 @@ function FilaDependencia({
       <strong>{nombre}</strong>
       <span className="detalle">{significado}</span>
       <span className={`resultado ${claseResultado}`}>
-        {estado === 'ok' ? 'Ok' : estado === 'error' ? 'Error' : 'Sin respuesta'}
+        {estado === 'ok' ? 'Funciona' : estado === 'error' ? 'Con falla' : 'Sin respuesta'}
       </span>
     </div>
   );
@@ -175,7 +175,7 @@ function FormularioAdmin({
         <span>Nombre completo</span>
         <input value={nombre} onChange={(evento) => setNombre(evento.target.value)} />
       </label>
-      <p className="apagado">Esta cuenta nace con permiso de administración, sin elegir nada.</p>
+      <p className="apagado">La cuenta se crea con permiso de administración. No hay que elegir nada.</p>
       {validacion !== '' && (
         <p className="error" role="alert">
           {validacion}
@@ -226,7 +226,7 @@ export default function Sistema() {
   const baseDatos = listo.data?.dependencias.baseDatos;
   const tracking = listo.data?.dependencias.tracking;
   const fallidas: string[] = [];
-  if (baseDatos === 'error') fallidas.push('PostgreSQL');
+  if (baseDatos === 'error') fallidas.push('la base de datos');
   if (tracking === 'error') fallidas.push('el motor de seguimiento');
 
   const estadoProceso = estadoDe(undefined, salud.isPending, salud.isError);
@@ -249,11 +249,13 @@ export default function Sistema() {
     queryKey: ['usuarios-plataforma'],
     enabled: administrador,
     queryFn: () => traerUsuariosPlataforma(),
+    staleTime: CACHE_PLATAFORMA_MS,
   });
   const roles = useQuery({
     queryKey: ['roles'],
     enabled: administrador,
     queryFn: () => traerRoles(),
+    staleTime: CACHE_PLATAFORMA_MS,
   });
   const listaRoles = roles.data ?? [];
   const admins = (cuentas.data ?? []).filter((usuario) => esAdmin(usuario, listaRoles));
@@ -284,7 +286,7 @@ export default function Sistema() {
       }),
     onSuccess: () => {
       cliente.invalidateQueries({ queryKey: ['usuarios-plataforma'] });
-      setExito('Cuenta dada de alta de nuevo.');
+      setExito('Cuenta reactivada.');
     },
   });
 
@@ -293,7 +295,7 @@ export default function Sistema() {
       <header className="cabecera-pagina">
         <div>
           <h1>Sistema</h1>
-          <p className="sub">Disponibilidad y versión del servicio; se refresca cada 15 s.</p>
+          <p className="sub">Estado del servicio y versión desplegada. Se revisa cada 15 s.</p>
         </div>
       </header>
 
@@ -301,20 +303,20 @@ export default function Sistema() {
         <section className="seccion">
           <div className="bloque fallo">
             <header className="cabecera-seccion">
-              <h2>Disponibilidad degradada</h2>
+              <h2>Servicio con problemas</h2>
             </header>
             {listo.error && (
-              <p role="alert">La API no pudo comprobar sus dependencias: {mensajeDeError(listo.error)}.</p>
+              <p role="alert">No se pudo comprobar el estado del servicio: {mensajeDeError(listo.error)}.</p>
             )}
             {!listo.error && listo.data && (
               <p role="alert">
                 {fallidas.length > 0
-                  ? `El chequeo de disponibilidad falla para ${fallidas.join(' y ')}.`
-                  : 'El chequeo de disponibilidad responde "degradado".'}
+                  ? `La revisión falla en ${fallidas.join(' y ')}.`
+                  : 'La revisión del servicio quedó en estado con problemas.'}
               </p>
             )}
             <p className="apagado">
-              Los datos del panel pueden estar incompletos; conviene revisar los servicios en el servidor antes de
+              Los datos del panel pueden estar incompletos. Avisa a quien administra el sistema antes de
               operar con la flota.
             </p>
           </div>
@@ -325,19 +327,19 @@ export default function Sistema() {
         <div className="tira-datos">
           <div className="dato">
             <div className="valor">{version.data?.version ?? GUION}</div>
-            <div className="etiqueta">Versión</div>
+            <div className="etiqueta">Versión del panel</div>
           </div>
           <div className="dato">
             <div className="valor">{version.data?.versionApi ?? GUION}</div>
-            <div className="etiqueta">Versión API</div>
+            <div className="etiqueta">Versión del servicio</div>
           </div>
           <div className="dato">
             <div className="valor">{version.data?.versionEsquema ?? GUION}</div>
-            <div className="etiqueta">Versión esquema</div>
+            <div className="etiqueta">Versión de la base de datos</div>
           </div>
           <div className="dato">
             <div className="valor mono">{version.data?.commit ?? GUION}</div>
-            <div className="etiqueta">Commit</div>
+            <div className="etiqueta">Código publicado</div>
           </div>
           <div className="dato">
             <div className="valor">{fechaHora(listo.data?.comprobadoEn)}</div>
@@ -358,7 +360,7 @@ export default function Sistema() {
             </span>
           </header>
           <FilaDependencia
-            nombre="Proceso API"
+            nombre="Servicio"
             estado={estadoProceso}
             significado={SIGNIFICADO.proceso[estadoProceso]}
           />
@@ -368,7 +370,7 @@ export default function Sistema() {
             significado={SIGNIFICADO.baseDatos[estadoBaseDatos]}
           />
           <FilaDependencia
-            nombre="Tracking"
+            nombre="Motor de seguimiento"
             estado={estadoTracking}
             significado={SIGNIFICADO.tracking[estadoTracking]}
           />
@@ -382,7 +384,7 @@ export default function Sistema() {
           <header className="cabecera-seccion">
             <h2>Cuentas de administración</h2>
             <span className="cuenta">
-              {cuentas.data ? `${admins.length} con permiso alto` : 'Consultando…'}
+              {cuentas.data ? `${admins.length} con permiso de administración` : 'Consultando…'}
             </span>
             <span className="acciones">
               {administrador && (
@@ -406,7 +408,7 @@ export default function Sistema() {
           {!sinPermiso && cuentas.isPending && <p className="vacio">Cargando cuentas…</p>}
           {!sinPermiso && cuentas.error && <MensajeError error={cuentas.error} />}
           {!sinPermiso && cuentas.data && admins.length === 0 && (
-            <p className="vacio">Todavía no hay cuentas con permiso alto.</p>
+            <p className="vacio">Todavía no hay cuentas con permiso de administración.</p>
           )}
           {!sinPermiso && admins.length > 0 && (
             <div className="tabla-envoltura">
@@ -461,7 +463,7 @@ export default function Sistema() {
           {!sinPermiso && bajaAdmin.error && <MensajeError error={bajaAdmin.error} />}
           {!sinPermiso && altaAdmin.error && <MensajeError error={altaAdmin.error} />}
           {!sinPermiso && roles.error && (
-            <p className="apagado">No se pudieron traer los permisos; la lista se armó con lo disponible.</p>
+            <p className="apagado">No se pudieron cargar los permisos; la lista se armó con lo disponible.</p>
           )}
         </div>
       </section>

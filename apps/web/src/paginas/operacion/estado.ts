@@ -23,7 +23,7 @@ export function claveEstado(dispositivo: EstadoOperativo): string {
 }
 
 export function etiquetaEstado(dispositivo: EstadoOperativo): string {
-  return ETIQUETA_ESTADO[claveEstado(dispositivo)] ?? 'DESCONOCIDO';
+  return ETIQUETA_ESTADO[claveEstado(dispositivo)] ?? 'Sin estado';
 }
 
 export function colorEstado(dispositivo: EstadoOperativo): string {

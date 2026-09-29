@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Map as MapaMaplibre, NavigationControl, ScaleControl, setWorkerUrl } from 'maplibre-gl';
 import type { MapOptions } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -24,7 +24,7 @@ export const CAPAS_MAPA = [
   { id: 'google-hibrido', nombre: 'Híbrido', tiles: tilesGoogle('y'), attribution: '© Google' },
   {
     id: 'osm',
-    nombre: 'OSM',
+    nombre: 'OpenStreetMap',
     tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
     attribution: '© OpenStreetMap',
   },
@@ -60,7 +60,10 @@ interface Props {
   alListo?: (mapa: MapaMaplibre | null) => void;
 }
 
-export default function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIAL, zoom = 6, alListo }: Props) {
+// memo: las páginas de mapa se repintan con cada sondeo (5/10 s) y sus props
+// son estables (clase literal y setState), así que el contenedor del mapa no
+// vuelve a renderizar; maplibre sigue gobernado por sus efectos y estado.
+export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIAL, zoom = 6, alListo }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const instancia = useRef<MapaMaplibre | null>(null);
   const avisoListo = useRef(alListo);
@@ -129,4 +132,4 @@ export default function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIAL, zo
       </div>
     </div>
   );
-}
+});

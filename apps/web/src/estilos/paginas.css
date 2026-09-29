@@ -139,7 +139,7 @@
 .pagina-historial .tabla-datas tbody tr:hover td { background: #f8fafc; }
 .pagina-historial .tabla-datas tbody tr.seleccionada td { background: #eef3f9; }
 .pagina-historial .tabla-datas tbody tr:focus { outline: none; }
-.pagina-historial .tabla-datas tbody tr:focus td { outline: 2px solid rgba(11, 37, 69, .18); outline-offset: -2px; }
+.pagina-historial .tabla-datas tbody tr:focus td { outline: 2px solid rgba(31, 122, 77, .3); outline-offset: -2px; }
 
 /* Expediente: la cronología lee como historia de la jornada, no como lista
    de controles; la ficha de datos va debajo sin caja propia. La línea
