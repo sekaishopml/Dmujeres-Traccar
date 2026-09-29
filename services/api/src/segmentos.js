@@ -3,6 +3,8 @@
 // aun no los calcula), la API deriva viajes y paradas del historico con las
 // mismas reglas para reportes y replay. Los umbrales son constantes del codigo.
 
+import { VELOCIDAD_IMPOSIBLE_KMH } from './geo.js';
+
 export const UMBRAL_MOVIMIENTO_KMH = 5;
 // Desplazamiento mínimo entre fixes para confiar en la velocidad calculada
 // (por debajo es jitter del GPS parado) y ventana máxima entre ellos.
@@ -134,17 +136,30 @@ export function sqlSegmentos() {
     pares AS (
       SELECT grupos.*,
              lag(latitud) OVER (PARTITION BY dispositivo_id, isla, grupo ORDER BY registrado_en) AS lat_previa,
-             lag(longitud) OVER (PARTITION BY dispositivo_id, isla, grupo ORDER BY registrado_en) AS lon_previa
+             lag(longitud) OVER (PARTITION BY dispositivo_id, isla, grupo ORDER BY registrado_en) AS lon_previa,
+             lag(registrado_en) OVER (PARTITION BY dispositivo_id, isla, grupo ORDER BY registrado_en) AS t_previo
       FROM grupos
     ),
     distancias AS (
       SELECT dispositivo_id, isla, grupo,
-             sum(6371 * 2 * asin(sqrt(
-               power(sin(radians(latitud - lat_previa) / 2), 2)
-               + cos(radians(lat_previa)) * cos(radians(latitud))
-                 * power(sin(radians(longitud - lon_previa) / 2), 2)
-             ))) AS km
-      FROM pares
+             sum(CASE
+               -- Saltos imposibles (más de VELOCIDAD_IMPOSIBLE_KMH, o
+               -- desplazamiento sin tiempo entre fixes) no suman distancia:
+               -- misma regla que el replay (geo.js). Suelen ser dos teléfonos
+               -- con la misma cuenta o fixes de red muy malos.
+               WHEN d_km > 0.05 AND NOT (seg > 0 AND d_km / seg * 3600 <= ${VELOCIDAD_IMPOSIBLE_KMH}) THEN 0
+               ELSE d_km
+             END) AS km
+      FROM (
+        SELECT *,
+               6371 * 2 * asin(sqrt(
+                                          power(sin(radians(latitud - lat_previa) / 2), 2)
+                                          + cos(radians(lat_previa)) * cos(radians(latitud))
+                                            * power(sin(radians(longitud - lon_previa) / 2), 2)
+                                        )) AS d_km,
+               extract(epoch FROM registrado_en - t_previo) AS seg
+        FROM pares
+      ) pares
       WHERE lat_previa IS NOT NULL
       GROUP BY dispositivo_id, isla, grupo
     ),
@@ -183,17 +198,30 @@ export function sqlSegmentos() {
     pares2 AS (
       SELECT grupos2.*,
              lag(latitud) OVER (PARTITION BY dispositivo_id, isla, grupo2 ORDER BY registrado_en) AS lat_previa,
-             lag(longitud) OVER (PARTITION BY dispositivo_id, isla, grupo2 ORDER BY registrado_en) AS lon_previa
+             lag(longitud) OVER (PARTITION BY dispositivo_id, isla, grupo2 ORDER BY registrado_en) AS lon_previa,
+             lag(registrado_en) OVER (PARTITION BY dispositivo_id, isla, grupo2 ORDER BY registrado_en) AS t_previo
       FROM grupos2
     ),
     distancias2 AS (
       SELECT dispositivo_id, isla, grupo2,
-             sum(6371 * 2 * asin(sqrt(
-               power(sin(radians(latitud - lat_previa) / 2), 2)
-               + cos(radians(lat_previa)) * cos(radians(latitud))
-                 * power(sin(radians(longitud - lon_previa) / 2), 2)
-             ))) AS km
-      FROM pares2
+             sum(CASE
+               -- Saltos imposibles (más de VELOCIDAD_IMPOSIBLE_KMH, o
+               -- desplazamiento sin tiempo entre fixes) no suman distancia:
+               -- misma regla que el replay (geo.js). Suelen ser dos teléfonos
+               -- con la misma cuenta o fixes de red muy malos.
+               WHEN d_km > 0.05 AND NOT (seg > 0 AND d_km / seg * 3600 <= ${VELOCIDAD_IMPOSIBLE_KMH}) THEN 0
+               ELSE d_km
+             END) AS km
+      FROM (
+        SELECT *,
+               6371 * 2 * asin(sqrt(
+                                          power(sin(radians(latitud - lat_previa) / 2), 2)
+                                          + cos(radians(lat_previa)) * cos(radians(latitud))
+                                            * power(sin(radians(longitud - lon_previa) / 2), 2)
+                                        )) AS d_km,
+               extract(epoch FROM registrado_en - t_previo) AS seg
+        FROM pares2
+      ) pares2
       WHERE lat_previa IS NOT NULL
       GROUP BY dispositivo_id, isla, grupo2
     ),

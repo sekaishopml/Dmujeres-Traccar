@@ -74,24 +74,28 @@ function IconoBateria({ pct, cargando }: { pct: number | null; cargando: boolean
 }
 
 // Marcador de persona: sus iniciales sobre su color, con un aro del color del
-// estado. Se arma con DOM porque MapLibre posiciona elementos propios.
+// estado. MapLibre ubica el elemento externo con su propio transform, así que
+// el realce (escala) va en el botón interno y nunca en el externo.
 function crearElementoMarcador(equipo: Dispositivo): HTMLElement {
-  const elemento = document.createElement('button');
-  elemento.type = 'button';
-  elemento.setAttribute('aria-label', equipo.nombre);
-  elemento.className =
-    'grid size-11 cursor-pointer place-items-center rounded-full border-[3px] border-white font-display text-[13px] font-semibold text-white shadow-[0_6px_16px_rgb(12_31_61/0.35)] outline-[3px] outline-offset-0 transition-transform duration-150';
-  elemento.textContent = iniciales(equipo.nombre);
-  elemento.style.background = colorDeNombre(equipo.nombre);
-  return elemento;
+  const externo = document.createElement('div');
+  const boton = document.createElement('button');
+  boton.type = 'button';
+  boton.setAttribute('aria-label', equipo.nombre);
+  boton.className =
+    'grid size-11 cursor-pointer place-items-center rounded-full border-[3px] border-white font-display text-[13px] font-semibold text-white shadow-[0_6px_16px_rgb(12_31_61/0.35)] outline-[3px] outline-solid transition-transform duration-200';
+  boton.textContent = iniciales(equipo.nombre);
+  boton.style.background = colorDeNombre(equipo.nombre);
+  externo.append(boton);
+  return externo;
 }
 
-function pintarMarcador(elemento: HTMLElement, equipo: Dispositivo, seleccionado: boolean) {
-  elemento.style.outlineStyle = 'solid';
-  elemento.style.outlineColor = seleccionado ? '#eb0045' : colorEstado(equipo);
-  elemento.style.transform = seleccionado ? 'scale(1.22)' : '';
-  elemento.style.zIndex = seleccionado ? '2' : '';
-  elemento.title = equipo.nombre;
+function pintarMarcador(externo: HTMLElement, equipo: Dispositivo, seleccionado: boolean) {
+  const boton = externo.firstElementChild as HTMLElement | null;
+  if (!boton) return;
+  boton.style.outlineColor = seleccionado ? '#eb0045' : colorEstado(equipo);
+  boton.style.transform = seleccionado ? 'scale(1.2)' : '';
+  boton.title = equipo.nombre;
+  externo.style.zIndex = seleccionado ? '2' : '1';
 }
 
 export default function EnVivo() {
@@ -178,6 +182,7 @@ export default function EnVivo() {
     // encuadre solo cambia por orden de la persona que supervisa.
     if (!encuadrado.current && posiciones.size > 0) {
       encuadrado.current = true;
+      mapa.resize();
       encuadrar(mapa, [...posiciones.values()]);
     }
   }, [mapa, equipos, posiciones, seleccion?.id]);
@@ -246,7 +251,7 @@ export default function EnVivo() {
 
       {/* Lista de personas */}
       <aside className="flex max-h-[45dvh] w-full flex-none flex-col gap-3 lg:max-h-none lg:w-[380px]">
-        <div className="grid grid-cols-5 gap-1 rounded-[14px] border border-borde bg-superficie p-1 shadow-tarjeta">
+        <div className="grid grid-cols-5 gap-1 rounded-[14px] border border-borde bg-superficie p-1">
           {FILTROS.map((f) => (
             <button
               key={f.valor}
@@ -255,7 +260,7 @@ export default function EnVivo() {
               onClick={() => setFiltro(f.valor)}
               className={cn(
                 'flex min-w-0 cursor-pointer flex-col items-center rounded-[10px] px-1 py-1.5 text-[11px] leading-tight font-medium transition-colors',
-                filtro === f.valor ? 'bg-marca text-white shadow-[0_4px_12px_-4px_rgb(235_0_69/0.5)]' : 'text-texto-2 hover:bg-fondo',
+                filtro === f.valor ? 'bg-marca text-white' : 'text-texto-2 hover:bg-fondo',
               )}
             >
               <span className="font-display text-[15px] font-semibold cifras">{conteos[f.valor]}</span>
@@ -264,7 +269,7 @@ export default function EnVivo() {
           ))}
         </div>
 
-        <label className="flex h-11 items-center gap-2 rounded-[14px] border border-borde bg-superficie px-3.5 shadow-tarjeta focus-within:border-marca">
+        <label className="flex h-10 items-center gap-2 rounded-[12px] border border-borde bg-superficie px-3.5 focus-within:border-marca">
           <Search className="size-4 text-texto-3" />
           <input
             type="search"
@@ -278,7 +283,7 @@ export default function EnVivo() {
 
         {error && <ErrorCarga mensaje={mensajeError(error)} alReintentar={() => void refrescarFlota()} />}
 
-        <ul className="-mr-1 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1 pb-1">
+        <ul className="-mr-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 pb-1">
           {flota.isPending && <Cargando />}
           {listado.map((equipo) => {
             const posicion = posiciones.get(equipo.id);
@@ -290,34 +295,25 @@ export default function EnVivo() {
                   onClick={() => seleccionar(equipo.id)}
                   aria-pressed={activa}
                   className={cn(
-                    'w-full cursor-pointer rounded-[14px] border bg-superficie text-left shadow-tarjeta transition-all',
-                    activa ? 'border-marca ring-3 ring-marca/12' : 'border-borde hover:border-marino-300',
+                    'flex w-full cursor-pointer items-center gap-3 rounded-[14px] border bg-superficie px-3.5 py-3 text-left transition-[border-color,box-shadow]',
+                    activa ? 'border-marca shadow-[0_0_0_3px_var(--color-marca-suave)]' : 'border-borde hover:border-borde-fuerte',
                   )}
                 >
-                  <span className="flex items-center gap-3 px-4 pt-3.5 pb-3">
-                    <Avatar nombre={equipo.nombre} estado={claveEstado(equipo)} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-semibold text-marino-900">{equipo.nombre}</span>
-                      <span className="block truncate font-mono text-[11.5px] text-texto-3">{equipo.identificadorUnico}</span>
+                  <Avatar nombre={equipo.nombre} estado={claveEstado(equipo)} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13.5px] font-semibold text-marino-900">{equipo.nombre}</span>
+                    <span className="block truncate text-[12px] text-texto-3">
+                      {posicion ? hace(posicion.registradoEn) : 'Sin posición'}
+                      {' · '}
+                      {equipo.jornadaActiva ? 'en jornada' : 'jornada cerrada'}
                     </span>
-                    <span className="flex items-center gap-1 text-[12px] font-medium text-texto-2 cifras">
+                  </span>
+                  <span className="flex flex-none flex-col items-end gap-1">
+                    <ChipEstado equipo={equipo} />
+                    <span className="flex items-center gap-1 text-[11.5px] text-texto-2 cifras">
                       <IconoBateria pct={equipo.bateriaPct} cargando={equipo.cargando} />
                       {bateria(equipo.bateriaPct)}
                     </span>
-                  </span>
-                  <span className="grid grid-cols-2 gap-x-3 px-4 pb-3 text-[12px]">
-                    <span>
-                      <span className="block text-texto-3">Último reporte</span>
-                      <span className="font-medium text-marino-900">{posicion ? hace(posicion.registradoEn) : 'Sin posición'}</span>
-                    </span>
-                    <span>
-                      <span className="block text-texto-3">Jornada</span>
-                      <span className="font-medium text-marino-900">{equipo.jornadaActiva ? 'Activa' : 'Cerrada'}</span>
-                    </span>
-                  </span>
-                  <span className="flex items-center justify-between border-t border-borde px-4 py-2.5">
-                    <span className="text-[12px] text-texto-3">Estado</span>
-                    <ChipEstado equipo={equipo} />
                   </span>
                 </button>
               </li>

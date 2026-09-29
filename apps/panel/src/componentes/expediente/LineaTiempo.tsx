@@ -74,7 +74,7 @@ export function LineaTiempo({
             <div className="relative flex flex-none flex-col items-center">
               <span
                 className={cn(
-                  'z-[1] mt-2.5 grid size-7 place-items-center rounded-full text-white ring-4 ring-white',
+                  'z-[1] mt-2.5 grid size-7 place-items-center rounded-full text-white ring-4 ring-superficie',
                   estilo.punto,
                 )}
               >

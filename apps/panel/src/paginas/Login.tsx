@@ -46,7 +46,7 @@ export default function Login() {
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(420px,5fr)_7fr]">
-      <aside className="relative hidden overflow-hidden bg-marino-900 px-12 py-10 text-marino-200 lg:flex lg:flex-col">
+      <aside className="relative hidden overflow-hidden bg-tinta px-12 py-10 text-[#c5d6ea] lg:flex lg:flex-col">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0"
@@ -81,7 +81,7 @@ export default function Login() {
             ))}
           </ul>
         </div>
-        <p className="relative text-[12px] text-marino-400">© {new Date().getFullYear()} DMujeres · Plataforma de flota</p>
+        <p className="relative text-[12px] text-[#5a86bb]">© {new Date().getFullYear()} DMujeres · Plataforma de flota</p>
       </aside>
 
       <main className="flex items-center justify-center bg-fondo px-5 py-10">

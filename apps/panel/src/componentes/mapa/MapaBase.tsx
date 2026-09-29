@@ -234,9 +234,12 @@ export default memo(function MapaRaster({
 
   return (
     <div className={cn('relative overflow-hidden bg-marino-100', clase)}>
-      <div ref={contenedor} className="absolute inset-0" />
+      {/* Estilo en línea a propósito: maplibre-gl.css pone position: relative a
+          .maplibregl-map y, al no estar en una capa, le gana a la utilidad
+          "absolute" de Tailwind; el contenedor quedaba con alto 0. */}
+      <div ref={contenedor} style={{ position: 'absolute', inset: 0 }} />
       {sinMapa && (
-        <p className="absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-tarjeta bg-white/95 p-4 text-center text-[13px] text-texto-2 shadow-flotante">
+        <p className="absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-tarjeta bg-superficie/95 p-4 text-center text-[13px] text-texto-2 shadow-flotante">
           Este navegador no puede dibujar el mapa (necesita aceleración gráfica WebGL2). Activa la aceleración por
           hardware en la configuración del navegador o abre el panel en Chrome o Edge actualizados.
         </p>
@@ -245,7 +248,7 @@ export default memo(function MapaRaster({
         role="group"
         aria-label="Capa del mapa"
         className={cn(
-          'absolute top-3 z-[5] flex rounded-control border border-borde bg-white/95 p-0.5 shadow-flotante backdrop-blur',
+          'absolute top-3 z-[5] flex rounded-control border border-borde bg-superficie/95 p-0.5 shadow-flotante backdrop-blur',
           selectorIzquierda ? 'left-3' : 'right-3',
         )}
       >
@@ -257,7 +260,7 @@ export default memo(function MapaRaster({
             aria-pressed={capa.id === capaActiva}
             className={cn(
               'h-7 cursor-pointer rounded-[6px] px-2.5 text-[12px] font-medium whitespace-nowrap transition-colors',
-              capa.id === capaActiva ? 'bg-marino-800 text-white' : 'text-texto-2 hover:text-marino-900',
+              capa.id === capaActiva ? 'bg-tinta-2 text-white' : 'text-texto-2 hover:text-marino-900',
             )}
           >
             {capa.nombre}

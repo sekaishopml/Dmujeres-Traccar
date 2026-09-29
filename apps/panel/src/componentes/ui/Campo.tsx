@@ -3,7 +3,7 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTML
 import { cn } from '@/lib/cn';
 
 export const claseControl = cn(
-  'h-9 w-full rounded-control border border-borde-fuerte bg-white px-3 text-[13px] text-texto',
+  'h-9 w-full rounded-control border border-borde-fuerte bg-superficie px-3 text-[13px] text-texto',
   'placeholder:text-texto-3 transition-[border-color,box-shadow]',
   'focus:border-marca focus:ring-3 focus:ring-marca/15 focus:outline-none',
   'disabled:cursor-not-allowed disabled:bg-fondo disabled:text-texto-3',

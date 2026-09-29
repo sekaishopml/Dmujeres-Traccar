@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Marco from '@/componentes/marco/Marco';
-import { Cargando } from '@/componentes/ui/Estados';
+import { PantallaCarga } from '@/componentes/ui/PantallaCarga';
 
 // Cada página baja por separado: el panel abre rápido y el mapa y los
 // gráficos solo se descargan donde se usan.
@@ -21,7 +21,7 @@ const Sistema = lazy(() => import('@/paginas/Sistema'));
 export default function App() {
   return (
     <BrowserRouter>
-      <Suspense fallback={<Cargando className="h-dvh" />}>
+      <Suspense fallback={<PantallaCarga />}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<Marco />}>

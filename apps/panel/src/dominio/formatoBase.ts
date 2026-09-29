@@ -1,6 +1,6 @@
 // Formato de presentación: nada de datos inventados, campo ausente = "—".
-const FECHA_HORA = new Intl.DateTimeFormat('es-EC', { dateStyle: 'short', timeStyle: 'short' });
-const HORA = new Intl.DateTimeFormat('es-EC', { hour: '2-digit', minute: '2-digit' });
+const FECHA_HORA = new Intl.DateTimeFormat('es-EC', { dateStyle: 'short', timeStyle: 'short', hourCycle: 'h23' });
+const HORA = new Intl.DateTimeFormat('es-EC', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const FECHA = new Intl.DateTimeFormat('es-EC', { dateStyle: 'medium' });
 
 export const GUION = '—';

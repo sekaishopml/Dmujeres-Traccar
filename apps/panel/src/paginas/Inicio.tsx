@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Battery, BatteryLow, CalendarClock, Footprints, Users, WifiOff, Pause, Map as MapaIcono } from 'lucide-react';
+import { Battery, BatteryLow, CalendarClock, FileText, Footprints, Map as MapaIcono, Pause, Route, Users, WifiOff } from 'lucide-react';
 import type { Dispositivo } from '@contratos';
 import { consulta } from '@/lib/api';
+import { cn } from '@/lib/cn';
 import { Avatar } from '@/componentes/ui/Avatar';
 import { Cifra } from '@/componentes/ui/Cifra';
 import { ChipEstado } from '@/componentes/ui/ChipEstado';
@@ -12,7 +13,6 @@ import { Tabla, Th, Td, Fila } from '@/componentes/ui/Tabla';
 import { Cargando, ErrorCarga, Vacio } from '@/componentes/ui/Estados';
 import { claseBoton } from '@/componentes/ui/Boton';
 import { AccionesPagina } from '@/componentes/marco/Marco';
-import { BateriaBarra } from '@/componentes/inicio/BateriaBarra';
 import { bateria, duracion, hace, hora, GUION } from '@/dominio/formatoBase';
 import {
   traerFlota,
@@ -244,11 +244,9 @@ export default function Inicio() {
                     <tr>
                       <Th>Persona</Th>
                       <Th>Estado</Th>
-                      <Th>Último reporte</Th>
-                      <Th>Batería</Th>
+                      <Th numerico>Batería</Th>
                       <Th>Jornada de hoy</Th>
-                      <Th>Observación</Th>
-                      <Th aria-label="Acciones" />
+                      <Th className="w-0" aria-label="Acciones" />
                     </tr>
                   </thead>
                   <tbody>
@@ -264,35 +262,43 @@ export default function Inicio() {
                               >
                                 {equipo.nombre}
                               </Link>
-                              <span className="block font-mono text-[11.5px] text-texto-3">
-                                {equipo.identificadorUnico}
+                              <span className="block max-w-56 truncate text-[11.5px] text-texto-3" title={nota || undefined}>
+                                {nota || equipo.identificadorUnico}
                               </span>
                             </div>
                           </div>
                         </Td>
                         <Td>
                           <ChipEstado equipo={equipo} />
+                          <span className="mt-1 block pl-1 text-[11.5px] whitespace-nowrap text-texto-3">
+                            {equipo.ultimaConexion ? hace(equipo.ultimaConexion) : 'Sin reportes'}
+                          </span>
                         </Td>
-                        <Td className="whitespace-nowrap text-texto-2">
-                          {equipo.ultimaConexion ? hace(equipo.ultimaConexion) : GUION}
-                        </Td>
-                        <Td>
-                          <BateriaBarra pct={equipo.bateriaPct} />
+                        <Td numerico className="whitespace-nowrap text-texto-2">
+                          <span className={cn(equipo.bateriaPct != null && equipo.bateriaPct <= BATERIA_BAJA_PCT && 'font-semibold text-peligro')}>
+                            {bateria(equipo.bateriaPct)}
+                          </span>
                         </Td>
                         <Td className="whitespace-nowrap">
                           <TextoJornada jornada={jornada} />
                         </Td>
-                        <Td className="min-w-40 text-[12.5px] text-texto-2">{nota || GUION}</Td>
                         <Td className="whitespace-nowrap">
-                          <div className="flex items-center gap-3 text-[12.5px] font-semibold">
-                            <Link to={`/unidad/${equipo.idPublico}`} className="text-marino-700 hover:text-marca">
-                              Expediente
+                          <div className="flex items-center justify-end gap-1">
+                            <Link
+                              to={`/unidad/${equipo.idPublico}`}
+                              title="Expediente"
+                              aria-label={`Expediente de ${equipo.nombre}`}
+                              className="grid size-8 place-items-center rounded-control text-texto-2 transition-colors hover:bg-fondo hover:text-marca"
+                            >
+                              <FileText className="size-4" />
                             </Link>
                             <Link
                               to={`/replay${consulta({ dispositivo: equipo.idPublico, desde: hoy, hasta: hoy })}`}
-                              className="text-marino-700 hover:text-marca"
+                              title="Replay de hoy"
+                              aria-label={`Replay de hoy de ${equipo.nombre}`}
+                              className="grid size-8 place-items-center rounded-control text-texto-2 transition-colors hover:bg-fondo hover:text-marca"
                             >
-                              Replay
+                              <Route className="size-4" />
                             </Link>
                           </div>
                         </Td>
@@ -316,22 +322,22 @@ export default function Inicio() {
                     Ninguna persona sin señal, con batería baja u observaciones.
                   </Vacio>
                 ) : (
-                  <ul className="divide-y divide-borde/70 px-5 pb-2">
+                  <ul className="px-2 pb-2">
                     {atencion.map(({ equipo, nota }) => (
-                      <li key={equipo.id} className="flex items-start gap-3 py-3">
-                        <Avatar nombre={equipo.nombre} estado={claveEstado(equipo)} tamano="sm" />
-                        <div className="min-w-0 flex-1">
-                          <Link
-                            to={`/unidad/${equipo.idPublico}`}
-                            className="block truncate text-[13px] font-semibold text-marino-900 hover:text-marca"
-                          >
-                            {equipo.nombre}
-                          </Link>
-                          <span className="block text-[12px] text-texto-2">
-                            {nota || `${etiquetaEstado(equipo)} · último reporte ${hace(equipo.ultimaConexion)}`}
+                      <li key={equipo.id}>
+                        <Link
+                          to={`/unidad/${equipo.idPublico}`}
+                          className="flex items-center gap-2.5 rounded-control px-3 py-2 transition-colors hover:bg-fondo"
+                        >
+                          <Avatar nombre={equipo.nombre} estado={claveEstado(equipo)} tamano="sm" />
+                          <span className="min-w-0 flex-1 leading-tight">
+                            <span className="block truncate text-[13px] font-semibold text-marino-900">{equipo.nombre}</span>
+                            <span className="block truncate text-[11.5px] text-texto-3">
+                              {nota || `${etiquetaEstado(equipo)} · ${hace(equipo.ultimaConexion)}`}
+                            </span>
                           </span>
-                        </div>
-                        <BateriaBarra pct={equipo.bateriaPct} />
+                          <span className="text-[12px] text-texto-2 cifras">{bateria(equipo.bateriaPct)}</span>
+                        </Link>
                       </li>
                     ))}
                   </ul>
@@ -351,17 +357,18 @@ export default function Inicio() {
                     Aún no se registran inicios de jornada en el día.
                   </Vacio>
                 ) : (
-                  <ul className="divide-y divide-borde/70 px-5 pb-2">
+                  <ul className="px-2 pb-2">
                     {filasJornadas.map((j) => (
-                      <li key={`${j.unidadId}-${j.inicioEn}`} className="flex items-center gap-3 py-3">
-                        <Avatar nombre={j.nombre} tamano="sm" />
-                        <div className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold text-marino-900">{j.nombre}</span>
-                          <span className="block text-[12px] text-texto-2 cifras">
-                            {hora(j.inicioEn)} → {j.finEn ? hora(j.finEn) : 'En curso'}
-                          </span>
-                        </div>
-                        <span className="text-[12px] whitespace-nowrap text-texto-3 cifras">
+                      <li key={`${j.unidadId}-${j.inicioEn}`} className="flex items-center gap-2.5 px-3 py-2">
+                        <span
+                          className={cn('size-2 flex-none rounded-full', j.finEn ? 'bg-deshabilitado' : 'bg-movimiento')}
+                          title={j.finEn ? 'Cerrada' : 'En curso'}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-marino-900">{j.nombre}</span>
+                        <span className="text-[12px] whitespace-nowrap text-texto-2 cifras">
+                          {hora(j.inicioEn)} – {j.finEn ? hora(j.finEn) : 'ahora'}
+                        </span>
+                        <span className="w-16 text-right text-[11.5px] whitespace-nowrap text-texto-3 cifras">
                           {j.duracionMin != null ? duracion(j.duracionMin * 60) : GUION}
                         </span>
                       </li>

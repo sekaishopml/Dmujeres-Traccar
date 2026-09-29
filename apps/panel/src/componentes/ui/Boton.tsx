@@ -12,10 +12,10 @@ export function claseBoton(variante: VarianteBoton = 'secundario', tamano: 'sm' 
     'disabled:pointer-events-none disabled:opacity-50 cursor-pointer select-none',
     tamano === 'sm' ? 'h-8 px-3 text-[12.5px]' : 'h-9 px-4 text-[13px]',
     variante === 'principal' && 'bg-marca text-white shadow-[0_2px_8px_rgb(235_0_69/0.25)] hover:bg-marca-oscuro',
-    variante === 'secundario' && 'border border-borde-fuerte bg-white text-marino-900 hover:border-marino-300 hover:bg-marino-50',
-    variante === 'marino' && 'bg-marino-800 text-white hover:bg-marino-700',
+    variante === 'secundario' && 'border border-borde-fuerte bg-superficie text-marino-900 hover:border-marino-300 hover:bg-marino-50',
+    variante === 'marino' && 'bg-tinta-2 text-white hover:bg-tinta-3',
     variante === 'fantasma' && 'text-texto-2 hover:bg-marino-50 hover:text-marino-900',
-    variante === 'peligro' && 'border border-peligro/30 bg-white text-peligro hover:bg-peligro-suave',
+    variante === 'peligro' && 'border border-peligro/30 bg-superficie text-peligro hover:bg-peligro-suave',
   );
 }
 

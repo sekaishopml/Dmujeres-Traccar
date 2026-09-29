@@ -5,11 +5,10 @@ import type { ChartData, ChartOptions } from 'chart.js';
 import type { MuestraBateria } from '@contratos';
 import { fechaHora, hora } from '@/dominio/formatoBase';
 import { cn } from '@/lib/cn';
+import { colorToken, useTema } from '@/lib/tema';
 
 Chart.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Filler);
 
-const MARINO = '#17365d';
-const CARGA = '#16a34a';
 
 // Curva de batería en marino; los tramos con el cargador conectado se pintan
 // en verde (movimiento) para que se vea cuándo cargó el teléfono.
@@ -22,6 +21,19 @@ export function CurvaBateria({
   etiqueta?: 'hora' | 'fechaHora';
   className?: string;
 }) {
+  // Paleta desde los tokens del tema vigente (se recalcula al cambiarlo).
+  const tema = useTema((e) => e.tema);
+  const { MARINO, CARGA, relleno, rejilla, borde, textoEje } = useMemo(
+    () => ({
+      MARINO: colorToken('marino-600'),
+      CARGA: colorToken('movimiento'),
+      relleno: tema === 'oscuro' ? 'rgba(147, 176, 214, 0.10)' : 'rgba(23, 54, 93, 0.08)',
+      rejilla: colorToken('borde'),
+      borde: colorToken('borde-fuerte'),
+      textoEje: colorToken('texto-3'),
+    }),
+    [tema],
+  );
   const conValor = useMemo(() => muestras.filter((m) => m.bateriaPct != null), [muestras]);
   const hayCarga = conValor.some((m) => m.cargando);
 
@@ -33,7 +45,7 @@ export function CurvaBateria({
           label: 'Batería',
           data: conValor.map((m) => m.bateriaPct),
           borderColor: MARINO,
-          backgroundColor: 'rgba(23, 54, 93, 0.08)',
+          backgroundColor: relleno,
           fill: true,
           tension: 0.25,
           pointBackgroundColor: conValor.map((m) => (m.cargando ? CARGA : MARINO)),
@@ -44,7 +56,7 @@ export function CurvaBateria({
         },
       ],
     }),
-    [conValor, etiqueta],
+    [conValor, etiqueta, MARINO, CARGA, relleno],
   );
 
   const opciones: ChartOptions<'line'> = useMemo(
@@ -56,14 +68,14 @@ export function CurvaBateria({
         y: {
           min: 0,
           max: 100,
-          ticks: { callback: (v) => `${v}%`, font: { size: 11 } },
-          grid: { color: '#eef1f6' },
-          border: { color: '#e1e7ef' },
+          ticks: { callback: (v) => `${v}%`, color: textoEje, font: { size: 11 } },
+          grid: { color: rejilla },
+          border: { color: borde },
         },
         x: {
-          ticks: { maxTicksLimit: 8, autoSkip: true, font: { size: 11 } },
+          ticks: { maxTicksLimit: 8, autoSkip: true, color: textoEje, font: { size: 11 } },
           grid: { display: false },
-          border: { color: '#e1e7ef' },
+          border: { color: borde },
         },
       },
       plugins: {
@@ -76,7 +88,7 @@ export function CurvaBateria({
       },
       elements: { line: { borderWidth: 2 }, point: { radius: 2, hitRadius: 8 } },
     }),
-    [conValor],
+    [conValor, rejilla, borde, textoEje],
   );
 
   return (

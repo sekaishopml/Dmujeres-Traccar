@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BatteryWarning, ChevronDown, LogOut, Menu, Search, SignalLow, X } from 'lucide-react';
+import { Bell, BatteryWarning, ChevronDown, LogOut, Menu, Moon, Search, SignalLow, Sun, X } from 'lucide-react';
 import { useSesion } from '@/lib/sesion';
 import { alNoAutorizado } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Cargando } from '@/componentes/ui/Estados';
+import { PantallaCarga } from '@/componentes/ui/PantallaCarga';
+import { useTema } from '@/lib/tema';
 import { Avatar } from '@/componentes/ui/Avatar';
 import { CLAVE_FLOTA, traerFlota } from '@/dominio/datos';
 import { claveEstado } from '@/dominio/estado';
@@ -48,7 +49,7 @@ export default function Marco() {
 
   useEffect(() => setMenuMovil(false), [pathname]);
 
-  if (cargando || !usuario) return <Cargando texto="Comprobando sesión…" className="h-dvh" />;
+  if (cargando || !usuario) return <PantallaCarga texto="Comprobando sesión…" />;
 
   const pagina = paginaDeRuta(pathname);
   const nombre = usuario.nombre || usuario.correo || 'Cuenta';
@@ -59,7 +60,7 @@ export default function Marco() {
         type="button"
         aria-label="Cerrar menú"
         onClick={() => setMenuMovil(false)}
-        className={cn('fixed inset-0 z-40 bg-marino-950/40 lg:hidden', menuMovil ? 'block' : 'hidden')}
+        className={cn('fixed inset-0 z-40 bg-sombra/40 lg:hidden', menuMovil ? 'block' : 'hidden')}
       />
 
       <aside
@@ -145,29 +146,109 @@ export default function Marco() {
           <div className="flex items-center gap-2">
             <BuscadorPersonas />
             <Avisos />
-            <ChipCuenta nombre={nombre} rol={usuario.administrador ? 'Administrador' : usuario.soloLectura ? 'Solo lectura' : 'Supervisión'} />
+            <MenuCuenta
+              nombre={nombre}
+              correo={usuario.correo ?? ''}
+              rol={usuario.administrador ? 'Administrador' : usuario.soloLectura ? 'Solo lectura' : 'Supervisión'}
+              alSalir={salir}
+            />
           </div>
         </header>
 
         <main className={cn('min-h-0 flex-1', pantallaCompleta ? 'overflow-hidden' : 'overflow-y-auto px-4 py-6 md:px-7')}>
-          <Outlet />
+          {/* Cada página entra con un fundido corto; mientras su código baja,
+              el marco queda en pie y solo el contenido muestra el círculo. */}
+          <div key={pathname} className="h-full animate-entrar">
+            <Suspense
+              fallback={
+                <div className="grid h-full min-h-60 place-items-center">
+                  <span className="circulo-carga" />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </div>
         </main>
       </div>
     </div>
   );
 }
 
-function ChipCuenta({ nombre, rol }: { nombre: string; rol: string }) {
+// Menú de la cuenta: modo nocturno y cierre de sesión, al alcance en
+// cualquier pantalla (también en móvil, donde la lateral está oculta).
+function MenuCuenta({ nombre, correo, rol, alSalir }: { nombre: string; correo: string; rol: string; alSalir: () => void }) {
+  const { tema, alternar } = useTema();
+  const [abierto, setAbierto] = useState(false);
+  const caja = useRef<HTMLDivElement>(null);
+  useCerrarAlClicFuera(caja, abierto, () => setAbierto(false));
+
   return (
-    <div className="flex items-center gap-2.5 rounded-full border border-borde bg-superficie py-1 pr-3.5 pl-1">
-      <Avatar nombre={nombre} tamano="sm" />
-      <span className="hidden leading-tight md:block">
-        <span className="block max-w-[160px] truncate text-[13px] font-semibold text-marino-900">{nombre}</span>
-        <span className="block text-[11px] text-texto-3">{rol}</span>
-      </span>
-      <ChevronDown className="hidden size-4 text-texto-3 md:block" />
+    <div ref={caja} className="relative">
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        aria-haspopup="menu"
+        className="flex cursor-pointer items-center gap-2.5 rounded-full border border-borde bg-superficie py-1 pr-1 pl-1 transition-colors hover:border-borde-fuerte md:pr-3"
+      >
+        <Avatar nombre={nombre} tamano="sm" />
+        <span className="hidden text-left leading-tight md:block">
+          <span className="block max-w-[160px] truncate text-[13px] font-semibold text-marino-900">{nombre}</span>
+          <span className="block text-[11px] text-texto-3">{rol}</span>
+        </span>
+        <ChevronDown className={cn('hidden size-4 text-texto-3 transition-transform md:block', abierto && 'rotate-180')} />
+      </button>
+      {abierto && (
+        <div role="menu" className="absolute top-12 right-0 z-50 w-64 animate-entrar rounded-tarjeta border border-borde bg-superficie p-1.5 shadow-flotante">
+          <div className="border-b border-borde px-3 pt-2 pb-3">
+            <p className="truncate text-[13px] font-semibold text-marino-900">{nombre}</p>
+            {correo && <p className="truncate text-[12px] text-texto-3">{correo}</p>}
+          </div>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={tema === 'oscuro'}
+            onClick={alternar}
+            className="mt-1.5 flex w-full cursor-pointer items-center gap-3 rounded-control px-3 py-2.5 text-[13px] text-texto hover:bg-fondo"
+          >
+            {tema === 'oscuro' ? <Sun className="size-4 text-texto-2" /> : <Moon className="size-4 text-texto-2" />}
+            <span className="flex-1 text-left">Modo nocturno</span>
+            <span className={cn('relative h-5 w-9 rounded-full transition-colors', tema === 'oscuro' ? 'bg-marca' : 'bg-borde-fuerte')}>
+              <span className={cn('absolute top-0.5 size-4 rounded-full bg-white shadow transition-[left]', tema === 'oscuro' ? 'left-[18px]' : 'left-0.5')} />
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={alSalir}
+            className="flex w-full cursor-pointer items-center gap-3 rounded-control px-3 py-2.5 text-[13px] text-peligro hover:bg-peligro-suave"
+          >
+            <LogOut className="size-4" />
+            Cerrar sesión
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+function useCerrarAlClicFuera(caja: React.RefObject<HTMLElement | null>, activo: boolean, cerrar: () => void) {
+  useEffect(() => {
+    if (!activo) return;
+    const fuera = (e: MouseEvent) => {
+      if (!caja.current?.contains(e.target as Node)) cerrar();
+    };
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cerrar();
+    };
+    document.addEventListener('mousedown', fuera);
+    document.addEventListener('keydown', tecla);
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      document.removeEventListener('keydown', tecla);
+    };
+  }, [caja, activo, cerrar]);
 }
 
 // Consulta compartida con las páginas (misma clave de caché): no duplica
@@ -187,14 +268,7 @@ function BuscadorPersonas() {
   const [texto, setTexto] = useState('');
   const caja = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!abierto) return;
-    const fuera = (e: MouseEvent) => {
-      if (!caja.current?.contains(e.target as Node)) setAbierto(false);
-    };
-    document.addEventListener('mousedown', fuera);
-    return () => document.removeEventListener('mousedown', fuera);
-  }, [abierto]);
+  useCerrarAlClicFuera(caja, abierto, () => setAbierto(false));
 
   const resultados = useMemo(() => {
     const q = texto.trim().toLowerCase();
@@ -258,14 +332,7 @@ function Avisos() {
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!abierto) return;
-    const fuera = (e: MouseEvent) => {
-      if (!caja.current?.contains(e.target as Node)) setAbierto(false);
-    };
-    document.addEventListener('mousedown', fuera);
-    return () => document.removeEventListener('mousedown', fuera);
-  }, [abierto]);
+  useCerrarAlClicFuera(caja, abierto, () => setAbierto(false));
 
   const avisos = useMemo(() => {
     const lista: { id: string; nombre: string; texto: string; tipo: 'senal' | 'bateria' }[] = [];
@@ -293,7 +360,7 @@ function Avisos() {
       >
         <Bell className="size-[18px]" />
         {avisos.length > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-marca px-1 text-[10px] font-bold text-white ring-2 ring-white">
+          <span className="absolute -top-0.5 -right-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-marca px-1 text-[10px] font-bold text-white ring-2 ring-superficie">
             {avisos.length}
           </span>
         )}

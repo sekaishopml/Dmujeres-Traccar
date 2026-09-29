@@ -10,6 +10,7 @@ import type { FeatureCollection, Point } from 'geojson';
 import type { Dispositivo, Hueco, Posicion } from '@contratos';
 import { bateria, duracion, GUION, velocidad } from '@/dominio/formatoBase';
 import Icono from './Icono';
+import { colorToken, useTema } from '@/lib/tema';
 import { traerDireccion } from '@/dominio/datos';
 import {
   ETIQUETA_METODO_TRAMO,
@@ -564,7 +565,10 @@ function GraficoBateria() {
   const { posiciones, indice, pausar, mover } = useReproductor();
   const serie = useMemo(() => serieBateria(posiciones), [posiciones]);
   const hayBateria = useMemo(() => serie.some((valor) => valor != null), [serie]);
+  const tema = useTema((e) => e.tema);
   const datos = useMemo<ChartData<'line'>>(() => {
+    const linea = colorToken('marino-600');
+    const relleno = tema === 'oscuro' ? 'rgba(147, 176, 214, .12)' : 'rgba(10, 37, 64, .1)';
     const indicePunto = indiceBateriaConocida(serie, indice);
     // Navy apagado en vez del azul anterior: el gráfico es contexto del
     // recorrido y no debe leerse como una barra azul junto al slider ni
@@ -574,8 +578,8 @@ function GraficoBateria() {
       datasets: [
         {
           data: serie,
-          borderColor: '#17365d',
-          backgroundColor: 'rgba(10, 37, 64, .1)',
+          borderColor: linea,
+          backgroundColor: relleno,
           borderWidth: 1.5,
           pointRadius: 0,
           fill: true,
@@ -583,15 +587,15 @@ function GraficoBateria() {
         },
         {
           data: serie.map((valor, posicion) => (posicion === indicePunto ? valor : null)),
-          borderColor: '#17365d',
-          backgroundColor: '#17365d',
+          borderColor: linea,
+          backgroundColor: linea,
           pointRadius: 3,
           pointHoverRadius: 3,
           showLine: false,
         },
       ],
     };
-  }, [serie, indice]);
+  }, [serie, indice, tema]);
   // Clic en el gráfico = saltar a ese instante, igual que arrastrar el slider:
   // pausa y mueve el reproductor. El cursor cambia solo sobre la serie.
   const opciones = useMemo<ChartOptions<'line'>>(

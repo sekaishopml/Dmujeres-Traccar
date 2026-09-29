@@ -3,6 +3,8 @@
 @import '@fontsource/poppins/600.css';
 @import '@fontsource/poppins/700.css';
 
+@custom-variant dark (&:where([data-tema='oscuro'], [data-tema='oscuro'] *));
+
 /* Sistema de diseño DMujeres Tracking.
    Estructura en azul marino (oscuro para la navegación, claro para acciones
    secundarias y el trazado del mapa) y el magenta oficial de DMujeres
@@ -25,6 +27,13 @@
   --color-marino-200: #c5d6ea;
   --color-marino-100: #e3ecf6;
   --color-marino-50: #f2f6fb;
+
+  /* Superficies marino que no cambian con el tema (panel de acceso, capa
+     activa del mapa, velos). */
+  --color-tinta: #0c1f3d;
+  --color-tinta-2: #132b50;
+  --color-tinta-3: #17365d;
+  --color-sombra: #06101f;
 
   --color-marca: #eb0045;
   --color-marca-oscuro: #c4003a;
@@ -64,8 +73,53 @@
   }
 }
 
+/* Modo nocturno: negro elegante de fondo, superficies en marino oscuro y
+   texto en marino claro. Se activa con data-tema="oscuro" en <html> (lo pone
+   lib/tema.ts según la preferencia guardada o la del sistema). La escala
+   marino se invierte para que "texto marino-900" siga siendo el de más
+   contraste; las superficies fijas usan tinta/sombra. */
+:root[data-tema='oscuro'] {
+  color-scheme: dark;
+  --color-marino-950: #f5f8fc;
+  --color-marino-900: #e8eef7;
+  --color-marino-800: #d3dfee;
+  --color-marino-700: #b7cae3;
+  --color-marino-600: #93b0d6;
+  --color-marino-500: #6f93c2;
+  --color-marino-400: #5577a6;
+  --color-marino-300: #34507a;
+  --color-marino-200: #263d5f;
+  --color-marino-100: #1a2c47;
+  --color-marino-50: #13213a;
+
+  --color-marca-suave: rgb(235 0 69 / 0.16);
+  --color-fondo: #070b14;
+  --color-superficie: #0e1729;
+  --color-borde: #1d2b44;
+  --color-borde-fuerte: #2a3c5c;
+  --color-texto: #e6edf7;
+  --color-texto-2: #9eb0c9;
+  --color-texto-3: #6c7f9b;
+
+  --color-movimiento: #22c55e;
+  --color-movimiento-suave: rgb(34 197 94 / 0.14);
+  --color-detenido: #60a5fa;
+  --color-detenido-suave: rgb(96 165 250 / 0.14);
+  --color-sin-senal: #f59e0b;
+  --color-sin-senal-suave: rgb(245 158 11 / 0.14);
+  --color-deshabilitado: #8b9bb3;
+  --color-deshabilitado-suave: rgb(139 155 179 / 0.14);
+  --color-peligro: #f87171;
+  --color-peligro-suave: rgb(248 113 113 / 0.14);
+
+  --shadow-tarjeta: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px -8px rgb(0 0 0 / 0.5);
+  --shadow-flotante: 0 16px 40px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.4);
+}
+
 @layer base {
   html, body, #root { height: 100%; }
+  /* Cambio de tema suave, sin animar nada más. */
+  html.tema-transicion * { transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease !important; }
   body {
     @apply bg-fondo font-sans text-[13.5px] leading-[1.5] text-texto antialiased;
     font-feature-settings: 'cv11', 'ss01';
@@ -85,8 +139,27 @@
   @apply overflow-hidden rounded-control! border border-borde shadow-flotante!;
 }
 .maplibregl-ctrl-scale {
-  @apply rounded-sm border-marino-400! bg-white/85! text-[11px] text-marino-800!;
+  @apply rounded-sm border-marino-400! bg-superficie/85! text-[11px] text-marino-800!;
 }
 .maplibregl-popup-content {
   @apply rounded-control! px-3! py-2.5! font-sans text-[12.5px] shadow-flotante!;
+}
+
+/* Controles de MapLibre en modo nocturno. */
+:root[data-tema='oscuro'] .maplibregl-ctrl-group { background: var(--color-superficie); }
+:root[data-tema='oscuro'] .maplibregl-ctrl-group button + button { border-top-color: var(--color-borde); }
+:root[data-tema='oscuro'] .maplibregl-ctrl-icon { filter: invert(1) hue-rotate(180deg); }
+:root[data-tema='oscuro'] .maplibregl-ctrl-attrib { background: rgb(14 23 41 / 0.8); color: var(--color-texto-2); }
+:root[data-tema='oscuro'] .maplibregl-ctrl-attrib a { color: var(--color-texto-2); }
+:root[data-tema='oscuro'] .maplibregl-popup-content { background: var(--color-superficie); color: var(--color-texto); }
+
+/* Pantalla de carga: el logotipo y debajo un círculo magenta que gira. */
+@keyframes girar-carga { to { transform: rotate(360deg); } }
+.circulo-carga {
+  width: 34px; height: 34px; border-radius: 9999px;
+  border: 3px solid var(--color-marca-suave); border-top-color: var(--color-marca);
+  animation: girar-carga 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .circulo-carga { animation-duration: 2.4s; }
 }

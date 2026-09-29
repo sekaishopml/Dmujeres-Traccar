@@ -23,7 +23,7 @@ export function Segmentado<T extends string>({
           className={cn(
             'h-7 cursor-pointer rounded-[6px] px-3 text-[12.5px] font-medium whitespace-nowrap transition-colors',
             opcion.valor === valor
-              ? 'bg-white text-marino-900 shadow-[0_1px_2px_rgb(12_31_61/0.12)]'
+              ? 'bg-superficie text-marino-900 shadow-[0_1px_2px_rgb(12_31_61/0.12)]'
               : 'text-texto-2 hover:text-marino-900',
           )}
         >

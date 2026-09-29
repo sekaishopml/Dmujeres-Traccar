@@ -49,7 +49,7 @@ export function Avatar({
       {estado && (
         <span
           className={cn(
-            'absolute right-0 bottom-0 rounded-full ring-2 ring-white',
+            'absolute right-0 bottom-0 rounded-full ring-2 ring-superficie',
             tamano === 'sm' ? 'size-2.5' : 'size-3',
           )}
           style={{ background: COLOR_ESTADO[estado] ?? COLOR_ESTADO.deshabilitado }}

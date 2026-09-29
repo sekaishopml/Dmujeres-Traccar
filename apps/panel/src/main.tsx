@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import App from './App';
+import '@/lib/tema';
 import './estilos/index.css';
 
 // Caché de consultas: las vistas vivas sondean por su cuenta (sin ráfagas al

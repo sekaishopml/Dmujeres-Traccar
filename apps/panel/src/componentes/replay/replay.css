@@ -147,6 +147,15 @@
   --linea-3: var(--color-borde-fuerte);
   --fuente: var(--font-sans);
   --alto-barra: 76px;
+  --tarjeta: var(--color-superficie);
+  --linea-2: var(--color-borde);
+  --gris: var(--color-texto-3);
+  --acento-suave: var(--color-marino-50);
+  --marca-suave: var(--color-marca-suave);
+  --exito: var(--color-movimiento);
+  --alerta: var(--color-sin-senal);
+  --peligro: var(--color-peligro);
+  --info: var(--color-detenido);
 
 /* ── Cabeceras y rejillas ──────────────────────────────────────────────── */
 /* Encabezado de página: título y un dato corto a su lado; las acciones a la
@@ -214,15 +223,15 @@ button, .boton {
 button:hover { background: var(--navy-2); }
 button.principal { background: var(--marca); box-shadow: 0 2px 8px rgba(235, 0, 69, .25); }
 button.principal:hover { background: var(--marca-2); }
-button.suave, .boton-suave { background: #fff; color: var(--navy); border-color: var(--linea-3); }
+button.suave, .boton-suave { background: var(--color-superficie); color: var(--navy); border-color: var(--linea-3); }
 button.suave:hover, .boton-suave:hover { background: var(--linea-2); }
-button.peligro { background: #fff; color: var(--peligro); border-color: var(--peligro-borde); }
+button.peligro { background: var(--color-superficie); color: var(--peligro); border-color: var(--peligro-borde); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 button.icono-solo { padding: 6px; display: inline-flex; align-items: center; }
 
 input, select, textarea {
   font: inherit; font-size: var(--tamano-sm); color: var(--texto); width: 100%;
-  border: 1px solid var(--linea-3); border-radius: var(--radio-sm); padding: 6px 9px; background: #fff; min-height: 32px;
+  border: 1px solid var(--linea-3); border-radius: var(--radio-sm); padding: 6px 9px; background: var(--color-superficie); min-height: 32px;
   transition: border-color var(--transicion-rapida), box-shadow var(--transicion-rapida);
 }
 input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(235, 0, 69, .14); border-color: var(--marca); }
@@ -273,10 +282,10 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 3px 0 0 var(--mar
 .mapa-caja { height: calc(100vh - var(--alto-barra) - 120px); min-height: 380px; }
 .mapa-selector {
   position: absolute; top: 10px; right: 10px; z-index: 5;
-  display: flex; background: #fff; border: 1px solid var(--linea); border-radius: 7px; overflow: hidden;
+  display: flex; background: var(--color-superficie); border: 1px solid var(--linea); border-radius: 7px; overflow: hidden;
 }
 .mapa-selector button {
-  background: #fff; color: var(--texto); border: 0; border-radius: 0; padding: 6px 10px; font-size: 12px;
+  background: var(--color-superficie); color: var(--texto); border: 0; border-radius: 0; padding: 6px 10px; font-size: 12px;
 }
 .mapa-selector button.activo { background: var(--marca); color: #fff; }
 .mapa-envoltura { position: relative; }
@@ -286,7 +295,7 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 3px 0 0 var(--mar
 & .mapa { position: absolute; inset: 0; border-radius: 0; }
 .replay-panel {
   position: absolute; top: 12px; left: 12px; width: 296px; max-height: calc(100% - 150px);
-  overflow: auto; background: #fff; border: 1px solid var(--linea); border-radius: 9px;
+  overflow: auto; background: var(--color-superficie); border: 1px solid var(--linea); border-radius: 9px;
   padding: 12px; z-index: 6;
 }
 .replay-panel .plegar-panel { position: absolute; top: 8px; right: 8px; }
@@ -294,7 +303,7 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 3px 0 0 var(--mar
 .replay-panel.colapsado .cuerpo-panel { display: none; }
 .replay-timeline {
   position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 6;
-  background: #fff; border: 1px solid var(--linea-3); border-radius: 9px; padding: 9px 12px;
+  background: var(--color-superficie); border: 1px solid var(--linea-3); border-radius: 9px; padding: 9px 12px;
   box-shadow: 0 8px 22px rgba(11, 31, 51, .12);
 }
 @media (max-width: 760px) {
@@ -395,7 +404,7 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 /* ── Pantalla de carga (fondo claro, marca y giro, estilo panel clásico) ─ */
 .cargando-pantalla {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 20px; height: 100vh; height: 100dvh; background: #ffffff; color: var(--apagado);
+  gap: 20px; height: 100vh; height: 100dvh; background: var(--color-superficie); color: var(--apagado);
 }
 .cargando-pantalla .logotipo-marca { width: 72px; height: 72px; }
 .cargando-pantalla .logotipo-nombre, .cargando-pantalla .logotipo-apellido { font-size: 20px; }
@@ -437,7 +446,7 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 .cronologia li:last-child .eje::before { bottom: auto; height: 16px; }
 .cronologia .punto {
   position: absolute; left: 50%; top: 7px; width: 9px; height: 9px;
-  border-radius: 50%; transform: translateX(-4.5px); background: #fff;
+  border-radius: 50%; transform: translateX(-4.5px); background: var(--color-superficie);
   border: 2px solid var(--apagado); z-index: 1;
 }
 .cronologia .punto.inicio    { border-color: var(--exito); }
@@ -532,7 +541,7 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 .panel-equipos { display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 190px); }
 .lista-equipos { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .equipo {
-  width: 100%; text-align: left; background: #fff; color: var(--texto);
+  width: 100%; text-align: left; background: var(--color-superficie); color: var(--texto);
   border: 1px solid var(--linea); border-radius: 10px; padding: 9px 10px;
   display: flex; flex-direction: column; gap: 5px;
 }
@@ -907,7 +916,7 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
   & .replay-panel {
     top: 16px; left: 16px; bottom: 16px; width: 380px;
     border: 1px solid var(--color-borde); border-radius: var(--radius-tarjeta);
-    box-shadow: var(--shadow-flotante); background: #fff;
+    box-shadow: var(--shadow-flotante); background: var(--color-superficie);
   }
   & .replay-panel.colapsado { bottom: auto; width: auto; }
   & .replay-cabecera h2 { font-family: var(--font-display); font-size: 17px; color: var(--color-marino-900); }
@@ -921,5 +930,32 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
   & [aria-label="Capa del mapa"] button {
     background: transparent; color: var(--color-texto-2); border: 0; padding: 0 10px; box-shadow: none;
   }
-  & [aria-label="Capa del mapa"] button[aria-pressed="true"] { background: var(--color-marino-800); color: #fff; }
+  & [aria-label="Capa del mapa"] button[aria-pressed="true"] { background: var(--color-tinta-2); color: #fff; }
+  /* Los controles de MapLibre traen su propio botón: sin la piel heredada. */
+  & .maplibregl-ctrl button {
+    background-color: transparent; border: 0; padding: 0; border-radius: 0; min-height: 0; box-shadow: none; color: inherit;
+  }
+  & .maplibregl-ctrl-group button + button { border-top: 1px solid var(--color-borde); }
+  /* Modo nocturno: el marino heredado se usa como fondo con texto blanco
+     (chips activos, números de viaje) y como texto; un azul medio sirve en
+     los dos casos. */
+  :root[data-tema='oscuro'] & {
+    --navy: #3b6fb0;
+    --navy-2: #4a7fc0;
+    --acento: #5a86bb;
+  }
+  /* Etiquetas sobre el mapa: siempre claras, se leen sobre el satélite. */
+  & .marcador-extremo,
+  & .marcador-parada,
+  & .maplibregl-popup {
+    --texto: #122036;
+    --apagado: #52627a;
+    --tarjeta: #ffffff;
+    --linea: #e1e7ef;
+    --navy: #0c1f3d;
+    --color-superficie: #ffffff;
+    --color-texto: #122036;
+    --color-texto-2: #52627a;
+    --color-borde: #e1e7ef;
+  }
 }

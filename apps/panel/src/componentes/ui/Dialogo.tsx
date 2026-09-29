@@ -40,7 +40,7 @@ export function Dialogo({
         if (evento.target === ref.current) alCerrar();
       }}
       className={cn(
-        'm-auto max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] overflow-visible rounded-tarjeta bg-transparent p-0 backdrop:bg-marino-950/45 backdrop:backdrop-blur-[2px]',
+        'm-auto max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] overflow-visible rounded-tarjeta bg-transparent p-0 backdrop:bg-sombra/45 backdrop:backdrop-blur-[2px]',
         ancho === 'sm' && 'max-w-md',
         ancho === 'md' && 'max-w-xl',
         ancho === 'lg' && 'max-w-3xl',
