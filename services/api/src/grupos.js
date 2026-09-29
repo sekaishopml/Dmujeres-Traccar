@@ -1,5 +1,6 @@
 // Grupos de personas: CRUD /api/v1/grupos y reemplazo de miembros
-// PUT /api/v1/grupos/:id/miembros. Solo administradores. Al borrar un grupo
+// PUT /api/v1/grupos/:id/miembros. Plantel: cualquier cuenta activa
+// no-solo-lectura. Al borrar un grupo
 // sus membresías se borran solas (FK con ON DELETE CASCADE); las personas
 // nunca se borran.
 
@@ -13,7 +14,7 @@ import {
   respuestaSinContenido,
 } from './http.js';
 import { auditar } from './sesiones.js';
-import { exigirAdministracion } from './permisos.js';
+import { exigirOperativo } from './permisos.js';
 
 const ORDEN_GRUPOS = {
   id: 'g.id',
@@ -102,7 +103,7 @@ function aGrupo(fila, miembros) {
 }
 
 export async function listarGrupos(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const { pagina, tamano, desplazamiento } = leerPaginacion(ctx.url);
   const orden = leerOrden(ctx.url, ORDEN_GRUPOS, 'g.nombre ASC');
   const { rows } = await consultar(
@@ -133,7 +134,7 @@ export async function listarGrupos(ctx) {
 }
 
 export async function obtenerGrupo(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const fila = await buscarGrupo(ctx.pool, ctx.params.id);
   if (!fila) throw noEncontrado('El grupo no existe.');
   const miembros = await miembrosDe(ctx.pool, fila.id);
@@ -141,7 +142,7 @@ export async function obtenerGrupo(ctx) {
 }
 
 export async function crearGrupo(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const cuerpo = await leerCuerpoJson(ctx.req, 8192);
   const nombre = textoObligatorio(cuerpo.nombre, 'nombre', 200);
   const descripcion = textoOpcional(cuerpo.descripcion, 'descripcion', 500);
@@ -177,7 +178,7 @@ export async function crearGrupo(ctx) {
 }
 
 export async function actualizarGrupo(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const cuerpo = await leerCuerpoJson(ctx.req, 8192);
   const nombre = cuerpo.nombre === undefined ? undefined : textoObligatorio(cuerpo.nombre, 'nombre', 200);
   const descripcion = cuerpo.descripcion === undefined
@@ -223,7 +224,7 @@ export async function actualizarGrupo(ctx) {
 }
 
 export async function eliminarGrupo(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const fila = await buscarGrupo(ctx.pool, ctx.params.id);
   if (!fila) throw noEncontrado('El grupo no existe.');
   await consultar(
@@ -245,7 +246,7 @@ export async function eliminarGrupo(ctx) {
 }
 
 export async function reemplazarMiembros(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const cuerpo = await leerCuerpoJson(ctx.req, 16384);
   const usuarioIds = listaIds(cuerpo.usuarioIds, 'usuarioIds');
 
@@ -255,7 +256,7 @@ export async function reemplazarMiembros(ctx) {
     let personas = [];
     if (usuarioIds.length > 0) {
       const { rows } = await cliente.query(
-        `SELECT id, nombre_usuario FROM iam.dmt_usuario
+        `SELECT id, id_publico, nombre_usuario FROM iam.dmt_usuario
           WHERE id_publico::text = ANY($1) OR id::text = ANY($1) OR nombre_usuario = ANY($1)`,
         [usuarioIds],
       );

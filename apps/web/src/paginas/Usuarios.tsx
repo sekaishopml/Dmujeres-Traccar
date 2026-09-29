@@ -6,8 +6,9 @@ import type {
   CreacionUsuarioPlataforma,
   Dispositivo,
   EntradaEsquemaAjustes,
+  EquipoCreadoConCuenta,
   GrupoPlataforma,
-  RolPlataforma,
+  RespuestaCreacionUsuarioPlataforma,
   UsuarioPlataforma,
 } from '@contratos';
 import { api } from '../api/cliente';
@@ -30,7 +31,6 @@ import {
   traerEsquemaAjustes,
   traerFlota,
   traerGrupos,
-  traerRoles,
   traerUsuariosPlataforma,
 } from './operacion/datos';
 import './admin.css';
@@ -57,20 +57,26 @@ function textoGrupos(usuario: UsuarioPlataforma): string {
   return grupos.map((grupo) => grupo.nombre).join(', ');
 }
 
-// El permiso se muestra con lo que devuelva la cuenta: si el servidor ya
-// incluye los roles se usan; si no, se deduce del indicador de administrador.
-function permisoDe(usuario: UsuarioPlataforma, roles: RolPlataforma[]): string {
-  if (usuario.roles && usuario.roles.length > 0) {
-    return usuario.roles.map((rol) => rol.nombre).join(', ');
+// Equipos vinculados a la persona: se resuelven los nombres con la flota.
+// Si la cuenta aún no trae dispositivoIds o no tiene ninguno, se muestra "—".
+// Si hay asignaciones pero los nombres no están en la flota visible (flota aún
+// cargando o equipo recién creado), se muestra el conteo para no esconderlas.
+function textoEquipos(usuario: UsuarioPlataforma, flota: Dispositivo[]): string {
+  const ids = usuario.dispositivoIds ?? [];
+  if (ids.length === 0) return GUION;
+  if (flota.length === 0) {
+    return ids.length === 1 ? '1 equipo' : `${ids.length} equipos`;
   }
-  if (usuario.rolIds && usuario.rolIds.length > 0 && roles.length > 0) {
-    const nombres = usuario.rolIds
-      .map((id) => roles.find((rol) => String(rol.id) === String(id))?.nombre)
-      .filter((nombre): nombre is string => typeof nombre === 'string' && nombre !== '');
-    if (nombres.length > 0) return nombres.join(', ');
+  const nombresPorId = new Map<string, string>();
+  for (const equipo of flota) {
+    nombresPorId.set(String(equipo.id), equipo.nombre);
+    nombresPorId.set(equipo.idPublico, equipo.nombre);
   }
-  if (usuario.administrador) return 'Administrador';
-  return GUION;
+  const nombres = ids
+    .map((id) => nombresPorId.get(String(id)))
+    .filter((nombre): nombre is string => typeof nombre === 'string' && nombre !== '');
+  if (nombres.length > 0) return nombres.join(', ');
+  return ids.length === 1 ? '1 equipo' : `${ids.length} equipos`;
 }
 
 function claveEquipo(equipo: { id: number | string; idPublico?: string }): string {
@@ -87,9 +93,6 @@ interface PropsFormulario {
   usuario: UsuarioPlataforma | null;
   grupos: GrupoPlataforma[];
   gruposError: unknown;
-  // Permiso ya guardado, solo para mostrar: las cuentas nuevas nacen
-  // operativas y la edición no lo toca aunque el servidor aún mande roles.
-  permisoActual: string;
   equipos: Dispositivo[];
   cargandoEquipos: boolean;
   avisoEquipos: string | null;
@@ -107,13 +110,11 @@ interface PropsFormulario {
 }
 
 // En edición la clave vacía significa "no cambiar"; en creación es obligatoria.
-// El permiso no se elige: la cuenta nace operativa (solo hace ruta) y el
-// guardado nunca lo manda.
+// Las cuentas son personas que hacen ruta y el guardado nunca manda roles.
 function FormularioCuenta({
   usuario,
   grupos,
   gruposError,
-  permisoActual,
   equipos,
   cargandoEquipos,
   avisoEquipos,
@@ -134,6 +135,7 @@ function FormularioCuenta({
     (usuario?.grupos ?? []).map((grupo) => String(grupo.id)),
   );
   const [equipoIds, setEquipoIds] = useState<string[]>(() => equiposIniciales);
+  const [crearEquipo, setCrearEquipo] = useState(true);
   const [validacion, setValidacion] = useState('');
 
   function alternarGrupo(id: string) {
@@ -193,6 +195,9 @@ function FormularioCuenta({
       if (telefonoLimpio !== '') cuerpo.telefono = telefonoLimpio;
       if (cargoLimpio !== '') cuerpo.cargo = cargoLimpio;
       if (gruposElegidos.length > 0) cuerpo.grupoIds = gruposElegidos;
+      // El contrato pide crearEquipo:true para que el servidor cree el equipo
+      // de rastreo junto con la cuenta. Si la casilla está apagada, no se manda.
+      if (crearEquipo) cuerpo.crearEquipo = true;
       onGuardar(cuerpo, dispositivoIds);
       return;
     }
@@ -257,7 +262,7 @@ function FormularioCuenta({
           <input
             value={cargo}
             onChange={(evento) => setCargo(evento.target.value)}
-            placeholder="Por ejemplo: Operadora de turno"
+            placeholder="Por ejemplo: Ruta norte"
           />
         </label>
       </div>
@@ -282,13 +287,21 @@ function FormularioCuenta({
           ))}
         </div>
       </fieldset>
-      {usuario ? (
-        <p className="apagado">
-          Permiso actual: <b>{permisoActual === '' ? 'Operativo' : permisoActual}</b>. No se cambia
-          desde aquí.
-        </p>
-      ) : (
-        <p className="apagado">La cuenta nace operativa: solo hace ruta, sin permisos extra.</p>
+      {!usuario && (
+        <div className="campo">
+          <label className="equipo-auto">
+            <input
+              type="checkbox"
+              checked={crearEquipo}
+              onChange={(evento) => setCrearEquipo(evento.target.checked)}
+            />
+            <span>Crear equipo de rastreo</span>
+          </label>
+          <p className="apagado">
+            Se crea con el nombre de la cuenta en minúsculas. Así aparece en Replay y En vivo, y en la
+            app se configura ese mismo nombre como ID de equipo.
+          </p>
+        </div>
       )}
       <fieldset className="grupo-equipos">
         <legend>Equipos que puede ver</legend>
@@ -522,11 +535,6 @@ export default function Usuarios() {
     enabled: administrador,
     queryFn: () => traerGrupos(),
   });
-  const roles = useQuery({
-    queryKey: ['roles'],
-    enabled: administrador,
-    queryFn: () => traerRoles(),
-  });
   const esquema = useQuery({
     queryKey: ['esquema-ajustes'],
     enabled: administrador,
@@ -548,7 +556,6 @@ export default function Usuarios() {
     () => lista.slice((paginaSegura - 1) * TAMANO, paginaSegura * TAMANO),
     [lista, paginaSegura],
   );
-  const listaRoles = useMemo(() => roles.data ?? [], [roles.data]);
   const listaGrupos = useMemo(() => grupos.data ?? [], [grupos.data]);
   const listaEquipos = useMemo(() => flota.data?.datos ?? [], [flota.data]);
 
@@ -623,25 +630,70 @@ export default function Usuarios() {
       cuerpo: CreacionUsuarioPlataforma;
       equipoIds: (number | string)[];
     }) => {
-      const respuesta = await api.post<{ usuario: UsuarioPlataforma }>('/api/v1/usuarios', cuerpo);
+      // Contrato con el otro frente: con crearEquipo:true el servidor crea la
+      // cuenta + el dispositivo (identificador = usuario en minúsculas) +
+      // asignación, y responde equipo:{id,idPublico,nombre,identificador} o
+      // null. Si el servidor aún no lo soporta, la cuenta se crea igual.
+      const quiereEquipo = cuerpo.crearEquipo === true;
+      let respuesta: RespuestaCreacionUsuarioPlataforma;
+      let equipoAutoPendiente = false;
+      try {
+        respuesta = await api.post<RespuestaCreacionUsuarioPlataforma>('/api/v1/usuarios', cuerpo);
+      } catch (error) {
+        // Servidor anterior que rechaza el campo desconocido: se reintenta sin
+        // él para que la cuenta se cree igual y se avisa al final.
+        if (quiereEquipo && esErrorDeEstado(error, 400)) {
+          const { crearEquipo: _omitido, ...cuerpoSinEquipo } = cuerpo;
+          void _omitido;
+          respuesta = await api.post<RespuestaCreacionUsuarioPlataforma>(
+            '/api/v1/usuarios',
+            cuerpoSinEquipo,
+          );
+          equipoAutoPendiente = true;
+        } else {
+          throw error;
+        }
+      }
+      const equipo: EquipoCreadoConCuenta | null = respuesta.equipo ?? null;
+      if (quiereEquipo && !equipo && !equipoAutoPendiente) {
+        equipoAutoPendiente = true;
+      }
+      // Si el servidor ya asignó el equipo nuevo, no se pisa con el reemplazo:
+      // se suma su id a la selección manual (si la hay). Sin selección manual
+      // no hace falta el PUT porque la asignación ya quedó hecha.
+      let idsParaGuardar = equipoIds;
+      if (equipo) {
+        const idAuto = equipo.idPublico ?? equipo.id;
+        const yaIncluido = equipoIds.some(
+          (id) => String(id) === String(equipo.id) || String(id) === String(idAuto),
+        );
+        if (!yaIncluido && equipoIds.length > 0) idsParaGuardar = [...equipoIds, idAuto];
+      }
       let equiposPendientes = false;
-      if (equipoIds.length > 0) {
+      if (idsParaGuardar.length > 0 && !(equipo && equipoIds.length === 0)) {
         try {
-          await guardarEquiposDeUsuario(idEnUrl(respuesta.usuario), equipoIds);
+          await guardarEquiposDeUsuario(idEnUrl(respuesta.usuario), idsParaGuardar);
         } catch (error) {
           if (!esErrorDeEstado(error, 404)) throw error;
           equiposPendientes = true;
         }
       }
-      return { usuario: respuesta.usuario, equiposPendientes };
+      return { usuario: respuesta.usuario, equipo, equipoAutoPendiente, equiposPendientes };
     },
-    onSuccess: ({ equiposPendientes }) => {
+    onSuccess: ({ equipo, equipoAutoPendiente, equiposPendientes }) => {
       invalidar();
-      setExito(
-        equiposPendientes
-          ? 'Cuenta creada, pero el servidor aún no guarda los equipos por cuenta.'
-          : 'Cuenta creada.',
-      );
+      cliente.invalidateQueries({ queryKey: CLAVE_FLOTA });
+      if (equipo) {
+        setExito(`Cuenta y equipo creados. “${equipo.nombre}” ya aparece en Replay y En vivo.`);
+      } else if (equipoAutoPendiente) {
+        setExito(
+          'Cuenta creada, pero el servidor aún no crea el equipo automático. Se puede vincular uno en “Cambiar los datos” cuando esté listo.',
+        );
+      } else if (equiposPendientes) {
+        setExito('Cuenta creada, pero el servidor aún no guarda los equipos por cuenta.');
+      } else {
+        setExito('Cuenta creada.');
+      }
       setModal(null);
     },
   });
@@ -808,7 +860,7 @@ export default function Usuarios() {
                       <th>Teléfono</th>
                       <th>Puesto</th>
                       <th>Grupo(s)</th>
-                      <th>Permiso</th>
+                      <th>Equipo(s)</th>
                       <th>Estado</th>
                       <th>Acciones</th>
                     </tr>
@@ -821,7 +873,7 @@ export default function Usuarios() {
                         <td>{usuario.telefono ?? GUION}</td>
                         <td>{usuario.cargo ?? GUION}</td>
                         <td>{textoGrupos(usuario)}</td>
-                        <td>{permisoDe(usuario, listaRoles)}</td>
+                        <td>{textoEquipos(usuario, listaEquipos)}</td>
                         <td>
                           <ChipHabilitado habilitado={usuario.habilitado} />
                         </td>
@@ -887,7 +939,6 @@ export default function Usuarios() {
             usuario={null}
             grupos={listaGrupos}
             gruposError={grupos.error}
-            permisoActual=""
             equipos={listaEquipos}
             cargandoEquipos={flota.isPending}
             avisoEquipos={avisoEquipos}
@@ -917,7 +968,6 @@ export default function Usuarios() {
               usuario={modal.usuario}
               grupos={listaGrupos}
               gruposError={grupos.error}
-              permisoActual={permisoDe(modal.usuario, listaRoles)}
               equipos={listaEquipos}
               cargandoEquipos={flota.isPending}
               avisoEquipos={avisoEquipos}

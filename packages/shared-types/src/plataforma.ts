@@ -50,9 +50,29 @@ export interface CreacionUsuarioPlataforma {
   grupoIds?: (number | string)[];
   rolIds?: (number | string)[];
   // Las cuentas de administración nacen con este indicador en fijo; las
-  // operativas no lo mandan.
+  // personas de campo no lo mandan.
   administrador?: boolean;
   configApp?: ConfigApp;
+  // Pide al servidor que cree el equipo de rastreo junto con la cuenta:
+  // dispositivo con identificador = usuario en minúsculas + asignación.
+  // El servidor responde `equipo` o null; si aún no lo soporta, la cuenta
+  // se crea igual y la web avisa.
+  crearEquipo?: boolean;
+}
+
+// Equipo creado junto con la cuenta (POST /api/v1/usuarios con
+// `crearEquipo:true`). `identificador` es el nombre que se configura en la
+// app como ID de equipo y el que se ve en Replay y En vivo.
+export interface EquipoCreadoConCuenta {
+  id: number | string;
+  idPublico?: string;
+  nombre: string;
+  identificador: string;
+}
+
+export interface RespuestaCreacionUsuarioPlataforma {
+  usuario: UsuarioPlataforma;
+  equipo?: EquipoCreadoConCuenta | null;
 }
 
 export interface ActualizacionUsuarioPlataforma {

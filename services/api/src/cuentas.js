@@ -3,7 +3,13 @@
 // el login es `usuario` (nombre_usuario único), la clave se guarda con el
 // mismo formato heredado (PBKDF2-HMAC-SHA1/1000/24) y el hash nunca sale.
 // Cada cuenta trae sus grupos[], sus roles[] y su configApp (de atributos).
-// Solo administradores; la baja es lógica (habilitado=false, reversible).
+// Plantel: cualquier cuenta activa no-solo-lectura; la baja es lógica
+// (habilitado=false, reversible).
+// POST acepta `crearEquipo` (default false): en la misma transacción crea el
+// equipo tracking.dmt_dispositivo (nombre = nombre de la persona,
+// identificador = usuario en minúsculas, habilitado) + asignación activa en
+// operations.dmt_asignacion; 409 si el identificador ya existe. Responde
+// {usuario, equipo} con equipo null cuando no se crea.
 
 import { consultar, enTransaccion } from './db.js';
 import { datosInvalidos, noEncontrado, conflicto } from './errores.js';
@@ -16,7 +22,7 @@ import {
 } from './http.js';
 import { auditar, SUBCONSULTA_DISPOSITIVOS } from './sesiones.js';
 import { crearCredencial } from './auth.js';
-import { exigirAdministracion } from './permisos.js';
+import { exigirOperativo } from './permisos.js';
 import {
   CLAVES_CONFIG_APP,
   CONFIG_POR_DEFECTO,
@@ -405,7 +411,7 @@ async function sincronizarRoles(cliente, usuarioId, roles) {
 }
 
 export async function listarCuentas(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const { pagina, tamano, desplazamiento } = leerPaginacion(ctx.url);
   const orden = leerOrden(ctx.url, ORDEN_CUENTAS, 'u.nombre ASC');
   const { rows } = await consultar(
@@ -432,7 +438,7 @@ export async function listarCuentas(ctx) {
 }
 
 export async function obtenerCuenta(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const texto = String(ctx.params.id);
   const { rows } = await consultar(
     ctx.pool,
@@ -450,7 +456,7 @@ export async function obtenerCuenta(ctx) {
 }
 
 export async function crearCuenta(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const cuerpo = await leerCuerpoJson(ctx.req, 16384);
   const usuario = usuarioObligatorio(cuerpo.usuario);
   const clave = claveObligatoria(cuerpo.clave);
@@ -460,6 +466,7 @@ export async function crearCuenta(ctx) {
   const grupoIds = listaIds(cuerpo.grupoIds, 'grupoIds') ?? [];
   const rolIds = listaIds(cuerpo.rolIds, 'rolIds') ?? [];
   const configApp = validarConfigApp(cuerpo.configApp) ?? null;
+  const crearEquipo = booleanoOpcional(cuerpo.crearEquipo, 'crearEquipo') ?? false;
   const credencial = crearCredencial(clave);
 
   const resultado = await enTransaccion(ctx.pool, async (cliente) => {
@@ -490,7 +497,48 @@ export async function crearCuenta(ctx) {
     const id = Number(rows[0].id);
     await sincronizarGrupos(cliente, id, grupos);
     await sincronizarRoles(cliente, id, roles);
-    return { id, grupos: grupos.map((grupo) => grupo.nombre), roles: codigos };
+    // Equipo propio de la persona de campo (misma transacción: si el
+    // identificador ya existe todo se deshace, sin usuario a medias). El
+    // equipo nace habilitado y con asignación activa vigente para que la
+    // persona aparezca en replay/en vivo.
+    let equipo = null;
+    if (crearEquipo) {
+      const identificador = usuario.toLowerCase();
+      const ocupado = await cliente.query(
+        'SELECT 1 FROM tracking.dmt_dispositivo WHERE identificador = $1 LIMIT 1',
+        [identificador],
+      );
+      if (ocupado.rowCount > 0) {
+        throw conflicto(`El identificador de equipo ${identificador} ya existe.`);
+      }
+      let filaEquipo;
+      try {
+        const insertado = await cliente.query(
+          `INSERT INTO tracking.dmt_dispositivo (nombre, identificador, habilitado)
+           VALUES ($1, $2, true)
+           RETURNING id, id_publico, nombre, identificador`,
+          [nombre, identificador],
+        );
+        filaEquipo = insertado.rows[0];
+      } catch (error) {
+        if (error?.code === '23505') {
+          throw conflicto(`El identificador de equipo ${identificador} ya existe.`);
+        }
+        throw error;
+      }
+      await cliente.query(
+        `INSERT INTO operations.dmt_asignacion (usuario_id, dispositivo_id, activa, desde_en)
+         VALUES ($1, $2, true, now())`,
+        [id, filaEquipo.id],
+      );
+      equipo = {
+        id: Number(filaEquipo.id),
+        idPublico: filaEquipo.id_publico,
+        nombre: filaEquipo.nombre,
+        identificador: filaEquipo.identificador,
+      };
+    }
+    return { id, grupos: grupos.map((grupo) => grupo.nombre), roles: codigos, equipo };
   });
 
   const cuenta = await cargarCuenta(ctx.pool, resultado.id);
@@ -500,14 +548,14 @@ export async function crearCuenta(ctx) {
     entidad: 'usuario',
     entidadId: cuenta.id,
     descripcion: `Usuario ${usuario} creado.`,
-    datos: { usuario, grupos: resultado.grupos, roles: resultado.roles },
+    datos: { usuario, grupos: resultado.grupos, roles: resultado.roles, crearEquipo, equipo: resultado.equipo },
     req: ctx.req,
   });
-  respuestaJson(ctx.res, 201, { usuario: cuenta });
+  respuestaJson(ctx.res, 201, { usuario: cuenta, equipo: resultado.equipo ?? null });
 }
 
 export async function actualizarCuenta(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const cuerpo = await leerCuerpoJson(ctx.req, 16384);
   const nombre = cuerpo.nombre === undefined ? undefined : textoObligatorio(cuerpo.nombre, 'nombre');
   const telefono = cuerpo.telefono === undefined ? undefined : textoOpcional(cuerpo.telefono, 'telefono', 40);
@@ -633,7 +681,7 @@ export async function actualizarCuenta(ctx) {
 }
 
 export async function eliminarCuenta(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const resultado = await enTransaccion(ctx.pool, async (cliente) => {
     const actual = await buscarCuentaInterna(cliente, ctx.params.id);
     if (!actual) throw noEncontrado('El usuario no existe.');
@@ -698,10 +746,10 @@ export async function eliminarCuenta(ctx) {
 }
 
 // GET /api/v1/usuarios/:id/equipos: equipos asignados vigentes del usuario.
-// Solo administradores. El :id acepta lo mismo que el resto de cuentas
+// Plantel: cualquier cuenta activa no-solo-lectura. El :id acepta lo mismo
 // (interno, público o nombre de login). Responde 200 {datos:[...]}.
 export async function obtenerEquiposCuenta(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const texto = String(ctx.params.id);
   const { rows } = await consultar(
     ctx.pool,
@@ -718,13 +766,13 @@ export async function obtenerEquiposCuenta(ctx) {
 }
 
 // PUT /api/v1/usuarios/:id/equipos: reemplazo total de asignaciones.
-// Solo administradores. Cuerpo {dispositivoIds:[]} obligatorio (vacío = deja
-// al usuario sin equipos). Desactiva las que salen (activa=false, se conserva
+// Plantel: cualquier cuenta activa no-solo-lectura. Cuerpo {dispositivoIds:[]}
+// obligatorio (vacío = deja al usuario sin equipos). Desactiva las que salen (activa=false, se conserva
 // el historial con hasta_en), activa o crea las que entran y repara la
 // vigencia de las que quedan. Todo en una transacción. Responde con la lista
 // final 200 {datos:[...]} en el mismo formato del GET.
 export async function reemplazarEquiposCuenta(ctx) {
-  await exigirAdministracion(ctx);
+  await exigirOperativo(ctx);
   const cuerpo = await leerCuerpoJson(ctx.req, 16384);
   const dispositivoIds = listaDispositivosObligatoria(cuerpo.dispositivoIds);
 

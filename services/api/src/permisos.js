@@ -1,11 +1,13 @@
 // Permisos de la plataforma: quién puede cambiar qué.
 // Reglas:
 //   * Solo lectura (flag solo_lectura o rol solo_lectura) bloquea toda escritura.
-//   * Operador: todo menos gestión de usuarios, roles y grupos.
-//   * Administrador (flag o rol): todo.
-// La gestión de usuarios/roles/grupos exige administrador y escritura.
+//   * Plantel (usuarios, grupos, equipos por usuario): cualquier cuenta activa
+//     no-solo-lectura, sin exigir administrador (los roles "no existen" para
+//     el dueño: el plantel lo opera cualquiera que no sea solo lectura).
+//   * Roles y resto admin-sensible: solo administradores (y nunca solo lectura).
+// La gestión de roles exige administrador y escritura.
 
-import { sinPermiso } from './errores.js';
+import { noAutenticado, sinPermiso } from './errores.js';
 
 export async function codigosRol(ejecutor, usuarioId) {
   const { rows } = await ejecutor.query(
@@ -56,7 +58,20 @@ export async function exigirEscritura(ctx) {
   }
 }
 
-// Gestión de personas y permisos: solo administradores (y nunca solo lectura).
+// Gestión del plantel (usuarios, grupos, equipos por usuario): basta una
+// cuenta activa no-solo-lectura, sin exigir administrador. Sin sesión -> 401;
+// solo lectura o deshabilitada -> 403.
+export async function exigirOperativo(ctx) {
+  if (!ctx.usuario) {
+    throw noAutenticado();
+  }
+  if (ctx.usuario.habilitado === false) {
+    throw sinPermiso('La cuenta no está habilitada.');
+  }
+  await exigirEscritura(ctx);
+}
+
+// Gestión de roles y resto admin-sensible: solo administradores (y nunca solo lectura).
 export async function exigirAdministracion(ctx) {
   await exigirEscritura(ctx);
   if (!(await esAdministradora(ctx.pool, ctx.usuario))) {
