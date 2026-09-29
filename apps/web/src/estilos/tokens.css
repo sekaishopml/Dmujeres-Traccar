@@ -23,7 +23,7 @@
 
   /* ── Neutros ────────────────────────────────────────────────────────────
      Grises con un punto de azul para que conversen con el marino. */
-  --fondo: #f3f5f9;         /* Fondo general del panel. */
+  --fondo: #edf1f7;         /* Fondo general del panel. */
   --tarjeta: #ffffff;       /* Superficies: tarjetas, tablas y paneles. */
   --texto: #142033;         /* Texto principal (AA sobre fondos claros). */
   --apagado: #5a6a80;       /* Texto secundario y etiquetas (AA sobre blanco). */

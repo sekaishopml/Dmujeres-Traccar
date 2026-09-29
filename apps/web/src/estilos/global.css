@@ -30,11 +30,11 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 .logotipo-nodo-fin { fill: #fff; }
 .logotipo-texto { display: inline-flex; align-items: baseline; gap: .32em; white-space: nowrap; }
 .logotipo-nombre { font-weight: var(--peso-titulo); color: var(--navy); letter-spacing: -.2px; font-size: 15px; }
-.logotipo-apellido { font-weight: var(--peso-fuerte); color: var(--acento); font-size: 15px; letter-spacing: .01em; }
+.logotipo-apellido { font-weight: var(--peso-fuerte); color: var(--marca); font-size: 15px; letter-spacing: .01em; }
 .logotipo--claro .logotipo-tile { fill: #fff; }
 .logotipo--claro .logotipo-ruta { stroke: var(--navy); }
 .logotipo--claro .logotipo-nombre { color: #fff; }
-.logotipo--claro .logotipo-apellido { color: var(--acento-claro); }
+.logotipo--claro .logotipo-apellido { color: #ff5c8a; }
 .logotipo--grande .logotipo-marca { width: 44px; height: 44px; }
 .logotipo--grande .logotipo-nombre, .logotipo--grande .logotipo-apellido { font-size: 22px; }
 
@@ -44,15 +44,16 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 .app.sin-lateral { grid-template-columns: minmax(0, 1fr); }
 
 .lateral {
-  background: var(--navy);
+  background: linear-gradient(180deg, #0c1f3d 0%, #0a1830 100%);
   color: #b6c3d4;
+  border-right: 1px solid #06101f;
   display: flex; flex-direction: column;
   position: sticky; top: 0; height: 100vh;
 }
 .lateral .marca {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px;
   padding: 6px 14px; min-height: var(--alto-barra);
-  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: #081528; border-bottom: 2px solid var(--marca);
   white-space: nowrap; overflow: hidden;
 }
 .lateral .marca .logotipo-marca { width: 26px; height: 26px; }
@@ -60,21 +61,23 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 .lateral nav { flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }
 .lateral nav a {
   display: flex; align-items: center; gap: 11px;
-  padding: 8px 10px; border-radius: var(--radio-xs); color: #b6c3d4;
+  padding: 9px 12px; border-radius: var(--radio); color: #b6c3d4;
   font-weight: var(--peso-medio); font-size: var(--tamano-base); white-space: nowrap;
   transition: background var(--transicion-rapida), color var(--transicion-rapida);
 }
 .lateral nav a:hover { background: rgba(255,255,255,.06); color: #fff; text-decoration: none; }
 .lateral nav a.activo {
-  background: rgba(255,255,255,.08); color: #fff;
-  box-shadow: inset 3px 0 0 var(--marca);
+  background: var(--marca); color: #fff;
+  box-shadow: 0 4px 14px rgba(235, 0, 69, .35);
 }
+.lateral nav a.activo:hover { background: var(--marca-2); }
 .lateral nav a .icono { width: 19px; height: 19px; opacity: .8; }
-.lateral nav a.activo .icono { opacity: 1; color: var(--acento-claro); }
+.lateral nav a.activo .icono { opacity: 1; color: #fff; }
 
 /* Grupos del menú lateral */
 .lateral .grupo {
-  padding: 14px 10px 4px; font-size: var(--tamano-xs); color: #7f93a9; font-weight: var(--peso-medio);
+  padding: 16px 12px 6px; font-size: 10.5px; color: #6f86a3; font-weight: var(--peso-fuerte);
+  text-transform: uppercase; letter-spacing: .09em;
 }
 .lateral .marca .lema { font-size: 10.5px; color: #93a6bb; font-weight: 500; letter-spacing: .04em; }
 
@@ -90,60 +93,61 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 /* Barra superior: identidad del lugar, acciones de operación agrupadas con
    separadores y la cuenta integrada en un chip. Sin sombra: la línea basta. */
 .barra-superior {
-  height: var(--alto-barra); background: #fff; border-bottom: 1px solid var(--linea);
+  height: var(--alto-barra); background: var(--navy-2); color: #fff; border-bottom: 0;
+  box-shadow: 0 1px 0 rgba(6, 16, 31, .4);
   display: flex; align-items: center; gap: 10px; padding: 0 16px;
   position: sticky; top: 0; z-index: 15;
 }
 .barra-superior .plegar {
-  background: transparent; border: 0; color: var(--apagado); padding: 6px; border-radius: var(--radio-xs); cursor: pointer;
+  background: transparent; border: 0; color: #c9d7e8; padding: 6px; border-radius: var(--radio-xs); cursor: pointer;
   transition: background var(--transicion-rapida), color var(--transicion-rapida);
 }
-.barra-superior .plegar:hover { background: var(--linea-2); color: var(--navy); }
+.barra-superior .plegar:hover { background: rgba(255,255,255,.1); color: #fff; }
 
 /* Migas: grupo del menú y página actual. Dan contexto sin repetir el título
    dos veces; en pantallas angostas el grupo se retira y queda la página. */
 .miga { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--tamano-sm); }
-.miga-grupo { color: var(--apagado); white-space: nowrap; }
-.miga-sep::before { content: "/"; color: var(--linea-3); }
+.miga-grupo { color: #9fb4cd; white-space: nowrap; }
+.miga-sep::before { content: "/"; color: #5d7a9c; }
 .miga-pagina {
-  color: var(--texto); font-weight: var(--peso-fuerte); font-size: var(--tamano-base);
+  color: #fff; font-weight: var(--peso-fuerte); font-size: var(--tamano-base);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.barra-sep { width: 1px; height: 20px; background: var(--linea); flex: none; }
+.barra-sep { width: 1px; height: 20px; background: rgba(255,255,255,.18); flex: none; }
 .barra-acciones { display: flex; align-items: center; gap: 2px; }
 .barra-acciones a {
-  font-size: var(--tamano-sm); font-weight: var(--peso-medio); color: var(--apagado);
-  padding: 5px 8px; border-radius: var(--radio-xs);
+  font-size: var(--tamano-sm); font-weight: var(--peso-medio); color: #c9d7e8;
+  padding: 5px 10px; border-radius: var(--radio-pill);
 }
-.barra-acciones a:hover { color: var(--navy); background: var(--linea-2); text-decoration: none; }
-.barra-acciones a.activo { color: var(--navy); }
+.barra-acciones a:hover { color: #fff; background: rgba(255,255,255,.1); text-decoration: none; }
+.barra-acciones a.activo { color: #fff; background: rgba(255,255,255,.14); }
 
 /* Chip de cuenta: avatar, nombre y rol en una sola pieza con filo fino. */
 .cuenta-chip { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .cuenta-chip .usuario-avatar {
-  width: 27px; height: 27px; border-radius: var(--radio-xs); flex: none;
+  width: 28px; height: 28px; border-radius: 50%; flex: none;
   display: grid; place-items: center;
-  background: var(--navy); color: #fff; font-size: 11px; font-weight: var(--peso-titulo); letter-spacing: .02em;
+  background: var(--marca); color: #fff; font-size: 11px; font-weight: var(--peso-titulo); letter-spacing: .02em;
 }
 .cuenta-chip .usuario-ficha { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.22; min-width: 0; }
 .cuenta-chip .usuario-nombre {
-  color: var(--texto); font-weight: var(--peso-fuerte); font-size: var(--tamano-sm);
+  color: #fff; font-weight: var(--peso-fuerte); font-size: var(--tamano-sm);
   max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cuenta-chip .usuario-roles { display: flex; gap: 6px; font-size: var(--tamano-xs); }
-.cuenta-chip .rol { font-style: normal; font-weight: var(--peso-medio); color: var(--apagado); }
-.cuenta-chip .rol.admin { color: var(--apagado); }
-.cuenta-chip .rol.lectura { color: var(--alerta); }
+.cuenta-chip .rol { font-style: normal; font-weight: var(--peso-medio); color: #9fb4cd; }
+.cuenta-chip .rol.admin { color: #9fb4cd; }
+.cuenta-chip .rol.lectura { color: #ffc98a; }
 .barra-superior .salir-barra {
   display: inline-flex; align-items: center; gap: 6px;
-  background: transparent; border: 0; color: var(--apagado);
+  background: transparent; border: 1px solid rgba(255,255,255,.22); color: #dce6f2;
   font-size: var(--tamano-sm); font-weight: var(--peso-medio);
-  padding: 6px 8px; border-radius: var(--radio-xs);
+  padding: 5px 10px; border-radius: var(--radio-pill);
 }
-.barra-superior .salir-barra:hover { background: var(--linea-2); color: var(--navy); }
+.barra-superior .salir-barra:hover { background: rgba(255,255,255,.12); color: #fff; }
 /* El relleno es exactamente 16 px: .replay-pantalla lo anula con margin
    negativo para pegar su mapa a los bordes (regla intocable del Replay). */
-.contenido { padding: 16px; flex: 1; min-width: 0; }
+.contenido { padding: 16px 16px 24px; flex: 1; min-width: 0; }
 @media (max-width: 1000px) {
   .barra-acciones { display: none; }
 }
@@ -196,10 +200,15 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
    derecha. Sin regla: la primera sección ya separa. */
 .cabecera-pagina {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  margin: 2px 0 14px;
+  margin: 4px 0 16px;
+}
+.cabecera-pagina h1 { position: relative; padding-left: 13px; color: var(--navy); }
+.cabecera-pagina h1::before {
+  content: ""; position: absolute; left: 0; top: .12em; bottom: .12em; width: 4px;
+  border-radius: 2px; background: var(--marca);
 }
 .cabecera-pagina > div { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
-.cabecera-pagina h1 { margin: 0; font-size: var(--tamano-titulo); }
+.cabecera-pagina h1 { margin: 0; font-size: 22px; letter-spacing: -.4px; }
 .cabecera-pagina .sub { color: var(--apagado); font-size: var(--tamano-sm); margin: 0; }
 .cabecera-acciones { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .empuja { flex: 1; }
@@ -233,14 +242,15 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 /* Insignia sobria: punto de color y texto en versalitas, sin fondo. El color
    de fondo competía con el resto del panel y multiplicaba las cajas. */
 .chip {
-  display: inline-flex; align-items: center; gap: 6px; padding: 0;
-  font-size: var(--tamano-sm); font-weight: var(--peso-medio); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px;
+  border-radius: var(--radio-pill); background: #eef1f5;
+  font-size: var(--tamano-xs); font-weight: var(--peso-fuerte); white-space: nowrap; line-height: 1.35;
 }
 .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-.chip.deshabilitado, .chip.desconocido { color: var(--gris); }
-.chip.sinSenal, .chip.senalDebil { color: var(--alerta); }
-.chip.detenido { color: var(--info); }
-.chip.enLinea { color: var(--exito); }
+.chip.deshabilitado, .chip.desconocido { color: var(--gris); background: #eef1f5; }
+.chip.sinSenal, .chip.senalDebil { color: var(--alerta); background: var(--alerta-suave); }
+.chip.detenido { color: var(--info); background: var(--info-suave); }
+.chip.enLinea { color: var(--exito); background: var(--exito-suave); }
 
 /* ── Controles ─────────────────────────────────────────────────────────── */
 button, .boton {
@@ -249,8 +259,8 @@ button, .boton {
   transition: background var(--transicion-rapida), border-color var(--transicion-rapida), color var(--transicion-rapida);
 }
 button:hover { background: var(--navy-2); }
-button.principal { background: var(--acento); }
-button.principal:hover { background: var(--acento-2); }
+button.principal { background: var(--marca); box-shadow: 0 2px 8px rgba(235, 0, 69, .25); }
+button.principal:hover { background: var(--marca-2); }
 button.suave, .boton-suave { background: #fff; color: var(--navy); border-color: var(--linea-3); }
 button.suave:hover, .boton-suave:hover { background: var(--linea-2); }
 button.peligro { background: #fff; color: var(--peligro); border-color: var(--peligro-borde); }
@@ -262,7 +272,7 @@ input, select, textarea {
   border: 1px solid var(--linea-3); border-radius: var(--radio-sm); padding: 6px 9px; background: #fff; min-height: 32px;
   transition: border-color var(--transicion-rapida), box-shadow var(--transicion-rapida);
 }
-input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(31, 90, 150, .2); border-color: var(--acento); }
+input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(235, 0, 69, .14); border-color: var(--marca); }
 .campo { display: block; margin-bottom: 10px; }
 .campo span { display: block; font-size: 11.5px; color: var(--apagado); margin-bottom: 3px; font-weight: 600; }
 .fila-form { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 12px; }
@@ -279,12 +289,15 @@ table.tabla th, table.tabla td {
   font-size: var(--tamano-base); transition: background var(--dmj-mov-rapida) var(--dmj-mov-curva);
 }
 table.tabla th {
-  font-size: var(--tamano-sm); color: var(--apagado); font-weight: var(--peso-medio); background: var(--fondo);
-  border-bottom: 1px solid var(--linea-3); padding-top: 5px; padding-bottom: 5px;
+  font-size: 10.5px; color: #3d5474; font-weight: var(--peso-fuerte); background: #e6ecf4;
+  text-transform: uppercase; letter-spacing: .07em;
+  border-bottom: 0; padding-top: 8px; padding-bottom: 8px;
 }
-table.tabla tr:hover td { background: #f7f9fb; }
-table.tabla tr.seleccionada td { background: #edf2f8; }
-table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--navy); }
+table.tabla td { background: var(--tarjeta); }
+table.tabla tr:hover td { background: #f6f8fc; }
+table.tabla tr.seleccionada td { background: var(--marca-suave); }
+table.tabla tr.seleccionada td:first-child { box-shadow: inset 3px 0 0 var(--marca); }
+.tabla-envoltura { border: 1px solid var(--linea); border-radius: var(--radio-md); background: var(--tarjeta); }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .vacio { color: var(--apagado); padding: 12px 0; font-size: var(--tamano-sm); }
 .apagado { color: var(--apagado); }
@@ -297,30 +310,62 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--nav
 .barra-bateria .relleno.bajo { background: var(--peligro); }
 
 /* ── Acceso (login) ────────────────────────────────────────────────────── */
-/* Acceso: la marca y el formulario, nada más. Centrado en escritorio y
-   arriba en móvil para que el teclado no tape los campos. */
-.login-pantalla { min-height: 100vh; min-height: 100dvh; background: var(--fondo); }
+/* Acceso: panel de marca navy a la izquierda (con la ruta del monograma en
+   grande de fondo) y el formulario a la derecha. En móvil el panel se reduce a
+   una franja y el formulario sube para que el teclado no tape los campos. */
+.login-pantalla {
+  min-height: 100vh; min-height: 100dvh; background: var(--fondo);
+  display: grid; grid-template-columns: minmax(360px, 44%) minmax(0, 1fr);
+}
+.login-marca {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 32px;
+  padding: 40px 44px; color: #c9d7e8;
+  background:
+    radial-gradient(120% 80% at 110% 110%, rgba(235, 0, 69, .28) 0%, rgba(235, 0, 69, 0) 55%),
+    linear-gradient(160deg, #17365d 0%, #0c1f3d 60%, #081528 100%);
+}
+.login-marca::after {
+  content: ""; position: absolute; right: -60px; bottom: 60px; width: 420px; height: 300px; pointer-events: none;
+  background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M8.5 23.5l5-8 5 4 5.5-10' fill='none' stroke='%23ffffff' stroke-opacity='.07' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.login-lema { position: relative; z-index: 1; max-width: 400px; }
+.login-lema p { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.login-lema .login-titular {
+  color: #fff; font-size: 30px; font-weight: var(--peso-titulo); line-height: 1.15; letter-spacing: -.6px;
+  margin-bottom: 14px;
+}
+.login-lema .login-titular::after {
+  content: ""; display: block; width: 44px; height: 4px; border-radius: 2px; background: var(--marca); margin-top: 16px;
+}
+.login-pie { position: relative; z-index: 1; font-size: var(--tamano-xs); color: #7f98b8; letter-spacing: .06em; }
 .login-acceso {
-  min-height: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 22px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: max(28px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
     max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
 .login-caja {
-  width: min(360px, 100%); background: var(--tarjeta);
-  border: 1px solid var(--linea); border-radius: var(--radio-md);
-  padding: 24px;
+  width: min(380px, 100%); background: var(--tarjeta);
+  border: 1px solid var(--linea); border-top: 4px solid var(--marca); border-radius: var(--radio-lg);
+  padding: 28px 28px 22px; box-shadow: var(--sombra-2);
 }
-.login-caja h2 { font-size: 17px; color: var(--texto); margin: 0 0 18px; }
+.login-caja > .logotipo { margin-bottom: 22px; }
+.login-caja h2 { font-size: 20px; color: var(--navy); margin: 0 0 4px; letter-spacing: -.3px; }
+.login-ayuda { margin: 0 0 20px; color: var(--apagado); font-size: var(--tamano-sm); }
 .login-caja .campo { margin-bottom: 12px; }
 .login-caja .campo span { color: var(--texto); font-size: var(--tamano-sm); }
-.login-caja input[type="text"], .login-caja input[type="password"] { min-height: 38px; padding: 8px 11px; }
-.login-caja button[type="submit"] { width: 100%; margin-top: 4px; min-height: 38px; }
+.login-caja input[type="text"], .login-caja input[type="password"] { min-height: 40px; padding: 8px 11px; }
+.login-caja button[type="submit"] { width: 100%; margin-top: 4px; min-height: 42px; font-size: var(--tamano-base); }
+@media (max-width: 860px) {
+  .login-pantalla { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .login-marca { padding: 22px 20px; gap: 0; }
+  .login-marca::after, .login-lema, .login-pie { display: none; }
+}
 /* Opciones del login: la etiqueta entera es pulsable; en móvil cada casilla
    gana altura de toque y se apilan para no apretarse en 320 px. */
 .login-opciones { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .casilla { display: inline-flex; align-items: center; gap: 8px; font-size: var(--tamano-sm); color: var(--apagado); cursor: pointer; }
-.casilla input { width: 16px; height: 16px; min-height: 0; padding: 0; flex: none; accent-color: var(--acento); }
+.casilla input { width: 16px; height: 16px; min-height: 0; padding: 0; flex: none; accent-color: var(--marca); }
 @media (max-width: 640px) {
   .login-acceso { justify-content: flex-start; padding-top: max(48px, env(safe-area-inset-top)); }
   .login-opciones { flex-direction: column; align-items: stretch; }
@@ -342,7 +387,7 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--nav
 .mapa-selector button {
   background: #fff; color: var(--texto); border: 0; border-radius: 0; padding: 6px 10px; font-size: 12px;
 }
-.mapa-selector button.activo { background: var(--navy); color: #fff; }
+.mapa-selector button.activo { background: var(--marca); color: #fff; }
 .mapa-envoltura { position: relative; }
 
 /* ── Replay a pantalla completa ────────────────────────────────────────── */
@@ -379,8 +424,8 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--nav
    y una regla con segmento navy que ancla la sección. */
 .cabecera-seccion {
   display: flex; align-items: baseline; gap: 8px;
-  padding-bottom: 6px; margin-bottom: 2px;
-  border-bottom: 1px solid var(--linea);
+  padding-bottom: 7px; margin-bottom: 2px;
+  border-bottom: 2px solid var(--navy-2);
 }
 .cabecera-seccion h2 { margin: 0; font-size: var(--tamano-seccion); }
 .cabecera-seccion .cuenta {
@@ -399,24 +444,30 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--nav
 
 /* Tira de cifras: una superficie con divisiones, etiqueta arriba en texto
    normal y la cifra debajo, como se lee un tablero de trabajo. */
-.tira-datos {
-  display: flex; flex-wrap: wrap; background: var(--tarjeta);
-  border: 1px solid var(--linea); border-radius: var(--radio);
-  overflow: hidden;
-}
+/* Cada cifra es una ficha con filo de color arriba: navy por defecto y el
+   color del estado cuando la ficha lo declara (tono-*). */
+.tira-datos { display: flex; flex-wrap: wrap; gap: 10px; }
 .tira-datos .dato {
-  flex: 1 1 132px; padding: 10px 14px; color: var(--texto);
-  display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 2px;
+  flex: 1 1 140px; padding: 12px 16px 13px; color: var(--texto);
+  display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 4px;
   /* Reseteo explícito: .dato.aviso también coincide con el bloque .aviso de
      avisos y heredaba fondo, borde y radio de ese otro uso. */
-  background: transparent; border: 0; border-right: 1px solid var(--linea-2); border-radius: 0;
+  background: var(--tarjeta); border: 1px solid var(--linea); border-top: 3px solid var(--navy-2);
+  border-radius: var(--radio-md); box-shadow: 0 1px 2px rgba(12, 31, 61, .06);
 }
-.tira-datos .dato:last-child { border-right: 0; }
 .tira-datos .valor {
-  font-size: 21px; font-weight: var(--peso-fuerte); font-variant-numeric: tabular-nums;
-  color: var(--texto); line-height: 1.2;
+  font-size: 26px; font-weight: var(--peso-titulo); font-variant-numeric: tabular-nums;
+  color: var(--navy); line-height: 1.1; letter-spacing: -.5px;
 }
-.tira-datos .etiqueta { font-size: var(--tamano-sm); color: var(--apagado); }
+.tira-datos .etiqueta {
+  font-size: 10.5px; color: var(--apagado); font-weight: var(--peso-fuerte);
+  text-transform: uppercase; letter-spacing: .08em;
+}
+.tira-datos .dato.tono-exito { border-top-color: var(--exito); }
+.tira-datos .dato.tono-info { border-top-color: var(--acento); }
+.tira-datos .dato.tono-alerta { border-top-color: var(--alerta); }
+.tira-datos .dato.tono-marca { border-top-color: var(--marca); }
+.tira-datos .dato.tono-peligro { border-top-color: var(--peligro); }
 .tira-datos .dato.alerta .valor { color: var(--peligro); }
 
 /* Nota vacía: una línea con icono, alineada al flujo de lectura; nunca una

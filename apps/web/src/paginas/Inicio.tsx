@@ -198,23 +198,23 @@ export default function Inicio() {
               <div className="valor">{flota.data.total}</div>
               <div className="etiqueta">Equipos</div>
             </div>
-            <div className="dato">
+            <div className="dato tono-exito">
               <div className="valor">{metricas.enLinea}</div>
               <div className="etiqueta">En movimiento</div>
             </div>
-            <div className="dato">
+            <div className="dato tono-info">
               <div className="valor">{metricas.detenido}</div>
               <div className="etiqueta">Detenidos</div>
             </div>
-            <div className={`dato${metricas.sinSenal > 0 ? ' aviso' : ''}`}>
+            <div className={`dato tono-alerta${metricas.sinSenal > 0 ? ' aviso' : ''}`}>
               <div className="valor">{metricas.sinSenal}</div>
               <div className="etiqueta">Sin señal</div>
             </div>
-            <div className="dato">
+            <div className="dato tono-marca">
               <div className="valor">{jornadasDisponibles ? filasJornadas.length : GUION}</div>
               <div className="etiqueta">Jornadas hoy</div>
             </div>
-            <div className={`dato${metricas.bateriaBaja > 0 ? ' alerta' : ''}`}>
+            <div className={`dato tono-peligro${metricas.bateriaBaja > 0 ? ' alerta' : ''}`}>
               <div className="valor">{metricas.bateriaBaja}</div>
               <div className="etiqueta">Batería baja</div>
             </div>

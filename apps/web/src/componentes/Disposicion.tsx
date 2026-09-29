@@ -141,7 +141,13 @@ export default function Disposicion() {
             <div key={grupo.titulo}>
               <div className="grupo">{grupo.titulo}</div>
               {grupo.enlaces.map((enlace) => (
-                <NavLink key={enlace.ruta} to={enlace.ruta} end={enlace.fin} title={enlace.texto}>
+                <NavLink
+                  key={enlace.ruta}
+                  to={enlace.ruta}
+                  end={enlace.fin}
+                  title={enlace.texto}
+                  className={({ isActive }) => (isActive ? 'activo' : undefined)}
+                >
                   <Icono nombre={enlace.icono} />
                   <span>{enlace.texto}</span>
                 </NavLink>

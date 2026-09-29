@@ -36,10 +36,19 @@ export default function Login() {
 
   return (
     <div className="login-pantalla">
+      <aside className="login-marca">
+        <Logotipo claro grande />
+        <div className="login-lema">
+          <p className="login-titular">Cada recorrido, tal como ocurrió.</p>
+          <p>Auditoría de rutas de la flota: en movimiento, detenido y sin señal, sin tramos inventados.</p>
+        </div>
+        <span className="login-pie">DMujeres · Plataforma de flota</span>
+      </aside>
       <div className="login-acceso">
-        <Logotipo grande />
         <form className="login-caja" onSubmit={alEnviar}>
+          <Logotipo />
           <h2>Iniciar sesión</h2>
+          <p className="login-ayuda">Entra con tu usuario del panel.</p>
 
           <label className="campo">
             <span>Usuario o correo</span>
