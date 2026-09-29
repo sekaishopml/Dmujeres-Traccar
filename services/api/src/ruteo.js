@@ -6,8 +6,9 @@
 //    esquinas, como la tarde de Pilay con cadencia de parado mientras conducía;
 //  - ventanas densas (cadencia fina de 10 s): se ajustan a vía por /match para
 //    que el jitter del GPS no se dibuje crudo punto a punto.
-// Semántica honesta (ADR-007/008): MATCHED si hay observaciones suficientes y
-// el /match las ajusta a vía (hueco con >=2 intermedios o ventana densa);
+// Semántica honesta (ADR-007/008): MATCHED si hay observaciones suficientes,
+// el /match las ajusta a vía (hueco con >=2 intermedios o ventana densa) y el
+// ajuste pasa la validación posterior (longitud, desviación y ruido);
 // ESTIMATED si se resuelve por /route A→B sin observaciones. Sin respuesta →
 // sin tramo (la ventana queda cruda, nunca se inventa). Las posiciones
 // registradas no cambian.
@@ -38,9 +39,10 @@ const PRESUPUESTO_MS = 3000;
 // ventana responde en <100 ms en el grafo local. El interior de paradas
 // nunca entra a ventanas (se aparta el jitter de parado) y los outliers de
 // teleport se apartan del ajuste; un hueco de cobertura >=45 s corta, salvo
-// cuando lo cubre una parada corta (<=120 s): ahí la ventana continúa y el
-// recorrido urbano con semáforos queda ajustado a vía en vez de cortarse en
-// decenas de rectas. Las ventanas con desplazamiento <25 m se descartan.
+// cuando lo cubre el puente de huecos cortos (<=150 s y <50 m): ahí la
+// ventana continúa y el recorrido urbano con semáforos queda ajustado a vía
+// en vez de cortarse en decenas de rectas. Las ventanas con desplazamiento
+// <25 m se descartan.
 const MAX_PUNTOS_VENTANA_DENSA = 100;
 const MAX_DURACION_VENTANA_DENSA_MS = 5 * 60 * 1000;
 const MIN_PUNTOS_VENTANA_DENSA = 3;
@@ -50,9 +52,10 @@ const DURACION_PARADA_CORTE_MS = 60 * 1000;
 const MAX_VENTANAS_DENSAS = 200;
 const TANDA_DENSAS = 4;
 // Puente de hueco corto: un hueco entre fixes conservados se puentea si dura
-// <=150 s y no separa un desplazamiento real (<150 m); las paradas largas
-// superan ese tope y el corte natural las separa.
+// <=150 s y no separa un desplazamiento real (<50 m): solo paradas cortas y
+// arrastre lento; moverse entre calles sin observaciones corta el tramo.
 const PUENTE_HUECO_MAX_SEGUNDOS = 150;
+const PUENTE_HUECO_MAX_DESPLAZAMIENTO_M = 50;
 // Rechazo de teleports antes de /match (el crudo se conserva intacto, solo
 // se aparta el fix del ajuste): velocidad implícita contra el anterior
 // válido mayor a 120 km/h, o pico aislado de precisión >25 m con ambos
@@ -60,6 +63,18 @@ const PUENTE_HUECO_MAX_SEGUNDOS = 150;
 const VELOCIDAD_MAX_TELEPORT_KMH = 120;
 const PRECISION_PICO_M = 25;
 const PRECISION_VECINA_FIABLE_M = 13;
+// Validación posterior del ajuste a vía: el trazado MATCHED solo se emite si
+// su longitud queda en [0.75, 1.25] × la cruda, ningún punto crudo se aleja
+// más de max(35, 2×precisión mediana + 15) m de la polilínea ajustada y la
+// ventana no trae más de 30 % de puntos con precisión >25 m. Si falla, la
+// ventana queda cruda: mejor sin tramo que con un desvío inventado.
+const AJUSTE_RAZON_MIN = 0.75;
+const AJUSTE_RAZON_MAX = 1.25;
+const AJUSTE_DESVIACION_MIN_M = 35;
+const AJUSTE_DESVIACION_FACTOR_PRECISION = 2;
+const AJUSTE_DESVIACION_MARGEN_M = 15;
+const AJUSTE_RUIDO_PRECISION_M = 25;
+const AJUSTE_RUIDO_MAX_FRACCION = 0.3;
 
 const cache = new Map();
 
@@ -277,19 +292,19 @@ function desplazamientoMaximoM(ventana) {
   }
 }
 
-// Un hueco entre fixes conservados se puentea si dura <=150 s y no separa un
-// desplazamiento real (<150 m): así el tráfico lento, las paradas cortas y
-// los semáforos quedan dentro de una misma ventana y el recorrido urbano se
-// ajusta a vía en vez de cortarse en decenas de rectas. Los huecos de ruta
-// real (>=150 m) y las paradas largas (>150 s) cortan: el hueco de ruta lo
-// trata el ruteo de huecos (ESTIMATED) como siempre.
+// Un hueco entre fixes conservados se puentea si dura <=150 s y el
+// desplazamiento es <50 m: así las paradas cortas y el arrastre lento quedan
+// dentro de una misma ventana y el recorrido urbano se ajusta a vía en vez de
+// cortarse en decenas de rectas. Moverse entre calles sin observaciones
+// (>=50 m) y las paradas largas (>150 s) cortan: el hueco de ruta lo trata el
+// ruteo de huecos (ESTIMATED) como siempre.
 function puenteHuecoCorto(posiciones, prevIdx, curIdx) {
   try {
     const prevMs = instanteMs(posiciones[prevIdx]);
     const curMs = instanteMs(posiciones[curIdx]);
     if (!Number.isFinite(prevMs) || !Number.isFinite(curMs)) return false;
     if ((curMs - prevMs) / 1000 > PUENTE_HUECO_MAX_SEGUNDOS) return false;
-    return distanciaM(posiciones[prevIdx], posiciones[curIdx]) < MIN_DISTANCIA_RUTEO_M;
+    return distanciaM(posiciones[prevIdx], posiciones[curIdx]) < PUENTE_HUECO_MAX_DESPLAZAMIENTO_M;
   } catch {
     return false;
   }
@@ -515,6 +530,101 @@ function precisionMedianaM(puntos) {
   }
 }
 
+// Longitud acumulada de una polilínea [lon,lat], en metros.
+function longitudTrazadoM(trazado) {
+  let total = 0;
+  for (let i = 1; i < trazado.length; i += 1) {
+    total += distanciaM(
+      { latitud: trazado[i - 1][1], longitud: trazado[i - 1][0] },
+      { latitud: trazado[i][1], longitud: trazado[i][0] },
+    );
+  }
+  return total;
+}
+
+// Longitud acumulada de los fixes crudos de una ventana, en metros.
+function longitudCrudaM(puntos) {
+  let total = 0;
+  for (let i = 1; i < puntos.length; i += 1) total += distanciaM(puntos[i - 1], puntos[i]);
+  return total;
+}
+
+// Distancia mínima punto→segmento (no a vértices) contra la polilínea, en
+// metros, proyectando en local (equirectangular) alrededor del punto.
+function distanciaPuntoPolilineaM(punto, trazado) {
+  const rad = Math.PI / 180;
+  const aMetros = (lon, lat) => [
+    (lon - punto.longitud) * rad * 6371000 * Math.cos(punto.latitud * rad),
+    (lat - punto.latitud) * rad * 6371000,
+  ];
+  const [px, py] = aMetros(punto.longitud, punto.latitud);
+  let minimo = Infinity;
+  for (let i = 1; i < trazado.length; i += 1) {
+    const [ax, ay] = aMetros(trazado[i - 1][0], trazado[i - 1][1]);
+    const [bx, by] = aMetros(trazado[i][0], trazado[i][1]);
+    const dx = bx - ax;
+    const dy = by - ay;
+    const largo2 = dx * dx + dy * dy;
+    let t = largo2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / largo2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const distancia = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    if (distancia < minimo) minimo = distancia;
+  }
+  return minimo;
+}
+
+// Validación posterior del ajuste, por ventana: descarta el trazado MATCHED
+// si la longitud se sale de [0.75, 1.25] × la cruda (regla a), algún punto
+// crudo queda a más de max(35, 2×precisión mediana + 15) m de la polilínea
+// (regla b) o la ventana trae más de 30 % de puntos con precisión >25 m
+// (regla c). No lanza: ante datos raros el ajuste se descarta y la ventana
+// queda cruda.
+export function validarAjusteMatch(puntos, trazado) {
+  try {
+    if (!Array.isArray(puntos) || puntos.length < 2) {
+      return { valida: false, motivo: 'invalido' };
+    }
+    if (!Array.isArray(trazado) || trazado.length < 2) {
+      return { valida: false, motivo: 'invalido' };
+    }
+    const longCruda = longitudCrudaM(puntos);
+    const longAjustada = longitudTrazadoM(trazado);
+    const razon = longCruda > 0 ? longAjustada / longCruda : Infinity;
+    const mediana = precisionMedianaM(puntos);
+    const umbralDesviacionM = Math.max(
+      AJUSTE_DESVIACION_MIN_M,
+      mediana === null
+        ? 0
+        : AJUSTE_DESVIACION_FACTOR_PRECISION * mediana + AJUSTE_DESVIACION_MARGEN_M,
+    );
+    let desviacionMaxM = 0;
+    for (const punto of puntos) {
+      const distancia = distanciaPuntoPolilineaM(punto, trazado);
+      if (distancia > desviacionMaxM) desviacionMaxM = distancia;
+    }
+    const ruidosos = puntos.filter(
+      (p) => Number.isFinite(Number(p?.precisionM)) && Number(p.precisionM) > AJUSTE_RUIDO_PRECISION_M,
+    ).length;
+    const fraccionRuido = ruidosos / puntos.length;
+    let motivo = null;
+    if (!(razon >= AJUSTE_RAZON_MIN && razon <= AJUSTE_RAZON_MAX)) motivo = 'a';
+    else if (desviacionMaxM > umbralDesviacionM) motivo = 'b';
+    else if (fraccionRuido > AJUSTE_RUIDO_MAX_FRACCION) motivo = 'c';
+    return {
+      valida: motivo === null,
+      motivo,
+      razon,
+      longCrudaM: longCruda,
+      longAjustadaM: longAjustada,
+      desviacionMaxM,
+      umbralDesviacionM,
+      fraccionRuido,
+    };
+  } catch {
+    return { valida: false, motivo: 'invalido' };
+  }
+}
+
 // Ajuste a vía por /match con los puntos del hueco (extremos + intermedios).
 // La precisión mediana de la ventana viaja como `accuracy`: el ruteo ajusta
 // cuánto puede confiar en cada snap (efecto en cañones urbanos). Devuelve
@@ -596,7 +706,10 @@ export async function reconstruirTramos(posiciones, signal) {
       if (intermedios.length >= 2) {
         const puntos = [anterior, ...intermedios, actual];
         const porMatch = await trazarPorMatch(puntos, signal);
-        if (porMatch) return { anterior, actual, ...porMatch };
+        if (porMatch && validarAjusteMatch(puntos, porMatch.trazado).valida) {
+          return { anterior, actual, ...porMatch };
+        }
+        if (porMatch) return null;
       }
       const porRuta = await trazarPorRuta(anterior, actual, signal);
       if (porRuta) return { anterior, actual, ...porRuta };
@@ -616,7 +729,8 @@ export async function reconstruirTramos(posiciones, signal) {
   }
   // Ajuste a vía de tramos densos: cada ventana matchable se resuelve por
   // /match con la caché y el presupuesto ya existentes. Si el ruteo no
-  // responde o devuelve menos de 2 puntos, la ventana queda cruda.
+  // responde, devuelve menos de 2 puntos o el ajuste no pasa la validación
+  // posterior, la ventana queda cruda.
   try {
     let ventanas = [];
     try {
@@ -639,6 +753,7 @@ export async function reconstruirTramos(posiciones, signal) {
           try {
             const porMatch = await trazarPorMatch(puntos, signal);
             if (!porMatch?.trazado || porMatch.trazado.length < 2) return null;
+            if (!validarAjusteMatch(puntos, porMatch.trazado).valida) return null;
             return { puntos, ...porMatch };
           } catch {
             return null;

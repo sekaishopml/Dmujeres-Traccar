@@ -57,6 +57,22 @@ public class RouteService {
 
     private static String MAPA_VERSION = "desconocida";
 
+    // MapMatching guarda estado mutable por consulta (queryGraph, statistics):
+    // compartir una instancia entre los 4 hilos devolvía 500 y caminos
+    // distintos para la misma entrada. Cada hilo del pool tiene la suya.
+    private static final ThreadLocal<MapMatching> MATCHER_POR_HILO = new ThreadLocal<>();
+
+    private static MapMatching matcherDeHilo(GraphHopper hopper) {
+        MapMatching mm = MATCHER_POR_HILO.get();
+        if (mm == null) {
+            mm = MapMatching.fromGraphHopper(hopper, new com.graphhopper.util.PMap().putObject("profile", "car"));
+            mm.setTransitionProbabilityBeta(5);
+            mm.setMeasurementErrorSigma(10);
+            MATCHER_POR_HILO.set(mm);
+        }
+        return mm;
+    }
+
     private static GraphHopper buildHopper() {
         GraphHopperConfig cfg = new GraphHopperConfig();
         cfg.putObject("datareader.file", PBF);
@@ -106,17 +122,13 @@ public class RouteService {
         MAPA_VERSION = calcularMapaVersion(PBF);
         System.out.println("[ruteo] mapaVersion=" + MAPA_VERSION.substring(0, Math.min(12, MAPA_VERSION.length())) + "...");
 
-        MapMatching mm = MapMatching.fromGraphHopper(hopper, new com.graphhopper.util.PMap().putObject("profile", "car"));
-        mm.setTransitionProbabilityBeta(5);
-        mm.setMeasurementErrorSigma(10);
-
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", PUERTO), 0);
         // La API pide varios tramos en paralelo por cada Replay: cuatro hilos
         // alcanzan para que el grafo no se convierta en cuello de botella.
         server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
         server.createContext("/health", (HttpExchange ex) -> responder(ex, 200, "ok", false));
         server.createContext("/route", (HttpExchange ex) -> manejarRoute(ex, hopper));
-        server.createContext("/match", (HttpExchange ex) -> manejarMatch(ex, mm));
+        server.createContext("/match", (HttpExchange ex) -> manejarMatch(ex, hopper));
         server.start();
         System.out.println("[ruteo] escuchando en 127.0.0.1:" + PUERTO);
     }
@@ -161,12 +173,13 @@ public class RouteService {
         }
     }
 
-    private static void manejarMatch(HttpExchange ex, MapMatching mm) throws IOException {
+    private static void manejarMatch(HttpExchange ex, GraphHopper hopper) throws IOException {
         try {
             if (!"POST".equals(ex.getRequestMethod())) {
                 responder(ex, 405, "{\"error\":\"POST required\"}", true);
                 return;
             }
+            MapMatching mm = matcherDeHilo(hopper);
             ObjectNode body = JSON.readValue(ex.getRequestBody(), ObjectNode.class);
             ArrayNode points = (ArrayNode) body.get("points");
             if (points == null || points.size() < 2) {
@@ -233,9 +246,9 @@ public class RouteService {
 
     // --- Matching resiliente reutilizado de MatchService.java (respaldo) ---
     // Nunca pierde cobertura y nunca inventa desvíos: cada snap solo se usa si
-    // dist(raw, snap) <= 60 m; si Viterbi falla se descarta el paso y se
-    // reintenta (máx 10); si sigue fallando se divide; lo que ni así casa sale
-    // crudo. Cobertura: 100% de las observaciones de entrada.
+    // dist(raw, snap) <= snapTrust (<=45 m); si Viterbi falla se descarta el
+    // paso y se reintenta (máx 10); si sigue fallando se divide; lo que ni así
+    // casa sale crudo. Cobertura: 100% de las observaciones de entrada.
 
     private static class HybridResult {
         final List<double[]> coords = new ArrayList<>();
@@ -253,20 +266,21 @@ public class RouteService {
         }
     }
 
-    private static final double SNAP_TRUST_M = 60;
+    private static final double SNAP_TRUST_M = 45;
 
     /** Confianza del snap según la precisión declarada de la ventana:
-     *  poco error -> snap más exigente; mucho error -> hasta el tope previo. */
+     *  clamp(3·accuracy, 20, 45): poco error -> snap más exigente; mucho
+     *  error -> hasta 45 m. Sin dato: el tope (45 m). */
     private static double snapTrust(String accuracyRaw) {
         double accuracy = Double.NaN;
         try {
             accuracy = Double.parseDouble(accuracyRaw);
         } catch (Exception ignored) {
-            // sin dato: comportamiento anterior
+            // sin dato: se usa el tope conservador
         }
         if (!Double.isFinite(accuracy) || accuracy <= 0) return SNAP_TRUST_M;
         double acotada = Math.max(3, Math.min(50, accuracy));
-        return Math.max(25, Math.min(SNAP_TRUST_M, 4 * acotada));
+        return Math.max(20, Math.min(SNAP_TRUST_M, 3 * acotada));
     }
 
     private static void resilientMatch(
