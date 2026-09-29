@@ -135,6 +135,7 @@
   --lateral: 236px;        /* Ancho de la barra lateral desplegada. */
   --lateral-min: 64px;     /* Ancho del riel de íconos (tablet/plegado). */
   --alto-barra: 48px;      /* Alto de la barra superior y de la marca. */
+  --ancho-panel-replay: clamp(300px, 27vw, 380px); /* Panel izquierdo y franja de reproducción. */
 
   --navy: var(--color-marino-900);
   --navy-2: var(--color-marino-700);
@@ -164,7 +165,7 @@
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   margin: 4px 0 16px;
 }
-.cabecera-pagina h1 { position: relative; padding-left: 13px; color: var(--navy); }
+.cabecera-pagina h1 { position: relative; padding-left: 13px; color: var(--color-marino-900); }
 .cabecera-pagina h1::before {
   content: ""; position: absolute; left: 0; top: .12em; bottom: .12em; width: 4px;
   border-radius: 2px; background: var(--marca);
@@ -195,7 +196,7 @@
 .tarjeta .sub { color: var(--apagado); font-size: var(--tamano-sm); margin: 0; }
 .metrica { padding: 10px 14px; }
 .metrica .valor {
-  font-size: var(--tamano-dato); font-weight: var(--peso-titulo); color: var(--navy);
+  font-size: var(--tamano-dato); font-weight: var(--peso-titulo); color: var(--color-marino-900);
   line-height: 1.1; font-variant-numeric: tabular-nums;
 }
 .metrica .etiqueta { font-size: var(--tamano-sm); color: var(--apagado); margin-top: 2px; }
@@ -223,7 +224,7 @@ button, .boton {
 button:hover { background: var(--navy-2); }
 button.principal { background: var(--marca); box-shadow: 0 2px 8px rgba(235, 0, 69, .25); }
 button.principal:hover { background: var(--marca-2); }
-button.suave, .boton-suave { background: var(--color-superficie); color: var(--navy); border-color: var(--linea-3); }
+button.suave, .boton-suave { background: var(--color-superficie); color: var(--color-marino-900); border-color: var(--linea-3); }
 button.suave:hover, .boton-suave:hover { background: var(--linea-2); }
 button.peligro { background: var(--color-superficie); color: var(--peligro); border-color: var(--peligro-borde); }
 button:disabled { opacity: .5; cursor: not-allowed; }
@@ -357,7 +358,7 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 3px 0 0 var(--mar
 }
 .tira-datos .valor {
   font-size: 26px; font-weight: var(--peso-titulo); font-variant-numeric: tabular-nums;
-  color: var(--navy); line-height: 1.1; letter-spacing: -.5px;
+  color: var(--color-marino-900); line-height: 1.1; letter-spacing: -.5px;
 }
 .tira-datos .etiqueta {
   font-size: 10.5px; color: var(--apagado); font-weight: var(--peso-fuerte);
@@ -386,7 +387,7 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
   padding: 5px; border-radius: var(--radio-xs); cursor: pointer; display: inline-flex; align-items: center;
   transition: background var(--transicion-rapida), color var(--transicion-rapida);
 }
-.accion-icono:hover { background: var(--linea-2); color: var(--navy); }
+.accion-icono:hover { background: var(--linea-2); color: var(--color-marino-900); }
 .punto-estado { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
 /* Replay: flechas de sentido y lista de detenciones */
@@ -572,12 +573,13 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 /* --- Filtros compartidos (Historial y Replay) --- */
 /* Dos columnas compactas: el equipo ocupa la fila completa y las fechas van
    lado a lado. En Replay el filtro vive dentro del panel flotante. */
-.filtro-replay { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; align-items: end; margin-bottom: 12px; }
+.filtro-replay { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; align-items: end; margin-bottom: 12px; }
 @media (max-width: 700px) { .filtro-replay { grid-template-columns: 1fr; } }
 .filtro-replay .campo { margin: 0; }
-.filtro-replay .campo span { font-size: 12.5px; }
-.filtro-replay .campo-equipo { grid-column: 1 / -1; }
-.filtro-replay input, .filtro-replay select { font-size: 14px; }
+.filtro-replay .campo span { font-size: 13px; margin-bottom: 2px; }
+.filtro-replay .fila-equipo { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; }
+.filtro-replay .campo-equipo { flex: 1; min-width: 0; }
+.filtro-replay input, .filtro-replay select { font-size: 14px; min-height: 30px; padding-block: 4px; }
 .pie-tabla { display: flex; align-items: center; gap: 10px; padding-top: 10px; flex-wrap: wrap; }
 
 /* --- Replay --- */
@@ -585,26 +587,12 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
    contenido: cabecera, filtro compacto, fichas etiqueta/valor, paradas
    plegables, detalle del punto, mandos y lectura del punto. Títulos simples y
    densidad de datos, sin sobrelíneas ni chips decorativos. */
-/* Cabecera del panel: título y acciones sobre una línea con separador fino que
-   cruza el panel de lado a lado (márgenes negativos contra el padding de
-   global.css); en plegado se retira el separador. */
-.replay-cabecera {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin: -12px -12px 10px; padding: 10px 12px 8px;
-  border-bottom: 1px solid var(--linea-2);
-}
-.replay-cabecera h2 { margin: 0; font-size: 15px; font-weight: 650; color: var(--navy); }
-/* Acciones de cabecera: exportar CSV con etiqueta y plegar, separadas por una
-   línea de un píxel. */
-.replay-acciones { display: inline-flex; align-items: center; gap: 6px; }
-.replay-acciones .icono-solo { padding: 4px; }
-.replay-separador { width: 1px; height: 16px; background: var(--linea); }
-.replay-csv {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 8px; font-size: 12.5px; color: var(--apagado);
-}
-.replay-csv:hover { color: var(--navy); }
-.replay-panel .cuerpo-panel { display: flex; flex-direction: column; gap: 12px; }
+/* Acciones a la derecha del selector de equipo: CSV (solo texto) y plegar. */
+.replay-acciones { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.replay-acciones .icono-solo { padding: 5px; }
+.replay-csv { padding: 5px 9px; font-size: 13px; color: var(--apagado); }
+.replay-csv:hover { color: var(--color-marino-900); }
+.replay-panel .cuerpo-panel { display: flex; flex-direction: column; gap: 8px; }
 .replay-panel .cuerpo-panel > .filtro-replay { margin-bottom: 0; }
 /* Panel anclado a los bordes superior e inferior del mapa, sin margen flotante:
    borde fino solo en el lado que da al mapa. La cabecera queda fija y el cuerpo
@@ -618,14 +606,9 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
   border-radius: 0; box-shadow: none;
 }
 & .replay-panel .cuerpo-panel { overflow-y: auto; min-height: 0; }
-/* Plegado: tira delgada con las acciones; el cuerpo ya lo oculta global.css, el
-   título se retira y la tira solo ocupa lo necesario (vuelve a alto automático
+/* Plegado: tira delgada con las acciones (ver más abajo); la tira solo ocupa lo necesario (vuelve a alto automático
    para no estirarse con el anclaje inferior). */
 & .replay-panel.colapsado { width: auto; height: auto; bottom: auto; padding: 6px 8px; }
-& .replay-panel.colapsado .replay-cabecera {
-  margin: 0; padding: 0; border-bottom: 0;
-}
-& .replay-panel.colapsado .replay-cabecera h2 { display: none; }
 /* Selector de capas pegado al top bar: la esquina superior del mapa queda
    flush (sin bordes propios contra el navbar) y con el filo solo abajo y a la
    izquierda. */
@@ -650,26 +633,26 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 /* Títulos de sección y ficha de datos: una fila por etiqueta/valor, con los
    números alineados a la derecha y tabulares. */
 .replay-seccion h3, .replay-punto h3 {
-  margin: 0 0 6px; font-size: 15px; font-weight: 650; color: var(--navy);
+  margin: 0 0 4px; font-size: 15px; font-weight: 650; color: var(--color-marino-900);
 }
 .replay-ficha {
   display: grid; grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px 10px; margin: 0; font-size: 14.5px;
+  gap: 2px 10px; margin: 0; font-size: 14.5px; line-height: 1.35;
 }
 .replay-ficha dt { color: var(--apagado); }
 .replay-ficha dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.replay-nota { margin: 2px 0 0; font-size: 13px; color: var(--apagado); }
+.replay-nota { margin: 2px 0 0; font-size: 13px; line-height: 1.35; color: var(--apagado); }
 /* Integridad: una línea de lectura para el auditor, sin tarjeta propia. */
-.replay-integridad { display: grid; gap: 4px; padding-block: 2px 10px; border-bottom: 1px solid var(--linea); }
-.replay-integridad p { margin: 0; font-size: 13.5px; line-height: 1.45; }
-.replay-alerta { color: var(--peligro-2); font-size: 13px; }
+.replay-integridad { display: grid; gap: 2px; padding-block: 0 6px; border-bottom: 1px solid var(--linea); }
+.replay-integridad p { margin: 0; font-size: 14px; line-height: 1.35; }
+.replay-alerta { color: var(--peligro-2); font-size: 13px; line-height: 1.35; }
 /* Jornada: una línea de texto con los extremos; no necesita ficha propia. */
 .replay-jornada { margin: 0; font-size: 14.5px; }
 
 /* Botones de rango rápido bajo las fechas: fila completa y compactos, con el
    activo en navy como el resto de selecciones del panel. */
 .filtro-replay .rango-rapido { grid-column: 1 / -1; display: flex; gap: 6px; }
-.filtro-replay .rango-rapido button { padding: 4px 10px; font-size: 13px; }
+.filtro-replay .rango-rapido button { padding: 3px 10px; font-size: 13px; }
 .filtro-replay .rango-rapido button.activo { background: var(--navy); border-color: var(--navy); color: #fff; }
 
 /* Paradas plegables: la cabecera es el botón y la lista solo aparece abierta.
@@ -677,11 +660,11 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
    la parada. Se listan todas las paradas: el cuerpo del panel tiene scroll
    propio. La primera y la última parada llevan un borde del color del extremo
    del recorrido. */
-.replay-paradas { border-top: 1px solid var(--linea-2); padding-top: 8px; }
+.replay-paradas { border-top: 1px solid var(--linea-2); padding-top: 4px; }
 .replay-plegar-paradas {
   width: 100%; display: flex; align-items: center; gap: 6px;
-  padding: 5px 6px; border: 0; border-radius: 6px; background: none;
-  font: inherit; font-size: 14px; font-weight: 650; color: var(--navy);
+  padding: 3px 6px; border: 0; border-radius: 6px; background: none;
+  font: inherit; font-size: 15px; font-weight: 650; color: var(--color-marino-900);
   text-align: left; cursor: pointer;
 }
 .replay-plegar-paradas:hover { background: var(--linea-2); }
@@ -693,7 +676,7 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 .replay-paradas li.ultima { border-left-color: var(--rojo); }
 .replay-paradas li > button {
   width: 100%; display: flex; flex-direction: column; gap: 1px;
-  padding: 4px 6px; border: 0; border-radius: 6px; background: none;
+  padding: 3px 6px; border: 0; border-radius: 6px; background: none;
   font: inherit; color: inherit; text-align: left; cursor: pointer;
 }
 .replay-paradas li > button:hover, .replay-paradas li.activa > button { background: var(--linea-2); }
@@ -702,15 +685,11 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 .replay-paradas li.activa > button { background: rgba(235, 0, 69, .08); }
 .replay-paradas li.activa .parada-hora { color: #eb0045; }
 .parada-cabecera { display: flex; align-items: baseline; gap: 6px; width: 100%; }
-.parada-hora { font-size: 13.5px; color: var(--navy); font-weight: 650; font-variant-numeric: tabular-nums; }
-.parada-extremo { font-size: 12px; color: var(--apagado); }
-.parada-tiempo { margin-left: auto; font-weight: 650; font-size: 13.5px; }
-.parada-direccion { font-size: 13px; color: var(--apagado); overflow-wrap: anywhere; }
+.parada-hora { font-size: 14px; color: var(--color-marino-900); font-weight: 650; font-variant-numeric: tabular-nums; }
+.parada-extremo { font-size: 12.5px; color: var(--apagado); }
+.parada-tiempo { margin-left: auto; font-weight: 650; font-size: 14px; }
+.parada-direccion { font-size: 13px; line-height: 1.3; color: var(--apagado); overflow-wrap: anywhere; }
 
-/* Detalle del punto seleccionado: ficha ya definida arriba y acciones en
-   botones pequeños, sin tarjetas sueltas. */
-.replay-punto-acciones { display: flex; gap: 6px; margin-top: 6px; }
-.replay-punto-acciones button { padding: 6px 11px; font-size: 14px; }
 
 /* El marcador actual cambia de color por estado del fix; el navy de global.css
    queda solo para el arranque. */
@@ -824,7 +803,7 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 .replay-controles .icono-solo { padding: 5px; }
 .replay-controles .voltear { display: inline-flex; transform: rotate(180deg); }
 .replay-tiempos { font-size: 12.5px; color: var(--apagado); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.replay-tiempos strong { color: var(--navy); }
+.replay-tiempos strong { color: var(--color-marino-900); }
 .replay-controles .velocidades { margin-left: auto; display: flex; gap: 4px; }
 .velocidades button { padding: 3px 6px; font-size: 12.5px; }
 button.velocidad-activa { background: var(--navy); border-color: var(--navy); color: #fff; }
@@ -870,10 +849,7 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
    plegado del panel y la reproducción no repiten la animación. El panel entra
    con escala sobria desde su esquina; la franja, con fundido para no mover
    nada sobre el mapa. */
-.replay-panel {
-  transform-origin: top left;
-  animation: dmj-entrada-panel var(--dmj-mov-media) var(--dmj-mov-curva-entrada);
-}
+.replay-panel { transform-origin: top left; }
 .replay-timeline { animation: dmj-aparecer var(--dmj-mov-media) var(--dmj-mov-curva-entrada); }
 
 
@@ -885,55 +861,61 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
 /* En Replay el panel flota a la izquierda: el aviso se corre al área visible. */
 & .mapa-sin-webgl { padding-left: min(470px, 40vw); }
 
-/* Viajes del día: una fila por viaje, número en círculo, horas y datos. El
-   elegido toma el magenta de marca, igual que su línea en el mapa. */
-.replay-viajes { padding-block: 10px; border-bottom: 1px solid var(--linea); }
-.replay-viajes header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.replay-viajes h3 { margin: 0; font-size: var(--tamano-base); }
-.replay-viajes .enlace {
-  background: none; border: 0; padding: 0; min-height: 0; color: var(--acento);
-  font-size: var(--tamano-sm); font-weight: var(--peso-medio); cursor: pointer;
-}
-.replay-viajes ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 232px; overflow-y: auto; }
-.replay-viajes li button {
-  width: 100%; display: grid; grid-template-columns: 22px auto 1fr; align-items: center; gap: 10px;
-  padding: 6px 8px; border: 0; border-radius: var(--radio-sm); background: transparent;
-  color: var(--texto); font-size: var(--tamano-sm); text-align: left; min-height: 0; cursor: pointer;
-}
-.replay-viajes li button:hover { background: var(--linea-2); }
-.replay-viajes .numero {
-  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--navy); color: #fff; font-size: 11px; font-weight: var(--peso-fuerte);
-}
-.replay-viajes .horas { font-variant-numeric: tabular-nums; font-weight: var(--peso-medio); }
-.replay-viajes .datos { color: var(--apagado); text-align: right; font-variant-numeric: tabular-nums; }
-.replay-viajes li button.activo { background: var(--marca-suave); }
-.replay-viajes li button.activo .numero { background: var(--marca); }
-
 
   /* Identidad nueva: el mapa llena el área y el panel queda pegado al borde
      superior, izquierdo e inferior (contra la barra y el lateral), sin margen. */
   & { position: relative; height: 100%; margin: 0; }
   & .replay-panel {
-    top: 0; left: 0; bottom: 0; width: 380px;
+    top: 0; left: 0; bottom: 0; width: var(--ancho-panel-replay); padding: 10px 12px;
     border-width: 0 1px 0 0; border-color: var(--color-borde); border-radius: 0;
     box-shadow: none; background: var(--color-superficie);
   }
   /* La franja se centra en el mapa visible: con el panel desplegado, a la
-     derecha de sus 380 px y dejando libre la columna del zoom (56 px);
+     derecha del panel y dejando libre la columna del zoom (56 px);
      plegado, sobre todo el ancho. */
   @media (min-width: 761px) {
     &:has(.replay-panel:not(.colapsado)) .replay-timeline {
-      left: calc(380px + (100% - 380px - 56px) / 2);
-      width: min(420px, calc(100% - 380px - 56px - 24px));
+      left: calc(var(--ancho-panel-replay) + (100% - var(--ancho-panel-replay) - 56px) / 2);
+      width: min(420px, calc(100% - var(--ancho-panel-replay) - 56px - 24px));
     }
   }
-  /* Plegado: solo la pestaña con las acciones, pegada a la esquina. */
-  & .replay-panel.colapsado {
-    bottom: auto; width: auto;
-    border-width: 0 1px 1px 0; border-radius: 0 0 var(--radius-control) 0; box-shadow: var(--shadow-flotante);
+  /* Plegado fluido (escritorio): el panel no cambia de tamaño ni de
+     maquetación; se desliza a la izquierda hasta dejar visible solo la
+     esquina con CSV y la flecha, y un recorte animado oculta el resto. Solo se
+     animan transform y clip-path, que el navegador compone sin re-maquetar. */
+  --curva-panel: cubic-bezier(0.32, 0.72, 0, 1);
+  --pestana-ancho: 112px;
+  --pestana-alto: 54px;
+  @media (min-width: 761px) {
+    & .replay-panel {
+      transition: transform 420ms var(--curva-panel), clip-path 420ms var(--curva-panel), box-shadow 300ms ease;
+      clip-path: inset(0 0 0 0 round 0);
+      will-change: transform, clip-path;
+    }
+    & .replay-panel .cuerpo-panel > :not(.filtro-replay),
+    & .replay-panel .filtro-replay > :not(.fila-equipo),
+    & .replay-panel .campo-equipo { transition: opacity 220ms ease; }
+    & .replay-panel.colapsado {
+      /* Reglas heredadas encogían el panel plegado (width/height auto y el
+         cuerpo oculto): aquí conserva su tamaño para que solo se deslice. */
+      width: var(--ancho-panel-replay); height: auto; bottom: 0; padding: 10px 12px;
+      transform: translateX(calc(-100% + var(--pestana-ancho)));
+      clip-path: inset(0 0 calc(100% - var(--pestana-alto)) calc(100% - var(--pestana-ancho)) round 0 0 var(--radius-control) 0);
+      box-shadow: var(--shadow-flotante);
+    }
+    & .replay-panel.colapsado .cuerpo-panel > :not(.filtro-replay),
+    & .replay-panel.colapsado .filtro-replay > :not(.fila-equipo),
+    & .replay-panel.colapsado .campo-equipo { opacity: 0; pointer-events: none; }
+    & .replay-panel.colapsado .cuerpo-panel { display: flex; overflow: hidden; }
+    & .replay-panel.colapsado .filtro-replay { display: grid; }
+    & .replay-timeline { transition: left 420ms var(--curva-panel), width 420ms var(--curva-panel); }
   }
-  & .replay-cabecera h2 { font-family: var(--font-display); font-size: 17px; color: var(--color-marino-900); }
+  /* Móvil: el panel va arriba a todo el ancho; plegado deja solo la fila. */
+  @media (max-width: 760px) {
+    & .replay-panel.colapsado { bottom: auto; padding: 6px 8px; }
+    & .replay-panel.colapsado .filtro-replay > :not(.fila-equipo),
+    & .replay-panel.colapsado .cuerpo-panel > :not(.filtro-replay) { display: none; }
+  }
   & button { border-radius: var(--radius-control); }
   & button.principal, & .activo { accent-color: var(--color-marca); }
   @media (max-width: 760px) {
@@ -974,5 +956,46 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
     --color-texto: #122036;
     --color-texto-2: #52627a;
     --color-borde: #e1e7ef;
+  }
+  /* Franja ampliable: botón en su esquina superior derecha. Al ampliar crece
+     con una curva elástica (sobrepasa un poco y se asienta), y el gráfico de
+     batería gana altura y eje. */
+  --curva-liquida: cubic-bezier(0.34, 1.4, 0.64, 1);
+  & .replay-linea { position: relative; }
+  & .replay-ampliar {
+    position: absolute; top: -4px; right: -6px; z-index: 2;
+    width: 24px; height: 24px; min-height: 0; padding: 0; display: grid; place-items: center;
+    border: 0; background: transparent; color: var(--color-texto-3);
+  }
+  & .replay-ampliar:hover { color: var(--color-marca); background: var(--color-fondo); }
+  & .replay-lectura { padding-right: 20px; }
+  & .replay-timeline .replay-bateria {
+    position: relative;
+    transition: height 520ms var(--curva-liquida);
+  }
+  & .replay-timeline {
+    transition: left 420ms var(--curva-panel), width 520ms var(--curva-liquida),
+      border-radius 520ms var(--curva-liquida), padding 520ms var(--curva-liquida);
+  }
+  & .replay-timeline:has(.replay-linea.ampliada) {
+    width: min(880px, calc(100% - 80px));
+    border-radius: 18px; padding: 12px 14px;
+  }
+  & .replay-timeline:has(.replay-linea.ampliada) .replay-bateria { height: 150px; }
+  & .replay-linea.ampliada .replay-lectura { align-items: flex-start; }
+  @media (min-width: 761px) {
+    &:has(.replay-panel:not(.colapsado)) .replay-timeline:has(.replay-linea.ampliada) {
+      width: min(880px, calc(100% - var(--ancho-panel-replay) - 56px - 24px));
+    }
+  }
+  /* Valor de batería bajo el cursor, sobre el gráfico. */
+  & .bateria-etiqueta {
+    position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%);
+    padding: 2px 7px; border-radius: 6px; white-space: nowrap; pointer-events: none;
+    font-size: 11.5px; background: var(--color-tinta); color: #fff; box-shadow: var(--shadow-flotante);
+  }
+  & .bateria-etiqueta strong { color: #fff; }
+  @media (prefers-reduced-motion: reduce) {
+    & .replay-panel, & .replay-timeline, & .replay-timeline .replay-bateria { transition-duration: 1ms; }
   }
 }

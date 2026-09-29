@@ -56,6 +56,15 @@ const HUECO_LARGO_S = 15 * 60;
 
 const ms = (iso: string) => new Date(iso).getTime();
 
+// Con precisión mala el servidor devuelve "Cerca de …": la frase del evento se
+// adapta para no decir "Llegó a Cerca de …".
+const PREFIJO_CERCA = /^cerca de /i;
+function frase(exacta: string, aproximada: string, direccion: string): string {
+  return PREFIJO_CERCA.test(direccion)
+    ? `${aproximada} ${direccion.replace(PREFIJO_CERCA, '')}`
+    : `${exacta} ${direccion}`;
+}
+
 function duracionTexto(segundos: number): string {
   const min = Math.round(segundos / 60);
   if (min < 60) return `${min} min`;
@@ -152,7 +161,7 @@ export function construirBitacora(entradas: EntradasBitacora): EventoBitacora[] 
         id: `llegada-${p.id}`,
         tipo: 'llegada',
         instante: p.inicio,
-        titulo: p.direccion ? `Llegó a ${p.direccion}` : 'Llegó y se detuvo',
+        titulo: p.direccion ? frase('Llegó a', 'Llegó cerca de', p.direccion) : 'Llegó y se detuvo',
         detalle: `Detenido ${duracionTexto(p.duracionMin * 60)}.`,
         lugar,
         duracionSegundos: p.duracionMin * 60,
@@ -164,7 +173,7 @@ export function construirBitacora(entradas: EntradasBitacora): EventoBitacora[] 
         id: `salida-${p.id}`,
         tipo: 'salida',
         instante: p.fin,
-        titulo: p.direccion ? `Salió de ${p.direccion}` : 'Salió',
+        titulo: p.direccion ? frase('Salió de', 'Salió de la zona de', p.direccion) : 'Salió',
         detalle: esOrigen ? `Estuvo ${duracionTexto(p.duracionMin * 60)} en el punto de inicio.` : undefined,
         lugar,
       });
@@ -249,6 +258,14 @@ export function construirBitacora(entradas: EntradasBitacora): EventoBitacora[] 
 export function resumenBitacora(eventos: EventoBitacora[]) {
   const primero = (tipo: TipoEvento) => eventos.find((e) => e.tipo === tipo);
   const ultimo = (tipo: TipoEvento) => eventos.findLast((e) => e.tipo === tipo);
+  // Si tras cerrar una jornada abrió otra, la jornada vigente sigue en curso:
+  // el cierre anterior no es el "Finalizó" del día.
+  const cierre = ultimo('jornadaFin');
+  const ultimoInicio = ultimo('jornadaInicio');
+  const finJornada =
+    cierre && ultimoInicio && new Date(ultimoInicio.instante).getTime() > new Date(cierre.instante).getTime()
+      ? undefined
+      : cierre;
   const sinRegistroS = eventos
     .filter((e) => e.tipo === 'sinSenal' || e.tipo === 'sinBateria')
     .reduce((total, e) => total + (e.duracionSegundos ?? 0), 0);
@@ -256,7 +273,7 @@ export function resumenBitacora(eventos: EventoBitacora[]) {
     inicioJornada: primero('jornadaInicio'),
     primeraSalida: primero('salida'),
     primeraLlegada: primero('llegada'),
-    finJornada: ultimo('jornadaFin'),
+    finJornada,
     sinBateria: eventos.filter((e) => e.tipo === 'sinBateria').length,
     cortes: eventos.filter((e) => e.tipo === 'sinSenal' || e.tipo === 'sinBateria').length,
     sinRegistroS,

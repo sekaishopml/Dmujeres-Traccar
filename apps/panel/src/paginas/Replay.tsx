@@ -18,7 +18,6 @@ import {
   aColeccion,
   aColeccionHalos,
   detencionesDeRecorrido,
-  fechaAyerLocal,
   flechasEspaciadas,
   flechasPorZoom,
   halosDeParadas,
@@ -28,11 +27,9 @@ import {
   normalizarReconstruidos,
   puntosQuietos,
   segmentosDeRecorrido,
-  viajeDeInstante,
-  viajesEntreParadas,
 } from '@/dominio/replay';
-import type { Parada, TramoReconstruido, Viaje } from '@/dominio/replay';
-import { finDeDia, inicioDeDia } from '@/dominio/rango';
+import type { Parada, TramoReconstruido } from '@/dominio/replay';
+import { fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
 import '@/componentes/replay/replay.css';
 import type { Hueco, ReplayCalidad } from '@contratos';
 
@@ -80,55 +77,6 @@ function IntegridadRecorrido({
   );
 }
 
-// Viajes del día entre paradas. Elegir uno lo resalta en el mapa; elegirlo de
-// nuevo (o "Ver el día completo") vuelve a mostrar todo.
-function ListaViajes({
-  viajes,
-  foco,
-  alElegir,
-}: {
-  viajes: Viaje[];
-  foco: number | null;
-  alElegir: (indice: number | null) => void;
-}) {
-  if (viajes.length === 0) return null;
-  return (
-    <section className="replay-viajes">
-      <header>
-        <h3>Viajes ({viajes.length})</h3>
-        {foco != null && (
-          <button type="button" className="enlace" onClick={() => alElegir(null)}>
-            Ver el día completo
-          </button>
-        )}
-      </header>
-      <ol>
-        {viajes.map((viaje) => {
-          const minutos = Math.max(1, Math.round((milisegundos(viaje.fin) - milisegundos(viaje.inicio)) / 60000));
-          return (
-            <li key={viaje.inicio}>
-              <button
-                type="button"
-                className={viaje.indice === foco ? 'activo' : ''}
-                aria-pressed={viaje.indice === foco}
-                onClick={() => alElegir(viaje.indice === foco ? null : viaje.indice)}
-              >
-                <span className="numero">{viaje.indice + 1}</span>
-                <span className="horas">
-                  {horaCorta(viaje.inicio)} – {horaCorta(viaje.fin)}
-                </span>
-                <span className="datos">
-                  {viaje.distanciaKm.toLocaleString('es-EC', { maximumFractionDigits: 1 })} km · {formatoMinutos(minutos)}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
-  );
-}
-
 function formatoMinutos(minutos: number): string {
   if (minutos < 60) return `${minutos} min`;
   const horas = Math.floor(minutos / 60);
@@ -153,17 +101,12 @@ const NUCLEO_FLECHA = '#ffffff';
 // Grosor del filo en px nativos (3 px lógicos a escala 1).
 const FILO_FLECHA = 6;
 // Trazado: una sola línea azul marino con borde blanco, que se lee igual sobre
-// calles y satélite. El viaje elegido pasa a magenta DMujeres y el resto del
-// día se atenúa; así un día de idas y vueltas por las mismas calles se lee de
-// a un viaje. Lo estimado va punteado en el mismo azul y la falta de señal en
+// calles y satélite. Lo estimado va punteado en el mismo azul y la falta de señal en
 // gris punteado: nunca se confunden con GPS registrado.
 const COLOR_RUTA = '#17365d';
-const COLOR_FOCO = '#eb0045';
 const COLOR_BORDE = '#ffffff';
 const COLOR_SIN_SENAL = '#8a94a3';
-const OPACIDAD_ATENUADA = 0.2;
 const ID_FLECHA = 'dir-ruta';
-const ID_FLECHA_FOCO = 'dir-foco';
 // Una marca de dirección por cuadra (≈120 m) en ciudad.
 const SEPARACION_FLECHAS_M = 120;
 // Descarte de marcas ajustadas sobre una parada: el trazado reconstruido puede
@@ -417,12 +360,10 @@ export default function Replay() {
   // acontecido ayer, no el día en curso. Desde y Hasta quedan en la misma fecha
   // y el chip "Ayer" del filtro aparece activo; la URL o el ajuste manual la
   // pueden cambiar.
-  const [desde, setDesde] = useState(parametros.get('desde') ?? fechaAyerLocal());
-  const [hasta, setHasta] = useState(parametros.get('hasta') ?? fechaAyerLocal());
+  const [desde, setDesde] = useState(parametros.get('desde') ?? fechaHoyLocal());
+  const [hasta, setHasta] = useState(parametros.get('hasta') ?? fechaHoyLocal());
   const [mapa, setMapa] = useState<TipoMapa | null>(null);
   const [panelRecogido, setPanelRecogido] = useState(false);
-  // Viaje resaltado (índice en `viajes`) o null para ver el día completo.
-  const [viajeFoco, setViajeFoco] = useState<number | null>(null);
   // Ranuras ocupadas por las etiquetas de los extremos (inicio/fin del
   // recorrido y de la jornada): el registro elige una libre cuando dos pines
   // caen juntos. Vive en un ref porque los efectos que crean marcadores son
@@ -518,6 +459,9 @@ export default function Replay() {
         latitud: parada.latitud,
         longitud: parada.longitud,
         direccion: parada.direccion,
+        latitudRepresentativa: parada.latitudRepresentativa,
+        longitudRepresentativa: parada.longitudRepresentativa,
+        precisionM: parada.precisionM,
       }))
       .filter((parada) => Number.isFinite(parada.latitud) && Number.isFinite(parada.longitud))
       // El API ordena por inicio descendente; la lista se lee en orden de
@@ -539,26 +483,7 @@ export default function Replay() {
     () => segmentosDeRecorrido(posiciones, huecos, reconstruidos),
     [posiciones, huecos, reconstruidos],
   );
-  const viajes = useMemo(() => viajesEntreParadas(posiciones, paradas), [posiciones, paradas]);
-  // Cambiar de equipo o de fechas vuelve al día completo.
-  useEffect(() => {
-    setViajeFoco(null);
-  }, [seleccionado, desde, hasta]);
-  // Cada tramo lleva el índice de su viaje (-1 dentro de una parada) para que
-  // las capas resalten el elegido y atenúen el resto sin rehacer la fuente.
-  const coleccion = useMemo(() => {
-    const base = aColeccion(segmentos);
-    return {
-      ...base,
-      features: base.features.map((feature) => ({
-        ...feature,
-        properties: {
-          ...feature.properties,
-          viaje: viajeDeInstante(viajes, Number(feature.properties?.instante)),
-        },
-      })),
-    };
-  }, [segmentos, viajes]);
+  const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
   // Marcas de dirección espaciadas por distancia (no una por fix); la selección
   // del mapa no depende de ellas, se resuelve por cercanía sobre la línea de
   // acierto. Las marcas que caen sobre una parada se descartan en cualquier
@@ -591,14 +516,8 @@ export default function Replay() {
         }),
       );
     });
-    return {
-      ...coleccion,
-      features: features.map((flecha) => ({
-        ...flecha,
-        properties: { ...flecha.properties, viaje: viajeDeInstante(viajes, Number(flecha.properties?.instante)) },
-      })),
-    };
-  }, [posiciones, huecos, reconstruidos, paradas, segmentos, viajes]);
+    return { ...coleccion, features };
+  }, [posiciones, huecos, reconstruidos, paradas, segmentos]);
   // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
   // dispersión real sin líneas que la unan.
   const halos = useMemo(() => halosDeParadas(posiciones, paradas), [posiciones, paradas]);
@@ -746,11 +665,9 @@ export default function Replay() {
       });
     }
     // Flechas de sentido: punta blanca con filo del color de su línea.
-    for (const [id, color] of [[ID_FLECHA, COLOR_RUTA], [ID_FLECHA_FOCO, COLOR_FOCO]] as const) {
-      if (mapa.hasImage(id)) mapa.removeImage(id);
-      const imagen = imagenDireccion(color);
-      if (imagen) mapa.addImage(id, imagen, { pixelRatio: PIXEL_RATIO_FLECHA });
-    }
+    if (mapa.hasImage(ID_FLECHA)) mapa.removeImage(ID_FLECHA);
+    const imagenFlecha = imagenDireccion(COLOR_RUTA);
+    if (imagenFlecha) mapa.addImage(ID_FLECHA, imagenFlecha, { pixelRatio: PIXEL_RATIO_FLECHA });
     if (mapa.hasImage(ID_FLECHA) && !mapa.getLayer('replay-flechas')) {
       mapa.addLayer({
         id: 'replay-flechas',
@@ -777,48 +694,6 @@ export default function Replay() {
     if (!mapa) return;
     mapa.getSource<GeoJSONSource>('replay-recorrido')?.setData(coleccion);
   }, [mapa, coleccion]);
-
-  // Resaltado del viaje elegido: su línea pasa a magenta y el resto del día se
-  // atenúa; las flechas quedan solo en el viaje elegido. Sin foco, todo pleno.
-  useEffect(() => {
-    if (!mapa) return;
-    const enFoco = ['==', ['get', 'viaje'], viajeFoco ?? -99];
-    const opacidad = viajeFoco == null ? 1 : ['case', enFoco, 1, OPACIDAD_ATENUADA];
-    const color = viajeFoco == null ? COLOR_RUTA : ['case', enFoco, COLOR_FOCO, COLOR_RUTA];
-    for (const capa of ['replay-linea', 'replay-caminata', 'replay-estimated']) {
-      if (!mapa.getLayer(capa)) continue;
-      mapa.setPaintProperty(capa, 'line-color', color as never);
-      mapa.setPaintProperty(capa, 'line-opacity', opacidad as never);
-    }
-    for (const capa of ['replay-borde', 'replay-hueco']) {
-      if (mapa.getLayer(capa)) mapa.setPaintProperty(capa, 'line-opacity', opacidad as never);
-    }
-    if (mapa.getLayer('replay-flechas')) {
-      mapa.setFilter('replay-flechas', viajeFoco == null ? null : (enFoco as never));
-      mapa.setLayoutProperty('replay-flechas', 'icon-image', viajeFoco == null ? ID_FLECHA : ID_FLECHA_FOCO);
-    }
-  }, [mapa, viajeFoco, coleccion]);
-
-  // Elegir un viaje encuadra sus puntos; volver al día completo no mueve la
-  // cámara (el operador decide dónde mirar).
-  function enfocarViaje(indice: number | null) {
-    setViajeFoco(indice);
-    if (!mapa || indice == null) return;
-    const viaje = viajes[indice];
-    if (!viaje) return;
-    const desdeMs = milisegundos(viaje.inicio);
-    const hastaMs = milisegundos(viaje.fin);
-    const puntos = posiciones.filter((p) => {
-      const t = milisegundos(p.registradoEn);
-      return t >= desdeMs && t <= hastaMs;
-    });
-    if (puntos.length === 0) return;
-    const caja = puntos.reduce(
-      (acumulada, p) => acumulada.extend([p.longitud, p.latitud] as [number, number]),
-      new LngLatBounds([puntos[0].longitud, puntos[0].latitud], [puntos[0].longitud, puntos[0].latitud]),
-    );
-    mapa.fitBounds(caja, { padding: { top: 70, bottom: 150, left: panelRecogido ? 70 : 460, right: 70 }, maxZoom: 16, duration: 600 });
-  }
 
   useEffect(() => {
     if (!mapa) return;
@@ -963,7 +838,6 @@ export default function Replay() {
           reconstruidos={reconstruidos}
           calidad={replay.data.calidad}
         />
-        <ListaViajes viajes={viajes} foco={viajeFoco} alElegir={enfocarViaje} />
         <PanelPuntoSeleccionado />
         <ListaParadas
           paradas={paradas}
@@ -993,33 +867,6 @@ export default function Replay() {
             parada con un vuelo suave al pulsarlas. No pintan nada en el DOM. */}
         <InsigniasParadas mapa={mapa} paradas={paradas} />
         <aside className={`replay-panel${panelRecogido ? ' colapsado' : ''}`}>
-          <header className="replay-cabecera">
-            <h2>Replay</h2>
-            <span className="replay-acciones">
-              <button
-                type="button"
-                className="suave replay-csv"
-                onClick={exportarCsv}
-                disabled={!hayRecorrido}
-                title="Descargar el recorrido (CSV)"
-                aria-label="Descargar el recorrido (CSV)"
-              >
-                <Icono nombre="reportes" tamano={14} />
-                CSV
-              </button>
-              <span className="replay-separador" aria-hidden="true" />
-              <button
-                type="button"
-                className="suave icono-solo"
-                onClick={() => setPanelRecogido((valor) => !valor)}
-                title={panelRecogido ? 'Mostrar panel' : 'Ocultar panel'}
-                aria-label={panelRecogido ? 'Mostrar panel' : 'Ocultar panel'}
-                aria-expanded={!panelRecogido}
-              >
-                <Icono nombre={panelRecogido ? 'chevronDer' : 'chevronIzq'} />
-              </button>
-            </span>
-          </header>
           <div className="cuerpo-panel">
             <FiltroReplay
               compacto
@@ -1031,6 +878,30 @@ export default function Replay() {
               hasta={hasta}
               alCambiarDesde={setDesde}
               alCambiarHasta={setHasta}
+              acciones={
+                <span className="replay-acciones">
+                  <button
+                    type="button"
+                    className="suave replay-csv"
+                    onClick={exportarCsv}
+                    disabled={!hayRecorrido}
+                    title="Descargar el recorrido (CSV)"
+                    aria-label="Descargar el recorrido (CSV)"
+                  >
+                    CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="suave icono-solo"
+                    onClick={() => setPanelRecogido((valor) => !valor)}
+                    title={panelRecogido ? 'Mostrar panel' : 'Ocultar panel'}
+                    aria-label={panelRecogido ? 'Mostrar panel' : 'Ocultar panel'}
+                    aria-expanded={!panelRecogido}
+                  >
+                    <Icono nombre={panelRecogido ? 'chevronDer' : 'chevronIzq'} />
+                  </button>
+                </span>
+              }
             />
             {flota.error && <p className="vacio">{mensajeError(flota.error)}</p>}
             {cuerpoPanel()}

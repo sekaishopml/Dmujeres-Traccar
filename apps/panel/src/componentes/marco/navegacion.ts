@@ -29,7 +29,7 @@ export const GRUPOS: { titulo: string; enlaces: Enlace[] }[] = [
     enlaces: [
       { ruta: '/', descripcion: 'Resumen de la jornada de hoy en toda la operación.', texto: 'Inicio', icono: LayoutDashboard, exacto: true },
       { ruta: '/en-vivo', descripcion: 'Dónde está cada persona ahora y qué hizo en el día.', texto: 'Seguimiento', icono: MapPinned },
-      { ruta: '/replay', descripcion: 'Recorrido auditado: lo registrado, lo reconstruido y los huecos.', texto: 'Replay', icono: Route },
+      { ruta: '/replay', descripcion: 'Revive el recorrido del día paso a paso, con sus paradas y cortes de señal.', texto: 'Repetición de ruta', icono: Route },
       { ruta: '/historial', descripcion: 'Jornadas por día: inicio, cierre, duración y cortes.', texto: 'Historial', icono: History },
       { ruta: '/bateria', descripcion: 'Nivel de batería, cargas y equipos en riesgo de apagarse.', texto: 'Batería', icono: BatteryMedium },
       { ruta: '/reportes', descripcion: 'Viajes, paradas y distancias por persona y periodo.', texto: 'Reportes', icono: ChartColumn },

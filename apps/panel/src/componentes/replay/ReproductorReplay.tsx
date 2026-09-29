@@ -9,6 +9,7 @@ import { Line } from 'react-chartjs-2';
 import type { FeatureCollection, Point } from 'geojson';
 import type { Dispositivo, Hueco, Posicion } from '@contratos';
 import { bateria, duracion, GUION, velocidad } from '@/dominio/formatoBase';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import Icono from './Icono';
 import { colorToken, useTema } from '@/lib/tema';
 import { traerDireccion } from '@/dominio/datos';
@@ -34,7 +35,7 @@ import type { EstadoUnidad, Parada, TramoReconstruido } from '@/dominio/replay';
 // solo se registran escala, línea, punto y relleno.
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Filler);
 
-const VELOCIDADES = [0.5, 1, 2, 4, 8, 16];
+const VELOCIDADES = [0.25, 0.5, 1, 2, 4, 8];
 
 // El marcador se mueve en cada frame (rAF), pero la interfaz (gráfico, slider,
 // lectura) se refresca 5 veces por segundo: repintar Chart.js a 60 Hz sobre
@@ -58,12 +59,12 @@ function movimientoReducido(): boolean {
 
 // Factor base adaptativo: con una ruta de 14 h el reloj a 1× avanzaba casi en
 // tiempo real y el play parecía roto. La ruta completa se recorre en ~60 s a
-// 1×, con piso 1× para no acelerar rutas cortas y techo 300× para que una ruta
+// 1× (en 150 s desde v1.1: 60 s se sentía apurado), con piso 1× y techo 120× para que una ruta
 // de varios días no sea un parpadeo. Sobre rutas de más de 5 h el techo hace
 // que 1× tarde más de 60 s (14 h ≈ 2.8 min), todavía visible.
 const FACTOR_MINIMO = 1;
-const FACTOR_MAXIMO = 300;
-const SEGUNDOS_OBJETIVO = 60;
+const FACTOR_MAXIMO = 120;
+const SEGUNDOS_OBJETIVO = 150;
 
 function factorBase(posiciones: Posicion[]): number {
   if (posiciones.length < 2) return FACTOR_MINIMO;
@@ -96,6 +97,9 @@ const OPCIONES_BATERIA: ChartOptions<'line'> = {
   responsive: true,
   maintainAspectRatio: false,
   animation: false,
+  // El valor bajo el cursor se muestra con una etiqueta propia (HTML): el
+  // tooltip de Chart.js se recorta dentro de un lienzo de 36 px de alto.
+  interaction: { mode: 'index', intersect: false },
   plugins: {
     legend: { display: false },
     tooltip: { enabled: false },
@@ -247,7 +251,13 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
       return;
     }
     const primero = posiciones[0];
-    if (!primero) return;
+    // Sin posiciones (otra persona u otra fecha vacía) el marcador del
+    // recorrido anterior no debe quedar dibujado.
+    if (!primero) {
+      marcadorActual.current?.remove();
+      marcadorActual.current = null;
+      return;
+    }
     if (!marcadorActual.current) {
       const elemento = document.createElement('div');
       elemento.className = `marcador-actual ${CLASE_ESTADO[estadoUnidad]}`;
@@ -544,12 +554,22 @@ function useReproductor(): Reproductor {
 // Dirección bajo demanda por coordenada redondeada: react-query deduplica la
 // consulta por clave y el caché de datos.ts evita llamar dos veces al geocoder
 // cuando la misma parada vuelve a pedirse. Sin habilitar, no hay consulta.
-function useDireccion(lat: number | null, lon: number | null, habilitada: boolean): string | null {
+function useDireccion(
+  lat: number | null,
+  lon: number | null,
+  habilitada: boolean,
+  precisionM: number | null = null,
+): string | null {
   const consulta = useQuery({
-    queryKey: ['geocode', lat == null ? null : lat.toFixed(5), lon == null ? null : lon.toFixed(5)],
+    queryKey: [
+      'geocode',
+      lat == null ? null : lat.toFixed(5),
+      lon == null ? null : lon.toFixed(5),
+      precisionM == null ? null : Math.round(precisionM),
+    ],
     queryFn: async () => {
       if (lat == null || lon == null) return { direccion: null };
-      return traerDireccion(lat, lon);
+      return traerDireccion(lat, lon, precisionM);
     },
     enabled: habilitada && lat != null && lon != null,
     retry: false,
@@ -561,8 +581,9 @@ function useDireccion(lat: number | null, lon: number | null, habilitada: boolea
 // Gráfico de batería de la franja inferior: la serie completa en línea fina y
 // un segundo dataset con un único punto no nulo en la posición actual, que se
 // mueve con la reproducción. Sin porcentajes en las posiciones no se dibuja.
-function GraficoBateria() {
+function GraficoBateria({ ampliada }: { ampliada: boolean }) {
   const { posiciones, indice, pausar, mover } = useReproductor();
+  const [bajoCursor, setBajoCursor] = useState<{ indice: number; x: number } | null>(null);
   const serie = useMemo(() => serieBateria(posiciones), [posiciones]);
   const hayBateria = useMemo(() => serie.some((valor) => valor != null), [serie]);
   const tema = useTema((e) => e.tema);
@@ -610,14 +631,36 @@ function GraficoBateria() {
       onHover: (evento, elementos) => {
         const destino = evento.native?.target as HTMLElement | null;
         if (destino) destino.style.cursor = elementos.length > 0 ? 'pointer' : '';
+        const elemento = elementos[0];
+        setBajoCursor(elemento ? { indice: elemento.index, x: elemento.element.x } : null);
       },
+      scales: ampliada
+        ? {
+            x: { display: false },
+            y: {
+              display: true,
+              min: 0,
+              max: 100,
+              ticks: { stepSize: 50, callback: (v) => `${v}%`, font: { size: 10 }, color: colorToken('texto-3') },
+              grid: { color: colorToken('borde') },
+              border: { display: false },
+            },
+          }
+        : OPCIONES_BATERIA.scales,
     }),
-    [mover, pausar],
+    [mover, pausar, ampliada],
   );
   if (!hayBateria) return null;
+  const bajo = bajoCursor ? posiciones[bajoCursor.indice] : null;
+  const valorBajo = bajoCursor ? serie[bajoCursor.indice] : null;
   return (
-    <div className="replay-bateria">
+    <div className="replay-bateria" onMouseLeave={() => setBajoCursor(null)}>
       <Line data={datos} options={opciones} />
+      {bajo && valorBajo != null && bajoCursor && (
+        <span className="bateria-etiqueta" style={{ left: bajoCursor.x }} role="status">
+          <strong>{Math.round(valorBajo)}%</strong> · {horaCorta(bajo.registradoEn)}
+        </span>
+      )}
     </div>
   );
 }
@@ -630,8 +673,7 @@ function GraficoBateria() {
 // recepción en el servidor eran datos técnicos y se retiraron. Incluye
 // acciones para volver al punto o soltar la selección.
 export function PanelPuntoSeleccionado() {
-  const { posiciones, huecos, reconstruidos, dispositivo, seleccionado, mover, pausar, quitarSeleccion } =
-    useReproductor();
+  const { posiciones, huecos, reconstruidos, dispositivo, seleccionado } = useReproductor();
   const punto = seleccionado != null ? posiciones[seleccionado] ?? null : null;
   const estado = useMemo(
     () => (seleccionado == null ? null : estadoDePunto(posiciones, huecos, seleccionado)),
@@ -649,7 +691,7 @@ export function PanelPuntoSeleccionado() {
     () => (seleccionado == null || tramo != null ? null : modoDePunto(posiciones, seleccionado)),
     [posiciones, seleccionado, tramo],
   );
-  const direccion = useDireccion(punto?.latitud ?? null, punto?.longitud ?? null, punto != null);
+  const direccion = useDireccion(punto?.latitud ?? null, punto?.longitud ?? null, punto != null, punto?.precisionM ?? null);
   if (!punto || seleccionado == null) {
     return (
       <section className="replay-punto">
@@ -681,21 +723,6 @@ export function PanelPuntoSeleccionado() {
         <dt>Equipo</dt>
         <dd>{dispositivo ? (dispositivo.habilitado ? 'Activo' : 'Dado de baja') : GUION}</dd>
       </dl>
-      <div className="replay-punto-acciones">
-        <button
-          type="button"
-          className="suave"
-          onClick={() => {
-            pausar();
-            mover(seleccionado);
-          }}
-        >
-          Ir a este punto
-        </button>
-        <button type="button" className="suave" onClick={quitarSeleccion}>
-          Quitar selección
-        </button>
-      </div>
     </section>
   );
 }
@@ -719,9 +746,10 @@ function FilaParada({
   const { seleccionarParada } = useReproductor();
   const pideDireccion = (primera || activa) && !parada.direccion;
   const geocodificada = useDireccion(
-    pideDireccion ? parada.latitud : null,
-    pideDireccion ? parada.longitud : null,
+    pideDireccion ? (parada.latitudRepresentativa ?? parada.latitud) : null,
+    pideDireccion ? (parada.longitudRepresentativa ?? parada.longitud) : null,
     pideDireccion,
+    parada.precisionM ?? null,
   );
   const direccion = parada.direccion ?? geocodificada;
   const clases = [primera ? 'primera' : '', ultima ? 'ultima' : '', activa ? 'activa' : ''].filter(Boolean).join(' ');
@@ -931,6 +959,7 @@ function ControlesReplay() {
 // slider pausa la reproducción, que es la misma acción manual que los saltos.
 export function LineaTiempoReplay() {
   const { posiciones, punto, sliderRef, mover, pausar } = useReproductor();
+  const [ampliada, setAmpliada] = useState(false);
   const primera = posiciones[0] ?? null;
   const ultima = posiciones[posiciones.length - 1] ?? null;
   const inicio = primera ? milisegundos(primera.registradoEn) : 0;
@@ -942,9 +971,19 @@ export function LineaTiempoReplay() {
   // frame durante la reproducción (ver ReproductorReplay), y aquí solo se
   // atiende el arrastre del usuario.
   return (
-    <div className="replay-linea">
+    <div className={`replay-linea${ampliada ? ' ampliada' : ''}`}>
+      <button
+        type="button"
+        className="suave icono-solo replay-ampliar"
+        onClick={() => setAmpliada((v) => !v)}
+        title={ampliada ? 'Reducir' : 'Ampliar'}
+        aria-label={ampliada ? 'Reducir la franja' : 'Ampliar la franja'}
+        aria-pressed={ampliada}
+      >
+        {ampliada ? <Minimize2 size={13} strokeWidth={2.2} /> : <Maximize2 size={13} strokeWidth={2.2} />}
+      </button>
       <div className="replay-lectura">
-        <GraficoBateria />
+        <GraficoBateria ampliada={ampliada} />
         <span className="replay-tiempos">
           <strong>{punto ? horaCorta(punto.registradoEn) : GUION}</strong> · {velocidad(punto?.velocidadKmh)} ·{' '}
           {bateria(punto?.bateriaPct)}

@@ -9,6 +9,8 @@ export const UMBRAL_MOVIMIENTO_KMH = 5;
 // Desplazamiento mínimo entre fixes para confiar en la velocidad calculada
 // (por debajo es jitter del GPS parado) y ventana máxima entre ellos.
 export const MIN_DESPLAZAMIENTO_FIABLE_M = 30;
+// Fixes usados para la coordenada representativa de una parada.
+export const PRECISION_BUENA_FIX_M = 80;
 export const MAX_INTERVALO_VELOCIDAD_S = 300;
 export const MIN_PARADA_SEGUNDOS = 180;
 // Una parada real (el equipo horas en la base) llegaba fragmentada en decenas
@@ -88,7 +90,7 @@ export function sqlSegmentos() {
     -- mayor que la precisión del fix, en <= ${MAX_INTERVALO_VELOCIDAD_S} s). Apps viejas reportan 0 en marcha (Pilay 28/09:
     -- 10 km a 40-100 km/h con velocidad 0) y la parada se tragaba el viaje.
     pts AS (
-      SELECT c.id, c.id_publico, c.dispositivo_id, c.registrado_en, c.latitud, c.longitud, c.direccion,
+      SELECT c.id, c.id_publico, c.dispositivo_id, c.registrado_en, c.latitud, c.longitud, c.direccion, c.precision_m,
              greatest(coalesce(c.velocidad_kmh, 0), coalesce(v.implicita, 0)) AS velocidad,
              (greatest(coalesce(c.velocidad_kmh, 0), coalesce(v.implicita, 0)) > ${UMBRAL_MOVIMIENTO_KMH}) AS en_movimiento
       FROM crudos_pts c
@@ -237,6 +239,18 @@ export function sqlSegmentos() {
              (array_agg(g.latitud ORDER BY g.registrado_en DESC))[1] AS lat_fin,
              (array_agg(g.longitud ORDER BY g.registrado_en DESC))[1] AS lon_fin,
              (array_agg(g.direccion ORDER BY g.registrado_en))[1] AS direccion,
+             -- Coordenada representativa: mediana de los fixes con precisión
+             -- <= ${PRECISION_BUENA_FIX_M} m (el primer fix suele ser de red/wifi y caer a cientos
+             -- de metros). Sin ninguno bueno, el de menor error.
+             coalesce(
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY g.latitud) FILTER (WHERE g.precision_m <= ${PRECISION_BUENA_FIX_M}),
+               (array_agg(g.latitud ORDER BY coalesce(g.precision_m, 1e9)))[1]) AS lat_rep,
+             coalesce(
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY g.longitud) FILTER (WHERE g.precision_m <= ${PRECISION_BUENA_FIX_M}),
+               (array_agg(g.longitud ORDER BY coalesce(g.precision_m, 1e9)))[1]) AS lon_rep,
+             coalesce(
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY g.precision_m) FILTER (WHERE g.precision_m <= ${PRECISION_BUENA_FIX_M}),
+               min(g.precision_m)) AS precision_rep,
              max(g.velocidad) AS velocidad_maxima,
              coalesce(d.km, 0) AS km
       FROM grupos2 g
@@ -302,6 +316,10 @@ export function sqlSegmentos() {
              (array_agg(c.lat_fin ORDER BY c.inicio DESC))[1] AS lat_fin,
              (array_agg(c.lon_fin ORDER BY c.inicio DESC))[1] AS lon_fin,
              (array_agg(c.direccion ORDER BY c.inicio))[1] AS direccion,
+             -- La representativa es la del fragmento parado más largo.
+             (array_agg(c.lat_rep ORDER BY c.es_parada DESC, c.segundos DESC))[1] AS lat_rep,
+             (array_agg(c.lon_rep ORDER BY c.es_parada DESC, c.segundos DESC))[1] AS lon_rep,
+             (array_agg(c.precision_rep ORDER BY c.es_parada DESC, c.segundos DESC))[1] AS precision_rep,
              max(c.velocidad_maxima) AS velocidad_maxima,
              sum(c.km) AS km,
              count(*) FILTER (WHERE c.es_parada) AS fragmentos,
@@ -317,7 +335,8 @@ export function sqlSegmentos() {
     final AS (
       SELECT t.dispositivo_id, t.movimiento, t.inicio, t.fin, t.segundos,
              t.puntos, t.id, t.id_publico, t.lat_inicio, t.lon_inicio,
-             t.lat_fin, t.lon_fin, t.direccion, t.velocidad_maxima, t.km,
+             t.lat_fin, t.lon_fin, t.direccion, t.lat_rep, t.lon_rep, t.precision_rep,
+             t.velocidad_maxima, t.km,
              1 AS fragmentos,
              round(t.lat_inicio::numeric, 3)::text || ','
                || round(t.lon_inicio::numeric, 3)::text AS lugar
@@ -334,7 +353,8 @@ export function sqlSegmentos() {
       UNION ALL
       SELECT f.dispositivo_id, f.movimiento, f.inicio, f.fin, f.segundos,
              f.puntos, f.id, f.id_publico, f.lat_inicio, f.lon_inicio,
-             f.lat_fin, f.lon_fin, f.direccion, f.velocidad_maxima, f.km,
+             f.lat_fin, f.lon_fin, f.direccion, f.lat_rep, f.lon_rep, f.precision_rep,
+             f.velocidad_maxima, f.km,
              f.fragmentos, f.lugar
       FROM fusionadas f
     )

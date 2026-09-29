@@ -138,8 +138,8 @@ export default function Sistema() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-5">
-        <TarjetaDato etiqueta="Versión del panel">{version.data?.version ?? GUION}</TarjetaDato>
-        <TarjetaDato etiqueta="Versión del servicio">{version.data?.versionApi ?? GUION}</TarjetaDato>
+        <TarjetaDato etiqueta="Versión del panel">{__VERSION_PANEL__}</TarjetaDato>
+        <TarjetaDato etiqueta="Versión del servicio">{version.data?.version ?? GUION}</TarjetaDato>
         <TarjetaDato etiqueta="Versión de la base de datos">{version.data?.versionEsquema ?? GUION}</TarjetaDato>
         <TarjetaDato etiqueta="Commit" mono>{version.data?.commit ?? GUION}</TarjetaDato>
         <TarjetaDato etiqueta="Construido en">{fechaHora(version.data?.construidoEn)}</TarjetaDato>

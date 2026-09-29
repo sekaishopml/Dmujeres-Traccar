@@ -243,7 +243,9 @@ export default memo(function MapaRaster({
       {/* Estilo en línea a propósito: maplibre-gl.css pone position: relative a
           .maplibregl-map y, al no estar en una capa, le gana a la utilidad
           "absolute" de Tailwind; el contenedor quedaba con alto 0. */}
-      <div ref={contenedor} style={{ position: 'absolute', inset: 0 }} />
+      {/* zoom inverso al de la interfaz (--zoom-ui): el lienzo de MapLibre
+          queda a escala 1 y los clics caen donde se ven. */}
+      <div ref={contenedor} style={{ position: 'absolute', inset: 0, zoom: 'calc(1 / var(--zoom-ui))' }} />
       {sinMapa && (
         <p className="absolute inset-x-6 top-1/2 -translate-y-1/2 rounded-tarjeta bg-superficie/95 p-4 text-center text-[13px] text-texto-2 shadow-flotante">
           Este navegador no puede dibujar el mapa (necesita aceleración gráfica WebGL2). Activa la aceleración por

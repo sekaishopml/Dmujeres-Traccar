@@ -1,23 +1,50 @@
 // Geocodificacion inversa con Nominatim (OpenStreetMap): direccion corta en
-// español a partir de una coordenada. Cache en memoria (TTL 24 h, tope 5000
-// entradas, eviccion FIFO) y ritmo maximo de 1 peticion por segundo, segun la
-// politica de uso de Nominatim. Ninguna funcion lanza: si falla o no hay red
+// español a partir de una coordenada y su precision. Cache (TTL 24 h, tope 5000
+// entradas, clave a ~11 m, persistida en disco) y ritmo maximo de 1 peticion
+// por segundo con reintento ante 429, segun la politica de uso de Nominatim. Ninguna funcion lanza: si falla o no hay red
 // devuelve null.
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { datosInvalidos } from './errores.js';
 import { respuestaJson } from './http.js';
 
 const URL_NOMINATIM = 'https://nominatim.openstreetmap.org/reverse';
 const AGENTE = 'DMujeresTracking/0.1 (contacto interno: soporte@dmujeres.local)';
-const TIEMPO_LIMITE_MS = 4000;
+const TIEMPO_LIMITE_MS = 6000;
 const INTERVALO_MINIMO_MS = 1000;
+const MAX_REINTENTOS = 2;
+const ESPERA_MAXIMA_REINTENTO_MS = 8000;
 const TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_ENTRADAS = 5000;
-const DECIMALES_CLAVE = 5;
+// 4 decimales ≈ 11 m: paradas y puntos vecinos comparten resultado.
+const DECIMALES_CLAVE = 4;
+const MAX_PENDIENTES_PRECALENTADO = 60;
+
+// Umbrales de confianza según la precisión del fix (metros).
+export const PRECISION_BUENA_M = 50; // hasta aquí se muestra como dirección exacta
+export const PRECISION_POI_M = 30; // hasta aquí se antepone el nombre del lugar
+export const PRECISION_SOLO_ZONA_M = 150; // por encima solo se pide barrio (zoom 16)
+const DISTANCIA_POI_M = 30;
+const DISTANCIA_CALLE_BASE_M = 60;
+
+// Categorías OSM cuyo nombre es reconocible para una persona (comercio,
+// institución, edificio). Las calles (highway) nunca cuentan como lugar.
+const CATEGORIAS_LUGAR = new Set([
+  'amenity', 'shop', 'tourism', 'office', 'leisure', 'healthcare', 'craft', 'historic', 'building', 'man_made',
+]);
 
 const cache = new Map();
 let cola = Promise.resolve();
 let ultimaPeticion = 0;
+let pendientes = 0;
+let cambiosSinGuardar = false;
+let temporizadorGuardado = null;
+
+const RUTA_CACHE =
+  process.env.DMJ_GEOCODIGO_CACHE ||
+  path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.cache', 'geocodigo.json');
 
 function coordenadaValida(valor, minimo, maximo) {
   if (valor === null || valor === undefined || valor === '') return null;
@@ -26,8 +53,24 @@ function coordenadaValida(valor, minimo, maximo) {
   return numero;
 }
 
-function claveDeCache(lat, lon) {
-  return `${lat.toFixed(DECIMALES_CLAVE)}/${lon.toFixed(DECIMALES_CLAVE)}`;
+function precisionValida(valor) {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const numero = Number(valor);
+  return Number.isFinite(numero) && numero >= 0 ? numero : null;
+}
+
+// Nivel de detalle que se le pide a Nominatim y que forma parte de la clave:
+// con la misma coordenada, un fix malo y uno bueno no comparten respuesta.
+export function nivelDePrecision(precisionM) {
+  if (precisionM === null) return 'n';
+  if (precisionM <= PRECISION_POI_M) return 'a';
+  if (precisionM <= PRECISION_BUENA_M) return 'b';
+  if (precisionM <= PRECISION_SOLO_ZONA_M) return 'c';
+  return 'z';
+}
+
+export function claveDeCache(lat, lon, precisionM = null) {
+  return `${lat.toFixed(DECIMALES_CLAVE)}/${lon.toFixed(DECIMALES_CLAVE)}/${nivelDePrecision(precisionM)}`;
 }
 
 function leerCache(clave) {
@@ -37,18 +80,54 @@ function leerCache(clave) {
     cache.delete(clave);
     return undefined;
   }
-  return entrada.direccion;
+  return entrada.resultado;
 }
 
-function guardarCache(clave, direccion) {
+function guardarCache(clave, resultado) {
   cache.delete(clave);
-  cache.set(clave, { direccion, guardadoEn: Date.now() });
+  cache.set(clave, { resultado, guardadoEn: Date.now() });
   while (cache.size > MAX_ENTRADAS) {
     const masAntigua = cache.keys().next().value;
     if (masAntigua === undefined) break;
     cache.delete(masAntigua);
   }
+  programarGuardado();
 }
+
+// La caché sobrevive a reinicios del servicio: se escribe en diferido y de
+// forma atómica; si el disco falla, se sigue solo en memoria.
+function programarGuardado() {
+  cambiosSinGuardar = true;
+  if (temporizadorGuardado) return;
+  temporizadorGuardado = setTimeout(() => {
+    temporizadorGuardado = null;
+    if (!cambiosSinGuardar) return;
+    cambiosSinGuardar = false;
+    try {
+      fs.mkdirSync(path.dirname(RUTA_CACHE), { recursive: true });
+      const temporal = `${RUTA_CACHE}.tmp`;
+      fs.writeFileSync(temporal, JSON.stringify([...cache.entries()]));
+      fs.renameSync(temporal, RUTA_CACHE);
+    } catch {
+      /* sin persistencia: no es motivo para fallar */
+    }
+  }, 5000);
+  temporizadorGuardado.unref?.();
+}
+
+function cargarCacheDeDisco() {
+  try {
+    const entradas = JSON.parse(fs.readFileSync(RUTA_CACHE, 'utf8'));
+    for (const [clave, entrada] of entradas) {
+      if (typeof clave === 'string' && entrada?.resultado?.direccion && Date.now() - entrada.guardadoEn <= TTL_MS) {
+        cache.set(clave, entrada);
+      }
+    }
+  } catch {
+    /* primera ejecución o archivo dañado: se empieza vacía */
+  }
+}
+cargarCacheDeDisco();
 
 function esperar(ms, signal) {
   return new Promise((resolver) => {
@@ -78,32 +157,42 @@ async function esperarTurno(signal) {
   return turno;
 }
 
-async function consultarNominatim(lat, lon, signal) {
-  const controlador = new AbortController();
-  const porTiempo = setTimeout(() => controlador.abort(), TIEMPO_LIMITE_MS);
-  const porSenal = () => controlador.abort();
-  signal?.addEventListener('abort', porSenal, { once: true });
-  try {
-    const parametros = new URLSearchParams({
-      format: 'jsonv2',
-      lat: String(lat),
-      lon: String(lon),
-      zoom: '18',
-      addressdetails: '1',
-      'accept-language': 'es',
-    });
-    const respuesta = await fetch(`${URL_NOMINATIM}?${parametros.toString()}`, {
-      headers: { 'User-Agent': AGENTE, Accept: 'application/json' },
-      signal: controlador.signal,
-    });
-    if (!respuesta.ok) return null;
-    return await respuesta.json();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(porTiempo);
-    signal?.removeEventListener('abort', porSenal);
+async function consultarNominatim(lat, lon, zoom, signal) {
+  for (let intento = 0; intento <= MAX_REINTENTOS; intento += 1) {
+    if (intento > 0) await esperarTurno(signal);
+    if (signal?.aborted) return null;
+    const controlador = new AbortController();
+    const porTiempo = setTimeout(() => controlador.abort(), TIEMPO_LIMITE_MS);
+    const porSenal = () => controlador.abort();
+    signal?.addEventListener('abort', porSenal, { once: true });
+    let espera = 0;
+    try {
+      const parametros = new URLSearchParams({
+        format: 'jsonv2',
+        lat: String(lat),
+        lon: String(lon),
+        zoom: String(zoom),
+        addressdetails: '1',
+        'accept-language': 'es',
+      });
+      const respuesta = await fetch(`${URL_NOMINATIM}?${parametros.toString()}`, {
+        headers: { 'User-Agent': AGENTE, Accept: 'application/json' },
+        signal: controlador.signal,
+      });
+      if (respuesta.ok) return await respuesta.json();
+      // 429 (límite) y 5xx son transitorios: se espera y se reintenta.
+      if (respuesta.status !== 429 && respuesta.status < 500) return null;
+      const indicada = Number(respuesta.headers.get('retry-after'));
+      espera = Number.isFinite(indicada) && indicada > 0 ? indicada * 1000 : 2000 * (intento + 1);
+    } catch {
+      espera = 1000;
+    } finally {
+      clearTimeout(porTiempo);
+      signal?.removeEventListener('abort', porSenal);
+    }
+    if (intento < MAX_REINTENTOS) await esperar(Math.min(espera, ESPERA_MAXIMA_REINTENTO_MS), signal);
   }
+  return null;
 }
 
 function primeroConValor(address, claves) {
@@ -115,55 +204,162 @@ function primeroConValor(address, claves) {
   return '';
 }
 
-export function componerDireccion(datos) {
-  const address = datos?.address;
-  if (address && typeof address === 'object') {
-    const partes = [
-      primeroConValor(address, ['road', 'pedestrian', 'footway']),
-      primeroConValor(address, ['suburb', 'neighbourhood']),
-      primeroConValor(address, ['city', 'town', 'village']),
-      primeroConValor(address, ['state']),
-      primeroConValor(address, ['country']),
-    ].filter(Boolean);
-    if (partes.length > 0) return partes.join(', ');
-  }
-  const display = typeof datos?.display_name === 'string' ? datos.display_name.trim() : '';
-  return display !== '' ? display : null;
+function normalizar(texto) {
+  return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-// Devuelve la direccion del punto o null. Los aciertos se memorizan; los
-// fallos no, para permitir reintentos cuando vuelva la red.
-export async function direccionDe(lat, lon, opciones = {}) {
+// Quita repeticiones ("Barrio Cuba" / "Cuba"): se queda con la primera que
+// aparezca y descarta las que ya contiene o que la contienen.
+function sinRepetidos(partes) {
+  const resultado = [];
+  for (const parte of partes) {
+    if (!parte) continue;
+    const n = normalizar(parte);
+    if (resultado.some((previa) => normalizar(previa).includes(n) || n.includes(normalizar(previa)))) continue;
+    resultado.push(parte);
+  }
+  return resultado;
+}
+
+const RADIO_TIERRA_M = 6371000;
+const aRadianes = (grados) => (grados * Math.PI) / 180;
+
+export function distanciaM(lat1, lon1, lat2, lon2) {
+  const h =
+    Math.sin(aRadianes(lat2 - lat1) / 2) ** 2 +
+    Math.cos(aRadianes(lat1)) * Math.cos(aRadianes(lat2)) * Math.sin(aRadianes(lon2 - lon1) / 2) ** 2;
+  return 2 * RADIO_TIERRA_M * Math.asin(Math.sqrt(h));
+}
+
+// Distancia del punto consultado al objeto que devolvió Nominatim. Las calles
+// vienen con caja (boundingbox) y su punto central puede quedar lejos aunque
+// el fix esté encima: por eso se mide contra la caja y no contra lat/lon.
+export function distanciaAlResultado(lat, lon, datos) {
+  const caja = Array.isArray(datos?.boundingbox) ? datos.boundingbox.map(Number) : null;
+  if (caja && caja.length === 4 && caja.every(Number.isFinite)) {
+    const [sur, norte, oeste, este] = caja;
+    const latCercana = Math.min(Math.max(lat, sur), norte);
+    const lonCercana = Math.min(Math.max(lon, oeste), este);
+    return distanciaM(lat, lon, latCercana, lonCercana);
+  }
+  const latR = Number(datos?.lat);
+  const lonR = Number(datos?.lon);
+  if (Number.isFinite(latR) && Number.isFinite(lonR)) return distanciaM(lat, lon, latR, lonR);
+  return null;
+}
+
+// Convierte la respuesta de Nominatim en una dirección legible y honesta:
+//  - con precisión mala (o resultado lejano) no se afirma calle ni número:
+//    "Cerca de barrio, ciudad";
+//  - solo se antepone el nombre de un lugar si el fix es bueno y está a pocos
+//    metros de él;
+//  - se omite estado y país (la ciudad basta) y los nombres repetidos.
+// Devuelve { direccion, aproximada, distanciaM } o null si no hay nada útil.
+export function resolverDatos(datos, lat, lon, precisionM = null) {
+  const address = datos?.address;
+  if (!address || typeof address !== 'object') {
+    const display = typeof datos?.display_name === 'string' ? datos.display_name.trim() : '';
+    return display !== '' ? { direccion: display, aproximada: true, distanciaM: null } : null;
+  }
+  const distancia = Number.isFinite(lat) && Number.isFinite(lon) ? distanciaAlResultado(lat, lon, datos) : null;
+  const precisionMala = precisionM !== null && precisionM > PRECISION_BUENA_M;
+  const limiteCalle = DISTANCIA_CALLE_BASE_M + Math.min(precisionM ?? 0, 200);
+  const resultadoLejano = distancia !== null && distancia > limiteCalle;
+  const puedeNombrarCalle = !precisionMala && !resultadoLejano;
+
+  const via = puedeNombrarCalle ? primeroConValor(address, ['road', 'pedestrian', 'footway', 'path', 'cycleway']) : '';
+  const numero = via ? primeroConValor(address, ['house_number']) : '';
+  const nombre = typeof datos?.name === 'string' ? datos.name.trim() : '';
+  const esLugar =
+    nombre !== '' &&
+    CATEGORIAS_LUGAR.has(datos?.category) &&
+    precisionM !== null &&
+    precisionM <= PRECISION_POI_M &&
+    distancia !== null &&
+    distancia <= DISTANCIA_POI_M;
+  // Sin nombre de calle, Nominatim pone en 'suburb' cosas como "Terminal
+  // Portuario": se muestra como zona, nunca como si fuera la calle.
+  const zonas = sinRepetidos([
+    primeroConValor(address, ['neighbourhood']),
+    primeroConValor(address, ['quarter']),
+    primeroConValor(address, ['suburb']),
+    primeroConValor(address, ['residential']),
+  ]).slice(0, 2);
+  const ciudad = primeroConValor(address, ['city', 'town', 'village', 'municipality', 'county']);
+
+  const calle = via ? (numero ? `${via} ${numero}` : via) : '';
+  // La ciudad se compara solo por igualdad: "Terminal Portuario Guayaquil"
+  // contiene "Guayaquil" y aun así la ciudad debe aparecer.
+  const partes = sinRepetidos([esLugar ? nombre : '', calle, ...zonas]);
+  if (ciudad && !partes.some((parte) => normalizar(parte) === normalizar(ciudad))) partes.push(ciudad);
+  if (partes.length === 0) {
+    const display = typeof datos?.display_name === 'string' ? datos.display_name.trim() : '';
+    return display !== '' ? { direccion: display, aproximada: true, distanciaM: distancia } : null;
+  }
+  const aproximada = !(esLugar || via) || precisionMala || resultadoLejano;
+  const texto = partes.join(', ');
+  return { direccion: aproximada ? `Cerca de ${texto}` : texto, aproximada, distanciaM: distancia };
+}
+
+// Compatibilidad: texto de la dirección sin contexto de precisión.
+export function componerDireccion(datos) {
+  return resolverDatos(datos, NaN, NaN, null)?.direccion ?? null;
+}
+
+// Devuelve { direccion, aproximada, distanciaM } o null. Los aciertos se
+// memorizan; los fallos no, para permitir reintentos cuando vuelva la red.
+export async function resolverDireccion(lat, lon, opciones = {}) {
   try {
     const latitud = coordenadaValida(lat, -90, 90);
     const longitud = coordenadaValida(lon, -180, 180);
     if (latitud === null || longitud === null) return null;
-    const clave = claveDeCache(latitud, longitud);
+    const precisionM = precisionValida(opciones.precisionM);
+    const clave = claveDeCache(latitud, longitud, precisionM);
     const cacheada = leerCache(clave);
     if (cacheada !== undefined) return cacheada;
     const { signal } = opciones;
     if (signal?.aborted) return null;
     await esperarTurno(signal);
     if (signal?.aborted) return null;
-    const direccion = componerDireccion(await consultarNominatim(latitud, longitud, signal));
-    if (direccion) guardarCache(clave, direccion);
-    return direccion;
+    const zoom = precisionM !== null && precisionM > PRECISION_SOLO_ZONA_M ? 16 : 18;
+    const resultado = resolverDatos(await consultarNominatim(latitud, longitud, zoom, signal), latitud, longitud, precisionM);
+    if (resultado) guardarCache(clave, resultado);
+    return resultado;
   } catch {
     return null;
   }
 }
 
+export async function direccionDe(lat, lon, opciones = {}) {
+  return (await resolverDireccion(lat, lon, opciones))?.direccion ?? null;
+}
+
 // Solo cache: nunca llama a Nominatim ni espera al ritmo. Es la via que usa el
 // listado de paradas para no frenar la respuesta.
-export function direccionEnCache(lat, lon) {
+export function resolucionEnCache(lat, lon, precisionM = null) {
   try {
     const latitud = coordenadaValida(lat, -90, 90);
     const longitud = coordenadaValida(lon, -180, 180);
     if (latitud === null || longitud === null) return null;
-    return leerCache(claveDeCache(latitud, longitud)) ?? null;
+    return leerCache(claveDeCache(latitud, longitud, precisionValida(precisionM))) ?? null;
   } catch {
     return null;
   }
+}
+
+export function direccionEnCache(lat, lon, precisionM = null) {
+  return resolucionEnCache(lat, lon, precisionM)?.direccion ?? null;
+}
+
+// Resuelve en segundo plano las coordenadas que aún no están en caché (al
+// ritmo de 1/s) para que la siguiente consulta del listado ya traiga la
+// dirección. Acotado para no acumular una cola infinita.
+export function precalentar(lat, lon, precisionM = null) {
+  if (resolucionEnCache(lat, lon, precisionM) || pendientes >= MAX_PENDIENTES_PRECALENTADO) return;
+  pendientes += 1;
+  resolverDireccion(lat, lon, { precisionM }).finally(() => {
+    pendientes -= 1;
+  });
 }
 
 function leerCoordenada(valor, minimo, maximo, nombre) {
@@ -179,6 +375,12 @@ function leerCoordenada(valor, minimo, maximo, nombre) {
 export async function obtenerDireccion(ctx) {
   const lat = leerCoordenada(ctx.url.searchParams.get('lat'), -90, 90, 'lat');
   const lon = leerCoordenada(ctx.url.searchParams.get('lon'), -180, 180, 'lon');
-  const direccion = await direccionDe(lat, lon, { signal: ctx.signal });
-  respuestaJson(ctx.res, 200, { direccion });
+  const texto = ctx.url.searchParams.get('precision');
+  const precisionM = texto === null || texto.trim() === '' ? null : precisionValida(texto);
+  const resultado = await resolverDireccion(lat, lon, { signal: ctx.signal, precisionM });
+  respuestaJson(ctx.res, 200, {
+    direccion: resultado?.direccion ?? null,
+    direccionAproximada: resultado ? resultado.aproximada : null,
+    precisionM,
+  });
 }

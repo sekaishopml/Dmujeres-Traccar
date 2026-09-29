@@ -24,8 +24,21 @@ export const SELECT_DISPOSITIVO = `
          d.atributos->>'mobile.appVersion' AS version_app,
          d.atributos->>'mobile.pending' AS pendientes,
          ja.activa AS jornada_activa,
-         bat.porcentaje AS bateria_pct,
-         bat.cargando AS cargando,
+         -- La lectura más reciente entre la muestra de telemetría y el último
+         -- fix: hay equipos que solo informan batería en la posición y su
+         -- muestra de telemetría quedaba días atrás (93 % viejo frente a 77 %).
+         CASE
+           WHEN pa.bateria_pct IS NOT NULL
+                AND (bat.registrado_en IS NULL OR pa.registrado_en > bat.registrado_en)
+             THEN pa.bateria_pct
+           ELSE bat.porcentaje
+         END AS bateria_pct,
+         CASE
+           WHEN pa.bateria_pct IS NOT NULL
+                AND (bat.registrado_en IS NULL OR pa.registrado_en > bat.registrado_en)
+             THEN (pa.atributos->>'charging')::boolean
+           ELSE bat.cargando
+         END AS cargando,
          count(*) OVER() AS total_filas
   FROM tracking.dmt_dispositivo d
   LEFT JOIN tracking.dmt_posicion_actual pa ON pa.dispositivo_id = d.id
@@ -36,7 +49,7 @@ export const SELECT_DISPOSITIVO = `
     ) AS activa
   ) ja ON TRUE
   LEFT JOIN LATERAL (
-    SELECT b.porcentaje, b.cargando
+    SELECT b.porcentaje, b.cargando, b.registrado_en
     FROM telemetry.dmt_bateria b
     WHERE b.dispositivo_id = d.id
     ORDER BY b.registrado_en DESC

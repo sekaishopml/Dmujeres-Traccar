@@ -157,9 +157,13 @@ function aSaludDispositivo(fila, ahoraMs) {
     ? null
     : Math.max(0, Math.floor((registradoEn - previoMs) / 1000));
   const bufferDepth = bufferDepthDe(atributos);
-  const bateriaPct = fila.bat_pct !== null && fila.bat_pct !== undefined
-    ? Number(fila.bat_pct)
-    : (fila.pa_bateria !== null && fila.pa_bateria !== undefined ? Number(fila.pa_bateria) : null);
+  // Igual que /fleet: vale la lectura más reciente entre la muestra de
+  // telemetría y el último fix.
+  const hayPa = fila.pa_bateria !== null && fila.pa_bateria !== undefined;
+  const hayBat = fila.bat_pct !== null && fila.bat_pct !== undefined;
+  const paMasReciente = hayPa && (!hayBat || !fila.bat_registrado_en
+    || (fila.registrado_en && new Date(fila.registrado_en) > new Date(fila.bat_registrado_en)));
+  const bateriaPct = paMasReciente ? Number(fila.pa_bateria) : hayBat ? Number(fila.bat_pct) : null;
   const bateriaNum = Number.isFinite(bateriaPct) ? Math.trunc(bateriaPct) : null;
   const cargando = fila.bat_cargando === true || fila.bat_cargando === false
     ? fila.bat_cargando
@@ -257,13 +261,13 @@ export async function listarSalud(ctx) {
     `SELECT d.id, d.atributos,
             pa.registrado_en, pa.recibido_en, pa.bateria_pct AS pa_bateria,
             pa.precision_m,
-            bat.porcentaje AS bat_pct, bat.cargando AS bat_cargando,
+            bat.porcentaje AS bat_pct, bat.cargando AS bat_cargando, bat.registrado_en AS bat_registrado_en,
             j.estado AS jornada_estado,
             prev.registrado_en AS prev_registrado_en
        FROM tracking.dmt_dispositivo d
        LEFT JOIN tracking.dmt_posicion_actual pa ON pa.dispositivo_id = d.id
        LEFT JOIN LATERAL (
-         SELECT b.porcentaje, b.cargando
+         SELECT b.porcentaje, b.cargando, b.registrado_en
            FROM telemetry.dmt_bateria b
           WHERE b.dispositivo_id = d.id
           ORDER BY b.registrado_en DESC

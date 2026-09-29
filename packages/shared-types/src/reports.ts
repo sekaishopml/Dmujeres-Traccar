@@ -25,6 +25,13 @@ export interface ReporteParada {
   latitud: number;
   longitud: number;
   direccion: string | null;
+  // La dirección se resuelve sobre la coordenada representativa de la parada
+  // (mediana de los fixes de buena precisión), no sobre el primer fix.
+  // `direccionAproximada` avisa de que el texto empieza con "Cerca de".
+  direccionAproximada?: boolean | null;
+  latitudRepresentativa?: number;
+  longitudRepresentativa?: number;
+  precisionM?: number | null;
 }
 
 export interface ResumenDispositivo {

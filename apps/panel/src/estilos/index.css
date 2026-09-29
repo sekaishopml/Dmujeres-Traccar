@@ -117,6 +117,22 @@
 }
 
 @layer base {
+  /* Medidas del marco que se adaptan al alto y ancho de la ventana: en un
+     portátil de 1366x768 el lateral cabe sin barra de desplazamiento y en
+     pantallas grandes conserva las medidas de diseño (tope de cada clamp). */
+  :root {
+    --ancho-lateral: clamp(208px, 16.5vw, 248px);
+    --alto-cabecera: clamp(64px, 10vh, 80px);
+    --alto-item: clamp(34px, 5.4vh, 44px);
+    --zoom-ui: 1;
+  }
+  /* En escritorio el panel se ve al 85 %: a zoom 100 % del navegador la
+     interfaz resultaba grande. Los mapas se compensan en MapaBase (MapLibre
+     calcula mal el cursor bajo un zoom CSS heredado). */
+  @media (min-width: 1024px) {
+    :root { --zoom-ui: 0.85; }
+    #root { zoom: var(--zoom-ui); }
+  }
   html, body, #root { height: 100%; }
   /* Cambio de tema suave, sin animar nada más. */
   html.tema-transicion * { transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease !important; }

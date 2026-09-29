@@ -176,6 +176,7 @@ export async function traerEsquemaAjustes(opciones?: OpcionesPeticion): Promise<
 
 export interface RespuestaDireccion {
   direccion: string | null;
+  direccionAproximada?: boolean;
 }
 
 // Caché de direcciones por coordenada redondeada a 5 decimales (~1 m). El
@@ -183,11 +184,20 @@ export interface RespuestaDireccion {
 // al abrir la lista y al seleccionarla: el caché evita repetir la llamada.
 const direccionesPorCoordenada = new Map<string, string | null>();
 
-export async function traerDireccion(lat: number, lon: number): Promise<RespuestaDireccion> {
-  const clave = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+// La precisión del fix va al servidor: con precisión mala devuelve "Cerca de …"
+// en lugar de afirmar una calle. Forma parte de la clave porque la misma
+// coordenada puede resolverse distinto según cuánto se fíe del punto.
+export async function traerDireccion(
+  lat: number,
+  lon: number,
+  precisionM: number | null = null,
+): Promise<RespuestaDireccion> {
+  const clave = `${lat.toFixed(5)},${lon.toFixed(5)},${precisionM == null ? '' : Math.round(precisionM)}`;
   const cacheada = direccionesPorCoordenada.get(clave);
   if (cacheada !== undefined) return { direccion: cacheada };
-  const respuesta = await api.get<RespuestaDireccion>(`/api/v1/geocode/reverse${consulta({ lat, lon })}`);
+  const respuesta = await api.get<RespuestaDireccion>(
+    `/api/v1/geocode/reverse${consulta({ lat, lon, precision: precisionM ?? undefined })}`,
+  );
   const direccion = respuesta?.direccion ?? null;
   // Solo se guarda la respuesta recibida, aunque venga null: es una respuesta
   // válida del servicio. Un fallo de red no entra al caché para poder

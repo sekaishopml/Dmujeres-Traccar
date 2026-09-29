@@ -161,6 +161,10 @@ export interface Parada {
   latitud: number;
   longitud: number;
   direccion: string | null;
+  // Coordenada y precisión con las que el servidor resuelve la dirección.
+  latitudRepresentativa?: number;
+  longitudRepresentativa?: number;
+  precisionM?: number | null;
 }
 
 // Estado operativo del fix actual, para el marcador del reproductor.

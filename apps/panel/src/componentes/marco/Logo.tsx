@@ -14,19 +14,19 @@ export function Logo({
   className?: string;
 }) {
   if (simbolo) {
-    return <img src="/marca/icono-192.png" alt="DMujeres Tracking" className={cn('size-8 rounded-lg', className)} />;
+    return <img src="/marca/icono-192.png" alt="DMujeres Tracking" className={cn('rounded-lg', className ?? 'size-8')} />;
   }
   if (claro) {
-    return <img src="/marca/dmujeres-tracking-blanco.png" alt="DMujeres Tracking" className={cn('h-9 w-auto', className)} draggable={false} />;
+    return <img src="/marca/dmujeres-tracking-blanco.png" alt="DMujeres Tracking" className={cn('w-auto', className ?? 'h-9')} draggable={false} />;
   }
   return (
     <>
-      <img src="/marca/dmujeres-tracking.png" alt="DMujeres Tracking" className={cn('h-9 w-auto dark:hidden', className)} draggable={false} />
+      <img src="/marca/dmujeres-tracking.png" alt="DMujeres Tracking" className={cn('w-auto dark:hidden', className ?? 'h-9')} draggable={false} />
       <img
         src="/marca/dmujeres-tracking-blanco.png"
         alt=""
         aria-hidden="true"
-        className={cn('hidden h-9 w-auto dark:block', className)}
+        className={cn('hidden w-auto dark:block', className ?? 'h-9')}
         draggable={false}
       />
     </>

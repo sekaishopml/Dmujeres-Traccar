@@ -4,7 +4,7 @@
 
 import { consultar } from './db.js';
 import { iso } from './dto.js';
-import { direccionEnCache } from './geocodigo.js';
+import { precalentar, resolucionEnCache } from './geocodigo.js';
 import { leerOrden, leerPaginacion, leerRango, respuestaJson } from './http.js';
 import { permisoDe } from './flota.js';
 import { ORDEN_PARADAS, ORDEN_VIAJES, sqlSegmentos } from './segmentos.js';
@@ -39,6 +39,13 @@ function aViaje(fila) {
 function aParada(fila) {
   const latitud = Number(fila.lat_inicio);
   const longitud = Number(fila.lon_inicio);
+  // La dirección se resuelve para la coordenada representativa (mediana de
+  // fixes buenos), no para el primer fix, que puede ser de red y estar lejos.
+  const latRep = fila.lat_rep === null || fila.lat_rep === undefined ? latitud : Number(fila.lat_rep);
+  const lonRep = fila.lon_rep === null || fila.lon_rep === undefined ? longitud : Number(fila.lon_rep);
+  const precisionM = fila.precision_rep === null || fila.precision_rep === undefined ? null : redondear(fila.precision_rep, 1);
+  const resolucion = resolucionEnCache(latRep, lonRep, precisionM);
+  if (!resolucion) precalentar(latRep, lonRep, precisionM);
   return {
     id: Number(fila.id),
     dispositivoId: Number(fila.dispositivo_id),
@@ -48,7 +55,11 @@ function aParada(fila) {
     duracionMin: redondear(Number(fila.segundos) / 60, 1),
     latitud,
     longitud,
-    direccion: direccionEnCache(latitud, longitud),
+    direccion: resolucion?.direccion ?? null,
+    direccionAproximada: resolucion ? resolucion.aproximada : null,
+    latitudRepresentativa: latRep,
+    longitudRepresentativa: lonRep,
+    precisionM,
     // Fusión inteligente: cuántos fragmentos del mismo sitio se unieron y
     // la clave del lugar (visitas repetidas comparten lugar).
     fragmentos: Number(fila.fragmentos ?? 1),
@@ -98,12 +109,16 @@ export async function listarViajes(ctx) {
     `WITH tramos AS (${sqlSegmentos()}),
      viajes AS (SELECT * FROM tramos WHERE tipo = 'viaje'),
      paradas AS (SELECT * FROM tramos WHERE tipo = 'parada')
-     SELECT v.*,
-            (SELECT count(*) FROM paradas s
-             WHERE s.dispositivo_id = v.dispositivo_id
-               AND s.inicio > v.inicio AND s.fin < v.fin) AS paradas,
-            count(*) OVER() AS total_filas
-     FROM viajes v
+     SELECT v.*, count(*) OVER() AS total_filas
+     FROM (
+       -- Subconsulta: así "paradas" existe como columna de v y se puede
+       -- ordenar por ella (?orden=paradas daba 500).
+       SELECT v0.*,
+              (SELECT count(*) FROM paradas s
+               WHERE s.dispositivo_id = v0.dispositivo_id
+                 AND s.inicio > v0.inicio AND s.fin < v0.fin) AS paradas
+       FROM viajes v0
+     ) v
      ORDER BY ${orden.sql}, v.dispositivo_id
      LIMIT $5 OFFSET $6`,
     valores,
@@ -158,10 +173,14 @@ export async function obtenerResumen(ctx) {
        SELECT v.dispositivo_id,
               sum(v.km) AS distancia_km,
               sum(v.segundos) AS duracion_s,
-              count(*) AS viajes,
-              (SELECT count(*) FROM paradas s WHERE s.dispositivo_id = v.dispositivo_id) AS paradas
+              count(*) AS viajes
        FROM viajes v
        GROUP BY v.dispositivo_id
+     ),
+     -- Las paradas se cuentan aparte: una persona con paradas y sin viajes
+     -- salía con 0 paradas.
+     paradas_por_dispositivo AS (
+       SELECT dispositivo_id, count(*) AS paradas FROM paradas GROUP BY dispositivo_id
      ),
      posiciones AS (
        SELECT p.dispositivo_id, count(*) AS total, max(p.registrado_en) AS ultima
@@ -180,11 +199,12 @@ export async function obtenerResumen(ctx) {
             coalesce(pd.distancia_km, 0) AS distancia_km,
             coalesce(pd.duracion_s, 0) AS duracion_s,
             coalesce(pd.viajes, 0) AS viajes,
-            coalesce(pd.paradas, 0) AS paradas,
+            coalesce(pp.paradas, 0) AS paradas,
             pos.total AS total_posiciones, pos.ultima AS ultima_posicion
      FROM posiciones pos
      JOIN tracking.dmt_dispositivo d ON d.id = pos.dispositivo_id
      LEFT JOIN por_dispositivo pd ON pd.dispositivo_id = pos.dispositivo_id
+     LEFT JOIN paradas_por_dispositivo pp ON pp.dispositivo_id = pos.dispositivo_id
      ORDER BY d.nombre, d.id`,
     valores,
     { signal: ctx.signal, timeoutMs: 20000 },

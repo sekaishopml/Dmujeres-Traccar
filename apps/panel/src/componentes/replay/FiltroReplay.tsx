@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Dispositivo } from '@contratos';
 import { fechaHoyLocal } from '@/dominio/rango';
 import { fechaAyerLocal } from '@/dominio/replay';
@@ -18,6 +19,8 @@ interface Props {
   // vacío, que el endpoint de jornadas lee como "sin filtro". Las demás
   // pantallas mantienen la unidad obligatoria para anclar el mapa.
   conTodas?: boolean;
+  // Botones a la derecha del selector de equipo, en su misma fila.
+  acciones?: ReactNode;
 }
 
 // Selector compartido por Historial y Replay: ambos necesitan equipo + rango y
@@ -33,6 +36,7 @@ export default function FiltroReplay({
   alCambiarHasta,
   compacto = false,
   conTodas = false,
+  acciones,
 }: Props) {
   // Los atajos cubren los tres casos de operación diaria (hoy, ayer y la
   // ventana por defecto ayer→hoy). Se derivan en cada render: son dos fechas
@@ -44,24 +48,27 @@ export default function FiltroReplay({
   const rangoHoyAyer = desde === ayer && hasta === hoy;
   return (
     <div className={compacto ? 'filtro-replay' : 'tarjeta filtro-replay'}>
-      <label className="campo campo-equipo">
-        <span>Equipo</span>
-        <select
-          value={dispositivoId}
-          onChange={(evento) => alCambiarDispositivo(evento.target.value)}
-          disabled={cargandoEquipos || equipos.length === 0}
-        >
-          {conTodas && <option value="">Todos los equipos</option>}
-          {equipos.length === 0 && !conTodas && (
-            <option value="">{cargandoEquipos ? 'Cargando equipos…' : 'Sin equipos visibles'}</option>
-          )}
-          {equipos.map((equipo) => (
-            <option key={equipo.idPublico} value={equipo.idPublico}>
-              {equipo.nombre} · {equipo.identificadorUnico}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="fila-equipo">
+        <label className="campo campo-equipo">
+          <span>Equipo</span>
+          <select
+            value={dispositivoId}
+            onChange={(evento) => alCambiarDispositivo(evento.target.value)}
+            disabled={cargandoEquipos || equipos.length === 0}
+          >
+            {conTodas && <option value="">Todos los equipos</option>}
+            {equipos.length === 0 && !conTodas && (
+              <option value="">{cargandoEquipos ? 'Cargando equipos…' : 'Sin equipos visibles'}</option>
+            )}
+            {equipos.map((equipo) => (
+              <option key={equipo.idPublico} value={equipo.idPublico}>
+                {equipo.nombre} · {equipo.identificadorUnico}
+              </option>
+            ))}
+          </select>
+        </label>
+      {acciones}
+      </div>
       <label className="campo">
         <span>Desde</span>
         <input type="date" value={desde} onChange={(evento) => alCambiarDesde(evento.target.value)} />

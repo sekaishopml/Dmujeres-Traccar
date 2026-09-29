@@ -45,7 +45,7 @@ export default function Login() {
   }
 
   return (
-    <div className="grid min-h-dvh lg:grid-cols-[minmax(420px,5fr)_7fr]">
+    <div className="grid min-h-full lg:grid-cols-[minmax(420px,5fr)_7fr]">
       <aside className="relative hidden overflow-hidden bg-tinta px-12 py-10 text-[#c5d6ea] lg:flex lg:flex-col">
         <div
           aria-hidden="true"

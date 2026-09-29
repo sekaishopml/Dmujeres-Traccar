@@ -2,11 +2,17 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+
+const paquete = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 // Panel DMujeres Tracking. Habla solo con la API propia (/api/v1): en
 // desarrollo Vite la proxya y en producción services/web sirve este build.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Versión del panel (package.json) visible en Sistema y en el menú de la
+  // cuenta: se sube en cada entrega.
+  define: { __VERSION_PANEL__: JSON.stringify(paquete.version) },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

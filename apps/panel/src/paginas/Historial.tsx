@@ -14,7 +14,7 @@ import { Cargando, ErrorCarga, Vacio } from '@/componentes/ui/Estados';
 import { AccionesPagina } from '@/componentes/marco/Marco';
 import { BarraDia } from '@/componentes/historial/BarraDia';
 import { GUION } from '@/dominio/formatoBase';
-import { traerFlota, traerJornadasFlota, CACHE_AUDITORIA_MS, CLAVE_FLOTA } from '@/dominio/datos';
+import { traerFlota, traerJornadasFlota, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from '@/dominio/datos';
 import { mensajeError } from '@/dominio/errores';
 import { fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
 
@@ -64,7 +64,8 @@ export default function Historial() {
   const [hasta, setHasta] = useState(parametros.get('hasta') ?? fechaHoyLocal());
 
   const flota = useQuery({ queryKey: CLAVE_FLOTA, queryFn: () => traerFlota() });
-  const equipos = useMemo(() => flota.data?.datos ?? [], [flota.data]);
+  // Solo equipos habilitados: /journeys no devuelve jornadas de los dados de baja.
+  const equipos = useMemo(() => equiposHabilitados(flota.data?.datos ?? []), [flota.data]);
 
   const rangoValido = desde !== '' && hasta !== '' && desde <= hasta;
 

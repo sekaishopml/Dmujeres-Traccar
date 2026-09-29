@@ -77,7 +77,7 @@ export default function Marco() {
   const nombre = usuario.nombre || usuario.correo || 'Cuenta';
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-fondo">
+    <div className="flex h-full overflow-hidden bg-fondo">
       <button
         type="button"
         aria-label="Cerrar menú"
@@ -87,7 +87,8 @@ export default function Marco() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-[248px] flex-none flex-col border-r border-borde bg-superficie transition-[transform,width] duration-200',
+          'fixed inset-y-0 left-0 z-50 flex w-(--ancho-lateral) flex-none flex-col border-r border-borde bg-superficie',
+          'transition-[transform,width] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]',
           'lg:relative lg:translate-x-0',
           plegado && 'lg:w-[76px]',
           menuMovil ? 'translate-x-0 shadow-flotante' : '-translate-x-full',
@@ -98,90 +99,102 @@ export default function Marco() {
           onClick={alternarLateral}
           aria-label={plegado ? 'Desplegar menú lateral' : 'Plegar menú lateral'}
           title={plegado ? 'Desplegar menú' : 'Plegar menú'}
-          className="absolute top-[26px] -right-3 z-10 hidden size-6 cursor-pointer place-items-center rounded-md border border-borde bg-superficie text-texto-2 shadow-tarjeta transition-colors hover:border-marca hover:text-marca lg:grid"
+          className="absolute top-[calc(var(--alto-cabecera)/2-12px)] -right-3 z-10 hidden size-6 cursor-pointer place-items-center rounded-md border border-borde bg-superficie text-texto-2 shadow-tarjeta transition-colors hover:border-marca hover:text-marca lg:grid"
         >
           <ChevronLeft className={cn('size-4 transition-transform duration-200', plegado && 'rotate-180')} strokeWidth={2.2} />
         </button>
 
-        <div className={cn('flex h-[76px] flex-none items-center justify-between px-6', plegado && 'lg:justify-center lg:px-0')}>
-          <div className={cn(plegado && 'lg:hidden')}>
-            <Logo className="h-9" />
+        {/* Nada dentro del lateral cambia de sitio al plegar: los íconos quedan
+            fijos y el ancho solo recorta las etiquetas, que se desvanecen. Así
+            la animación no vuelve a maquetar el contenido en cada cuadro. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="relative h-[calc(var(--alto-cabecera)+10px)] flex-none">
+            <div
+              className={cn(
+                'absolute inset-x-0 top-[calc(50%+6px)] flex -translate-y-1/2 justify-center transition-opacity duration-150',
+                plegado && 'lg:pointer-events-none lg:opacity-0',
+              )}
+            >
+              <Logo className="h-[calc(var(--alto-cabecera)-26px)]" />
+            </div>
+            <div
+              className={cn(
+                'pointer-events-none absolute top-[calc(50%+6px)] left-4 hidden -translate-y-1/2 opacity-0 transition-opacity duration-200 lg:block',
+                plegado && 'lg:opacity-100',
+              )}
+            >
+              <Logo simbolo className="size-11" />
+            </div>
+            <button
+              type="button"
+              onClick={() => setMenuMovil(false)}
+              aria-label="Cerrar menú"
+              className="absolute top-1/2 right-4 grid size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-control text-texto-2 hover:bg-fondo lg:hidden"
+            >
+              <X className="size-4" />
+            </button>
           </div>
-          <div className={cn('hidden', plegado && 'lg:block')}>
-            <Logo simbolo className="size-10" />
-          </div>
-          <button
-            type="button"
-            onClick={() => setMenuMovil(false)}
-            aria-label="Cerrar menú"
-            className="grid size-8 cursor-pointer place-items-center rounded-control text-texto-2 hover:bg-fondo lg:hidden"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
 
-        <nav className={cn('flex-1 overflow-y-auto overflow-x-hidden px-4 pt-2 pb-4', plegado && 'lg:px-3')}>
-          {GRUPOS.map((grupo, indiceGrupo) => {
-            const enlaces = grupo.enlaces.filter((e) => !e.soloAdmin || usuario.administrador);
-            if (enlaces.length === 0) return null;
-            return (
-              <div key={grupo.titulo} className="mb-6">
-                <p
-                  className={cn(
-                    'mb-2 px-3 text-[11px] font-semibold tracking-[0.08em] text-texto-3 uppercase',
-                    plegado && 'lg:hidden',
-                  )}
-                >
-                  {grupo.titulo}
-                </p>
-                {plegado && indiceGrupo > 0 && <div className="mx-2 mb-3 hidden border-t border-borde lg:block" />}
-                <div className="flex flex-col gap-1">
-                  {enlaces.map(({ ruta, texto, icono: Icono, exacto }) => (
-                    <NavLink
-                      key={ruta}
-                      to={ruta}
-                      end={exacto}
-                      title={plegado ? texto : undefined}
-                      aria-label={texto}
-                      className={({ isActive }) =>
-                        cn(
-                          'flex h-11 items-center gap-3 rounded-[12px] px-3.5 text-[14px] font-medium whitespace-nowrap transition-colors',
-                          plegado && 'lg:justify-center lg:px-0',
-                          isActive
-                            ? 'bg-marca text-white shadow-[0_6px_16px_-4px_rgb(235_0_69/0.45)]'
-                            : 'text-texto-2 hover:bg-fondo hover:text-marino-900',
-                        )
-                      }
-                    >
-                      <Icono className="size-[19px] flex-none" strokeWidth={1.9} />
-                      <span className={cn(plegado && 'lg:hidden')}>{texto}</span>
-                    </NavLink>
-                  ))}
+          <nav className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pt-1 pb-2 [scrollbar-width:none]">
+            {GRUPOS.map((grupo) => {
+              const enlaces = grupo.enlaces.filter((e) => !e.soloAdmin || usuario.administrador);
+              if (enlaces.length === 0) return null;
+              return (
+                <div key={grupo.titulo} className="mb-[clamp(10px,2.4vh,22px)]">
+                  <p className="relative mb-1.5 h-4 px-4 text-[11px] leading-4 font-semibold tracking-[0.08em] whitespace-nowrap text-texto-3 uppercase">
+                    <span className={cn('transition-opacity duration-150', plegado && 'lg:opacity-0')}>{grupo.titulo}</span>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'absolute inset-x-3 top-1/2 hidden border-t border-borde opacity-0 transition-opacity duration-200 lg:block',
+                        plegado && 'lg:opacity-100',
+                      )}
+                    />
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {enlaces.map(({ ruta, texto, icono: Icono, exacto }) => (
+                      <NavLink
+                        key={ruta}
+                        to={ruta}
+                        end={exacto}
+                        title={plegado ? texto : undefined}
+                        aria-label={texto}
+                        className={({ isActive }) =>
+                          cn(
+                            'flex h-(--alto-item) items-center gap-3.5 overflow-hidden rounded-[12px] px-4 text-[14px] font-medium whitespace-nowrap transition-colors',
+                            isActive
+                              ? 'bg-marca text-white shadow-[0_6px_16px_-4px_rgb(235_0_69/0.45)]'
+                              : 'text-texto-2 hover:bg-fondo hover:text-marino-900',
+                          )
+                        }
+                      >
+                        <Icono className="size-[19px] flex-none" strokeWidth={1.9} />
+                        <span className={cn('transition-opacity duration-150', plegado && 'lg:opacity-0')}>{texto}</span>
+                      </NavLink>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </nav>
+              );
+            })}
+          </nav>
 
-        <div className={cn('flex-none border-t border-borde p-4', plegado && 'lg:px-3')}>
-          <button
-            type="button"
-            onClick={salir}
-            title={plegado ? 'Cerrar sesión' : undefined}
-            aria-label="Cerrar sesión"
-            className={cn(
-              'flex h-11 w-full cursor-pointer items-center gap-3 rounded-[12px] px-3.5 text-[14px] font-medium whitespace-nowrap text-texto-2 transition-colors hover:bg-peligro-suave hover:text-peligro',
-              plegado && 'lg:justify-center lg:px-0',
-            )}
-          >
-            <LogOut className="size-[19px] flex-none" strokeWidth={1.9} />
-            <span className={cn(plegado && 'lg:hidden')}>Cerrar sesión</span>
-          </button>
+          <div className="flex-none border-t border-borde px-3 py-2.5">
+            <button
+              type="button"
+              onClick={salir}
+              title={plegado ? 'Cerrar sesión' : undefined}
+              aria-label="Cerrar sesión"
+              className="flex h-(--alto-item) w-full cursor-pointer items-center gap-3.5 overflow-hidden rounded-[12px] px-4 text-[14px] font-medium whitespace-nowrap text-texto-2 transition-colors hover:bg-peligro-suave hover:text-peligro"
+            >
+              <LogOut className="size-[19px] flex-none" strokeWidth={1.9} />
+              <span className={cn('transition-opacity duration-150', plegado && 'lg:opacity-0')}>Cerrar sesión</span>
+            </button>
+          </div>
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-[76px] flex-none flex-wrap items-center gap-x-4 gap-y-2 border-b border-borde bg-superficie px-4 py-3 md:px-7">
+        <header className="flex min-h-(--alto-cabecera) flex-none flex-wrap items-center gap-x-4 gap-y-2 border-b border-borde bg-superficie px-4 py-2 md:px-7">
           <button
             type="button"
             onClick={() => setMenuMovil(true)}
@@ -207,7 +220,7 @@ export default function Marco() {
           </div>
         </header>
 
-        <main className={cn('min-h-0 flex-1', pantallaCompleta ? 'overflow-hidden' : 'overflow-y-auto px-4 py-6 md:px-7')}>
+        <main className={cn('min-h-0 flex-1', pantallaCompleta ? 'overflow-hidden' : 'overflow-y-auto px-4 py-[clamp(14px,2.4vh,24px)] md:px-[clamp(16px,2vw,28px)]')}>
           {/* Cada página entra con un fundido corto; mientras su código baja,
               el marco queda en pie y solo el contenido muestra el círculo. */}
           <div key={pathname} className="h-full animate-entrar">
@@ -279,6 +292,9 @@ function MenuCuenta({ nombre, correo, rol, alSalir }: { nombre: string; correo: 
             <LogOut className="size-4" />
             Cerrar sesión
           </button>
+          <p className="mt-1 border-t border-borde px-3 pt-2 pb-1 text-[11px] text-texto-3">
+            DMujeres Tracking · panel v{__VERSION_PANEL__}
+          </p>
         </div>
       )}
     </div>
