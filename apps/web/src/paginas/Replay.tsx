@@ -40,25 +40,51 @@ function nombreArchivo(id: string): string {
   return id.replace(/[^\w.-]+/g, '_');
 }
 
-const LADO_FLECHA = 24;
-// Azul corporativo del tramo ajustado a vía: nunca comparte la paleta de
-// velocidad del GPS registrado (ADR-007).
-const COLOR_MATCHED = '#4a6fa5';
+// Lienzo nativo de la flecha: 64 px registrados con pixelRatio 2 (32 px
+// lógicos). Se dibuja a resolución nativa y se muestra reducido por icon-size,
+// así que la punta conserva el filo en pantallas densas.
+const LADO_FLECHA = 64;
+const PIXEL_RATIO_FLECHA = 2;
+// Núcleo claro con filo del color del tramo: el blanco hace legible la marca
+// sobre teselas claras y satélite; el filo mantiene la identidad de la capa.
+const NUCLEO_FLECHA = '#ffffff';
+// Navy profundo del tramo ajustado a vía: nunca comparte la paleta de velocidad
+// del GPS registrado (ADR-007) ni el gris punteado del estimado. El casing es
+// el mismo navy un paso más claro y translúcido, para asentar la línea sobre
+// teselas claras sin perderla en la imagen de satélite.
+const COLOR_MATCHED = '#0b2545';
+const COLOR_MATCHED_CASING = '#123a5e';
 const ID_FLECHA_MATCHED = 'dir-matched';
 // Paleta de velocidad sobria (verdes bosque, ocre, teja y rojo apagados). El
 // orden coincide con la banda 0..4 que calcula replay.ts a partir de la
 // velocidad y con los ids de imagen que referencia la capa symbol.
 const COLORES_BANDA = ['#2f7d5f', '#5f8f66', '#a8893a', '#a86a35', '#9c4238'];
 const IDS_FLECHA = COLORES_BANDA.map((_, banda) => `dir-${banda}`);
+// Separación de las marcas de dirección en ciudad: 120 m dan una lectura de
+// rumbo por cuadra sin saturar la traza (replay.ts la recibe por parámetro; su
+// valor por defecto de 150 m queda intacto para otros consumidores).
+const SEPARACION_FLECHAS_M = 120;
+// Descarte de marcas ajustadas sobre una parada: el trazado reconstruido puede
+// cruzar el punto donde el equipo estuvo detenido y una flecha encima de la
+// insignia fingiría movimiento en la parada. Los huecos ya no generan marcas.
+const RADIO_PARADA_FLECHA_M = 45;
 
-// Marca de dirección plana: chevron macizo del color del tramo, dibujado en
-// canvas y registrado como imagen del mapa. Apunta hacia arriba porque MapLibre
-// parte de esa dirección al rotar por rumbo. Sin núcleo blanco ni pastilla: la
-// marca va teñida con su banda (o con el azul de ajustado a vía) y se lee como
-// parte del trazo, no como insignia suelta. Se registra sin pixelRatio para que
-// icon-size mande sobre el tamaño; la figura se centra para que el ancla
-// (centro) caiga en la línea.
-function imagenDireccion(color: string): ImageData | null {
+// Distancia plana en metros, suficiente para el descarte local junto a una
+// parada (decenas de metros): a esta escala el error frente a la esfera es
+// despreciable.
+function distanciaAproxM(latA: number, lonA: number, latB: number, lonB: number): number {
+  const dLat = (latB - latA) * 111320;
+  const dLon = (lonB - lonA) * 111320 * Math.cos(((latA + latB) / 2) * (Math.PI / 180));
+  return Math.hypot(dLat, dLon);
+}
+
+// Flecha de navegación plana: punta viva y base escotada, nunca un rombo.
+// Núcleo blanco y filo del color del tramo, dibujada en canvas y registrada
+// como imagen del mapa. Apunta hacia arriba porque MapLibre parte de esa
+// dirección al rotar por rumbo, y se centra para que el ancla (centro) caiga
+// en la línea. El filo se traza antes del relleno: la mitad interior del trazo
+// queda cubierta y solo asoma el contorno.
+function imagenDireccion(borde: string): ImageData | null {
   const lienzo = document.createElement('canvas');
   lienzo.width = LADO_FLECHA;
   lienzo.height = LADO_FLECHA;
@@ -66,15 +92,19 @@ function imagenDireccion(color: string): ImageData | null {
   // Sin contexto 2D no hay imagen; la capa de dirección se omite y queda el
   // corredor coloreado por velocidad.
   if (!contexto) return null;
+  const escala = LADO_FLECHA / 64;
   contexto.beginPath();
-  contexto.moveTo(5, 17);
-  contexto.lineTo(12, 7);
-  contexto.lineTo(19, 17);
-  contexto.lineTo(16, 17);
-  contexto.lineTo(12, 11.5);
-  contexto.lineTo(8, 17);
+  contexto.moveTo(32 * escala, 5 * escala);
+  contexto.lineTo(56 * escala, 56 * escala);
+  contexto.lineTo(32 * escala, 45 * escala);
+  contexto.lineTo(8 * escala, 56 * escala);
   contexto.closePath();
-  contexto.fillStyle = color;
+  // Miter: la punta superior queda en ángulo vivo, sin redondear.
+  contexto.lineJoin = 'miter';
+  contexto.lineWidth = 7 * escala;
+  contexto.strokeStyle = borde;
+  contexto.stroke();
+  contexto.fillStyle = NUCLEO_FLECHA;
   contexto.fill();
   return contexto.getImageData(0, 0, LADO_FLECHA, LADO_FLECHA);
 }
@@ -215,11 +245,21 @@ export default function Replay() {
   const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
   // Marcas de dirección espaciadas por distancia (no una por fix); la selección
   // del mapa no depende de ellas, se resuelve por cercanía sobre la línea de
-  // acierto.
-  const direccion = useMemo(
-    () => flechasEspaciadas(posiciones, huecos, reconstruidos),
-    [posiciones, huecos, reconstruidos],
-  );
+  // acierto. Las marcas ajustadas que caen sobre una parada se descartan para
+  // que el punto detenido no se lea como movimiento.
+  const direccion = useMemo(() => {
+    const coleccion = flechasEspaciadas(posiciones, huecos, reconstruidos, SEPARACION_FLECHAS_M);
+    if (paradas.length === 0) return coleccion;
+    const features = coleccion.features.filter((flecha) => {
+      if (flecha.properties?.origen !== 'matched') return true;
+      const [longitud, latitud] = flecha.geometry.coordinates;
+      return paradas.every(
+        (parada) =>
+          distanciaAproxM(latitud, longitud, parada.latitud, parada.longitud) > RADIO_PARADA_FLECHA_M,
+      );
+    });
+    return features.length === coleccion.features.length ? coleccion : { ...coleccion, features };
+  }, [posiciones, huecos, reconstruidos, paradas]);
   // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
   // dispersión real sin líneas que la unan.
   const halos = useMemo(() => halosDeParadas(posiciones, paradas), [posiciones, paradas]);
@@ -310,8 +350,8 @@ export default function Replay() {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': COLOR_BANDA as string,
-          'line-opacity': 0.16,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 16, 10],
+          'line-opacity': 0.22,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7.5, 16, 10.5],
         },
       });
     }
@@ -324,8 +364,8 @@ export default function Replay() {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': COLOR_BANDA as string,
-          'line-opacity': 0.12,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4, 16, 6],
+          'line-opacity': 0.16,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4.5, 16, 6.5],
         },
       });
     }
@@ -337,9 +377,9 @@ export default function Replay() {
         filter: ['==', ['get', 'tipo'], 'matched'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': COLOR_MATCHED,
-          'line-opacity': 0.16,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 6, 16, 9],
+          'line-color': COLOR_MATCHED_CASING,
+          'line-opacity': 0.3,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 16, 10.5],
         },
       });
     }
@@ -352,7 +392,7 @@ export default function Replay() {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': '#6b7684',
-          'line-opacity': 0.12,
+          'line-opacity': 0.16,
           'line-width': ['interpolate', ['linear'], ['zoom'], 10, 6, 16, 9],
         },
       });
@@ -387,8 +427,9 @@ export default function Replay() {
         },
       });
     }
-    // MATCHED: hueco con observaciones ajustado a vía. Núcleo continuo fino en
-    // el azul del método, sin coloreado por velocidad.
+    // MATCHED: hueco con observaciones ajustado a vía. Núcleo continuo navy
+    // sobre su casing translúcido, sin coloreado por velocidad: la traza
+    // ajustada se lee como una vía propia, distinta del GPS registrado.
     if (!mapa.getLayer('replay-matched')) {
       mapa.addLayer({
         id: 'replay-matched',
@@ -398,7 +439,7 @@ export default function Replay() {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': COLOR_MATCHED,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.8, 16, 3],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.4, 16, 3.8],
         },
       });
     }
@@ -447,19 +488,19 @@ export default function Replay() {
         },
       });
     }
-    // Las imágenes de dirección (chevron plano del color del tramo) deben
-    // existir antes de crear la capa symbol. Se regeneran si ya existían con el
-    // estilo anterior para que la marca plana quede aplicada.
+    // Las imágenes de dirección (núcleo blanco y filo del color del tramo)
+    // deben existir antes de crear la capa symbol. Se registran con pixelRatio
+    // 2 para que icon-size trabaje sobre 32 px lógicos y la punta quede nítida.
     for (let banda = 0; banda < IDS_FLECHA.length; banda += 1) {
       const id = IDS_FLECHA[banda];
       if (mapa.hasImage(id)) mapa.removeImage(id);
       const imagen = imagenDireccion(COLORES_BANDA[banda]);
-      if (imagen) mapa.addImage(id, imagen);
+      if (imagen) mapa.addImage(id, imagen, { pixelRatio: PIXEL_RATIO_FLECHA });
     }
     if (mapa.hasImage(ID_FLECHA_MATCHED)) mapa.removeImage(ID_FLECHA_MATCHED);
     {
       const imagen = imagenDireccion(COLOR_MATCHED);
-      if (imagen) mapa.addImage(ID_FLECHA_MATCHED, imagen);
+      if (imagen) mapa.addImage(ID_FLECHA_MATCHED, imagen, { pixelRatio: PIXEL_RATIO_FLECHA });
     }
     const imagenesListas = IDS_FLECHA.every((id) => mapa.hasImage(id)) && mapa.hasImage(ID_FLECHA_MATCHED);
     if (imagenesListas && !mapa.getLayer('replay-flechas')) {
@@ -485,7 +526,21 @@ export default function Replay() {
           'icon-rotate': ['get', 'bearing'],
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
-          'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 12, 0.6, 14, 0.72, 16, 0.85],
+          // Escala fina: ~9 px de flecha al alejar y ~21 px en z16, para que
+          // ninguna se vea diminuta ni gigante. Crece con el zoom mientras
+          // flechasPorZoom adelgaza la densidad.
+          'icon-size': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            9, 0.36,
+            11, 0.44,
+            12, 0.5,
+            13, 0.58,
+            14, 0.66,
+            15, 0.74,
+            16, 0.82,
+          ],
           'icon-allow-overlap': false,
           'icon-ignore-placement': false,
         },

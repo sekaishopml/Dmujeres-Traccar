@@ -197,14 +197,15 @@
 /* Sistema visual del corredor (ADR-007 intacto): muestras de línea, no de
    punto. El GPS distingue vehículo (corredor ancho) y a pie (mismo idioma,
    más fino); el halo representa la dispersión parada; ajustado y estimado
-   conservan su identidad propia y nunca se leen como GPS registrado. */
+   conservan su identidad propia y nunca se leen como GPS registrado. La
+   muestra de ajustado replica el núcleo navy profundo del mapa. */
 .replay-leyenda .real,
 .replay-leyenda .ajustado,
 .replay-leyenda .estimado {
   width: 12px; height: 0; border: 0; border-radius: 0; box-shadow: none;
 }
 .replay-leyenda .real { border-top: 3px solid var(--verde); }
-.replay-leyenda .ajustado { border-top: 2px solid #4a6fa5; }
+.replay-leyenda .ajustado { border-top: 3px solid #0b2545; }
 .replay-leyenda .estimado { border-top: 3px dotted var(--gris); }
 .replay-leyenda .corredor-vehiculo,
 .replay-leyenda .corredor-caminata {
@@ -220,11 +221,28 @@
 }
 .replay-leyenda .corredor-vehiculo::after { height: 3px; margin-top: -1.5px; }
 .replay-leyenda .corredor-caminata::after { height: 1.6px; margin-top: -0.8px; }
-/* Sentido de marcha: cuña plana del verde del corredor, sin pastilla ni borde. */
+/* Sentido de marcha: flecha de núcleo blanco con filo del color del tramo, a
+   juego con la marca del mapa (navy en el ajustado, banda en el registrado;
+   la muestra usa el verde del corredor). Triángulos encajados: el de abajo
+   hace de filo y el blanco de arriba deja ver 1.5 px de contorno. */
 .replay-leyenda .direccion {
-  width: 0; height: 0; border: 0; border-radius: 0; box-shadow: none; background: none;
-  border-left: 4px solid transparent; border-right: 4px solid transparent;
-  border-bottom: 7px solid #2f7d5f;
+  position: relative; width: 10px; height: 9px;
+  border: 0; border-radius: 0; box-shadow: none; background: none;
+}
+.replay-leyenda .direccion::before,
+.replay-leyenda .direccion::after {
+  content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0;
+}
+.replay-leyenda .direccion::before {
+  top: 0;
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-bottom: 9px solid #2f7d5f;
+}
+.replay-leyenda .direccion::after {
+  top: 1px;
+  border-left: 3.5px solid transparent; border-right: 3.5px solid transparent;
+  border-bottom: 6.5px solid #fff;
 }
 .replay-leyenda .halo {
   width: 12px; height: 12px; border-radius: 50%;

@@ -421,67 +421,336 @@ function enVentanaMatched(ventanas: VentanaMatched[], instante: number): boolean
   return false;
 }
 
-// Suavizado de presentación del trazado reconstruido (MATCHED y ESTIMATED):
-// las esquinas en ángulo recto del ajuste a vía se ven toscas a zoom urbano.
-// Se aplica un corte de vértice acotado en una sola pasada: cada vértice
-// interior B se reemplaza por dos puntos sobre los lados AB y BC, a una
-// distancia d = min(fracción · lado más corto, tope). Los puntos nuevos caen
-// sobre el trazado original, así que la desviación máxima de la línea suavizada
-// respecto a la original es d (la esquina recortada) y nunca supera el tope.
-// Los extremos no se mueven y los vértices casi rectos no se tocan para no
-// llenar la línea de puntos redundantes. Es solo presentación: el GPS
-// registrado y los huecos rectos no pasan por aquí y el dato crudo queda
-// intacto (ADR-007: nada se presenta como GPS si no lo es).
-export const SUAVIZADO_FRACCION = 0.25;
-export const SUAVIZADO_DESPLAZAMIENTO_MAX_M = 8;
-// Por debajo de ~2° de quiebre el corte no redondea nada visible y solo
-// duplica puntos: el vértice se conserva tal cual.
-const SUAVIZADO_SENO_MIN = Math.sin((2 * Math.PI) / 180);
+// Redondeo de presentación del trazado reconstruido (MATCHED y ESTIMATED):
+// las esquinas del ajuste a vía se ven toscas a zoom urbano y un chaflán de
+// una pasada se lee como corte recto, no como giro. Cada vértice interior B se
+// sustituye por un arco (fillet) tangente a los dos lados AB y BC:
+//   φ   = quiebre real en B (0° = sigue recto; 180° = horquilla)
+//   R   = min(fracción·min(|AB|,|BC|), 10 m)        radio base por lado
+//   R  ≤ desplazamientoMax / (sec(φ/2) − 1)         desviación ≤ 10 m
+//   R  ≤ 2.5 m                                      horquilla (φ > 150°)
+//   R  ≤ 0.45·min(|AB|,|BC|) / tan(φ/2)             tangencia dentro del lado
+//   t   = R·tan(φ/2)                                distancia a cada tangencia
+// Las tangencias caen sobre el trazado original y el arco se reparte en 2-5
+// puntos según φ (a más cerrado, más puntos). Garantías:
+//  - extremos intactos; quiebre < 2°, lados nulos o entradas no finitas se
+//    conservan tal cual;
+//  - todo punto generado dista ≤ s = R·(sec(φ/2)−1) del vértice B (que es del
+//    trazado original), con s ≤ desplazamientoMax y nunca más de 10 m;
+//  - t ≤ 0.45·lado en ambos extremos de cada lado: dos vértices vecinos no
+//    pueden cruzar sus tangencias ni sus arcos;
+//  - regla dura de no autointersección: cada cuerda nueva se contrasta contra
+//    los segmentos originales (menos sus dos lados) y contra las cuerdas ya
+//    aceptadas, con una rejilla espacial. Si algo la cruza, el vértice se
+//    conserva tal cual: en horquillas y rotondas nunca aparece un bucle; los
+//    espolones de ida y vuelta (coordenada repetida) también se conservan;
+//  - la longitud solo puede encoger: 2t = 2R·tan(φ/2) > R·φ (arco) y los
+//    extremos no se mueven.
+// Es solo presentación: el GPS registrado y los huecos rectos no pasan por
+// aquí y el dato crudo queda intacto (ADR-007: nada se presenta como GPS si
+// no lo es).
+export const SUAVIZADO_FRACCION = 0.35;
+export const SUAVIZADO_DESPLAZAMIENTO_MAX_M = 10;
+export const SUAVIZADO_RADIO_MAX_M = 10;
+// Por debajo de 2° de quiebre el arco no redondea nada visible y solo duplica
+// puntos: el vértice se conserva tal cual.
+export const SUAVIZADO_ANGULO_MIN_GRADOS = 2;
+// Horquilla: por encima de 150° de quiebre el arco se acota a un radio pequeño
+// para no meterse entre los brazos del pliegue; si aun así no cabe en los
+// lados, el vértice se conserva.
+export const SUAVIZADO_ANGULO_HORQUILLA_GRADOS = 150;
+export const SUAVIZADO_RADIO_HORQUILLA_M = 2.5;
+// Radio mínimo visible: un arco más pequeño que esto no aporta y solo duplica
+// puntos (pliegues casi de 180°), así que el vértice se conserva.
+const SUAVIZADO_RADIO_MIN_M = 0.1;
+// Tangencia mínima: por debajo el arco no se ve y solo duplica puntos.
+const SUAVIZADO_TANGENTE_MIN_M = 0.15;
+// La tangencia nunca pasa de esta fracción del lado: dos vértices vecinos
+// pueden cortar el mismo lado (0.45 + 0.45 < 1) sin cruzarse entre sí.
+const SUAVIZADO_FRACCION_LADO = 0.45;
+// Metros por grado de latitud con la misma esfera que distanciaKm: el plano
+// local del arco comparte escala con las longitudes en metros.
+const SUAVIZADO_METROS_POR_GRADO = (2 * Math.PI * 6371000) / 360;
+// Rejilla espacial de la regla anti-cruce: celdas de 32 m (el arco se aparta
+// ≤ 10 m del vértice, así que la consulta por bbox ve todo lo cercano). Un
+// segmento que cubre demasiadas celdas pasa a una lista corta que se revisa
+// siempre; si el plano se vuelve patológico, el suavizado se rinde y devuelve
+// el trazado crudo.
+const SUAVIZADO_CELDA_M = 32;
+const SUAVIZADO_CELDAS_POR_SEGMENTO = 256;
+const SUAVIZADO_CANDIDATOS_MAX = 600;
+const SUAVIZADO_LARGOS_MAX = 256;
+
+// Cruce propio (estricto) de dos segmentos: los extremos compartidos y las
+// tangencias no cuentan, solo el atravesarse. Con NaN devuelve falso.
+function segmentosCruzan(
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
+  d: [number, number],
+): boolean {
+  const lado = (p: [number, number], q: [number, number], r: [number, number]): number =>
+    (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const d1 = lado(c, d, a);
+  const d2 = lado(c, d, b);
+  const d3 = lado(a, b, c);
+  const d4 = lado(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
 
 export function suavizarTrazado(
   coordenadas: [number, number][],
   desplazamientoMaxM = SUAVIZADO_DESPLAZAMIENTO_MAX_M,
   fraccion = SUAVIZADO_FRACCION,
 ): [number, number][] {
-  if (coordenadas.length < 3 || !(desplazamientoMaxM > 0) || !(fraccion > 0)) return coordenadas;
+  const desvioMaxM = Math.min(desplazamientoMaxM, SUAVIZADO_DESPLAZAMIENTO_MAX_M);
+  if (coordenadas.length < 3 || !(desvioMaxM > 0) || !(fraccion > 0)) return coordenadas;
+  // Una sola proyección equirectangular para toda la traza: arcos y rejilla
+  // comparten plano y escala; a ≤ 10 m de desvío el error es despreciable.
+  let refLon = 0;
+  let refLat = 0;
+  let hayReferencia = false;
+  for (const [lon, lat] of coordenadas) {
+    if (Number.isFinite(lon) && Number.isFinite(lat)) {
+      refLon = lon;
+      refLat = lat;
+      hayReferencia = true;
+      break;
+    }
+  }
+  if (!hayReferencia) return coordenadas;
+  const cosRef = Math.cos((refLat * Math.PI) / 180);
+  if (!(cosRef > 1e-6)) return coordenadas;
+  const xy: [number, number][] = coordenadas.map(([lon, lat]) =>
+    Number.isFinite(lon) && Number.isFinite(lat)
+      ? [(lon - refLon) * SUAVIZADO_METROS_POR_GRADO * cosRef, (lat - refLat) * SUAVIZADO_METROS_POR_GRADO]
+      : [NaN, NaN],
+  );
+  const rejillaOriginal = new Map<string, number[]>();
+  const originalesLargos: number[] = [];
+  const cuerdasGeneradas: [[number, number], [number, number]][] = [];
+  const rejillaGenerada = new Map<string, number[]>();
+  const generadosLargos: number[] = [];
+  // Celdas que cubre la caja del segmento; null si son demasiadas (segmento
+  // largo). La inserción por caja es un superconjunto: cualquier cruce cae en
+  // una celda de la caja del otro segmento y por tanto se encuentra.
+  const celdasDe = (a: [number, number], b: [number, number]): string[] | null => {
+    const ix0 = Math.floor(Math.min(a[0], b[0]) / SUAVIZADO_CELDA_M);
+    const ix1 = Math.floor(Math.max(a[0], b[0]) / SUAVIZADO_CELDA_M);
+    const iy0 = Math.floor(Math.min(a[1], b[1]) / SUAVIZADO_CELDA_M);
+    const iy1 = Math.floor(Math.max(a[1], b[1]) / SUAVIZADO_CELDA_M);
+    const celdas: string[] = [];
+    for (let ix = ix0; ix <= ix1; ix += 1) {
+      for (let iy = iy0; iy <= iy1; iy += 1) {
+        if (celdas.length >= SUAVIZADO_CELDAS_POR_SEGMENTO) return null;
+        celdas.push(`${ix},${iy}`);
+      }
+    }
+    return celdas;
+  };
+  const insertar = (
+    rejilla: Map<string, number[]>,
+    largos: number[],
+    a: [number, number],
+    b: [number, number],
+    indice: number,
+  ): void => {
+    if (!Number.isFinite(a[0]) || !Number.isFinite(b[0])) return;
+    const celdas = celdasDe(a, b);
+    if (!celdas) {
+      largos.push(indice);
+      return;
+    }
+    for (const celda of celdas) {
+      const lista = rejilla.get(celda);
+      if (lista) lista.push(indice);
+      else rejilla.set(celda, [indice]);
+    }
+  };
+  // Índices de segmentos/cuerdas en las celdas de la caja de p–q, ampliada una
+  // celda para no perder los que rozan el borde. null si hay demasiados: en
+  // ese caso el suavizado del vértice se descarta por precaución.
+  const candidatosCerca = (
+    rejilla: Map<string, number[]>,
+    largos: number[],
+    p: [number, number],
+    q: [number, number],
+  ): number[] | null => {
+    const oeste = Math.floor(Math.min(p[0], q[0]) / SUAVIZADO_CELDA_M) - 1;
+    const este = Math.floor(Math.max(p[0], q[0]) / SUAVIZADO_CELDA_M) + 1;
+    const sur = Math.floor(Math.min(p[1], q[1]) / SUAVIZADO_CELDA_M) - 1;
+    const norte = Math.floor(Math.max(p[1], q[1]) / SUAVIZADO_CELDA_M) + 1;
+    if ((este - oeste + 1) * (norte - sur + 1) > 64) return null;
+    const lista: number[] = [...largos];
+    const vistos = new Set<number>(largos);
+    for (let ix = oeste; ix <= este; ix += 1) {
+      for (let iy = sur; iy <= norte; iy += 1) {
+        const vecinos = rejilla.get(`${ix},${iy}`);
+        if (!vecinos) continue;
+        for (const indice of vecinos) {
+          if (vistos.has(indice)) continue;
+          vistos.add(indice);
+          lista.push(indice);
+          if (lista.length > SUAVIZADO_CANDIDATOS_MAX) return null;
+        }
+      }
+    }
+    return lista;
+  };
+  for (let i = 1; i < xy.length; i += 1) {
+    insertar(rejillaOriginal, originalesLargos, xy[i - 1], xy[i], i - 1);
+    if (originalesLargos.length > SUAVIZADO_LARGOS_MAX) return coordenadas;
+  }
+  // Espolones de ida y vuelta sobre la misma vía: si un vértice repite la
+  // coordenada de otro punto del trazado (mismo punto a 10 cm), el arco
+  // cruzaría la copia de la vía; se conserva el vértice y queda el pliegue.
+  const cuantizada = (p: [number, number]): string =>
+    `${Math.round(p[0] * 10)},${Math.round(p[1] * 10)}`;
+  const vecesPunto = new Map<string, number>();
+  for (const punto of xy) {
+    if (!Number.isFinite(punto[0]) || !Number.isFinite(punto[1])) continue;
+    const clave = cuantizada(punto);
+    vecesPunto.set(clave, (vecesPunto.get(clave) ?? 0) + 1);
+  }
   const salida: [number, number][] = [coordenadas[0]];
   for (let i = 1; i < coordenadas.length - 1; i += 1) {
-    const [lonA, latA] = coordenadas[i - 1];
     const [lonB, latB] = coordenadas[i];
-    const [lonC, latC] = coordenadas[i + 1];
-    if (![lonA, latA, lonB, latB, lonC, latC].every((valor) => Number.isFinite(valor))) {
+    const [bx, by] = xy[i];
+    if (![xy[i - 1][0], xy[i - 1][1], bx, by, xy[i + 1][0], xy[i + 1][1]].every((valor) => Number.isFinite(valor))) {
       salida.push([lonB, latB]);
       continue;
     }
-    const largoPrevioM =
-      distanciaKm({ latitud: latA, longitud: lonA }, { latitud: latB, longitud: lonB }) * 1000;
-    const largoSiguienteM =
-      distanciaKm({ latitud: latB, longitud: lonB }, { latitud: latC, longitud: lonC }) * 1000;
-    if (!(largoPrevioM > 0) || !(largoSiguienteM > 0)) {
+    if ((vecesPunto.get(cuantizada(xy[i])) ?? 0) > 1) {
       salida.push([lonB, latB]);
       continue;
     }
-    // Quiebre del vértice en metros locales (equirectangular: a ≤ 8 m sobra).
-    const cosLat = Math.cos((latB * Math.PI) / 180);
-    const ux = (lonB - lonA) * cosLat;
-    const uy = latB - latA;
-    const vx = (lonC - lonB) * cosLat;
-    const vy = latC - latB;
-    const modulo = Math.hypot(ux, uy) * Math.hypot(vx, vy);
-    const seno = modulo > 0 ? Math.abs(ux * vy - uy * vx) / modulo : 0;
-    if (seno < SUAVIZADO_SENO_MIN) {
+    // Vectores locales alrededor de B: u = A→B, v = B→C.
+    const ux = bx - xy[i - 1][0];
+    const uy = by - xy[i - 1][1];
+    const vx = xy[i + 1][0] - bx;
+    const vy = xy[i + 1][1] - by;
+    const ladoAM = Math.hypot(ux, uy);
+    const ladoBM = Math.hypot(vx, vy);
+    if (!(ladoAM > 0) || !(ladoBM > 0)) {
       salida.push([lonB, latB]);
       continue;
     }
-    const corteM = Math.min(fraccion * Math.min(largoPrevioM, largoSiguienteM), desplazamientoMaxM);
-    salida.push([
-      lonA + (lonB - lonA) * (corteM / largoPrevioM),
-      latA + (latB - latA) * (corteM / largoPrevioM),
-    ]);
-    salida.push([
-      lonB + (lonC - lonB) * (corteM / largoSiguienteM),
-      latB + (latC - latB) * (corteM / largoSiguienteM),
-    ]);
+    const seno = Math.abs(ux * vy - uy * vx) / (ladoAM * ladoBM);
+    const coseno = Math.min(Math.max((ux * vx + uy * vy) / (ladoAM * ladoBM), -1), 1);
+    const anguloRad = Math.atan2(seno, coseno);
+    const anguloGrados = (anguloRad * 180) / Math.PI;
+    if (anguloGrados < SUAVIZADO_ANGULO_MIN_GRADOS) {
+      salida.push([lonB, latB]);
+      continue;
+    }
+    const minLadoM = Math.min(ladoAM, ladoBM);
+    const tanMitad = Math.tan(anguloRad / 2);
+    const secMitad = 1 / Math.cos(anguloRad / 2);
+    // Radio adaptativo: fracción del lado más corto, acotado por desviación
+    // (s = R·(sec(φ/2)−1) ≤ desvioMax), por horquilla y por tangencia.
+    let radioM = Math.min(fraccion * minLadoM, SUAVIZADO_RADIO_MAX_M);
+    const factorDesvio = secMitad - 1;
+    if (factorDesvio > 0) radioM = Math.min(radioM, desvioMaxM / factorDesvio);
+    if (anguloGrados > SUAVIZADO_ANGULO_HORQUILLA_GRADOS) {
+      radioM = Math.min(radioM, SUAVIZADO_RADIO_HORQUILLA_M);
+    }
+    if (tanMitad > 0) radioM = Math.min(radioM, (SUAVIZADO_FRACCION_LADO * minLadoM) / tanMitad);
+    const tangenteM = radioM * tanMitad;
+    if (!(radioM >= SUAVIZADO_RADIO_MIN_M) || !(tangenteM >= SUAVIZADO_TANGENTE_MIN_M)) {
+      salida.push([lonB, latB]);
+      continue;
+    }
+    // Direcciones unitarias B→A y B→C y bisectriz interior (centro del arco).
+    const ax = -ux / ladoAM;
+    const ay = -uy / ladoAM;
+    const cx = vx / ladoBM;
+    const cy = vy / ladoBM;
+    let wx = ax + cx;
+    let wy = ay + cy;
+    const normaW = Math.hypot(wx, wy);
+    if (!(normaW > 1e-9)) {
+      // φ = 180° exacto: la bisectriz no está definida y no hay arco posible.
+      salida.push([lonB, latB]);
+      continue;
+    }
+    wx /= normaW;
+    wy /= normaW;
+    const centroM = radioM * secMitad;
+    const ox = wx * centroM;
+    const oy = wy * centroM;
+    const t1x = ax * tangenteM;
+    const t1y = ay * tangenteM;
+    const t2x = cx * tangenteM;
+    const t2y = cy * tangenteM;
+    // Barrido con signo desde la tangencia T1 hasta T2 (= φ, con el sentido
+    // del giro): interpolar el vector radial por ese ángulo da el arco.
+    const r1x = t1x - ox;
+    const r1y = t1y - oy;
+    const r2x = t2x - ox;
+    const r2y = t2y - oy;
+    const barrido = Math.atan2(r1x * r2y - r1y * r2x, r1x * r2x + r1y * r2y);
+    const puntos = Math.min(5, Math.max(2, Math.floor(anguloGrados / 30) + 2));
+    const generados: [number, number][] = [];
+    let finito = true;
+    for (let k = 0; k < puntos; k += 1) {
+      const avance = barrido * (k / (puntos - 1));
+      const cosAvance = Math.cos(avance);
+      const senAvance = Math.sin(avance);
+      const gx = bx + ox + r1x * cosAvance - r1y * senAvance;
+      const gy = by + oy + r1x * senAvance + r1y * cosAvance;
+      if (!Number.isFinite(gx) || !Number.isFinite(gy)) {
+        finito = false;
+        break;
+      }
+      generados.push([gx, gy]);
+    }
+    // Regla dura: ninguna cuerda nueva puede cruzar el trazado original (sus
+    // lados no cuentan: el arco nace tangente a ellos) ni las cuerdas ya
+    // aceptadas. Si cruza, el vértice se conserva.
+    let cruza = !finito || generados.length < 2;
+    for (let k = 1; k < generados.length && !cruza; k += 1) {
+      const p = generados[k - 1];
+      const q = generados[k];
+      const cercanos = candidatosCerca(rejillaOriginal, originalesLargos, p, q);
+      if (!cercanos) {
+        cruza = true;
+        break;
+      }
+      for (const indice of cercanos) {
+        if (indice === i - 1 || indice === i) continue;
+        if (segmentosCruzan(p, q, xy[indice], xy[indice + 1])) {
+          cruza = true;
+          break;
+        }
+      }
+      if (cruza) break;
+      const cercanosGenerados = candidatosCerca(rejillaGenerada, generadosLargos, p, q);
+      if (!cercanosGenerados) {
+        cruza = true;
+        break;
+      }
+      for (const indice of cercanosGenerados) {
+        if (segmentosCruzan(p, q, cuerdasGeneradas[indice][0], cuerdasGeneradas[indice][1])) {
+          cruza = true;
+          break;
+        }
+      }
+    }
+    if (cruza) {
+      salida.push([lonB, latB]);
+      continue;
+    }
+    for (let k = 1; k < generados.length; k += 1) {
+      const cuerdas = cuerdasGeneradas.length;
+      cuerdasGeneradas.push([generados[k - 1], generados[k]]);
+      insertar(rejillaGenerada, generadosLargos, generados[k - 1], generados[k], cuerdas);
+    }
+    for (const [gx, gy] of generados) {
+      salida.push([
+        refLon + gx / (SUAVIZADO_METROS_POR_GRADO * cosRef),
+        refLat + gy / SUAVIZADO_METROS_POR_GRADO,
+      ]);
+    }
   }
   salida.push(coordenadas[coordenadas.length - 1]);
   return salida;
