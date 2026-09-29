@@ -48,6 +48,9 @@ const PIXEL_RATIO_FLECHA = 2;
 // Núcleo claro con filo del color del tramo: el blanco hace legible la marca
 // sobre teselas claras y satélite; el filo mantiene la identidad de la capa.
 const NUCLEO_FLECHA = '#ffffff';
+// Grosor del filo en px nativos (3 px lógicos a escala 1): fino para que las
+// muescas de la silueta no se cierren y la punta siga leyéndose a z11.
+const FILO_FLECHA = 6;
 // Navy profundo del tramo ajustado a vía: nunca comparte la paleta de velocidad
 // del GPS registrado (ADR-007) ni el gris punteado del estimado. El casing es
 // el mismo navy un paso más claro y translúcido, para asentar la línea sobre
@@ -55,6 +58,14 @@ const NUCLEO_FLECHA = '#ffffff';
 const COLOR_MATCHED = '#0b2545';
 const COLOR_MATCHED_CASING = '#123a5e';
 const ID_FLECHA_MATCHED = 'dir-matched';
+// Sistema de la cinta REAL: calce grafito neutro por debajo (sienta la traza
+// sobre teselas claras y la separa de la imagen oscura) y pliegue blanco tenue
+// por encima (el lomo central que da volumen de cinta). El cuerpo conserva la
+// paleta de velocidad: el color del tramo manda y el calce no inventa colores.
+// MATCHED no lleva pliegue: la cinta plegada es la identidad del GPS
+// registrado y el ajustado a vía se queda como cinta lisa navy.
+const COLOR_CALCE_REAL = '#22303f';
+const COLOR_FILETE_REAL = '#ffffff';
 // Paleta de velocidad sobria (verdes bosque, ocre, teja y rojo apagados). El
 // orden coincide con la banda 0..4 que calcula replay.ts a partir de la
 // velocidad y con los ids de imagen que referencia la capa symbol.
@@ -68,6 +79,11 @@ const SEPARACION_FLECHAS_M = 120;
 // cruzar el punto donde el equipo estuvo detenido y una flecha encima de la
 // insignia fingiría movimiento en la parada. Los huecos ya no generan marcas.
 const RADIO_PARADA_FLECHA_M = 45;
+// Descarte de marcas junto a un tramo sin GPS: un fix real puede caer a pocos
+// metros de la ruta estimada o del corte de señal (mismo sitio, otro instante)
+// y la flecha encima del punteado gris pasaría por movimiento sobre el hueco.
+// Diez metros cubren el ancho de la cinta sin borrar marcas legítimas vecinas.
+const RADIO_SIN_GPS_FLECHA_M = 10;
 
 // Distancia plana en metros, suficiente para el descarte local junto a una
 // parada (decenas de metros): a esta escala el error frente a la esfera es
@@ -78,12 +94,42 @@ function distanciaAproxM(latA: number, lonA: number, latB: number, lonB: number)
   return Math.hypot(dLat, dLon);
 }
 
-// Flecha de navegación plana: punta viva y base escotada, nunca un rombo.
-// Núcleo blanco y filo del color del tramo, dibujada en canvas y registrada
-// como imagen del mapa. Apunta hacia arriba porque MapLibre parte de esa
-// dirección al rotar por rumbo, y se centra para que el ancla (centro) caiga
-// en la línea. El filo se traza antes del relleno: la mitad interior del trazo
-// queda cubierta y solo asoma el contorno.
+// Distancia mínima de un punto al segmento A→B con la misma proyección plana
+// del descarte junto a parada: el tramo se recorre por si el punto cae frente
+// al segmento (el pie se recorta a los extremos) y devuelve metros.
+function distanciaASegmentoM(
+  latitud: number,
+  longitud: number,
+  latA: number,
+  lonA: number,
+  latB: number,
+  lonB: number,
+): number {
+  const escala = Math.cos(((latA + latB) / 2) * (Math.PI / 180));
+  const ax = lonA * 111320 * escala;
+  const ay = latA * 111320;
+  const bx = lonB * 111320 * escala;
+  const by = latB * 111320;
+  const px = longitud * 111320 * escala;
+  const py = latitud * 111320;
+  const abx = bx - ax;
+  const aby = by - ay;
+  const largo2 = abx * abx + aby * aby;
+  const t = largo2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / largo2)) : 0;
+  return Math.hypot(px - (ax + t * abx), py - (ay + t * aby));
+}
+
+// Punta de navegación compacta: triángulo ancho con dos muescas laterales
+// suaves y una escotadura corta en la base. Es una silueta llena (no el dardo
+// hueco tipo chevrón que se probó antes): a 11-14 px se lee como una punta
+// maciza orientada y a ~25 px muestran las muescas, que le dan el aire de
+// cursor de navegación sin recurrir a decoración. Núcleo blanco y filo del
+// color del tramo, dibujada en canvas y registrada como imagen del mapa.
+// Apunta hacia arriba porque MapLibre parte de esa dirección al rotar por
+// rumbo, y se centra para que el ancla (centro) caiga en la línea. Las uniones
+// son redondas: la silueta queda compacta, sin las púas de miter del dardo.
+// El filo se traza antes del relleno: la mitad interior del trazo queda
+// cubierta y solo asoma el contorno.
 function imagenDireccion(borde: string): ImageData | null {
   const lienzo = document.createElement('canvas');
   lienzo.width = LADO_FLECHA;
@@ -95,13 +141,18 @@ function imagenDireccion(borde: string): ImageData | null {
   const escala = LADO_FLECHA / 64;
   contexto.beginPath();
   contexto.moveTo(32 * escala, 5 * escala);
-  contexto.lineTo(56 * escala, 56 * escala);
-  contexto.lineTo(32 * escala, 45 * escala);
-  contexto.lineTo(8 * escala, 56 * escala);
+  // Flanco derecho, muesca lateral y base ancha; la base repite la muesca en
+  // espejo para que el rumbo se lea de un vistazo.
+  contexto.lineTo(45 * escala, 30 * escala);
+  contexto.lineTo(40.5 * escala, 34.5 * escala);
+  contexto.lineTo(55 * escala, 50.5 * escala);
+  contexto.lineTo(32 * escala, 44 * escala);
+  contexto.lineTo(9 * escala, 50.5 * escala);
+  contexto.lineTo(23.5 * escala, 34.5 * escala);
+  contexto.lineTo(19 * escala, 30 * escala);
   contexto.closePath();
-  // Miter: la punta superior queda en ángulo vivo, sin redondear.
-  contexto.lineJoin = 'miter';
-  contexto.lineWidth = 7 * escala;
+  contexto.lineJoin = 'round';
+  contexto.lineWidth = FILO_FLECHA * escala;
   contexto.strokeStyle = borde;
   contexto.stroke();
   contexto.fillStyle = NUCLEO_FLECHA;
@@ -400,19 +451,36 @@ export default function Replay() {
   // del mapa no depende de ellas, se resuelve por cercanía sobre la línea de
   // acierto. Las marcas que caen sobre una parada se descartan en cualquier
   // origen (ajustadas, GPS real y la marca centrada de un tramo corto): una
-  // flecha encima de la insignia fingiría movimiento en el punto detenido.
+  // flecha encima de la insignia fingiría movimiento en el punto detenido. Con
+  // el mismo criterio se descartan las que caen junto a un tramo sin GPS
+  // (estimado o hueco): el fix es real, pero encima del punteado gris la marca
+  // fingiría un movimiento que la traza no respalda.
   const direccion = useMemo(() => {
     const coleccion = flechasEspaciadas(posiciones, huecos, reconstruidos, SEPARACION_FLECHAS_M);
-    if (paradas.length === 0) return coleccion;
+    const tramosSinGps = segmentos.filter(
+      (segmento) => segmento.tipo === 'estimated' || segmento.tipo === 'hueco',
+    );
     const features = coleccion.features.filter((flecha) => {
       const [longitud, latitud] = flecha.geometry.coordinates;
-      return paradas.every(
+      const libreDeParadas = paradas.every(
         (parada) =>
           distanciaAproxM(latitud, longitud, parada.latitud, parada.longitud) > RADIO_PARADA_FLECHA_M,
       );
+      if (!libreDeParadas) return false;
+      return tramosSinGps.every((tramo) =>
+        tramo.coordenadas.every((punto, indice) => {
+          if (indice === 0) return true;
+          const [lonA, latA] = tramo.coordenadas[indice - 1];
+          const [lonB, latB] = punto;
+          return (
+            distanciaASegmentoM(latitud, longitud, latA, lonA, latB, lonB) >
+            RADIO_SIN_GPS_FLECHA_M
+          );
+        }),
+      );
     });
     return features.length === coleccion.features.length ? coleccion : { ...coleccion, features };
-  }, [posiciones, huecos, reconstruidos, paradas]);
+  }, [posiciones, huecos, reconstruidos, paradas, segmentos]);
   // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
   // dispersión real sin líneas que la unan.
   const halos = useMemo(() => halosDeParadas(posiciones, paradas), [posiciones, paradas]);
@@ -492,8 +560,9 @@ export default function Replay() {
         },
       });
     }
-    // Casings contenidos del corredor (debajo de los núcleos): apenas un filo
-    // translúcido para asentar la línea, sin el halo ancho anterior.
+    // Cinta REAL: calce grafito por debajo (debajo de los núcleos) que asienta
+    // la traza sobre teselas claras. El cuerpo de color va encima y el pliegue
+    // blanco cierra el sistema; caminata usa el mismo idioma más fino.
     if (!mapa.getLayer('replay-casing-vehiculo')) {
       mapa.addLayer({
         id: 'replay-casing-vehiculo',
@@ -502,9 +571,9 @@ export default function Replay() {
         filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['!=', ['get', 'modo'], 'caminata'], ['!=', ['get', 'modo'], 'quieto']],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': COLOR_BANDA as string,
-          'line-opacity': 0.22,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7.5, 16, 10.5],
+          'line-color': COLOR_CALCE_REAL,
+          'line-opacity': 0.45,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 8, 16, 11],
         },
       });
     }
@@ -516,8 +585,8 @@ export default function Replay() {
         filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['==', ['get', 'modo'], 'caminata']],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': COLOR_BANDA as string,
-          'line-opacity': 0.16,
+          'line-color': COLOR_CALCE_REAL,
+          'line-opacity': 0.32,
           'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4.5, 16, 6.5],
         },
       });
@@ -563,7 +632,7 @@ export default function Replay() {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': COLOR_BANDA as string,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3, 16, 5],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3.4, 16, 5.4],
         },
       });
     }
@@ -576,13 +645,32 @@ export default function Replay() {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': COLOR_BANDA as string,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.6, 16, 2.6],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.8, 16, 2.8],
+        },
+      });
+    }
+    // Pliegue de la cinta REAL: un lomo blanco tenue por el centro del cuerpo.
+    // A z10-12 mide poco más de un píxel y la cinta se lee sólida; de z13 en
+    // adelante separa el cuerpo en dos filetes del color del tramo, la lectura
+    // de "vía" propia del GPS registrado. No se aplica a caminata (demasiado
+    // fina) ni a MATCHED (ADR-007: el ajustado no comparte la identidad REAL).
+    if (!mapa.getLayer('replay-filete-vehiculo')) {
+      mapa.addLayer({
+        id: 'replay-filete-vehiculo',
+        type: 'line',
+        source: 'replay-recorrido',
+        filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['!=', ['get', 'modo'], 'caminata'], ['!=', ['get', 'modo'], 'quieto']],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': COLOR_FILETE_REAL,
+          'line-opacity': 0.45,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.9, 16, 1.6],
         },
       });
     }
     // MATCHED: hueco con observaciones ajustado a vía. Núcleo continuo navy
-    // sobre su casing translúcido, sin coloreado por velocidad: la traza
-    // ajustada se lee como una vía propia, distinta del GPS registrado.
+    // sobre su casing translúcido, sin pliegue ni coloreado por velocidad: la
+    // traza ajustada se lee como una cinta lisa propia, distinta del GPS.
     if (!mapa.getLayer('replay-matched')) {
       mapa.addLayer({
         id: 'replay-matched',
@@ -592,7 +680,7 @@ export default function Replay() {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': COLOR_MATCHED,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.4, 16, 3.8],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.6, 16, 4.2],
         },
       });
     }
@@ -679,29 +767,29 @@ export default function Replay() {
           'icon-rotate': ['get', 'bearing'],
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
-          // Tamaño por zoom y origen: la flecha del GPS real crece de ~12 px
-          // lógicos en z9-10 a ~27-28 px en z16-17, para que la auditoría lea
-          // el sentido de marcha desde la salida del domicilio; el ajustado a
-          // vía acompaña en proporción (~0.85) y no compite con la marca real.
-          // MapLibre admite una sola subexpresión de zoom, así que el
-          // interpolate es el de afuera y cada parada resuelve el tamaño por
-          // origen: el primero es el ajustado y el último (por defecto) el
-          // real. La curva se aplana en z18 para que la punta no se agigante
-          // al inspeccionar detalle; la densidad la sigue adelgazando
+          // Tamaño por zoom y origen: la punta del GPS real crece de ~13 px en
+          // z11 a ~25 px en z16, para que la auditoría lea el sentido de marcha
+          // desde la salida del domicilio y las muescas aparezcan al acercar;
+          // el ajustado a vía acompaña en proporción (~0.85) y no compite con
+          // la marca real. MapLibre admite una sola subexpresión de zoom, así
+          // que el interpolate es el de afuera y cada parada resuelve el tamaño
+          // por origen: el primero es el ajustado y el último (por defecto) el
+          // real. La curva se aplana en z18 para que la punta no se agigante al
+          // inspeccionar detalle; la densidad la sigue adelgazando
           // flechasPorZoom en cada zoomend.
           'icon-size': [
             'interpolate',
             ['linear'],
             ['zoom'],
-            8, ['match', ['get', 'origen'], 'matched', 0.32, 0.38],
-            10, ['match', ['get', 'origen'], 'matched', 0.36, 0.42],
-            12, ['match', ['get', 'origen'], 'matched', 0.46, 0.54],
-            13, ['match', ['get', 'origen'], 'matched', 0.53, 0.62],
-            14, ['match', ['get', 'origen'], 'matched', 0.61, 0.72],
-            15, ['match', ['get', 'origen'], 'matched', 0.7, 0.82],
-            16, ['match', ['get', 'origen'], 'matched', 0.78, 0.92],
-            17, ['match', ['get', 'origen'], 'matched', 0.82, 0.97],
-            18, ['match', ['get', 'origen'], 'matched', 0.85, 1],
+            8, ['match', ['get', 'origen'], 'matched', 0.36, 0.42],
+            10, ['match', ['get', 'origen'], 'matched', 0.39, 0.46],
+            12, ['match', ['get', 'origen'], 'matched', 0.49, 0.58],
+            13, ['match', ['get', 'origen'], 'matched', 0.56, 0.66],
+            14, ['match', ['get', 'origen'], 'matched', 0.65, 0.77],
+            15, ['match', ['get', 'origen'], 'matched', 0.75, 0.88],
+            16, ['match', ['get', 'origen'], 'matched', 0.85, 1],
+            17, ['match', ['get', 'origen'], 'matched', 0.88, 1.04],
+            18, ['match', ['get', 'origen'], 'matched', 0.9, 1.06],
           ],
           'icon-allow-overlap': false,
           'icon-ignore-placement': false,
