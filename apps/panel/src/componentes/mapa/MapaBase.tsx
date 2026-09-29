@@ -32,9 +32,10 @@ export const CAPAS_MAPA = [
 ] as const;
 
 export type IdCapa = (typeof CAPAS_MAPA)[number]['id'];
-// Set que pide Replay: sin la capa "Mapa" (no se entiende frente a Satélite u
-// OpenStreetMap) y con Satélite como primera opción, es decir, la inicial.
-export const CAPAS_REPLAY = ['google-satelite', 'google-hibrido', 'osm'] as const satisfies readonly IdCapa[];
+// Replay ofrece las mismas cuatro capas que Seguimiento (con Google Maps al
+// frente) pero abre en Satélite, que es como se revisa un recorrido.
+export const CAPAS_REPLAY = CAPAS_MAPA.map((capa) => capa.id);
+export const CAPA_INICIAL_REPLAY: IdCapa = 'google-satelite';
 // Orden completo del panel; constante para que la prop por defecto no cambie
 // de identidad en cada render y memo() siga evitando repintados.
 const IDS_CAPAS: readonly IdCapa[] = CAPAS_MAPA.map((capa) => capa.id);
@@ -81,15 +82,19 @@ interface Props {
   // El callback recibe null al desmontar el mapa para que quien guarde la
   // instancia (marcadores, capas) sepa que ya no sirve.
   alListo?: (mapa: MapaMaplibre | null) => void;
-  // Ids visibles en el selector y primera capa (la inicial). Por defecto, las
-  // cuatro del panel con Mapa al frente; Replay pasa CAPAS_REPLAY.
+  // Ids visibles en el selector, en el orden del panel. Por defecto, las
+  // cuatro con Mapa al frente.
   capas?: readonly IdCapa[];
+  // Capa con la que abre; si falta, la primera de `capas`.
+  capaInicial?: IdCapa;
   // Replay pide el zoom abajo a la derecha: la esquina superior queda libre
   // para el selector de capas pegado al top bar.
   zoomAbajoDerecha?: boolean;
-  // Replay tiene su panel flotante a la izquierda y pide el selector a la
-  // derecha; En vivo lo pide a la izquierda para dejar libre el zoom.
+  // En vivo pide el selector a la izquierda para dejar libre el zoom.
   selectorIzquierda?: boolean;
+  // Replay lo pide pegado a la esquina superior derecha, sin margen, contra
+  // la barra superior del panel.
+  selectorPegado?: boolean;
 }
 
 // memo: las páginas de mapa se repintan con cada sondeo (5/10 s) y sus props
@@ -101,18 +106,20 @@ export default memo(function MapaRaster({
   zoom = 6,
   alListo,
   capas = IDS_CAPAS,
+  capaInicial,
   zoomAbajoDerecha = false,
   selectorIzquierda = false,
+  selectorPegado = false,
 }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const instancia = useRef<MapaMaplibre | null>(null);
   const avisoListo = useRef(alListo);
-  const [capaActiva, setCapaActiva] = useState<IdCapa>(() => capas[0] ?? 'google-mapa');
+  const [capaActiva, setCapaActiva] = useState<IdCapa>(() => capaInicial ?? capas[0] ?? 'google-mapa');
   // Estado del fundido: duración vigente, capa pedida mientras el estilo aún
   // carga y temporizador que retira las capas salientes al terminar.
   const duracionFundido = useRef(180);
   const cargado = useRef(false);
-  const capaDestino = useRef<IdCapa>(capas[0] ?? 'google-mapa');
+  const capaDestino = useRef<IdCapa>(capaInicial ?? capas[0] ?? 'google-mapa');
   const temporizadorCapa = useRef<number | null>(null);
   // Sin WebGL2 (PC viejo, aceleración apagada) maplibre lanza al construir y
   // tumbaba la página entera: se muestra un aviso en el recuadro del mapa y
@@ -227,9 +234,8 @@ export default memo(function MapaRaster({
     aplicarCapa(id, true);
   }
 
-  // Selector en el orden del panel, restringido al set vigente: Replay no
-  // muestra "Mapa". El estilo sigue definiendo las cuatro capas por si el
-  // mapa se reutiliza en otra página, pero aquí solo se ofrecen las pedidas.
+  // Selector en el orden del panel, restringido al set vigente. El estilo
+  // define siempre las cuatro capas; aquí solo se ofrecen las pedidas.
   const definiciones = useMemo(() => CAPAS_MAPA.filter((capa) => capas.includes(capa.id)), [capas]);
 
   return (
@@ -248,8 +254,10 @@ export default memo(function MapaRaster({
         role="group"
         aria-label="Capa del mapa"
         className={cn(
-          'absolute top-3 z-[5] flex rounded-control border border-borde bg-superficie/95 p-0.5 shadow-flotante backdrop-blur',
-          selectorIzquierda ? 'left-3' : 'right-3',
+          'absolute z-[5] flex border-borde bg-superficie/95 p-0.5 shadow-flotante backdrop-blur',
+          selectorPegado
+            ? 'top-0 right-0 rounded-bl-control border-b border-l'
+            : cn('top-3 rounded-control border', selectorIzquierda ? 'left-3' : 'right-3'),
         )}
       >
         {definiciones.map((capa) => (

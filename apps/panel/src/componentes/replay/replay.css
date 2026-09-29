@@ -911,19 +911,36 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
 .replay-viajes li button.activo .numero { background: var(--marca); }
 
 
-  /* Identidad nueva: el mapa llena el área y el panel flota como tarjeta. */
+  /* Identidad nueva: el mapa llena el área y el panel queda pegado al borde
+     superior, izquierdo e inferior (contra la barra y el lateral), sin margen. */
   & { position: relative; height: 100%; margin: 0; }
   & .replay-panel {
-    top: 16px; left: 16px; bottom: 16px; width: 380px;
-    border: 1px solid var(--color-borde); border-radius: var(--radius-tarjeta);
-    box-shadow: var(--shadow-flotante); background: var(--color-superficie);
+    top: 0; left: 0; bottom: 0; width: 380px;
+    border-width: 0 1px 0 0; border-color: var(--color-borde); border-radius: 0;
+    box-shadow: none; background: var(--color-superficie);
   }
-  & .replay-panel.colapsado { bottom: auto; width: auto; }
+  /* La franja se centra en el mapa visible: con el panel desplegado, a la
+     derecha de sus 380 px y dejando libre la columna del zoom (56 px);
+     plegado, sobre todo el ancho. */
+  @media (min-width: 761px) {
+    &:has(.replay-panel:not(.colapsado)) .replay-timeline {
+      left: calc(380px + (100% - 380px - 56px) / 2);
+      width: min(420px, calc(100% - 380px - 56px - 24px));
+    }
+  }
+  /* Plegado: solo la pestaña con las acciones, pegada a la esquina. */
+  & .replay-panel.colapsado {
+    bottom: auto; width: auto;
+    border-width: 0 1px 1px 0; border-radius: 0 0 var(--radius-control) 0; box-shadow: var(--shadow-flotante);
+  }
   & .replay-cabecera h2 { font-family: var(--font-display); font-size: 17px; color: var(--color-marino-900); }
   & button { border-radius: var(--radius-control); }
   & button.principal, & .activo { accent-color: var(--color-marca); }
   @media (max-width: 760px) {
-    & .replay-panel { top: 8px; left: 8px; right: 8px; bottom: auto; width: auto; max-height: 48%; }
+    & .replay-panel { top: 0; left: 0; right: 0; bottom: auto; width: auto; max-height: 48%; border-width: 0 0 1px 0; }
+    /* El panel ocupa todo el ancho arriba: el selector de capas pasa a la
+       esquina derecha, justo encima de la franja de reproducción. */
+    & [aria-label="Capa del mapa"] { top: auto; bottom: 160px; border-width: 1px 0 0 1px; border-radius: 10px 0 0 0; }
   }
   /* El selector de capas es del mapa base (Tailwind): los estilos heredados
      de botón no deben pintarlo. */

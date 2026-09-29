@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BatteryWarning, ChevronDown, LogOut, Menu, Moon, Search, SignalLow, Sun, X } from 'lucide-react';
+import { Bell, BatteryWarning, ChevronDown, ChevronLeft, LogOut, Menu, Moon, Search, SignalLow, Sun, X } from 'lucide-react';
 import { useSesion } from '@/lib/sesion';
 import { alNoAutorizado } from '@/lib/api';
 import { cn } from '@/lib/cn';
@@ -17,6 +17,16 @@ import { Logo } from './Logo';
 import { GRUPOS, paginaDeRuta } from './navegacion';
 
 const ID_ACCIONES = 'marco-acciones-pagina';
+const CLAVE_LATERAL = 'dmj.panel.lateral';
+
+// El lateral plegado (solo íconos) se recuerda por navegador.
+function lateralPlegadoInicial(): boolean {
+  try {
+    return localStorage.getItem(CLAVE_LATERAL) === '1';
+  } catch {
+    return false;
+  }
+}
 
 // Las páginas colocan sus acciones (filtros de fecha, exportar, agregar) en la
 // barra superior, junto al título, con <AccionesPagina>.
@@ -34,6 +44,7 @@ export default function Marco() {
   const navegar = useNavigate();
   const { pathname } = useLocation();
   const [menuMovil, setMenuMovil] = useState(false);
+  const [plegado, setPlegado] = useState(lateralPlegadoInicial);
   const pantallaCompleta = pathname.startsWith('/replay') || pathname.startsWith('/en-vivo');
 
   useEffect(() => {
@@ -48,6 +59,17 @@ export default function Marco() {
   }, [cargar, navegar]);
 
   useEffect(() => setMenuMovil(false), [pathname]);
+
+  function alternarLateral() {
+    setPlegado((actual) => {
+      try {
+        localStorage.setItem(CLAVE_LATERAL, actual ? '0' : '1');
+      } catch {
+        // Sin almacenamiento el estado dura hasta recargar.
+      }
+      return !actual;
+    });
+  }
 
   if (cargando || !usuario) return <PantallaCarga texto="Comprobando sesión…" />;
 
@@ -65,13 +87,29 @@ export default function Marco() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-[248px] flex-none flex-col border-r border-borde bg-superficie transition-transform duration-200',
-          'lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-[248px] flex-none flex-col border-r border-borde bg-superficie transition-[transform,width] duration-200',
+          'lg:relative lg:translate-x-0',
+          plegado && 'lg:w-[76px]',
           menuMovil ? 'translate-x-0 shadow-flotante' : '-translate-x-full',
         )}
       >
-        <div className="flex h-[76px] flex-none items-center justify-between px-6">
-          <Logo className="h-9" />
+        <button
+          type="button"
+          onClick={alternarLateral}
+          aria-label={plegado ? 'Desplegar menú lateral' : 'Plegar menú lateral'}
+          title={plegado ? 'Desplegar menú' : 'Plegar menú'}
+          className="absolute top-[26px] -right-3 z-10 hidden size-6 cursor-pointer place-items-center rounded-md border border-borde bg-superficie text-texto-2 shadow-tarjeta transition-colors hover:border-marca hover:text-marca lg:grid"
+        >
+          <ChevronLeft className={cn('size-4 transition-transform duration-200', plegado && 'rotate-180')} strokeWidth={2.2} />
+        </button>
+
+        <div className={cn('flex h-[76px] flex-none items-center justify-between px-6', plegado && 'lg:justify-center lg:px-0')}>
+          <div className={cn(plegado && 'lg:hidden')}>
+            <Logo className="h-9" />
+          </div>
+          <div className={cn('hidden', plegado && 'lg:block')}>
+            <Logo simbolo className="size-10" />
+          </div>
           <button
             type="button"
             onClick={() => setMenuMovil(false)}
@@ -82,24 +120,33 @@ export default function Marco() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
-          {GRUPOS.map((grupo) => {
+        <nav className={cn('flex-1 overflow-y-auto overflow-x-hidden px-4 pt-2 pb-4', plegado && 'lg:px-3')}>
+          {GRUPOS.map((grupo, indiceGrupo) => {
             const enlaces = grupo.enlaces.filter((e) => !e.soloAdmin || usuario.administrador);
             if (enlaces.length === 0) return null;
             return (
               <div key={grupo.titulo} className="mb-6">
-                <p className="mb-2 px-3 text-[11px] font-semibold tracking-[0.08em] text-texto-3 uppercase">
+                <p
+                  className={cn(
+                    'mb-2 px-3 text-[11px] font-semibold tracking-[0.08em] text-texto-3 uppercase',
+                    plegado && 'lg:hidden',
+                  )}
+                >
                   {grupo.titulo}
                 </p>
+                {plegado && indiceGrupo > 0 && <div className="mx-2 mb-3 hidden border-t border-borde lg:block" />}
                 <div className="flex flex-col gap-1">
                   {enlaces.map(({ ruta, texto, icono: Icono, exacto }) => (
                     <NavLink
                       key={ruta}
                       to={ruta}
                       end={exacto}
+                      title={plegado ? texto : undefined}
+                      aria-label={texto}
                       className={({ isActive }) =>
                         cn(
-                          'flex h-11 items-center gap-3 rounded-[12px] px-3.5 text-[14px] font-medium transition-colors',
+                          'flex h-11 items-center gap-3 rounded-[12px] px-3.5 text-[14px] font-medium whitespace-nowrap transition-colors',
+                          plegado && 'lg:justify-center lg:px-0',
                           isActive
                             ? 'bg-marca text-white shadow-[0_6px_16px_-4px_rgb(235_0_69/0.45)]'
                             : 'text-texto-2 hover:bg-fondo hover:text-marino-900',
@@ -107,7 +154,7 @@ export default function Marco() {
                       }
                     >
                       <Icono className="size-[19px] flex-none" strokeWidth={1.9} />
-                      {texto}
+                      <span className={cn(plegado && 'lg:hidden')}>{texto}</span>
                     </NavLink>
                   ))}
                 </div>
@@ -116,14 +163,19 @@ export default function Marco() {
           })}
         </nav>
 
-        <div className="flex-none border-t border-borde p-4">
+        <div className={cn('flex-none border-t border-borde p-4', plegado && 'lg:px-3')}>
           <button
             type="button"
             onClick={salir}
-            className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-[12px] px-3.5 text-[14px] font-medium text-texto-2 transition-colors hover:bg-peligro-suave hover:text-peligro"
+            title={plegado ? 'Cerrar sesión' : undefined}
+            aria-label="Cerrar sesión"
+            className={cn(
+              'flex h-11 w-full cursor-pointer items-center gap-3 rounded-[12px] px-3.5 text-[14px] font-medium whitespace-nowrap text-texto-2 transition-colors hover:bg-peligro-suave hover:text-peligro',
+              plegado && 'lg:justify-center lg:px-0',
+            )}
           >
-            <LogOut className="size-[19px]" strokeWidth={1.9} />
-            Cerrar sesión
+            <LogOut className="size-[19px] flex-none" strokeWidth={1.9} />
+            <span className={cn(plegado && 'lg:hidden')}>Cerrar sesión</span>
           </button>
         </div>
       </aside>

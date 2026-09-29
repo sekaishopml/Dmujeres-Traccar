@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { LngLatBounds, Marker } from 'maplibre-gl';
 import type { GeoJSONSource, Map as TipoMapa } from 'maplibre-gl';
 import Icono from '@/componentes/replay/Icono';
-import MapaRaster, { CAPAS_REPLAY } from '@/componentes/mapa/MapaBase';
+import MapaRaster, { CAPAS_REPLAY, CAPA_INICIAL_REPLAY } from '@/componentes/mapa/MapaBase';
 import ReproductorReplay, {
   InsigniasParadas,
   LineaTiempoReplay,
@@ -987,7 +987,7 @@ export default function Replay() {
             con las clases que definen global.css y operacion.css. Replay pide
             el set de capas sin "Mapa" (Satélite inicial) y el zoom abajo a la
             derecha, con el selector pegado al top bar. */}
-        <MapaRaster clase="mapa" alListo={setMapa} capas={CAPAS_REPLAY} zoomAbajoDerecha />
+        <MapaRaster clase="mapa" alListo={setMapa} capas={CAPAS_REPLAY} capaInicial={CAPA_INICIAL_REPLAY} zoomAbajoDerecha selectorPegado />
         {/* Insignias de parada sobre el mapa, dentro del proveedor del
             reproductor: comparten selección con la lista y llevan el mapa a la
             parada con un vuelo suave al pulsarlas. No pintan nada en el DOM. */}
