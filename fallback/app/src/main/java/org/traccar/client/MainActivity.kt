@@ -35,9 +35,6 @@ import androidx.preference.PreferenceManager
 /** Refresco en vivo del home (estado, pendientes, batería y duración). */
 private const val LIVE_REFRESH_MS = 5_000L
 
-/** Freno entre chequeos de actualización (banner en vivo con la app abierta). */
-private const val OTA_CHECK_MIN_GAP_MS = 60_000L
-
 /** Extra del menú de depuración para probar la animación del banner. */
 const val EXTRA_BANNER_DEMO = "bannerDemo"
 
@@ -82,7 +79,11 @@ class MainActivity : AppCompatActivity() {
         // 5 toques en la versión (ya no existe el panel de ajustes de Traccar).
         setContentView(R.layout.activity_locked_home)
         wireLockedHome()
-        maybeCheckOta()
+        // Apertura en frío: consulta SIEMPRE (OtaPolicy.shouldCheck con
+        // coldStart). El freno persistido de 60 s no puede dejar a ciegas al
+        // reabrir rápido: era el bug (banner visto una vez y nunca más sin
+        // actualizar). La rotación no es apertura: no repite la consulta.
+        maybeCheckOta(force = savedInstanceState == null)
         if (intent.getBooleanExtra(EXTRA_BANNER_DEMO, false)) {
             showBannerDemo()
         }
@@ -97,16 +98,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Chequeo de actualización con freno: al abrir la app, al volver a ella y
-     * cada minuto con la app abierta. El freno se marca al TERMINAR el chequeo
-     * (no antes): si la actividad se cierra a mitad, el próximo intento vuelve
-     * enseguida en vez de quedar a ciegas.
+     * Chequeo de actualización: en apertura en frío SIEMPRE (regla del dueño:
+     * el banner sale en cada apertura si lo publicado supera a lo instalado);
+     * con la app abierta (volver a ella o ticker cada minuto) con freno
+     * anti-spam de red de 1 min y tope absoluto de ~2 min (ver OtaPolicy). El
+     * sello se marca al TERMINAR el chequeo (no antes): si la actividad se
+     * cierra a mitad, el próximo intento vuelve enseguida en vez de quedar a
+     * ciegas. No hay estado "ya visto": el banner se deriva de
+     * publicada > instalada en cada chequeo; un error solo avanza el sello y
+     * se reintenta en el siguiente ciclo, nunca silencia para siempre.
      */
-    private fun maybeCheckOta() {
+    private fun maybeCheckOta(force: Boolean = false) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val now = System.currentTimeMillis()
         val last = prefs.getLong(KEY_LAST_OTA_CHECK, 0L)
-        if (now - last < OTA_CHECK_MIN_GAP_MS) return
+        if (!force && !OtaPolicy.shouldCheck(now, last, coldStart = false)) return
         showUpdateDialogIfAvailable {
             prefs.edit().putLong(KEY_LAST_OTA_CHECK, System.currentTimeMillis()).apply()
         }
@@ -136,6 +142,17 @@ class MainActivity : AppCompatActivity() {
     private fun showUpdateBanner(url: String, sha256: String, demo: Boolean = false) {
         if (isFinishing || isDestroyed) return
         val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
+        // La acción siempre lleva la ÚLTIMA url publicada: si se publicó una
+        // versión aún mayor con el banner ya visible, tocar debe descargar lo
+        // nuevo, no lo viejo (antes el listener quedaba con la url anterior).
+        banner.setOnClickListener {
+            if (demo) {
+                hideUpdateBanner()
+                Toast.makeText(this, getString(R.string.debug_banner_demo_done), Toast.LENGTH_SHORT).show()
+            } else {
+                UpdateActivity.start(this, url, sha256)
+            }
+        }
         if (banner.visibility == View.VISIBLE) return
         val console = findViewById<android.widget.ImageButton>(R.id.console_button)
         val height = (46 * resources.displayMetrics.density).toInt()
@@ -145,14 +162,6 @@ class MainActivity : AppCompatActivity() {
         banner.animate().translationY(0f).setDuration(420).setInterpolator(slide).start()
         // La hamburguesa acompaña la bajada para quedar visible debajo.
         console?.animate()?.translationY(height.toFloat())?.setDuration(420)?.setInterpolator(slide)?.start()
-        banner.setOnClickListener {
-            if (demo) {
-                hideUpdateBanner()
-                Toast.makeText(this, getString(R.string.debug_banner_demo_done), Toast.LENGTH_SHORT).show()
-            } else {
-                UpdateActivity.start(this, url, sha256)
-            }
-        }
     }
 
     /** Sube el banner y devuelve la hamburguesa a su sitio (misma suavidad). */

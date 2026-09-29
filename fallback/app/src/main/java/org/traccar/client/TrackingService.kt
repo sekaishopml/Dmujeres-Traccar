@@ -61,6 +61,9 @@ class TrackingService : Service() {
         } catch (e: RuntimeException) {
             Log.w(TAG, e)
             sharedPreferences.edit().putBoolean(Prefs.STATUS, false).apply()
+            // El FGS caído no puede quedar mudo: la consola (y el panel vía
+            // latido) explican que el servicio no arrancó y por qué no hay ruta.
+            runCatching { StatusActivity.addMessage(getString(R.string.status_service_create_fail)) }
             stopSelf()
         }
     }
@@ -71,7 +74,32 @@ class TrackingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         WakefulBroadcastReceiver.completeWakefulIntent(intent)
+        // Si el servicio nació sin permiso fino (sin controlador) y el permiso
+        // se concedió después con el servicio ya vivo, onCreate no se repite:
+        // sin esto el tracking quedaba muerto en silencio hasta reiniciar.
+        runCatching { ensureController() }
+            .onFailure { Log.w(TAG, "no se pudo asegurar el controlador", it) }
         return START_STICKY
+    }
+
+    /**
+     * Crea el controlador si falta y ya hay permiso (caso: servicio nacido sin
+     * permiso, concedido después desde Ajustes con el servicio vivo).
+     */
+    private fun ensureController() {
+        if (!shouldEnsureController(
+                hasPermission = ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.ACCESS_FINE_LOCATION,
+                ) == PackageManager.PERMISSION_GRANTED,
+                hasController = controllerRef != null,
+            )
+        ) {
+            return
+        }
+        trackingController = TrackingController(this)
+        controllerRef = trackingController
+        runCatching { trackingController?.start() }
+            .onFailure { Log.w(TAG, "no se pudo arrancar el controlador", it) }
     }
 
     override fun onDestroy() {
@@ -132,6 +160,14 @@ class TrackingService : Service() {
         const val ACTION_STARTED = "org.traccar.action.SERVICE_STARTED"
         const val ACTION_STOPPED = "org.traccar.action.SERVICE_STOPPED"
         private val TAG = TrackingService::class.java.simpleName
+
+        /**
+         * Decisión pura de [ensureController]: solo crear cuando hay permiso y
+         * falta el controlador. Con permiso pero ya creado, o sin permiso, no
+         * se toca nada (nunca se destruye ni se duplica).
+         */
+        fun shouldEnsureController(hasPermission: Boolean, hasController: Boolean): Boolean =
+            hasPermission && !hasController
         private const val NOTIFICATION_ID = 1
 
         @SuppressLint("UnspecifiedImmutableFlag")

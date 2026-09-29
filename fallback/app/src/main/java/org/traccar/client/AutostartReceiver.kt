@@ -37,8 +37,21 @@ class AutostartReceiver : WakefulBroadcastReceiver() {
         }
         // Se conserva el arranque existente: la flota depende de él y el
         // encargo solo pide AÑADIR el rearme (no cambiar el arranque aquí).
+        // Con red: en Android 12+ el arranque en segundo plano puede ser
+        // rechazado (ForegroundServiceStartNotAllowedException) y antes ese
+        // throw tumbaba el receiver sin aviso ni reintento; ahora se registra
+        // y la alarma (ya rearmada arriba) + la próxima apertura reintentan.
+        // Riesgo OEM aceptado: si el fabricante niega el arranque en segundo
+        // plano, solo la apertura manual levanta el tracking (documentado).
         if (sharedPreferences.getBoolean(Prefs.STATUS, false)) {
-            startWakefulForegroundService(context, Intent(context, TrackingService::class.java))
+            runCatching {
+                startWakefulForegroundService(context, Intent(context, TrackingService::class.java))
+            }.onFailure {
+                android.util.Log.w("AutostartReceiver", "arranque en boot rechazado, reintenta la alarma/apertura", it)
+                runCatching {
+                    StatusActivity.addMessage("Arranque en boot rechazado por el sistema")
+                }
+            }
         }
     }
 

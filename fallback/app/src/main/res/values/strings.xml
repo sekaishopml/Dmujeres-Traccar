@@ -38,6 +38,7 @@
   <string name="menu_shortcuts">Add shortcuts</string>
   <string name="menu_clear">Clear</string>
   <string name="status_service_create">Service started</string>
+  <string name="status_service_create_fail">No se pudo arrancar el servicio · abre la app para reintentarlo</string>
   <string name="status_service_destroy">Service stopped</string>
   <string name="status_send_success">Send successfully</string>
   <string name="status_send_fail">Send failed</string>

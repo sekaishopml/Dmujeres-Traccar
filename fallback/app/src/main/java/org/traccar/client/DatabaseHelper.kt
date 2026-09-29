@@ -378,16 +378,28 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
      * `boot_id`: UUID por arranque DE PROCESO. Se rota al arrancar el tracking
      * ([rotateBootId]) y se persiste en meta para que sobreviva a la recreación
      * (las filas viejas conservan su boot_id: la identidad es por evento).
+     *
+     * El candado es ESTÁTICO (no `@Synchronized` de instancia): existen varias
+     * instancias contra el mismo SQLite (tracking, jornada, cierre) y con
+     * candado por instancia dos hilos podían leer la misma secuencia y emitir
+     * el mismo (boot_id, seq) duplicado — el servidor lo dedupeaba y una de
+     * las filas se reenviaba para siempre.
      */
-    @Synchronized
     fun currentBootId(): String {
-        val existing = getMeta(KEY_BOOT_ID)
-        if (!existing.isNullOrBlank()) return existing
-        return rotateBootId()
+        synchronized(IDENTITY_LOCK) {
+            val existing = getMeta(KEY_BOOT_ID)
+            if (!existing.isNullOrBlank()) return existing
+            return rotateBootIdLocked()
+        }
     }
 
-    @Synchronized
     fun rotateBootId(): String {
+        synchronized(IDENTITY_LOCK) {
+            return rotateBootIdLocked()
+        }
+    }
+
+    private fun rotateBootIdLocked(): String {
         val fresh = java.util.UUID.randomUUID().toString()
         putMeta(KEY_BOOT_ID, fresh)
         return fresh
@@ -395,15 +407,16 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
 
     /**
      * `local_sequence`: contador persistente que SOLO incrementa (nunca se
-     * reinicia, ni en reboot). Sincronizado porque la captura y la subida
-     * comparten el SQLite desde hilos distintos.
+     * reinicia, ni en reboot). Mismo candado estático que el boot_id: la
+     * lectura-modificación-escritura debe ser atómica entre instancias.
      */
-    @Synchronized
     fun nextLocalSequence(): Long {
-        val current = getMeta(KEY_LAST_SEQUENCE)?.toLongOrNull() ?: 0L
-        val next = current + 1
-        putMeta(KEY_LAST_SEQUENCE, next.toString())
-        return next
+        synchronized(IDENTITY_LOCK) {
+            val current = getMeta(KEY_LAST_SEQUENCE)?.toLongOrNull() ?: 0L
+            val next = current + 1
+            putMeta(KEY_LAST_SEQUENCE, next.toString())
+            return next
+        }
     }
 
     /** Completa la identidad del evento si quien captura no la puso. */
@@ -428,6 +441,9 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
     companion object {
         const val DATABASE_VERSION = 6
         const val DATABASE_NAME = "traccar.db"
+
+        /** Candado estático de identidad (boot_id + secuencia, ver arriba). */
+        private val IDENTITY_LOCK = Any()
 
         /** Columnas nuevas de la v5 (migración aditiva). */
         private val POSITION_V5_COLUMNS = listOf(

@@ -14,6 +14,7 @@ import org.traccar.client.Position
 import org.traccar.client.ProtocolFormatter
 import org.traccar.client.RequestManager
 import org.traccar.client.SendWakeLock
+import org.traccar.client.SessionStore
 import org.traccar.client.StatusActivity
 import java.net.HttpURLConnection
 import java.net.URL
@@ -68,6 +69,53 @@ object UploadPolicy {
         "invalid", "dead" -> EventResult.DEAD
         else -> EventResult.UNKNOWN
     }
+
+    /** Qué sigue tras procesar el `resultados` de un lote 2xx. */
+    enum class BatchFollowUp { CONTINUE, BACKOFF }
+
+    /**
+     * Si el servidor confirmó o declaró algo (avance del cursor) se sigue en
+     * serie con el siguiente lote; si NO confirmó nada (cuerpo vacío, estados
+     * desconocidos o lote sin mención) se hace backoff: antes se seguía de
+     * inmediato y se reenviaba el MISMO lote en bucle apretado contra el
+     * servidor sin que el cursor avanzara.
+     */
+    fun followUpAfterBatch(confirmed: Int, dead: Int): BatchFollowUp =
+        if (confirmed == 0 && dead == 0) BatchFollowUp.BACKOFF else BatchFollowUp.CONTINUE
+
+    /**
+     * Empareja cada entrada de `resultados` con UNA fila del lote por `seq`,
+     * en orden: cada confirmación consume una sola fila.
+     *
+     * Hallazgo: con `associateBy` dos filas con la misma secuencia (carrera de
+     * identidad) colapsaban en una sola clave: la primera fila nunca se
+     * confirmaba y se reenviaba para siempre. Con colas de consumo, cada
+     * mención del servidor avanza el cursor exactamente una fila; lo no
+     * mencionado queda para el próximo ciclo (nunca se borra a ciegas).
+     *
+     * @param batch pares (rowId, seq) del lote enviado.
+     * @param resultados pares (seq, estado) tal como vinieron del servidor.
+     */
+    data class BatchMatch(val confirmedIds: List<Long>, val deadIds: List<Long>)
+
+    fun matchBatchResults(
+        batch: List<Pair<Long, Long>>,
+        resultados: List<Pair<Long, String>>,
+    ): BatchMatch {
+        val pending = batch.groupBy({ it.second }, { it.first })
+            .mapValues { ArrayDeque(it.value) }
+        val confirmed = ArrayList<Long>()
+        val dead = ArrayList<Long>()
+        for ((seq, estado) in resultados) {
+            val row = pending[seq]?.removeFirstOrNull() ?: continue
+            when (classifyEvent(estado)) {
+                EventResult.CONFIRMED -> confirmed.add(row)
+                EventResult.DEAD -> dead.add(row)
+                EventResult.UNKNOWN -> Unit // se reintenta: no se consume
+            }
+        }
+        return BatchMatch(confirmed, dead)
+    }
 }
 
 /**
@@ -110,6 +158,17 @@ class UploadQueue(
     @Volatile
     private var pausedAuth = false
 
+    /**
+     * Foto del material de auth al pausar (para reanudar solo cuando CAMBIE:
+     * entrar de nuevo o corregir la clave; sin cambio no se reintenta el
+     * mismo 401 en bucle).
+     */
+    @Volatile
+    private var pausedToken = ""
+
+    @Volatile
+    private var pausedApiKey = ""
+
     @Volatile
     private var batchSupported = true
 
@@ -133,7 +192,23 @@ class UploadQueue(
     /** Patea la cola (fix nuevo, red de vuelta, refresco manual, rescate). */
     fun kick(online: Boolean) {
         lastOnline = online
-        if (!online || busy || pausedAuth) return
+        if (busy) return
+        if (pausedAuth) {
+            // Reanudación automática solo si el material de auth cambió desde
+            // la pausa (login nuevo o clave corregida): sin cambio se sigue
+            // pausado en vez de reintentar el mismo 401 en bucle.
+            if (UploadAuthPolicy.shouldResumeAfterAuthChange(
+                    pausedToken, pausedApiKey,
+                    currentToken(), currentApiKey(),
+                )
+            ) {
+                resume()
+                Log.i(TAG, "auth cambió desde la pausa: cola reanudada")
+            } else {
+                return
+            }
+        }
+        if (!online) return
         busy = true
         Thread { step() }.start()
     }
@@ -141,8 +216,14 @@ class UploadQueue(
     /** Reanuda tras una pausa por 401 (el usuario ya corrigió la clave). */
     fun resume() {
         pausedAuth = false
+        pausedToken = ""
+        pausedApiKey = ""
         consecutiveFailures = 0
     }
+
+    private fun currentToken(): String = SessionStore.token(appContext)
+
+    private fun currentApiKey(): String = DmujeresApi.apiKey(appContext)
 
     private fun step() {
         try {
@@ -199,23 +280,40 @@ class UploadQueue(
                 } else {
                     Log.w(TAG, "lote DEAD ($code): no se reintenta")
                     runCatching { databaseHelper.markDead(batch.map { it.id }) }
-                    listener.onEventsDead(batch.size)
+                    listenerSafe { listener.onEventsDead(batch.size) }
                     finishOk(0)
                     kickNext()
                 }
             }
             UploadPolicy.HttpClass.PAUSED -> {
-                pausedAuth = true
-                if (hadToken) {
-                    // Token revocado o usuario deshabilitado: limpiar la sesión
-                    // y pedir login de nuevo, sin reintentar en bucle.
+                if (!UploadAuthPolicy.shouldLatchPause(code, hadToken)) {
+                    // 401 con token = token muerto: se limpia la sesión y se
+                    // reintenta UNA vez con la clave compartida (la app opera
+                    // con ella hasta el próximo login). Si esa también falla,
+                    // la siguiente vuelta pausa de verdad. Nunca se borra dato.
                     DmujeresApi.noteHttpResult(appContext, code, hadToken = true)
+                    consecutiveFailures = 0
+                    finishIdle()
+                    kickNext()
                 } else {
-                    Log.w(TAG, "cola pausada por 401: clave móvil inválida")
-                    StatusActivity.addMessage("Clave móvil inválida (401): subida pausada")
+                    // Clave compartida inválida o 403: pausa latcheada con foto
+                    // del material para reanudar solo cuando cambie (o con
+                    // refresco manual). Sin foto, entrar de nuevo no reanudaba
+                    // y la subida quedaba muerta toda la jornada.
+                    pausedAuth = true
+                    pausedToken = currentToken()
+                    pausedApiKey = currentApiKey()
+                    if (hadToken) {
+                        // Token revocado o usuario deshabilitado: limpiar la sesión
+                        // y pedir login de nuevo, sin reintentar en bucle.
+                        DmujeresApi.noteHttpResult(appContext, code, hadToken = true)
+                    } else {
+                        Log.w(TAG, "cola pausada por 401: clave móvil inválida")
+                        StatusActivity.addMessage("Clave móvil inválida (401): subida pausada")
+                    }
+                    listenerSafe { listener.onAuthPaused() }
+                    finishIdle()
                 }
-                listener.onAuthPaused()
-                finishIdle()
             }
             UploadPolicy.HttpClass.RETRY -> scheduleRetry()
         }
@@ -224,37 +322,43 @@ class UploadQueue(
     private fun applyBatchResult(batch: List<Position>, response: String) {
         // Sin parseo no se borra: reintentar es seguro por idempotencia
         // (boot_id, secuencia), pero borrar a ciegas perdería datos.
-        val bySeq = batch.associateBy { it.localSequence }
-        val confirmed = ArrayList<Long>()
-        val dead = ArrayList<Long>()
+        val batchPairs = batch.map { it.id to it.localSequence }
+        val match: UploadPolicy.BatchMatch
         try {
             val resultados = JSONObject(response).getJSONArray("resultados")
+            val entries = ArrayList<Pair<Long, String>>(resultados.length())
             for (i in 0 until resultados.length()) {
                 val item = resultados.getJSONObject(i)
-                val row = bySeq[item.optLong("seq")] ?: continue
-                when (UploadPolicy.classifyEvent(item.optString("estado"))) {
-                    UploadPolicy.EventResult.CONFIRMED -> confirmed.add(row.id)
-                    UploadPolicy.EventResult.DEAD -> dead.add(row.id)
-                    UploadPolicy.EventResult.UNKNOWN -> Unit // se reintenta
-                }
+                entries.add(item.optLong("seq") to item.optString("estado"))
             }
+            // Emparejado 1-a-1 por seq en orden (ver UploadPolicy): cada
+            // mención avanza el cursor una fila; lo no mencionado se reintenta.
+            match = UploadPolicy.matchBatchResults(batchPairs, entries)
         } catch (e: Exception) {
             Log.w(TAG, "lote 2xx sin cuerpo válido: se reintenta", e)
             scheduleRetry()
             return
         }
         // Sin mención = no confirmado (no se borra lo que el servidor no vio).
-        runCatching { databaseHelper.deletePositions(confirmed) }
-        if (dead.isNotEmpty()) {
-            runCatching { databaseHelper.markDead(dead) }
-            listener.onEventsDead(dead.size)
+        runCatching { databaseHelper.deletePositions(match.confirmedIds) }
+        if (match.deadIds.isNotEmpty()) {
+            runCatching { databaseHelper.markDead(match.deadIds) }
+            listenerSafe { listener.onEventsDead(match.deadIds.size) }
         }
         consecutiveFailures = 0
-        if (confirmed.isNotEmpty()) {
+        if (match.confirmedIds.isNotEmpty()) {
             lastConfirmedAtMs = System.currentTimeMillis()
-            listener.onQueueFlowing(confirmed.size)
+            listenerSafe { listener.onQueueFlowing(match.confirmedIds.size) }
         }
-        finishOk(confirmed.size)
+        if (UploadPolicy.followUpAfterBatch(match.confirmedIds.size, match.deadIds.size) ==
+            UploadPolicy.BatchFollowUp.BACKOFF
+        ) {
+            // 2xx sin avance del cursor (vacío o estados desconocidos):
+            // backoff en vez de reenviar el mismo lote en bucle apretado.
+            scheduleRetry()
+            return
+        }
+        finishOk(match.confirmedIds.size)
         // Serie estricta: si queda más, sigue en el mismo impulso.
         kickNext()
     }
@@ -291,7 +395,7 @@ class UploadQueue(
         if (confirmed.isNotEmpty()) {
             consecutiveFailures = 0
             lastConfirmedAtMs = System.currentTimeMillis()
-            listener.onQueueFlowing(confirmed.size)
+            listenerSafe { listener.onQueueFlowing(confirmed.size) }
         }
         finishOk(confirmed.size)
         if (failed) {
@@ -306,6 +410,16 @@ class UploadQueue(
     /** Serie estricta: al terminar un lote, sigue con el siguiente si hay. */
     private fun kickNext() {
         handler.post { kick(lastOnline) }
+    }
+
+    /**
+     * Los avisos al controlador nunca pueden tumbar el paso de la cola: un
+     * listener que lance (p. ej. UI tocada desde el hilo de subida) se
+     * registra y el cursor ya avanzó (los borrados van antes). Sin esta
+     * guarda, `busy` quedaba en true y la cola moría hasta reiniciar.
+     */
+    private inline fun listenerSafe(block: () -> Unit) {
+        runCatching(block).onFailure { Log.w(TAG, "aviso al controlador falló", it) }
     }
 
     private fun finishOk(@Suppress("UNUSED_PARAMETER") confirmed: Int) {

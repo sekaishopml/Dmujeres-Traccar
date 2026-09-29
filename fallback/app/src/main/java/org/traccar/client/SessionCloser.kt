@@ -188,24 +188,24 @@ object SessionCloser {
         batch: List<Position>,
         response: String,
     ): SessionClosePlan.SendResult {
-        val bySeq = batch.associateBy { it.localSequence }
-        val confirmed = ArrayList<Long>()
-        val dead = ArrayList<Long>()
+        val batchPairs = batch.map { it.id to it.localSequence }
+        val match: UploadPolicy.BatchMatch
         try {
             val resultados = JSONObject(response).getJSONArray("resultados")
+            val entries = ArrayList<Pair<Long, String>>(resultados.length())
             for (i in 0 until resultados.length()) {
                 val item = resultados.getJSONObject(i)
-                val row = bySeq[item.optLong("seq")] ?: continue
-                when (UploadPolicy.classifyEvent(item.optString("estado"))) {
-                    UploadPolicy.EventResult.CONFIRMED -> confirmed.add(row.id)
-                    UploadPolicy.EventResult.DEAD -> dead.add(row.id)
-                    UploadPolicy.EventResult.UNKNOWN -> Unit // se reintenta
-                }
+                entries.add(item.optLong("seq") to item.optString("estado"))
             }
+            // Mismo emparejado 1-a-1 que la cola (ver UploadPolicy): cada
+            // mención consume una sola fila, en orden.
+            match = UploadPolicy.matchBatchResults(batchPairs, entries)
         } catch (e: Exception) {
             Log.w(TAG, "lote 2xx sin cuerpo válido: se conserva", e)
             return SessionClosePlan.SendResult(0, SessionClosePlan.BatchOutcome.RETRY_LATER)
         }
+        val confirmed = match.confirmedIds
+        val dead = match.deadIds
         runCatching { db.deletePositions(confirmed) }
         if (dead.isNotEmpty()) runCatching { db.markDead(dead) }
         if (confirmed.isEmpty() && dead.isEmpty()) {

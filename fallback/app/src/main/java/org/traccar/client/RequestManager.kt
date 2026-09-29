@@ -39,7 +39,11 @@ object RequestManager {
             inputStream = connection.inputStream
             while (inputStream.read() != -1) {}
             true
-        } catch (error: IOException) {
+        } catch (error: Exception) {
+            // Cualquier fallo (red, HTTP de error, runtime) es "no enviado":
+            // antes solo se atrapaba IOException y un RuntimeException mataba
+            // el hilo del AsyncTask sin avisar al callback (wake lock retenido
+            // hasta su timeout). El legacy ya trata `false` con backoff.
             false
         } finally {
             try {

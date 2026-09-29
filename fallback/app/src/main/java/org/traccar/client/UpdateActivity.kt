@@ -161,6 +161,11 @@ class UpdateActivity : AppCompatActivity() {
     }
 
     private fun showError() {
+        // Fallo o cancelación: NO se escribe ningún estado que suprima el
+        // aviso (ni "visto" ni "fallido"). El banner se deriva de
+        // publicada > instalada en cada chequeo de MainActivity, así que
+        // reaparece en la próxima apertura o al minuto siguiente. El parcial
+        // se sobrescribe en el próximo intento (mismo nombre de archivo).
         runOnUiThread {
             progress.visibility = ProgressBar.GONE
             status.text = getString(R.string.update_download_failed)

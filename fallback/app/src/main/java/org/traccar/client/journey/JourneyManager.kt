@@ -39,7 +39,13 @@ class JourneyManager(context: Context) {
         val metaId = db?.getMeta(DatabaseHelper.KEY_JOURNEY_ID)
         val metaAt = db?.getMeta(DatabaseHelper.KEY_JOURNEY_STARTED_AT)?.toLongOrNull() ?: 0L
         if (!metaId.isNullOrBlank()) {
-            val open = db?.getMeta(KEY_JOURNEY_OPEN_META) != "0"
+            // Sin marca explícita de apertura NO se asume abierta: las tres
+            // escrituras de persistLocal no son atómicas y un corte a medias
+            // (o una meta heredada) con `!= "0"` contaba null como abierta →
+            // jornada fantasma con un id viejo. Cerrada es seguro y auto-sana:
+            // si el servidor la tiene abierta, la reconciliación la re-adopta
+            // (ADOPTED_REMOTE).
+            val open = db?.getMeta(KEY_JOURNEY_OPEN_META) == "1"
             return LocalJourney(metaId, metaAt, open)
         }
         // Herencia de instalaciones previas: solo prefs.

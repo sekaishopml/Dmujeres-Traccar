@@ -387,22 +387,40 @@ object DmujeresApi {
         }.start()
     }
 
+    /**
+     * Canal del servidor (rollout con allowlist). Devuelve el manifiesto solo
+     * si lo publicado supera a lo instalado; null = sin actualización visible
+     * AHORA (explícito `{update:false}`) o error (401/404/500/sin red).
+     *
+     * Sin estado "visto": el error cae al respaldo de GitHub en este ciclo y
+     * se reintenta contra el servidor en el siguiente (el sello anti-spam lo
+     * marca MainActivity al terminar). Un 401 con token limpia la sesión
+     * (token muerto, regla de SessionAuth) y el siguiente ciclo ya usa la
+     * clave compartida; sin token el 401 es de la clave y no toca la sesión.
+     */
     private fun tryServerOta(base: String, device: String, context: Context): Triple<String, String, String>? {
+        var connection: HttpURLConnection? = null
         return try {
             val url = URL("$base/api/mobile/v1/ota?deviceId=$device&versionCode=${BuildConfig.VERSION_CODE}")
-            val connection = url.openConnection() as HttpURLConnection
+            connection = url.openConnection() as HttpURLConnection
             connection.connectTimeout = 8_000
             connection.readTimeout = 8_000
             val hadToken = setAuthHeaders(connection, context)
             val httpCode = runCatching { connection.responseCode }.getOrDefault(-1)
             noteHttpResult(context, httpCode, hadToken)
+            // No-2xx (401/404/500…): error, sin control por excepción (antes
+            // `inputStream` lanzaba aquí y se caía al catch). Se devuelve null
+            // para el respaldo de GitHub de este ciclo; el próximo reintenta.
+            if (httpCode !in 200..299) {
+                Log.w(TAG, "OTA del servidor respondió $httpCode")
+                return null
+            }
             val body = connection.inputStream.bufferedReader().use { it.readText() }
-            connection.disconnect()
             val json = JSONObject(body)
             val code = json.optInt("versionCode", 0)
             val apkUrl = json.optString("url")
             val sha = json.optString("sha256")
-            if (code > BuildConfig.VERSION_CODE && apkUrl.isNotBlank()) {
+            if (OtaPolicy.isUpdateAvailable(code, BuildConfig.VERSION_CODE) && apkUrl.isNotBlank()) {
                 Triple(json.optString("version", code.toString()), apkUrl, sha)
             } else {
                 null
@@ -410,6 +428,8 @@ object DmujeresApi {
         } catch (e: Exception) {
             Log.w(TAG, "OTA del servidor no disponible", e)
             null
+        } finally {
+            runCatching { connection?.disconnect() }
         }
     }
 
@@ -444,15 +464,7 @@ object DmujeresApi {
         }
     }
 
-    /** ¿La versión publicada es mayor que la instalada? (numérica, sin downgrade). */
-    private fun isNewer(candidate: String): Boolean {
-        val installed = BuildConfig.VERSION_NAME.split(".")
-        val published = candidate.split(".")
-        for (i in 0 until maxOf(installed.size, published.size)) {
-            val a = installed.getOrNull(i)?.toIntOrNull() ?: 0
-            val b = published.getOrNull(i)?.toIntOrNull() ?: 0
-            if (a != b) return b > a
-        }
-        return false
-    }
+    /** ¿La versión publicada es mayor que la instalada? (ver OtaPolicy). */
+    private fun isNewer(candidate: String): Boolean =
+        OtaPolicy.isNewerName(BuildConfig.VERSION_NAME, candidate)
 }
