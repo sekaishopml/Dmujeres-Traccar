@@ -79,6 +79,15 @@ class TrackingService : Service() {
         // sin esto el tracking quedaba muerto en silencio hasta reiniciar.
         runCatching { ensureController() }
             .onFailure { Log.w(TAG, "no se pudo asegurar el controlador", it) }
+        // Cada arranque pedido (p. ej. "Iniciar jornada" con el servicio ya
+        // vivo) alinea la máquina con la jornada sin esperar el pulso.
+        runCatching { controllerRef?.syncJourney() }
+        // Rescate pedido por push (FCM HIGH): con el servicio vivo pero
+        // congelado por el gestor de energía, relanzarlo no basta; se pide
+        // fix fresco y cadencia fina (RECOVERING).
+        if (intent?.action == ACTION_RECOVER) {
+            runCatching { controllerRef?.onRecoveryWakeup() }
+        }
         return START_STICKY
     }
 
@@ -152,12 +161,22 @@ class TrackingService : Service() {
             return false
         }
 
+        /**
+         * Salida de la cerca de quietud (Play Services): movimiento real
+         * aunque el acelerómetro esté dormido. Solo actúa con el servicio vivo.
+         */
+        fun onStationaryExit(): Boolean {
+            val controller = controllerRef ?: return false
+            return runCatching { controller.onSignificantMotion(); true }.getOrDefault(false)
+        }
+
         // Explicit package name should be specified when broadcasting START/STOP notifications -
         // it is required for manifest-declared receiver of the status widget (when running on Android 8+).
         // Refer to https://developer.android.com/guide/components/broadcasts#manifest-declared-receivers -
         // it is required for manifest-declared receiver of the status widget (when running on Android 8+).
         // Refer to https://developer.android.com/guide/components/broadcasts#manifest-declared-receivers
         const val ACTION_STARTED = "org.traccar.action.SERVICE_STARTED"
+        const val ACTION_RECOVER = "org.traccar.action.RECOVER"
         const val ACTION_STOPPED = "org.traccar.action.SERVICE_STOPPED"
         private val TAG = TrackingService::class.java.simpleName
 

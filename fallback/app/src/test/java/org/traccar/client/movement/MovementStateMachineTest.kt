@@ -160,4 +160,25 @@ class MovementStateMachineTest {
         val history = listOf(MovementStateMachine.FixSample(0L, 0.0, 0.0))
         assertEquals(State.RECOVERING, machine.restore(now, journeyOpen = true, history = history))
     }
+
+    @Test
+    fun `jornada abierta con el servicio ya vivo saca a la maquina de STOPPED`() {
+        // Caso Manzaba: servicio arrancado al abrir la app (jornada cerrada) y
+        // luego "Iniciar jornada". Antes quedaba STOPPED todo el día.
+        val machine = MovementStateMachine()
+        assertEquals(State.STOPPED, machine.restore(0L, journeyOpen = false, history = emptyList()))
+        assertEquals(State.STOPPED, machine.onFixWithPosition(1_000L, 20.0, 300.0, -2.2, -79.9, true))
+        assertTrue(machine.syncJourney(2_000L, journeyOpen = true))
+        assertEquals(State.ACTIVE, machine.onFixWithPosition(3_000L, 20.0, 300.0, -2.2, -79.9, true))
+        assertTrue(machine.wantsFineCadence())
+        assertFalse(machine.syncJourney(4_000L, journeyOpen = true))
+    }
+
+    @Test
+    fun `cerrar la jornada vuelve a STOPPED`() {
+        val machine = started()
+        machine.onFix(1_000L, 10.0, 0.0, null)
+        assertTrue(machine.syncJourney(2_000L, journeyOpen = false))
+        assertEquals(State.STOPPED, machine.state)
+    }
 }

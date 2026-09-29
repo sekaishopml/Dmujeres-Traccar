@@ -155,7 +155,6 @@ export default function Bateria() {
       <EncabezadoPagina
         contexto="Operación"
         titulo="Batería"
-        sub="Consumo de batería: nivel de la flota y detalle por equipo en el rango elegido."
       />
 
       <section className="seccion">

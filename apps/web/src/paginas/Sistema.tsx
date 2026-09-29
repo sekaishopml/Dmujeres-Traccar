@@ -232,7 +232,7 @@ export default function Sistema() {
   if (baseDatos === 'error') fallidas.push('la base de datos');
   if (tracking === 'error') fallidas.push('el motor de seguimiento');
 
-  const estadoProceso = estadoDe(undefined, salud.isPending, salud.isError);
+  const estadoProceso = estadoDe(salud.data?.estado === 'ok' ? 'ok' : undefined, salud.isPending, salud.isError);
   // Si /ready falla sin cuerpo no se puede culpar a una dependencia concreta:
   // las filas quedan en "Sin respuesta" y el aviso superior explica el fallo.
   const estadoBaseDatos = estadoDe(baseDatos, listo.isPending, false);
@@ -298,7 +298,6 @@ export default function Sistema() {
       <EncabezadoPagina
         contexto="Administración"
         titulo="Sistema"
-        sub="Estado del servicio y versión desplegada. Se revisa cada 15 s."
       />
 
       {listoFalla && (

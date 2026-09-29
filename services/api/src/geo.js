@@ -21,15 +21,25 @@ export function redondear(valor, decimales = 1) {
   return Math.round(valor * factor) / factor;
 }
 
-export function sumarDistanciasKm(posiciones) {
+// Un par que exige más de 180 km/h no es un desplazamiento observado (salto
+// de GPS o dos teléfonos con la misma cuenta): no suma distancia recorrida.
+export const VELOCIDAD_IMPOSIBLE_KMH = 180;
+
+export function sumarDistanciasKm(posiciones, { omitirImposibles = false } = {}) {
   let total = 0;
   for (let i = 1; i < posiciones.length; i += 1) {
-    total += distanciaKm(
+    const km = distanciaKm(
       posiciones[i - 1].latitud,
       posiciones[i - 1].longitud,
       posiciones[i].latitud,
       posiciones[i].longitud,
     );
+    if (omitirImposibles) {
+      const horas =
+        (new Date(posiciones[i].registradoEn).getTime() - new Date(posiciones[i - 1].registradoEn).getTime()) / 3600000;
+      if (km > 0.05 && !(horas > 0 && km / horas <= VELOCIDAD_IMPOSIBLE_KMH)) continue;
+    }
+    total += km;
   }
   return total;
 }
@@ -70,7 +80,7 @@ function ultimoValor(posiciones, campo) {
 export function resumirRecorrido(posiciones, totalHuecos) {
   const primera = posiciones[0];
   const ultima = posiciones[posiciones.length - 1];
-  const distanciaKm = sumarDistanciasKm(posiciones);
+  const distanciaKm = sumarDistanciasKm(posiciones, { omitirImposibles: true });
   const duracionMin = (new Date(ultima.registradoEn).getTime() - new Date(primera.registradoEn).getTime()) / 60000;
   const velocidadMaxima = posiciones.reduce(
     (maximo, posicion) => (posicion.velocidadKmh !== null && posicion.velocidadKmh > maximo ? posicion.velocidadKmh : maximo),

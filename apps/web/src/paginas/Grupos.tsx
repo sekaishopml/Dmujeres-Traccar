@@ -310,7 +310,6 @@ export default function Grupos() {
       <EncabezadoPagina
         contexto="Administración"
         titulo="Grupos"
-        sub="Agrupan personas para organizar turnos y zonas. Solo administradores."
         acciones={
           <button type="button" className="principal con-icono" onClick={abrirCrear}>
             <Icono nombre="mas" />

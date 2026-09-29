@@ -47,7 +47,7 @@
 .lista-datos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
 @media (max-width: 700px) { .lista-datos { grid-template-columns: 1fr; } }
 .dato { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px dashed var(--linea); }
-.dato-etiqueta { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--apagado); }
+.dato-etiqueta { font-size: var(--tamano-sm); color: var(--apagado); }
 .dato-valor { font-weight: 600; word-break: break-word; }
 .mini-mapa { height: 320px; min-height: 320px; margin-bottom: 10px; }
 .acciones-detalle { margin: 12px 0 0; }
@@ -144,6 +144,10 @@
 .replay-ficha dt { color: var(--apagado); }
 .replay-ficha dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .replay-nota { margin: 2px 0 0; font-size: 13px; color: var(--apagado); }
+/* Integridad: una línea de lectura para el auditor, sin tarjeta propia. */
+.replay-integridad { display: grid; gap: 4px; padding-block: 2px 10px; border-bottom: 1px solid var(--linea); }
+.replay-integridad p { margin: 0; font-size: 13.5px; line-height: 1.45; }
+.replay-alerta { color: var(--peligro-2); font-size: 13px; }
 /* Jornada: una línea de texto con los extremos; no necesita ficha propia. */
 .replay-jornada { margin: 0; font-size: 14.5px; }
 
@@ -359,3 +363,11 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
 @keyframes dmj-entrada-panel {
   from { opacity: 0; transform: scale(var(--dmj-mov-escala)); }
 }
+
+/* Aviso cuando el navegador no tiene WebGL2: ocupa el recuadro del mapa. */
+.mapa-sin-webgl {
+  position: absolute; inset: 0; margin: 0; display: grid; place-items: center; padding: 24px;
+  text-align: center; color: var(--apagado); font-size: var(--tamano-sm); background: var(--linea-2);
+}
+/* En Replay el panel flota a la izquierda: el aviso se corre al área visible. */
+.replay-pantalla .mapa-sin-webgl { padding-left: min(470px, 40vw); }

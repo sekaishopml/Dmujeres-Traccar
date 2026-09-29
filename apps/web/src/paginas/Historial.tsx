@@ -275,7 +275,6 @@ export default function Historial() {
       <EncabezadoPagina
         contexto="Operación"
         titulo="Historial"
-        sub="Cada jornada de inicio a fin: paradas, duración y tramos sin señal."
       />
 
       <section className="seccion">

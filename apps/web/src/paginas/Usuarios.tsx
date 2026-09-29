@@ -630,7 +630,6 @@ export default function Usuarios() {
       <EncabezadoPagina
         contexto="Administración"
         titulo="Usuarios"
-        sub="Cuentas de acceso, personas y grupos. Solo administradores."
         acciones={
           <button type="button" className="principal con-icono" onClick={abrirCrear}>
             <Icono nombre="mas" />

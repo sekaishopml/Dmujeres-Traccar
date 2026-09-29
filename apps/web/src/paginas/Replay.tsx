@@ -32,6 +32,58 @@ import {
 import type { Parada, TramoReconstruido } from './operacion/replay';
 import { finDeDia, inicioDeDia } from './operacion/rango';
 import './operacion.css';
+import type { Hueco, ReplayCalidad } from '@contratos';
+
+// Lectura de auditoría del recorrido: cuánto es observado y qué se apartó.
+// El trazado sólido es GPS registrado; lo ajustado a vía sigue calles solo
+// entre observaciones; lo estimado se limita a saltos cortos coherentes y el
+// resto queda punteado como "sin observación". Aquí se dice en una línea.
+function IntegridadRecorrido({
+  totalFixes,
+  huecos,
+  reconstruidos,
+  calidad,
+}: {
+  totalFixes: number;
+  huecos: Hueco[];
+  reconstruidos: TramoReconstruido[];
+  calidad?: ReplayCalidad;
+}) {
+  const minutosSinSenal = Math.round(huecos.reduce((suma, hueco) => suma + hueco.duracionSegundos, 0) / 60);
+  const estimados = reconstruidos.filter((tramo) => tramo.metodo === 'ESTIMATED').length;
+  const apartados = (calidad?.descartadasFueraDeZona ?? 0) + (calidad?.descartadasSalto ?? 0);
+  const sinSenal =
+    huecos.length === 0
+      ? 'sin cortes de señal'
+      : `${huecos.length} ${huecos.length === 1 ? 'corte' : 'cortes'} de señal (${formatoMinutos(minutosSinSenal)})`;
+  return (
+    <section className="replay-integridad" aria-label="Integridad del recorrido">
+      <p>
+        <strong>{totalFixes.toLocaleString('es-EC')}</strong> puntos GPS · {sinSenal}
+        {estimados > 0 && ` · ${estimados} ${estimados === 1 ? 'salto estimado' : 'saltos estimados'} por calle`}
+      </p>
+      {apartados > 0 && (
+        <p className="replay-nota">
+          {apartados} {apartados === 1 ? 'punto imposible apartado' : 'puntos imposibles apartados'} del trazado
+          {calidad?.descartadasFueraDeZona ? ` (${calidad.descartadasFueraDeZona} fuera de zona)` : ''}.
+        </p>
+      )}
+      {calidad?.posibleOrigenMultiple && (
+        <p className="replay-alerta">
+          La posición alterna entre sitios a varios kilómetros: probablemente hay otra sesión abierta con esta cuenta
+          en un segundo teléfono.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function formatoMinutos(minutos: number): string {
+  if (minutos < 60) return `${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  return resto === 0 ? `${horas} h` : `${horas} h ${resto} min`;
+}
 
 // Nombre de archivo sin caracteres problemáticos para el sistema de archivos.
 // Historial tiene su propio helper y este cambio no lo toca; se replica el
@@ -944,6 +996,12 @@ export default function Replay() {
     if (!replay.data || posiciones.length === 0) return <p className="vacio">Sin recorrido en el rango seleccionado.</p>;
     return (
       <>
+        <IntegridadRecorrido
+          totalFixes={posiciones.length}
+          huecos={huecos}
+          reconstruidos={reconstruidos}
+          calidad={replay.data.calidad}
+        />
         <PanelPuntoSeleccionado />
         <ListaParadas
           paradas={paradas}
@@ -996,7 +1054,7 @@ export default function Replay() {
                 aria-label={panelRecogido ? 'Mostrar panel' : 'Ocultar panel'}
                 aria-expanded={!panelRecogido}
               >
-                <Icono nombre={panelRecogido ? 'adelante' : 'atras'} />
+                <Icono nombre={panelRecogido ? 'chevronDer' : 'chevronIzq'} />
               </button>
             </span>
           </header>

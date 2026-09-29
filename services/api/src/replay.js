@@ -8,6 +8,7 @@ import { leerOrden, leerPaginacion, leerRango, respuestaJson } from './http.js';
 import { PREDICADO_PERMISO, SELECT_DISPOSITIVO, buscarDispositivo, permisoDe } from './flota.js';
 import { calcularHuecos, resumirRecorrido } from './geo.js';
 import { reconstruirTramos } from './ruteo.js';
+import { depurarPosiciones } from './depuracion.js';
 
 export const LIMITE_POSICIONES_REPLAY = 50000;
 
@@ -120,7 +121,10 @@ export async function obtenerReplay(ctx) {
   if (rows.length > LIMITE_POSICIONES_REPLAY) {
     throw datosInvalidos('La ventana tiene demasiadas posiciones; reduzca el rango horario.');
   }
-  const posiciones = rows.map(aPosicion);
+  const { conservadas: posiciones, calidad } = depurarPosiciones(rows.map(aPosicion));
+  if (posiciones.length === 0) {
+    throw noEncontrado('No hay recorrido válido del dispositivo en la ventana pedida.');
+  }
   const huecos = calcularHuecos(posiciones);
   // Tramos reconstruidos por calles (huecos o fixes muy separados): la web los
   // dibuja por capas REAL/MATCHED/ESTIMATED. `estimados` se conserva una
@@ -134,6 +138,7 @@ export async function obtenerReplay(ctx) {
     huecos,
     reconstruidos,
     resumen: resumirRecorrido(posiciones, huecos.length),
+    calidad,
     generadoEn: new Date().toISOString(),
   });
 }

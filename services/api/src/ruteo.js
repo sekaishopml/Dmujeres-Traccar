@@ -28,8 +28,23 @@ export const MIN_DISTANCIA_RUTEO_M = 150;
 // Desde 45 s entre fixes el trazo recto ya corta esquinas; la cadencia fina
 // (10 s) se ajusta por ventanas densas en vez de tramo a tramo.
 export const MIN_SEPARACION_RUTEO_SEGUNDOS = 45;
-// Más de 4 h suele ser el vehículo apagado: una ruta inventada ahí no aporta.
+// Tope para candidatos a reconstrucción (el /match con intermedios puede
+// cubrir huecos largos si hay observaciones que lo sostengan).
 export const MAX_TRAMO_RUTEO_SEGUNDOS = 4 * 60 * 60;
+// Regla de honestidad del ESTIMATED (ruta A→B sin observaciones intermedias).
+// Solo se dibuja si la calle es la única explicación razonable del salto:
+//  - el hueco dura <= 5 min (más tiempo sin datos = por dónde fue es
+//    desconocido: el equipo pudo parar, desviarse o volver);
+//  - el camino por calles mide <= max(1.35 x recta, recta + 60 m): un rodeo
+//    mayor (sentido único, retorno) es una ruta inventada;
+//  - la velocidad necesaria por ese camino es <= 130 km/h.
+// Medido con datos reales (28/09): Pilay dibujaba 769 m de calles donde la
+// recta era 171 m (x4,5) y Alejandro 7 km en un hueco de 18 min. Si no se
+// cumple, no hay tramo: la web muestra el salto como "sin observación".
+export const MAX_ESTIMADO_SEGUNDOS = 5 * 60;
+export const MAX_ESTIMADO_RAZON = 1.35;
+export const MAX_ESTIMADO_HOLGURA_M = 60;
+export const MAX_ESTIMADO_VELOCIDAD_KMH = 130;
 // Topes por carga del Replay: más allá, los tramos sobrantes quedan rectos.
 const MAX_TRAMOS_ESTIMADOS = 200;
 const TANDA = 8;
@@ -500,6 +515,7 @@ async function trazarPorRuta(desde, hasta, signal) {
       trazado,
       mapaVersion: typeof datos.mapaVersion === 'string' ? datos.mapaVersion : null,
       metodo: 'ESTIMATED',
+      distanciaM: Number.isFinite(datos.distance) ? datos.distance : null,
     };
     guardarCache(clave, resultado);
     return trazado ? resultado : null;
@@ -508,6 +524,23 @@ async function trazarPorRuta(desde, hasta, signal) {
     return null;
   } finally {
     liberar();
+  }
+}
+
+// Regla de honestidad del ESTIMATED (ver MAX_ESTIMADO_*): solo se acepta la
+// ruta A→B si el hueco es corto, el camino no da rodeos y la velocidad que
+// exige es posible. Exportada para las pruebas.
+export function estimadoPlausible(anterior, actual, trazado, distanciaRutaM) {
+  try {
+    const segundos = (instanteMs(actual) - instanteMs(anterior)) / 1000;
+    if (!(segundos > 0 && segundos <= MAX_ESTIMADO_SEGUNDOS)) return false;
+    const recta = distanciaM(anterior, actual);
+    const ruta = Number.isFinite(distanciaRutaM) ? distanciaRutaM : longitudTrazadoM(trazado);
+    if (!(ruta > 0)) return false;
+    if (ruta > Math.max(MAX_ESTIMADO_RAZON * recta, recta + MAX_ESTIMADO_HOLGURA_M)) return false;
+    return (ruta / segundos) * 3.6 <= MAX_ESTIMADO_VELOCIDAD_KMH;
+  } catch {
+    return false;
   }
 }
 
@@ -711,8 +744,12 @@ export async function reconstruirTramos(posiciones, signal) {
         }
         if (porMatch) return null;
       }
+      // Sin observaciones intermedias: el hueco largo no se consulta siquiera.
+      if ((instanteMs(actual) - instanteMs(anterior)) / 1000 > MAX_ESTIMADO_SEGUNDOS) return null;
       const porRuta = await trazarPorRuta(anterior, actual, signal);
-      if (porRuta) return { anterior, actual, ...porRuta };
+      if (porRuta && estimadoPlausible(anterior, actual, porRuta.trazado, porRuta.distanciaM)) {
+        return { anterior, actual, ...porRuta };
+      }
       return null;
     }));
     for (const resultado of resultados) {

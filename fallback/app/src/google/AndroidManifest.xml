@@ -16,6 +16,11 @@
             </intent-filter>
         </service>
 
+        <!-- Cerca de quietud: Play Services avisa la salida (ver StationaryFence). -->
+        <receiver
+            android:name="org.traccar.client.StationaryExitReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>

@@ -95,6 +95,27 @@ class MovementStateMachine {
         return state
     }
 
+    /**
+     * Alinea la máquina con la jornada persistida. Bug real (Manzaba 2.1.83,
+     * Fernando 2.1.80): la app arranca el servicio al abrirse, con la jornada
+     * aún cerrada (STOPPED); al pulsar "Iniciar jornada" solo se escribían las
+     * prefs y la máquina seguía en STOPPED todo el día: fixes ignorados,
+     * cadencia lenta, sin rescate. Solo trazaba si el sistema recreaba el
+     * servicio. El controlador llama esto en cada pulso y en cada
+     * onStartCommand. Devuelve true si cambió el estado.
+     */
+    fun syncJourney(nowMs: Long, journeyOpen: Boolean): Boolean {
+        if (journeyOpen && state == State.STOPPED) {
+            onJourneyStarted(nowMs)
+            return true
+        }
+        if (!journeyOpen && state != State.STOPPED) {
+            onJourneyStopped()
+            return true
+        }
+        return false
+    }
+
     // --- Entradas ------------------------------------------------------------
 
     /**

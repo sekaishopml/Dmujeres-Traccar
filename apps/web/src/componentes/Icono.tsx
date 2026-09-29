@@ -6,7 +6,7 @@ import type { ReactElement } from 'react';
 export type NombreIcono =
   | 'inicio' | 'enVivo' | 'historial' | 'replay' | 'bateria' | 'reportes'
   | 'usuarios' | 'grupos' | 'configuracion' | 'sistema' | 'salir' | 'menu' | 'buscar'
-  | 'capas' | 'play' | 'pausa' | 'atras' | 'adelante' | 'cerrar' | 'editar'
+  | 'capas' | 'play' | 'pausa' | 'atras' | 'adelante' | 'chevronIzq' | 'chevronDer' | 'cerrar' | 'editar'
   | 'basura' | 'mas' | 'flecha';
 
 const TRAZOS: Record<NombreIcono, ReactElement> = {
@@ -28,6 +28,8 @@ const TRAZOS: Record<NombreIcono, ReactElement> = {
   pausa: <><path d="M9 6.5v11M15 6.5v11" /></>,
   atras: <><path d="M15 6.5 8.5 12l6.5 5.5" /><path d="M7 6v12" /></>,
   adelante: <><path d="M9 6.5 15.5 12 9 17.5" /><path d="M17 6v12" /></>,
+  chevronIzq: <path d="M14.5 6 8.5 12l6 6" />,
+  chevronDer: <path d="M9.5 6l6 6-6 6" />,
   cerrar: <><path d="M6 6l12 12M18 6 6 18" /></>,
   editar: <><path d="M5 19h4l10-10-4-4L5 15z" /><path d="M13.5 6.5l4 4" /></>,
   basura: <><path d="M5 7h14" /><path d="M9 7V5h6v2" /><path d="M7 7l1 13h8l1-13" /></>,

@@ -35,7 +35,10 @@ class DmujeresMessagingService : FirebaseMessagingService() {
         // es una orden operativa auditada, no una decisión del teléfono.
         PreferenceManager.getDefaultSharedPreferences(this)
             .edit().putBoolean(Prefs.STATUS, true).apply()
-        ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, TrackingService::class.java).setAction(TrackingService.ACTION_RECOVER),
+        )
         DmujeresApi.recoveryAck(this, attemptId, "RECOVERY_STARTED")
         Log.i(TAG, "Recuperación FCM atendida (attempt=$attemptId)")
     }

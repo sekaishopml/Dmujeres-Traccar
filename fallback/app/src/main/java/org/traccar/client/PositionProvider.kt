@@ -63,10 +63,12 @@ abstract class PositionProvider(
     }
 
     /**
-     * Reconfigura la petición de ubicaciones al cambiar el estado de movimiento
-     * (lo llama TrackingController). Cada proveedor recrea su petición.
+     * Estado de captura que fija TrackingController: `moving` ajusta el latido
+     * de reporte; `gpsContinuous` (jornada abierta) decide la petición al GPS.
+     * El proveedor solo recrea la petición cuando cambia `gpsContinuous`:
+     * alternar movimiento/quietud nunca reinicia el GPS.
      */
-    abstract fun applyMotionState(moving: Boolean)
+    abstract fun applyMotionState(moving: Boolean, gpsContinuous: Boolean)
 
     /** Alinea el filtro temporal del reporte con la cadencia del estado. */
     protected fun updateReportInterval(moving: Boolean) {

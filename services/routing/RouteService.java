@@ -215,7 +215,9 @@ public class RouteService {
             resp.put("distance", hybrid.distance);
             resp.put("raw", observations.size());
             resp.put("filtered", filtered.size());
-            resp.put("snappedRatio", hybrid.coords.isEmpty() ? 0 : (double) hybrid.snapped / hybrid.coords.size());
+            resp.put("snappedRatio", filtered.isEmpty() ? 0 : (double) hybrid.snapped / filtered.size());
+            resp.put("paresPorVia", hybrid.paresPorVia);
+            resp.put("paresRectos", hybrid.paresRectos);
             resp.put("mapaVersion", MAPA_VERSION);
             responder(ex, 200, JSON.writeValueAsString(resp), true);
         } catch (Exception e) {
@@ -254,9 +256,16 @@ public class RouteService {
         final List<double[]> coords = new ArrayList<>();
         double distance = 0;
         int snapped = 0;
+        int paresPorVia = 0;
+        int paresRectos = 0;
 
         void addRaw(Observation obs) {
             coords.add(new double[]{obs.getPoint().getLon(), obs.getPoint().getLat()});
+        }
+
+        void addSnapped(double lon, double lat) {
+            coords.add(new double[]{lon, lat});
+            snapped += 1;
         }
 
         void addAllRaw(List<Observation> list) {
@@ -267,6 +276,52 @@ public class RouteService {
     }
 
     private static final double SNAP_TRUST_M = 45;
+
+    // --- Geometría de la vía entre observaciones ajustadas ---
+    // El HMM da un punto por observación; unirlos con rectas corta manzanas en
+    // cada esquina. Entre dos snaps consecutivos del MISMO ajuste se copia el
+    // tramo del camino que el matcher ya eligió (getMergedPath), sin rutear de
+    // nuevo, pero solo si es coherente con lo observado: largo <=
+    // max(1.3 x recta, recta + 25 m). Un rodeo mayor (sentido único en contra,
+    // retorno, calle paralela) sería una ruta inventada: ese par queda recto.
+    // Pares con un extremo crudo o entre ajustes distintos también quedan
+    // rectos. Las observaciones siguen siendo los vértices: nada se mueve.
+    private static final double VIA_RAZON_MAX = 1.3;
+    private static final double VIA_HOLGURA_M = 25;
+    private static final double VIA_UBICAR_M = 2;
+
+    /** Distancia (m) de un punto a un segmento, en plano local. */
+    private static double distanciaASegmento(double lat, double lon,
+                                             double latA, double lonA, double latB, double lonB) {
+        double k = Math.cos(Math.toRadians(lat)) * 111320.0;
+        double ax = (lonA - lon) * k, ay = (latA - lat) * 110540.0;
+        double bx = (lonB - lon) * k, by = (latB - lat) * 110540.0;
+        double dx = bx - ax, dy = by - ay;
+        double largo2 = dx * dx + dy * dy;
+        double t = largo2 > 0 ? -(ax * dx + ay * dy) / largo2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(ax + t * dx, ay + t * dy);
+    }
+
+    /** Primer segmento del camino (desde `desde`) que contiene el punto; -1 si no. */
+    private static int ubicarEnCamino(PointList camino, double lat, double lon, int desde) {
+        int mejor = -1;
+        double mejorDist = Double.MAX_VALUE;
+        for (int j = Math.max(0, desde); j < camino.size() - 1; j++) {
+            double d = distanciaASegmento(lat, lon, camino.getLat(j), camino.getLon(j),
+                    camino.getLat(j + 1), camino.getLon(j + 1));
+            if (d <= VIA_UBICAR_M) return j;
+            if (d < mejorDist) {
+                mejorDist = d;
+                mejor = j;
+            }
+        }
+        return mejorDist <= 3 * VIA_UBICAR_M ? mejor : -1;
+    }
+
+    private static double dist(double latA, double lonA, double latB, double lonB) {
+        return com.graphhopper.util.DistanceCalcEarth.DIST_EARTH.calcDist(latA, lonA, latB, lonB);
+    }
 
     /** Confianza del snap según la precisión declarada de la ventana:
      *  clamp(3·accuracy, 20, 45): poco error -> snap más exigente; mucho
@@ -327,19 +382,55 @@ public class RouteService {
             out.addAllRaw(observations);
             return;
         }
+        PointList camino = null;
+        try {
+            camino = result.getMergedPath() == null ? null : result.getMergedPath().calcPoints();
+        } catch (RuntimeException e) {
+            camino = null;
+        }
+        double[] previo = null;
+        int segPrevio = -1;
+        // El camino avanza con las observaciones: la búsqueda nunca retrocede
+        // (en recorridos que repasan la misma calle se toma la pasada vigente).
+        int busqueda = 0;
         for (int i = 0; i < observations.size(); i++) {
             com.graphhopper.storage.index.Snap snap = states.get(i).getSnap();
-            if (snap == null) {
+            com.graphhopper.util.shapes.GHPoint3D snapped = snap == null ? null : runCatchingSnapped(snap);
+            if (snapped == null || snap.getQueryDistance() > snapTrust) {
+                if (previo != null) out.paresRectos += 1;
                 out.addRaw(observations.get(i));
+                previo = null;
+                segPrevio = -1;
                 continue;
             }
-            com.graphhopper.util.shapes.GHPoint3D snapped = runCatchingSnapped(snap);
-            if (snapped != null && snap.getQueryDistance() <= snapTrust) {
-                out.coords.add(new double[]{snapped.getLon(), snapped.getLat()});
-                out.snapped += 1;
-            } else {
-                out.addRaw(observations.get(i));
+            double lat = snapped.getLat();
+            double lon = snapped.getLon();
+            int seg = camino == null ? -1 : ubicarEnCamino(camino, lat, lon, busqueda);
+            if (seg >= 0) busqueda = seg;
+            if (previo != null && segPrevio >= 0 && seg >= segPrevio) {
+                double recta = dist(previo[1], previo[0], lat, lon);
+                double largo = 0;
+                double pLat = previo[1], pLon = previo[0];
+                for (int j = segPrevio + 1; j <= seg; j++) {
+                    largo += dist(pLat, pLon, camino.getLat(j), camino.getLon(j));
+                    pLat = camino.getLat(j);
+                    pLon = camino.getLon(j);
+                }
+                largo += dist(pLat, pLon, lat, lon);
+                if (seg > segPrevio && largo <= Math.max(VIA_RAZON_MAX * recta, recta + VIA_HOLGURA_M)) {
+                    for (int j = segPrevio + 1; j <= seg; j++) {
+                        out.coords.add(new double[]{camino.getLon(j), camino.getLat(j)});
+                    }
+                    out.paresPorVia += 1;
+                } else if (seg > segPrevio) {
+                    out.paresRectos += 1;
+                }
+            } else if (previo != null) {
+                out.paresRectos += 1;
             }
+            out.addSnapped(lon, lat);
+            previo = new double[]{lon, lat};
+            segPrevio = seg;
         }
     }
 

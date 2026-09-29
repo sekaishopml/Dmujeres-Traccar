@@ -278,6 +278,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     private fun openAutostart() {
         runCatching {
+            if (OemAutostart.open(this)) return
             if (!AutoStartPermissionHelper.getInstance().getAutoStartPermission(this)) {
                 Toast.makeText(this, R.string.perm_autostart_manual, Toast.LENGTH_LONG).show()
             }

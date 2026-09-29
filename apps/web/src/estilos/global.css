@@ -74,8 +74,7 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 
 /* Grupos del menú lateral */
 .lateral .grupo {
-  padding: 12px 12px 4px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
-  color: #7f93a9; font-weight: var(--peso-titulo);
+  padding: 14px 10px 4px; font-size: var(--tamano-xs); color: #7f93a9; font-weight: var(--peso-medio);
 }
 .lateral .marca .lema { font-size: 10.5px; color: #93a6bb; font-weight: 500; letter-spacing: .04em; }
 
@@ -120,10 +119,7 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 .barra-acciones a.activo { color: var(--navy); }
 
 /* Chip de cuenta: avatar, nombre y rol en una sola pieza con filo fino. */
-.cuenta-chip {
-  display: flex; align-items: center; gap: 9px; padding: 3px 11px 3px 3px; min-width: 0;
-  border: 1px solid var(--linea); border-radius: var(--radio-pill); background: #fff;
-}
+.cuenta-chip { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .cuenta-chip .usuario-avatar {
   width: 27px; height: 27px; border-radius: var(--radio-xs); flex: none;
   display: grid; place-items: center;
@@ -134,12 +130,9 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
   color: var(--texto); font-weight: var(--peso-fuerte); font-size: var(--tamano-sm);
   max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cuenta-chip .usuario-roles {
-  display: flex; gap: 6px; font-size: var(--tamano-etiqueta);
-  text-transform: uppercase; letter-spacing: .05em;
-}
-.cuenta-chip .rol { font-style: normal; font-weight: var(--peso-titulo); color: var(--apagado); }
-.cuenta-chip .rol.admin { color: var(--acento); }
+.cuenta-chip .usuario-roles { display: flex; gap: 6px; font-size: var(--tamano-xs); }
+.cuenta-chip .rol { font-style: normal; font-weight: var(--peso-medio); color: var(--apagado); }
+.cuenta-chip .rol.admin { color: var(--apagado); }
 .cuenta-chip .rol.lectura { color: var(--alerta); }
 .barra-superior .salir-barra {
   display: inline-flex; align-items: center; gap: 6px;
@@ -199,18 +192,15 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
 }
 
 /* ── Cabeceras y rejillas ──────────────────────────────────────────────── */
-/* Encabezado editorial de página: sobrelínea de contexto, título con peso y
-   una línea de datos en texto pequeño. La regla inferior separa del trabajo. */
+/* Encabezado de página: título y un dato corto a su lado; las acciones a la
+   derecha. Sin regla: la primera sección ya separa. */
 .cabecera-pagina {
-  display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
-  padding-bottom: 12px; margin-bottom: 16px;
-  border-bottom: 1px solid var(--linea-3);
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin: 2px 0 14px;
 }
-.cabecera-pagina .contexto {
-  display: block; font-size: var(--tamano-etiqueta); font-weight: var(--peso-titulo);
-  text-transform: uppercase; letter-spacing: .1em; color: var(--apagado); margin-bottom: 4px;
-}
-.cabecera-pagina .sub { color: var(--apagado); font-size: var(--tamano-sm); margin: 4px 0 0; }
+.cabecera-pagina > div { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.cabecera-pagina h1 { margin: 0; font-size: var(--tamano-titulo); }
+.cabecera-pagina .sub { color: var(--apagado); font-size: var(--tamano-sm); margin: 0; }
 .cabecera-acciones { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .empuja { flex: 1; }
 .rejilla { display: grid; gap: 12px; }
@@ -237,18 +227,14 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
   font-size: var(--tamano-dato); font-weight: var(--peso-titulo); color: var(--navy);
   line-height: 1.1; font-variant-numeric: tabular-nums;
 }
-.metrica .etiqueta {
-  font-size: var(--tamano-etiqueta); color: var(--apagado);
-  text-transform: uppercase; letter-spacing: .06em; margin-top: 2px;
-}
+.metrica .etiqueta { font-size: var(--tamano-sm); color: var(--apagado); margin-top: 2px; }
 
 /* ── Chips de estado ───────────────────────────────────────────────────── */
 /* Insignia sobria: punto de color y texto en versalitas, sin fondo. El color
    de fondo competía con el resto del panel y multiplicaba las cajas. */
 .chip {
-  display: inline-flex; align-items: center; gap: 5px; padding: 0;
-  font-size: var(--tamano-etiqueta); font-weight: var(--peso-titulo);
-  text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px; padding: 0;
+  font-size: var(--tamano-sm); font-weight: var(--peso-medio); white-space: nowrap;
 }
 .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 .chip.deshabilitado, .chip.desconocido { color: var(--gris); }
@@ -293,8 +279,7 @@ table.tabla th, table.tabla td {
   font-size: var(--tamano-base); transition: background var(--dmj-mov-rapida) var(--dmj-mov-curva);
 }
 table.tabla th {
-  font-size: var(--tamano-etiqueta); text-transform: uppercase; letter-spacing: .06em;
-  color: var(--apagado); font-weight: var(--peso-titulo); background: var(--fondo);
+  font-size: var(--tamano-sm); color: var(--apagado); font-weight: var(--peso-medio); background: var(--fondo);
   border-bottom: 1px solid var(--linea-3); padding-top: 5px; padding-bottom: 5px;
 }
 table.tabla tr:hover td { background: #f7f9fb; }
@@ -312,53 +297,23 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--nav
 .barra-bateria .relleno.bajo { background: var(--peligro); }
 
 /* ── Acceso (login) ────────────────────────────────────────────────────── */
-/* Primera impresión: panel de marca navy a la izquierda y formulario sobre
-   fondo neutro a la derecha. En pantallas angostas el panel se vuelve una
-   banda superior compacta y el formulario ocupa el resto, con scroll propio
-   para que el teclado del móvil no oculte los campos. */
-.login-pantalla {
-  min-height: 100vh; min-height: 100dvh;
-  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  background: var(--fondo);
-}
-.login-marca {
-  position: relative; overflow: hidden;
-  background: var(--navy); color: #c3cedb;
-  display: flex; flex-direction: column; gap: 26px;
-  padding: clamp(32px, 5vw, 56px);
-}
-/* Rutas tenues como textura de fondo: SVG en línea, sin assets externos. */
-.login-marca::after {
-  content: ""; position: absolute; right: -90px; bottom: -80px; width: 460px; height: 460px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 320' fill='none' stroke='%23ffffff' stroke-width='1.5'%3E%3Cpath d='M0 76h96l34-34h190'/%3E%3Cpath d='M0 168h58l42 42h220'/%3E%3Cpath d='M46 320V170l44-46h230'/%3E%3Ccircle cx='130' cy='42' r='4.5'/%3E%3Ccircle cx='100' cy='210' r='4.5'/%3E%3Ccircle cx='90' cy='124' r='4.5'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-size: contain;
-  opacity: .08; pointer-events: none;
-}
-.login-marca > * { position: relative; z-index: 1; }
-.login-marca h1 {
-  color: #fff; font-size: var(--tamano-2xl); line-height: 1.22;
-  letter-spacing: -.4px; font-weight: var(--peso-titulo); margin: 0; max-width: 20ch;
-}
-.login-marca .login-intro { color: #aebdd0; font-size: var(--tamano-base); line-height: 1.6; margin: 10px 0 0; max-width: 46ch; }
-.login-puntos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.login-puntos li { display: flex; align-items: center; gap: 10px; font-size: var(--tamano-base); color: #c3cedb; }
-.login-puntos .icono { color: var(--acento-claro); }
-.login-pie { margin-top: auto; padding-top: 26px; font-size: 11.5px; color: #8fa2b8; letter-spacing: .02em; }
+/* Acceso: la marca y el formulario, nada más. Centrado en escritorio y
+   arriba en móvil para que el teclado no tape los campos. */
+.login-pantalla { min-height: 100vh; min-height: 100dvh; background: var(--fondo); }
 .login-acceso {
-  display: grid; align-items: safe center; justify-items: center;
-  padding: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    max(28px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-  overflow-y: auto;
+  min-height: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px;
+  padding: max(28px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
 .login-caja {
-  width: min(400px, 100%); background: var(--tarjeta);
-  border: 1px solid var(--linea-3); border-radius: var(--radio-sm);
-  padding: 26px 28px;
+  width: min(360px, 100%); background: var(--tarjeta);
+  border: 1px solid var(--linea); border-radius: var(--radio-md);
+  padding: 24px;
 }
-.login-caja h2 { font-size: 18px; color: var(--navy); margin: 0 0 4px; letter-spacing: -.2px; }
-.login-caja .lema { color: var(--apagado); font-size: var(--tamano-sm); margin: 0 0 20px; }
+.login-caja h2 { font-size: 17px; color: var(--texto); margin: 0 0 18px; }
 .login-caja .campo { margin-bottom: 12px; }
-.login-caja .campo span { color: var(--texto); font-size: 12px; }
+.login-caja .campo span { color: var(--texto); font-size: var(--tamano-sm); }
 .login-caja input[type="text"], .login-caja input[type="password"] { min-height: 38px; padding: 8px 11px; }
 .login-caja button[type="submit"] { width: 100%; margin-top: 4px; min-height: 38px; }
 /* Opciones del login: la etiqueta entera es pulsable; en móvil cada casilla
@@ -366,13 +321,8 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--nav
 .login-opciones { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .casilla { display: inline-flex; align-items: center; gap: 8px; font-size: var(--tamano-sm); color: var(--apagado); cursor: pointer; }
 .casilla input { width: 16px; height: 16px; min-height: 0; padding: 0; flex: none; accent-color: var(--acento); }
-@media (max-width: 960px) {
-  .login-pantalla { grid-template-columns: minmax(0, 1fr); }
-  .login-marca { padding: max(22px, env(safe-area-inset-top)) 20px 22px; gap: 0; }
-  .login-marca h1, .login-marca .login-intro, .login-puntos, .login-pie { display: none; }
-  .login-acceso { align-items: start; padding: 24px 16px 40px; }
-}
 @media (max-width: 640px) {
+  .login-acceso { justify-content: flex-start; padding-top: max(48px, env(safe-area-inset-top)); }
   .login-opciones { flex-direction: column; align-items: stretch; }
   .casilla { min-height: 40px; gap: 10px; }
 }
@@ -428,13 +378,9 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--nav
 /* Cabecera de sección: título en su escalón, cuenta y acciones a la derecha,
    y una regla con segmento navy que ancla la sección. */
 .cabecera-seccion {
-  display: flex; align-items: baseline; gap: 10px;
-  position: relative; padding-bottom: 7px; margin-bottom: 4px;
-  border-bottom: 1px solid var(--linea-3);
-}
-.cabecera-seccion::after {
-  content: ""; position: absolute; left: 0; bottom: -1px; width: 30px; height: 2px;
-  background: var(--navy);
+  display: flex; align-items: baseline; gap: 8px;
+  padding-bottom: 6px; margin-bottom: 2px;
+  border-bottom: 1px solid var(--linea);
 }
 .cabecera-seccion h2 { margin: 0; font-size: var(--tamano-seccion); }
 .cabecera-seccion .cuenta {
@@ -451,30 +397,26 @@ table.tabla tr.seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--nav
   padding: 10px 0; margin-bottom: 14px;
 }
 
-/* Tira de cifras: fondo del panel, líneas arriba y abajo, números grandes y
-   etiquetas en versalita. Es la única "fila de tarjetas" permitida y no se
-   lee como una rejilla de cards. */
+/* Tira de cifras: una superficie con divisiones, etiqueta arriba en texto
+   normal y la cifra debajo, como se lee un tablero de trabajo. */
 .tira-datos {
-  display: flex; flex-wrap: wrap; background: transparent;
-  border-top: 1px solid var(--linea-3); border-bottom: 1px solid var(--linea-3);
-  border-radius: 0; overflow: hidden;
+  display: flex; flex-wrap: wrap; background: var(--tarjeta);
+  border: 1px solid var(--linea); border-radius: var(--radio);
+  overflow: hidden;
 }
 .tira-datos .dato {
-  flex: 1 1 132px; padding: 10px 16px 10px 0; color: var(--texto);
+  flex: 1 1 132px; padding: 10px 14px; color: var(--texto);
+  display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 2px;
   /* Reseteo explícito: .dato.aviso también coincide con el bloque .aviso de
      avisos y heredaba fondo, borde y radio de ese otro uso. */
   background: transparent; border: 0; border-right: 1px solid var(--linea-2); border-radius: 0;
 }
-.tira-datos .dato:first-child { padding-left: 2px; }
 .tira-datos .dato:last-child { border-right: 0; }
 .tira-datos .valor {
-  font-size: var(--tamano-dato); font-weight: var(--peso-titulo); font-variant-numeric: tabular-nums;
-  color: var(--navy); line-height: 1.15;
+  font-size: 21px; font-weight: var(--peso-fuerte); font-variant-numeric: tabular-nums;
+  color: var(--texto); line-height: 1.2;
 }
-.tira-datos .etiqueta {
-  font-size: var(--tamano-etiqueta); text-transform: uppercase; letter-spacing: .07em;
-  color: var(--apagado); margin-top: 1px;
-}
+.tira-datos .etiqueta { font-size: var(--tamano-sm); color: var(--apagado); }
 .tira-datos .dato.alerta .valor { color: var(--peligro); }
 
 /* Nota vacía: una línea con icono, alineada al flujo de lectura; nunca una
@@ -610,7 +552,6 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 
 /* Acceso: el formulario y la marca llegan con el mismo gesto de una página. */
 .login-caja { animation: dmj-entrada-pagina var(--dmj-mov-lenta) var(--dmj-mov-curva-entrada); }
-.login-marca > * { animation: dmj-aparecer var(--dmj-mov-lenta) var(--dmj-mov-curva-entrada); }
 
 /* Accesibilidad: con movimiento reducido se apagan las animaciones no
    esenciales (pulso, entradas, giro de carga) y las transiciones pasan a ser

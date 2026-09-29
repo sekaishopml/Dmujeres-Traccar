@@ -40,6 +40,18 @@ export interface ReplayResumen {
   bateriaFinalPct: number | null;
 }
 
+/**
+ * Fixes apartados del trazado por imposibles (el crudo en base no cambia):
+ * fuera del área operativa (mock/emulador) o picos de ida y vuelta a más de
+ * 180 km/h. `posibleOrigenMultiple` avisa de saltos largos repetidos: dos
+ * teléfonos reportando con la misma cuenta.
+ */
+export interface ReplayCalidad {
+  descartadasFueraDeZona: number;
+  descartadasSalto: number;
+  posibleOrigenMultiple: boolean;
+}
+
 export interface Replay {
   dispositivo: Dispositivo;
   desde: string;
@@ -48,6 +60,7 @@ export interface Replay {
   huecos: Hueco[];
   reconstruidos: TramoReconstruido[];
   resumen: ReplayResumen;
+  calidad?: ReplayCalidad;
   generadoEn: string;
 }
 

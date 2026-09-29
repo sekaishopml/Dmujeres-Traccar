@@ -1,6 +1,6 @@
-// Encabezado de página del dash: contexto (grupo del menú), título y línea de
-// detalle, con las acciones a la derecha. Centralizarlo evita que cada página
-// invente su propia jerarquía y mantiene el mismo escalón tipográfico.
+// Encabezado de página: título y, si aporta, un dato corto (hora de la última
+// lectura, identificador). El grupo del menú ya está en la miga de la barra
+// superior, así que `contexto` se acepta pero no se repite en pantalla.
 import type { ReactNode } from 'react';
 
 interface Props {
@@ -10,11 +10,10 @@ interface Props {
   acciones?: ReactNode;
 }
 
-export default function EncabezadoPagina({ titulo, contexto, sub, acciones }: Props) {
+export default function EncabezadoPagina({ titulo, sub, acciones }: Props) {
   return (
     <header className="cabecera-pagina">
       <div>
-        {contexto && <span className="contexto">{contexto}</span>}
         <h1>{titulo}</h1>
         {sub != null && sub !== '' && <p className="sub">{sub}</p>}
       </div>

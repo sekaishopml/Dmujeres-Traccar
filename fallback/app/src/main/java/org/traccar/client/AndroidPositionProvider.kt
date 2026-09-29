@@ -30,11 +30,14 @@ class AndroidPositionProvider(context: Context, listener: PositionListener) : Po
     @Volatile
     private var started = false
 
-    /** Estado asumido al arrancar: movimiento (no perder la salida de ruta). */
+    /** Estado asumido al arrancar: movimiento y GPS continuo. */
     @Volatile
     private var moving = true
 
-    /** Proveedor vigente: GPS en movimiento, red parado (ahorro). */
+    @Volatile
+    private var gpsContinuous = true
+
+    /** Proveedor vigente: GPS con jornada, red sin jornada. */
     @Volatile
     private var provider = LocationManager.GPS_PROVIDER
 
@@ -49,21 +52,21 @@ class AndroidPositionProvider(context: Context, listener: PositionListener) : Po
         locationManager.removeUpdates(this)
     }
 
-    /**
-     * Recrea la petición al cambiar el estado: GPS fino en movimiento,
-     * NETWORK/BALANCED con 120 s parado. `mobile.accuracy` ya no decide el
-     * proveedor (decisión del dueño: GPS en movimiento siempre).
-     */
-    override fun applyMotionState(moving: Boolean) {
+    override fun applyMotionState(moving: Boolean, gpsContinuous: Boolean) {
         this.moving = moving
         updateReportInterval(moving)
-        if (started) requestUpdates()
+        if (this.gpsContinuous == gpsContinuous) return
+        this.gpsContinuous = gpsContinuous
+        if (started) {
+            locationManager.removeUpdates(this)
+            requestUpdates()
+        }
     }
 
     @SuppressLint("MissingPermission")
     private fun requestUpdates() {
-        val cadence = AdaptiveCadence.request(moving, null, configuredIntervalSeconds())
-        provider = if (moving) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
+        val cadence = AdaptiveCadence.request(gpsContinuous)
+        provider = if (gpsContinuous) LocationManager.GPS_PROVIDER else LocationManager.NETWORK_PROVIDER
         try {
             locationManager.requestLocationUpdates(provider, cadence.intervalMs, cadence.minDistanceM, this)
         } catch (e: RuntimeException) {

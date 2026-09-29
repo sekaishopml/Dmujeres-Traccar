@@ -165,6 +165,8 @@ object ServiceHeartbeat {
             }
             // Configuración remota: cada 10 min, y solo reinicia si cambió.
             RemoteConfig.applyAndRestartIfChanged(context)
+            // Actualización sin abrir la app: aviso en la barra (cada 6 h).
+            runCatching { OtaNotifier.maybeCheck(context) }
         }.start()
     }
 }

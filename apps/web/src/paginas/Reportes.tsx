@@ -113,7 +113,6 @@ export default function Reportes() {
       <EncabezadoPagina
         contexto="Operación"
         titulo="Reportes"
-        sub="Viajes, paradas y resumen por equipo en el rango elegido."
       />
 
       <div className="barra-herramientas">

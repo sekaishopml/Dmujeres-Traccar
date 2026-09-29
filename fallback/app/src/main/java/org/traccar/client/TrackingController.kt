@@ -59,8 +59,15 @@ class TrackingController(private val context: Context) :
      */
     private val captureGate = CaptureGate()
 
-    /** Cadencia fina vigente (se aplica al proveedor solo al cambiar). */
+    /** Despertador de movimiento fuera del proceso (geocerca de quietud). */
+    private val stationaryFence: StationaryFence =
+        runCatching { StationaryFenceFactory.create(context) }.getOrDefault(NoStationaryFence)
+    private var fenceArmed = false
+
+    /** Latido fino vigente (se aplica al proveedor solo al cambiar). */
     private var fineCadence = true
+    /** GPS continuo vigente: todo estado con jornada abierta (no STOPPED). */
+    private var gpsContinuous = true
     private var platformFallback = false
 
     private var lastFixLat = 0.0
@@ -176,6 +183,7 @@ class TrackingController(private val context: Context) :
     private val motionTick = object : Runnable {
         override fun run() {
             val now = System.currentTimeMillis()
+            syncJourney()
             machine.onImuHint(now, MotionMonitor.isMoving())
             machine.onTick(now)
             applyCadence(requestFixOnFine = false)
@@ -210,16 +218,58 @@ class TrackingController(private val context: Context) :
         }
     }
 
-    /** Aplica la cadencia de la máquina al proveedor (solo al cambiar). */
+    /**
+     * La jornada se abre/cierra fuera del servicio (botón del home, login,
+     * reconciliación con el servidor, cierre de sesión): las prefs mandan y la
+     * máquina se alinea aquí (ver [MovementStateMachine.syncJourney]). Al
+     * abrir se pide un fix inmediato y se captura en fino desde ya.
+     */
+    fun syncJourney() {
+        runCatching {
+            val open = preferences.getBoolean(DmujeresApi.KEY_JOURNEY_OPEN, false)
+            val before = machine.state
+            if (machine.syncJourney(System.currentTimeMillis(), open)) {
+                Log.i(TAG, "jornada ${if (open) "abierta" else "cerrada"}: $before -> ${machine.state}")
+                runCatching { journeyManager.syncFromPrefs() }
+                applyCadence(requestFixOnFine = open)
+                updateStationaryFence()
+                persistMovementState()
+            }
+        }.onFailure { Log.w(TAG, "no se pudo alinear la jornada", it) }
+    }
+
+    /**
+     * Aplica la máquina al proveedor (solo al cambiar). Con jornada el GPS es
+     * continuo siempre; movimiento/quietud solo cambian el latido de reporte.
+     */
     private fun applyCadence(requestFixOnFine: Boolean = true) {
         val fine = machine.wantsFineCadence()
-        if (fine == fineCadence) return
+        val continuous = machine.state != MovementStateMachine.State.STOPPED
+        if (fine == fineCadence && continuous == gpsContinuous) return
+        val routeStart = fine && !fineCadence
         fineCadence = fine
-        positionProvider.applyMotionState(fine)
-        Log.i(TAG, "cadencia de la máquina: fina=$fine (${machine.state})")
-        if (fine && requestFixOnFine) {
+        gpsContinuous = continuous
+        positionProvider.applyMotionState(fine, continuous)
+        Log.i(TAG, "cadencia: fina=$fine gpsContinuo=$continuous (${machine.state})")
+        updateStationaryFence()
+        if (routeStart && requestFixOnFine) {
             // Arranque de ruta: un fix inmediato en vez de esperar la ventana.
             runCatching { positionProvider.requestSingleLocation() }
+        }
+    }
+
+    /**
+     * Quietud: la cerca vigila la salida por nosotros (centro = último fix);
+     * en cadencia fina sobra. Si se entró en quietud sin fix (restauración),
+     * se arma con el primer fix que llegue.
+     */
+    private fun updateStationaryFence() {
+        if (!fineCadence && !fenceArmed && lastFixAtMs > 0) {
+            stationaryFence.arm(lastFixLat, lastFixLon)
+            fenceArmed = true
+        } else if (fineCadence && fenceArmed) {
+            stationaryFence.disarm()
+            fenceArmed = false
         }
     }
 
@@ -248,7 +298,7 @@ class TrackingController(private val context: Context) :
         runCatching {
             positionProvider.stopUpdates()
             positionProvider = AndroidPositionProvider(context, this)
-            positionProvider.applyMotionState(fineCadence)
+            positionProvider.applyMotionState(fineCadence, gpsContinuous)
             positionProvider.startUpdates()
         }.onFailure { Log.w(TAG, "no se pudo activar el GPS del sistema", it) }
     }
@@ -286,6 +336,7 @@ class TrackingController(private val context: Context) :
         // bucle de reinicios. Cada pieza se defiende sola y esto es el seguro.
         runCatching { networkManager.stop() }.onFailure { Log.w(TAG, "al detener red", it) }
         runCatching { positionProvider.stopUpdates() }.onFailure { Log.w(TAG, "al detener proveedor", it) }
+        runCatching { stationaryFence.disarm() }
         MotionMonitor.setTurnListener(null)
         MotionMonitor.setSignificantMotionListener(null)
         runCatching { MotionMonitor.unregister(context) }.onFailure { Log.w(TAG, "al liberar sensores", it) }
@@ -344,6 +395,7 @@ class TrackingController(private val context: Context) :
                 "(v=${position.speed} kn, d=${legM.toInt()} m, caminando=${machine.isWalking})")
         }
         applyCadence()
+        updateStationaryFence()
         persistMovementState()
         watchdog.noteFix(now)
         StatusActivity.addMessage(context.getString(R.string.status_location_update))

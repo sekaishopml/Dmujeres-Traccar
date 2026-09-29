@@ -1,7 +1,7 @@
 {
-  "version": "2.1.83",
-  "versionCode": 293,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.83.apk",
-  "notes": "Replay sin doble trazo y cambio de cuenta seguro en el telefono",
-  "sha256": "48721dd532074889c4a1b9c6cf6025f5afd3aa32691289866608bc845c30d211"
+  "version": "2.1.84",
+  "versionCode": 294,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.84.apk",
+  "notes": "Ruta continua: GPS activo toda la jornada, arranque de jornada corregido y rescate más rápido",
+  "sha256": "04f663101fbe8d95dd91e3084ba75e9d749d0120161c55c85b1a6a4345f85dd7"
 }

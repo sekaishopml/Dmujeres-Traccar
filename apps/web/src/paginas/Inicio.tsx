@@ -216,7 +216,7 @@ export default function Inicio() {
       <EncabezadoPagina
         contexto="Operación"
         titulo="Inicio"
-        sub={`Resumen de la operación de hoy${actualizado ? ` · actualizado ${actualizado}` : ' · sin datos todavía'}${
+        sub={`${actualizado ? `Actualizado ${actualizado}` : 'Sin datos todavía'}${
           flota.isFetching ? ' · actualizando…' : ''
         }`}
         acciones={

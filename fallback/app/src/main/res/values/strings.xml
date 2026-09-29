@@ -116,6 +116,8 @@
   <string name="perm_notifications">Notificaciones</string>
   <string name="perm_battery">Batería sin restricción</string>
   <string name="perm_autostart">Inicio automático del fabricante</string>
+  <string name="ota_notification_title">Actualización disponible</string>
+  <string name="ota_notification_text">Toca para instalar la versión %1$s. El seguimiento mejora con cada versión.</string>
   <string name="perm_autostart_manual">Si tu teléfono lo pide, permite el inicio automático en Ajustes.</string>
   <string name="version_format">Versión %1$s</string>
   <string name="locked_status_title">Servicio activo</string>

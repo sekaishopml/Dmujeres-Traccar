@@ -43,12 +43,6 @@ const PAGINAS = new Map(
   GRUPOS.flatMap((grupo) => grupo.enlaces.map((enlace) => [enlace.ruta, { texto: enlace.texto, grupo: grupo.titulo }])),
 );
 
-// Accesos rápidos de la barra superior: lo que un operador consulta a diario.
-const ACCESOS = [
-  { ruta: '/en-vivo', texto: 'En vivo' },
-  { ruta: '/historial', texto: 'Historial' },
-];
-
 // La lateral cambia con el ancho: riel de íconos en tablet (641-860 px, lo
 // resuelve el CSS) y capa deslizable en móvil angosto, donde el menú se monta
 // encima del contenido en vez de robarle ancho. Se consulta con matchMedia
@@ -141,7 +135,6 @@ export default function Disposicion() {
       <aside className="lateral">
         <div className="marca">
           <Logotipo claro />
-          <span className="lema">Plataforma de flota</span>
         </div>
         <nav>
           {GRUPOS.map((grupo) => (
@@ -178,14 +171,6 @@ export default function Disposicion() {
             <span className="miga-pagina" aria-current="page">{pagina.texto}</span>
           </nav>
           <span className="empuja" />
-          <nav className="barra-acciones" aria-label="Accesos de operación">
-            {ACCESOS.map((acceso) => (
-              <NavLink key={acceso.ruta} to={acceso.ruta}>
-                {acceso.texto}
-              </NavLink>
-            ))}
-          </nav>
-          <span className="barra-sep" aria-hidden="true" />
           <div className="cuenta-chip" title={usuario.correo ?? undefined}>
             <span className="usuario-avatar" aria-hidden="true">
               {iniciales(usuario.nombre ?? '', usuario.correo ?? '')}
@@ -194,8 +179,8 @@ export default function Disposicion() {
               <span className="usuario-nombre">{usuario.nombre || usuario.correo}</span>
               {(usuario.administrador || usuario.soloLectura) && (
                 <span className="usuario-roles">
-                  {usuario.administrador && <em className="rol admin">admin</em>}
-                  {usuario.soloLectura && <em className="rol lectura">solo lectura</em>}
+                  {usuario.administrador && <em className="rol admin">Administrador</em>}
+                  {usuario.soloLectura && <em className="rol lectura">Solo lectura</em>}
                 </span>
               )}
             </span>

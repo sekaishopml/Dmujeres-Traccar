@@ -243,7 +243,6 @@ export default function Configuracion() {
       <EncabezadoPagina
         contexto="Administración"
         titulo="Configuración"
-        sub="Parámetros de la aplicación móvil por equipo. Solo administradores."
       />
 
       {!administrador && (

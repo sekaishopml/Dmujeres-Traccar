@@ -40,8 +40,7 @@
 /* Listas de definición (estado de servicios y versión desplegada) */
 .detalle-datos { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: 13px; }
 .detalle-datos dt {
-  color: var(--apagado); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
-  font-weight: 650; align-self: center;
+  color: var(--apagado); font-size: var(--tamano-sm); font-weight: var(--peso-medio); align-self: center;
 }
 .detalle-datos dd { margin: 0; word-break: break-word; }
 
@@ -130,8 +129,7 @@ input[type='checkbox'], input[type='radio'] { width: auto; min-height: 0; paddin
 
 .grupo-equipos { border: 1px solid var(--linea); border-radius: var(--radio-xs); padding: 8px 10px 10px; margin: 0 0 12px; }
 .grupo-equipos legend {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--apagado); font-weight: 650; padding: 0 4px;
+  font-size: var(--tamano-sm); color: var(--apagado); font-weight: var(--peso-medio); padding: 0 4px;
 }
 .equipos-asignados { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; max-height: 200px; overflow: auto; }
 .equipos-asignados label { display: flex; align-items: center; gap: 7px; font-size: 13px; }

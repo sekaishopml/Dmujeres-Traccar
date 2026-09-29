@@ -774,6 +774,23 @@ export function suavizarTrazado(
   return salida;
 }
 
+// Salto sin observación: más de 2 min y 150 m entre dos fixes sin tramo
+// reconstruido. El servidor solo reconstruye cuando la calle es la única
+// explicación razonable; si no lo hizo, una recta sólida afirmaría un camino
+// que nadie observó (corta manzanas). Se dibuja como hueco punteado.
+// También es salto el par que exigiría más de 180 km/h (GPS errático o dos
+// teléfonos con la misma cuenta): nunca se dibuja como camino recorrido.
+export const SALTO_SIN_OBSERVAR_SEGUNDOS = 120;
+export const SALTO_SIN_OBSERVAR_M = 150;
+export const VELOCIDAD_IMPOSIBLE_KMH = 180;
+
+function esSaltoSinObservar(anterior: Posicion, actual: Posicion): boolean {
+  const segundos = (milisegundos(actual.registradoEn) - milisegundos(anterior.registradoEn)) / 1000;
+  const metros = distanciaKm(anterior, actual) * 1000;
+  if (metros > 50 && !(segundos > 0 && (metros / segundos) * 3.6 <= VELOCIDAD_IMPOSIBLE_KMH)) return true;
+  return segundos > SALTO_SIN_OBSERVAR_SEGUNDOS && metros >= SALTO_SIN_OBSERVAR_M;
+}
+
 export function segmentosDeRecorrido(
   posiciones: Posicion[],
   huecos: Hueco[],
@@ -833,7 +850,7 @@ export function segmentosDeRecorrido(
       [anterior.longitud, anterior.latitud],
       [actual.longitud, actual.latitud],
     ];
-    if (paresHueco.has(`${anterior.registradoEn}|${actual.registradoEn}`)) {
+    if (paresHueco.has(`${anterior.registradoEn}|${actual.registradoEn}`) || esSaltoSinObservar(anterior, actual)) {
       segmentos.push({ tipo: 'hueco', coordenadas });
       continue;
     }
@@ -979,7 +996,7 @@ export function flechasEspaciadas(
       continue;
     }
     const clave = `${anterior.registradoEn}|${actual.registradoEn}`;
-    if (paresHueco.has(clave) || paresReconstruidos.has(clave)) {
+    if (paresHueco.has(clave) || paresReconstruidos.has(clave) || esSaltoSinObservar(anterior, actual)) {
       cerrarTramo(paresTramo, metrosTramo);
       paresTramo = [];
       metrosTramo = 0;

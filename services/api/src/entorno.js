@@ -6,6 +6,26 @@ import { readFileSync } from 'node:fs';
 
 const RUTA_ENV_POR_DEFECTO = '/home/DMujeres-Tracking/.env';
 
+// Commit desplegado: DMJ_COMMIT si lo fija el despliegue; si no, el HEAD del
+// repositorio donde corre el servicio (sin invocar git).
+function commitDelRepositorio() {
+  try {
+    const raiz = new URL('../../../', import.meta.url);
+    const cabeza = readFileSync(new URL('.git/HEAD', raiz), 'utf8').trim();
+    if (!cabeza.startsWith('ref: ')) return cabeza.slice(0, 12);
+    const referencia = cabeza.slice(5);
+    try {
+      return readFileSync(new URL(`.git/${referencia}`, raiz), 'utf8').trim().slice(0, 12);
+    } catch {
+      const empaquetadas = readFileSync(new URL('.git/packed-refs', raiz), 'utf8');
+      const linea = empaquetadas.split('\n').find((l) => l.endsWith(` ${referencia}`));
+      return linea ? linea.slice(0, 12) : null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 function entero(valor, porDefecto) {
   const numero = Number.parseInt(valor ?? '', 10);
   return Number.isFinite(numero) ? numero : porDefecto;
@@ -86,7 +106,7 @@ export function construirConfiguracion(env = process.env, version = '0.0.0') {
       centro: [-2.1908, -79.9002],
       zoom: numero(env.DMJ_MAPA_ZOOM, 12),
     },
-    commit: env.DMJ_COMMIT || 'desconocido',
+    commit: env.DMJ_COMMIT || commitDelRepositorio() || 'desconocido',
     construidoEn: env.DMJ_BUILD_TIME || new Date().toISOString(),
   };
 }

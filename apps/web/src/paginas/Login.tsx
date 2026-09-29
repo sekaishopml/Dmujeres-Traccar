@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Icono from '../componentes/Icono';
 import Logotipo from '../componentes/Logotipo';
 import { useSesion } from '../store/sesion';
 
@@ -37,45 +36,18 @@ export default function Login() {
 
   return (
     <div className="login-pantalla">
-      <aside className="login-marca">
-        <Logotipo claro grande />
-        <div>
-          <h1>Cada equipo, su jornada y su recorrido.</h1>
-          <p className="login-intro">
-            En vivo, Historial, Replay y Reportes de cada equipo, para seguir la jornada
-            completa de la operación.
-          </p>
-        </div>
-        <ul className="login-puntos">
-          <li>
-            <Icono nombre="enVivo" tamano={16} />
-            Posición, estado y batería de cada equipo
-          </li>
-          <li>
-            <Icono nombre="replay" tamano={16} />
-            Recorridos y paradas, jornada por jornada
-          </li>
-          <li>
-            <Icono nombre="reportes" tamano={16} />
-            Reportes por equipo y rango de fechas
-          </li>
-        </ul>
-        <p className="login-pie">DMujeres Tracking · Operación de motos y cuadrillas</p>
-      </aside>
-
       <div className="login-acceso">
+        <Logotipo grande />
         <form className="login-caja" onSubmit={alEnviar}>
           <h2>Iniciar sesión</h2>
-          <p className="lema">Entra con tu correo y tu clave.</p>
 
           <label className="campo">
-            <span>Correo</span>
+            <span>Usuario o correo</span>
             <input
               type="text"
               value={correo}
               onChange={(e) => setCorreo(e.target.value)}
               autoComplete="username"
-              placeholder="nombre@dmujeres.local"
               required
               autoFocus
             />

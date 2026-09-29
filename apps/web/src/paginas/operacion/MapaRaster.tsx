@@ -109,6 +109,10 @@ export default memo(function MapaRaster({
   const cargado = useRef(false);
   const capaDestino = useRef<IdCapa>(capas[0] ?? 'google-mapa');
   const temporizadorCapa = useRef<number | null>(null);
+  // Sin WebGL2 (PC viejo, aceleración apagada) maplibre lanza al construir y
+  // tumbaba la página entera: se muestra un aviso en el recuadro del mapa y
+  // el resto del panel (lista, ficha, reportes) sigue funcionando.
+  const [sinMapa, setSinMapa] = useState(false);
 
   useEffect(() => {
     avisoListo.current = alListo;
@@ -119,13 +123,19 @@ export default memo(function MapaRaster({
     if (!nodo) return;
     duracionFundido.current = duracionFundidoMs();
     cargado.current = false;
-    const mapa = new MapaMaplibre({
-      container: nodo,
-      style: estiloMapa(duracionFundido.current, capaDestino.current),
-      center: centro,
-      zoom,
-      attributionControl: { compact: true },
-    });
+    let mapa: MapaMaplibre;
+    try {
+      mapa = new MapaMaplibre({
+        container: nodo,
+        style: estiloMapa(duracionFundido.current, capaDestino.current),
+        center: centro,
+        zoom,
+        attributionControl: { compact: true },
+      });
+    } catch {
+      setSinMapa(true);
+      return;
+    }
     instancia.current = mapa;
     // Rueda más lenta que el valor por defecto: en un panel de flota el zoom
     // brusco desorienta y hace perder el encuadre de la unidad.
@@ -220,6 +230,12 @@ export default memo(function MapaRaster({
   return (
     <div className={`${clase} mapa-envoltura`}>
       <div ref={contenedor} style={{ position: 'absolute', inset: 0 }} />
+      {sinMapa && (
+        <p className="mapa-sin-webgl">
+          Este navegador no puede dibujar el mapa (necesita aceleración gráfica WebGL2). Activa la aceleración por
+          hardware en la configuración del navegador o abre el panel en Chrome o Edge actualizados.
+        </p>
+      )}
       <div className="mapa-selector" role="group" aria-label="Capa del mapa">
         {definiciones.map((capa) => (
           <button

@@ -31,9 +31,12 @@ class GooglePositionProvider(context: Context, listener: PositionListener) : Pos
     @Volatile
     private var started = false
 
-    /** Estado asumido al arrancar: movimiento (no perder la salida de ruta). */
+    /** Estado asumido al arrancar: movimiento y GPS continuo. */
     @Volatile
     private var moving = true
+
+    @Volatile
+    private var gpsContinuous = true
 
     override val providerName: String = "fused"
 
@@ -48,13 +51,11 @@ class GooglePositionProvider(context: Context, listener: PositionListener) : Pos
         fusedLocationClient.removeLocationUpdates(locationCallback)
     }
 
-    /**
-     * Recrea la petición al cambiar el estado: fina y HIGH en movimiento (sin
-     * batching, vista fresca), gruesa, BALANCED y con batching en quietud.
-     */
-    override fun applyMotionState(moving: Boolean) {
+    override fun applyMotionState(moving: Boolean, gpsContinuous: Boolean) {
         this.moving = moving
         updateReportInterval(moving)
+        if (this.gpsContinuous == gpsContinuous) return
+        this.gpsContinuous = gpsContinuous
         if (started) requestUpdates()
     }
 
@@ -94,11 +95,7 @@ class GooglePositionProvider(context: Context, listener: PositionListener) : Pos
 
     @SuppressLint("MissingPermission")
     private fun requestUpdates() {
-        val cadence = AdaptiveCadence.request(
-            moving,
-            preferences.getString(Prefs.ACCURACY, "high"),
-            configuredIntervalSeconds(),
-        )
+        val cadence = AdaptiveCadence.request(gpsContinuous)
         val locationRequest = LocationRequest.Builder(priorityOf(cadence.accuracy), cadence.intervalMs)
             .setMinUpdateDistanceMeters(cadence.minDistanceM)
             .setMaxUpdateDelayMillis(cadence.maxUpdateDelayMs)
