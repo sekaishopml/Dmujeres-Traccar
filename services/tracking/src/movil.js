@@ -778,7 +778,7 @@ export async function atenderJornadaConsulta(req, res, ctx) {
 // ---------------------------------------------------------------------------
 // POST /api/mobile/v1/positions (lote idempotente)
 // ---------------------------------------------------------------------------
-// Contrato: body {eventos:[{bootId,seq,journeyId,capturedAt,lat,lon,alt,speed,
+// Contrato: body {eventos:[{bootId,seq,journeyId,capturedAt,lat,lon,alt,speed(nudos),
 // bearing,accuracy,battery,charging,mock,provider,movementState}]} →
 // {resultados:[{seq,estado}]} con estado accepted|duplicate|invalid|dead.
 // - accepted: guardado (o sin identidad pero válido, solo OsmAnd legacy).
@@ -786,6 +786,19 @@ export async function atenderJornadaConsulta(req, res, ctx) {
 // - invalid: coordenadas/fecha/identidad fuera de contrato, sin guardar.
 // - dead: equipo deshabilitado (drena sin guardar, igual que OsmAnd).
 // Límite 500 eventos por lote; una transacción por lote en db.js.
+// Velocidad del evento en km/h. La app manda `speed` en NUDOS (el mismo valor
+// que va por OsmAnd); guardarlo tal cual dejaba la velocidad a la mitad (en
+// Reportes el promedio superaba a la máxima). Si algún cliente manda
+// `speedKmh`, ese valor manda.
+const KMH_POR_NUDO = 1.852;
+
+function velocidadDelEvento(evento) {
+  const kmh = numeroFinito(evento.speedKmh);
+  if (kmh !== null) return kmh;
+  const nudos = numeroFinito(evento.speed);
+  return nudos === null ? null : nudos * KMH_POR_NUDO;
+}
+
 function esLatitud(valor) {
   return typeof valor === 'number' && Number.isFinite(valor) && valor >= -90 && valor <= 90;
 }
@@ -912,9 +925,7 @@ export async function atenderLotePosiciones(req, res, ctx) {
         latitud: lat,
         longitud: lon,
         altitud: numeroFinito(evento.alt),
-        // speed se interpreta como km/h del contrato móvil (sin conversión
-        // inventada; si la app enviara m/s se ajusta en Sprint 2 con versión).
-        velocidadKmh: numeroFinito(evento.speed),
+        velocidadKmh: velocidadDelEvento(evento),
         rumbo: numeroFinito(evento.bearing),
         precision: numeroFinito(evento.accuracy),
         bateria,
