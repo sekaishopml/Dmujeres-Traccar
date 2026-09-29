@@ -226,7 +226,7 @@ export default function Inicio() {
         </Link>
       </header>
 
-      {flota.isPending && <p className="vacio">Cargando…</p>}
+      {flota.isPending && <p className="vacio pulso">Cargando…</p>}
       {flota.error && (
         <p className="vacio">
           <Icono nombre="sistema" />
@@ -274,7 +274,7 @@ export default function Inicio() {
                 </p>
               )}
               {dispositivos.length > 0 && jornadas.isPending && (
-                <p className="vacio">Consultando las jornadas del día…</p>
+                <p className="vacio pulso">Consultando las jornadas del día…</p>
               )}
               {jornadasDisponibles && filasJornadas.length === 0 && (
                 <p className="vacio">
@@ -335,7 +335,7 @@ export default function Inicio() {
                 <h2>Salud de la flota</h2>
                 <span className="cuenta">{cuentaSalud}</span>
               </header>
-              {salud.isPending && <p className="vacio">Consultando la salud de los equipos…</p>}
+              {salud.isPending && <p className="vacio pulso">Consultando la salud de los equipos…</p>}
               {salud.error && esNoEncontrado(salud.error) && (
                 <p className="vacio">
                   <Icono nombre="sistema" />

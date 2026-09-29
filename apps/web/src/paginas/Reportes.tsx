@@ -176,7 +176,7 @@ export default function Reportes() {
             <h2>Viajes</h2>
             <span className="cuenta">{viajes.data ? `${viajes.data.total} registros` : 'Consultando…'}</span>
           </header>
-          {viajes.isPending && <p className="vacio">Cargando viajes…</p>}
+          {viajes.isPending && <p className="vacio pulso">Cargando viajes…</p>}
           {viajes.error && <MensajeError error={viajes.error} />}
           {viajes.data && viajes.data.datos.length === 0 && <p className="vacio">No hay viajes en el rango.</p>}
           {viajes.data && viajes.data.datos.length > 0 && (
@@ -228,7 +228,7 @@ export default function Reportes() {
             <h2>Paradas</h2>
             <span className="cuenta">{paradas.data ? `${paradas.data.total} registros` : 'Consultando…'}</span>
           </header>
-          {paradas.isPending && <p className="vacio">Cargando paradas…</p>}
+          {paradas.isPending && <p className="vacio pulso">Cargando paradas…</p>}
           {paradas.error && <MensajeError error={paradas.error} />}
           {paradas.data && paradas.data.datos.length === 0 && <p className="vacio">No hay paradas en el rango.</p>}
           {paradas.data && paradas.data.datos.length > 0 && (
@@ -277,7 +277,7 @@ export default function Reportes() {
               {resumen.data ? `${resumen.data.porDispositivo.length} equipos` : 'Consultando…'}
             </span>
           </header>
-          {resumen.isPending && <p className="vacio">Cargando resumen…</p>}
+          {resumen.isPending && <p className="vacio pulso">Cargando resumen…</p>}
           {resumen.error && <MensajeError error={resumen.error} />}
           {resumen.data && (
             <>

@@ -358,7 +358,7 @@ function EditorAjustes({
   if (cargandoEsquema) {
     return (
       <div>
-        <p className="vacio">Cargando los ajustes disponibles…</p>
+        <p className="vacio pulso">Cargando los ajustes disponibles…</p>
         <div className="dialogo-pie">
           <button type="button" className="suave" onClick={onCancelar}>
             Cerrar
@@ -650,7 +650,7 @@ export default function Usuarios() {
               {usuarios.data ? `${total} registradas` : 'Consultando…'}
             </span>
           </header>
-          {usuarios.isPending && <p className="vacio">Cargando cuentas…</p>}
+          {usuarios.isPending && <p className="vacio pulso">Cargando cuentas…</p>}
           {usuarios.error && <MensajeError error={usuarios.error} />}
           {usuarios.data && total === 0 && <p className="vacio">Todavía no hay cuentas.</p>}
           {visibles.length > 0 && (

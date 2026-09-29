@@ -87,10 +87,23 @@
   --sombra-2: 0 6px 18px rgba(11, 31, 51, .12); /* Paneles flotantes y diálogos. */
   --sombra-3: 0 14px 34px rgba(11, 31, 51, .16); /* Presentaciones y marca grande. */
 
-  /* ── Transiciones ──────────────────────────────────────────────────────── */
-  --transicion-rapida: 120ms ease; /* Hover de controles y enlaces. */
-  --transicion: 160ms ease;        /* Cambios de fondo, color y borde. */
-  --transicion-lenta: 240ms ease;  /* Capas y paneles que aparecen. */
+  /* ── Movimiento ──────────────────────────────────────────────────────────
+     Lenguaje único de animación: duraciones y curvas para todo el panel.
+     Solo se animan opacidad, color y desplazamientos mínimos; el catálogo y
+     las reglas viven en docs/BRANDING-MOVIMIENTO.md. */
+  --dmj-mov-rapida: 120ms;  /* Hover, foco y cambios de color. */
+  --dmj-mov-media: 180ms;   /* Aparición de componentes: diálogo, toast, panel. */
+  --dmj-mov-lenta: 260ms;   /* Entrada de página y capas grandes. */
+  --dmj-mov-curva: cubic-bezier(.2, .7, .3, 1);            /* Estándar: cambios de estado. */
+  --dmj-mov-curva-entrada: cubic-bezier(.16, .84, .44, 1); /* Entrada: arranca rápido y frena. */
+  --dmj-mov-curva-salida: cubic-bezier(.5, 0, .9, .4);     /* Salida: acelera al retirarse. */
+  --dmj-mov-distancia: 4px; /* Desplazamiento máximo de una entrada. */
+  --dmj-mov-escala: .985;   /* Escala inicial de diálogos y paneles flotantes. */
+
+  /* ── Transiciones (alias de compatibilidad; no usar en código nuevo) ───── */
+  --transicion-rapida: var(--dmj-mov-rapida) var(--dmj-mov-curva);
+  --transicion: var(--dmj-mov-media) var(--dmj-mov-curva);
+  --transicion-lenta: var(--dmj-mov-lenta) var(--dmj-mov-curva-entrada);
 
   /* ── Estructura del panel ──────────────────────────────────────────────── */
   --lateral: 236px;        /* Ancho de la barra lateral desplegada. */

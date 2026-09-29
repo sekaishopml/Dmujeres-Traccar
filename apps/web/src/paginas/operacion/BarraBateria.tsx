@@ -19,7 +19,7 @@ export default memo(function BarraBateria({ porcentaje, cargando }: Props) {
         <span className={`relleno ${nivel}`} style={{ width: ancho }} />
       </span>
       <span className="num">{bateria(porcentaje)}</span>
-      {cargando === true && <span className="cargando-bateria">cargando</span>}
+      {cargando === true && <span className="cargando-bateria pulso">cargando</span>}
     </span>
   );
 });

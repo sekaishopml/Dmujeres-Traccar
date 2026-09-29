@@ -162,7 +162,7 @@ export default function Bateria() {
             <h2>Estado de la flota</h2>
             <span className="cuenta">{flota.length} equipos · ordenados de menor a mayor carga</span>
           </header>
-          {equipos.isPending && <p className="vacio">Cargando flota…</p>}
+          {equipos.isPending && <p className="vacio pulso">Cargando flota…</p>}
           {equipos.error && <MensajeError error={equipos.error} />}
           {equipos.data && (
             <>
@@ -244,7 +244,7 @@ export default function Bateria() {
             </div>
           </div>
 
-          {serie.isPending && seleccion !== '' && <p className="vacio">Cargando historial…</p>}
+          {serie.isPending && seleccion !== '' && <p className="vacio pulso">Cargando historial…</p>}
           {serie.error && <MensajeError error={serie.error} />}
           {serie.data && muestras.length === 0 && <p className="vacio">No hay lecturas de batería en el rango.</p>}
           {serie.data && muestras.length > 0 && valores.length === 0 && (

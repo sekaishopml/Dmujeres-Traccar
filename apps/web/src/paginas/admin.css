@@ -85,6 +85,20 @@
 .dialogo-cab h2 { margin: 0; }
 .dialogo-pie { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
 
+/* Entrada del diálogo: funde y crece un punto porcentual desde el centro;
+   sin animación de salida, el cierre no espera a nadie. El velo acompaña con
+   el mismo tiempo (valores en tokens.css, catálogo en BRANDING-MOVIMIENTO). */
+@keyframes dmj-entrada-dialogo {
+  from { opacity: 0; transform: translateY(var(--dmj-mov-distancia)) scale(var(--dmj-mov-escala)); }
+}
+@keyframes dmj-entrada-velo { from { background: rgba(11, 37, 69, 0); } }
+.dialogo[open] .dialogo-caja {
+  animation: dmj-entrada-dialogo var(--dmj-mov-media) var(--dmj-mov-curva-entrada);
+}
+.dialogo[open]::backdrop {
+  animation: dmj-entrada-velo var(--dmj-mov-media) var(--dmj-mov-curva-entrada);
+}
+
 /* Confirmación flotante de éxito */
 .toast {
   position: fixed; right: 16px; bottom: 16px; z-index: 60;
@@ -95,6 +109,12 @@
 }
 .toast button { background: transparent; border-color: transparent; color: var(--navy-2); padding: 4px 8px; font-size: 12px; }
 .toast button:hover { background: var(--linea-2); }
+/* Entrada del toast: seis píxeles desde abajo y fundido; se retira sin
+   animación para no retrasar el cierre. */
+@keyframes dmj-entrada-toast {
+  from { opacity: 0; transform: translateY(6px); }
+}
+.toast { animation: dmj-entrada-toast var(--dmj-mov-media) var(--dmj-mov-curva-entrada); }
 
 /* Formularios de gestión de usuarios y equipos */
 .clave-caja { position: relative; display: block; }

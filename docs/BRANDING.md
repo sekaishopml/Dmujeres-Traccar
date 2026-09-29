@@ -100,9 +100,11 @@ Reglas de color:
 - **Sombras**: `--sombra-1` reposo, `--sombra-2` flotantes y diálogos,
   `--sombra-3` presentaciones. Máximo una sombra por elemento; nunca
   decorativas.
-- **Transiciones**: `--transicion-rapida` 120 ms (hover), `--transicion`
-  160 ms (fondos/color), `--transicion-lenta` 240 ms (capas). Sin rebotes ni
-  animaciones largas.
+- **Movimiento**: lenguaje único en `tokens.css` (`--dmj-mov-rapida` 120 ms,
+  `--dmj-mov-media` 180 ms, `--dmj-mov-lenta` 260 ms; curvas estándar, de
+  entrada y de salida). Sin rebotes, giros decorativos ni animaciones largas.
+  Catálogo, reglas de qué se anima y degradación con `prefers-reduced-motion`
+  en `docs/BRANDING-MOVIMIENTO.md`.
 - **Foco**: anillo verde (`:focus-visible`, `--acento`) siempre visible con
   teclado.
 

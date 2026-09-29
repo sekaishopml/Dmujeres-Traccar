@@ -87,7 +87,7 @@ export default function Detalle() {
     mapa.jumpTo({ center: centro, zoom: 15 });
   }, [mapa, posicion, equipo]);
 
-  if (consultaEquipo.isPending) return <p className="vacio">Cargando…</p>;
+  if (consultaEquipo.isPending) return <p className="vacio pulso">Cargando…</p>;
   if (consultaEquipo.error) return <p className="vacio">{mensajeError(consultaEquipo.error)}</p>;
   if (!equipo) return <p className="vacio">El equipo no está disponible.</p>;
 

@@ -630,7 +630,7 @@ export default function Replay() {
   function cuerpoPanel() {
     if (seleccionado === '') return <p className="vacio">No hay equipos asignados a esta cuenta.</p>;
     if (!rangoValido) return <p className="vacio">Revisa las fechas: el inicio no puede ser posterior al fin.</p>;
-    if (replay.isPending) return <p className="vacio">Cargando…</p>;
+    if (replay.isPending) return <p className="vacio pulso">Cargando…</p>;
     if (replay.error) {
       if (esNoEncontrado(replay.error)) return <p className="vacio">Sin recorrido en el rango seleccionado.</p>;
       return <p className="vacio">{mensajeError(replay.error)}</p>;

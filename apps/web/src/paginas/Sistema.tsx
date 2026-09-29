@@ -405,7 +405,7 @@ export default function Sistema() {
           {sinPermiso && (
             <p className="aviso">Necesitas permisos de administrador para ver y cambiar estas cuentas.</p>
           )}
-          {!sinPermiso && cuentas.isPending && <p className="vacio">Cargando cuentas…</p>}
+          {!sinPermiso && cuentas.isPending && <p className="vacio pulso">Cargando cuentas…</p>}
           {!sinPermiso && cuentas.error && <MensajeError error={cuentas.error} />}
           {!sinPermiso && cuentas.data && admins.length === 0 && (
             <p className="vacio">Todavía no hay cuentas con permiso de administración.</p>

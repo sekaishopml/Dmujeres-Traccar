@@ -328,7 +328,7 @@ export default function Grupos() {
             <h2>Lista de grupos</h2>
             <span className="cuenta">{grupos.data ? `${total} registrados` : 'Consultando…'}</span>
           </header>
-          {grupos.isPending && <p className="vacio">Cargando grupos…</p>}
+          {grupos.isPending && <p className="vacio pulso">Cargando grupos…</p>}
           {grupos.error && <MensajeError error={grupos.error} />}
           {grupos.data && total === 0 && <p className="vacio">Todavía no hay grupos. Crea el primero.</p>}
           {visibles.length > 0 && (
@@ -416,7 +416,7 @@ export default function Grupos() {
 
       {modal?.modo === 'miembros' && (
         <Dialogo titulo={`Quiénes están en ${modal.grupo.nombre}`} onCerrar={cerrarModal}>
-          {usuarios.isPending && <p className="vacio">Cargando personas…</p>}
+          {usuarios.isPending && <p className="vacio pulso">Cargando personas…</p>}
           {usuarios.error && (
             <div>
               <p>No se pudieron cargar las personas. Inténtalo más tarde.</p>

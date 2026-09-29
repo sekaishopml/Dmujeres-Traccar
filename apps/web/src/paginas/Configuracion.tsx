@@ -268,7 +268,7 @@ export default function Configuracion() {
               />
             </span>
           </label>
-          {equipos.isPending && <p className="vacio">Cargando equipos…</p>}
+          {equipos.isPending && <p className="vacio pulso">Cargando equipos…</p>}
           {equipos.error && <MensajeError error={equipos.error} />}
           {equipos.data && flota.length === 0 && (
             <p className="vacio">No hay equipos que coincidan con la búsqueda.</p>

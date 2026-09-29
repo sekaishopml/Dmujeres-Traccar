@@ -33,21 +33,38 @@ export const CAPAS_MAPA = [
 type IdCapa = (typeof CAPAS_MAPA)[number]['id'];
 const CAPA_INICIAL: IdCapa = 'google-mapa';
 
-const ESTILO: NonNullable<MapOptions['style']> = {
-  version: 8,
-  sources: Object.fromEntries(
-    CAPAS_MAPA.map((capa) => [
-      capa.id,
-      { type: 'raster', tiles: [...capa.tiles], tileSize: 256, maxzoom: 20, attribution: capa.attribution },
-    ]),
-  ),
-  layers: CAPAS_MAPA.map((capa) => ({
-    id: capa.id,
-    type: 'raster',
-    source: capa.id,
-    layout: { visibility: capa.id === CAPA_INICIAL ? 'visible' : 'none' },
-  })),
-};
+// Duración del fundido entre capas base, leída del token de movimiento
+// (--dmj-mov-media) para no duplicar el valor; con movimiento reducido el
+// cambio de capa es instantáneo.
+function duracionFundidoMs(): number {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return 0;
+  const valor = getComputedStyle(document.documentElement).getPropertyValue('--dmj-mov-media').trim();
+  const numero = Number.parseFloat(valor);
+  if (!Number.isFinite(numero)) return 180;
+  return valor.endsWith('ms') ? numero : numero * 1000;
+}
+
+// El estilo se arma por instancia porque la transición global de pintura usa
+// la duración del token: con ella, cambiar la opacidad de una capa con
+// setPaintProperty funde el cambio sin agregar ni quitar capas.
+function estiloMapa(duracionFundido: number): NonNullable<MapOptions['style']> {
+  return {
+    version: 8,
+    transition: { duration: duracionFundido, delay: 0 },
+    sources: Object.fromEntries(
+      CAPAS_MAPA.map((capa) => [
+        capa.id,
+        { type: 'raster', tiles: [...capa.tiles], tileSize: 256, maxzoom: 20, attribution: capa.attribution },
+      ]),
+    ),
+    layers: CAPAS_MAPA.map((capa) => ({
+      id: capa.id,
+      type: 'raster',
+      source: capa.id,
+      layout: { visibility: capa.id === CAPA_INICIAL ? 'visible' : 'none' },
+    })),
+  };
+}
 
 const CENTRO_INICIAL: [number, number] = [-78.4678, -0.1807];
 
@@ -68,6 +85,12 @@ export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIA
   const instancia = useRef<MapaMaplibre | null>(null);
   const avisoListo = useRef(alListo);
   const [capaActiva, setCapaActiva] = useState<IdCapa>(CAPA_INICIAL);
+  // Estado del fundido: duración vigente, capa pedida mientras el estilo aún
+  // carga y temporizador que retira las capas salientes al terminar.
+  const duracionFundido = useRef(180);
+  const cargado = useRef(false);
+  const capaDestino = useRef<IdCapa>(CAPA_INICIAL);
+  const temporizadorCapa = useRef<number | null>(null);
 
   useEffect(() => {
     avisoListo.current = alListo;
@@ -76,9 +99,11 @@ export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIA
   useEffect(() => {
     const nodo = contenedor.current;
     if (!nodo) return;
+    duracionFundido.current = duracionFundidoMs();
+    cargado.current = false;
     const mapa = new MapaMaplibre({
       container: nodo,
-      style: ESTILO,
+      style: estiloMapa(duracionFundido.current),
       center: centro,
       zoom,
       attributionControl: { compact: true },
@@ -94,10 +119,19 @@ export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIA
     // "Style is not done loading" si se agregan fuentes o capas antes.
     let montado = true;
     mapa.once('load', () => {
-      if (montado) avisoListo.current?.(mapa);
+      if (!montado) return;
+      cargado.current = true;
+      // Una capa pedida antes de cargar el estilo se aplica sin fundido.
+      aplicarCapa(capaDestino.current, false);
+      avisoListo.current?.(mapa);
     });
     return () => {
       montado = false;
+      if (temporizadorCapa.current != null) {
+        window.clearTimeout(temporizadorCapa.current);
+        temporizadorCapa.current = null;
+      }
+      cargado.current = false;
       avisoListo.current?.(null);
       instancia.current = null;
       mapa.remove();
@@ -106,13 +140,55 @@ export default memo(function MapaRaster({ clase = 'mapa', centro = CENTRO_INICIA
     // Las páginas los dejan por defecto y reencuadran al llegar los datos.
   }, [centro, zoom]);
 
+  // Cambia la capa base fundiendo la entrante desde opacidad 0 y apagando las
+  // salientes; al terminar, las salientes salen del render. No agrega ni quita
+  // capas: solo ajusta opacidad y visibilidad con setPaintProperty.
+  function aplicarCapa(id: IdCapa, fundir: boolean) {
+    const mapa = instancia.current;
+    if (!mapa || !cargado.current) return;
+    const visibles = CAPAS_MAPA.filter((capa) => mapa.getLayoutProperty(capa.id, 'visibility') !== 'none');
+    // Misma capa ya visible (o clic repetido): no hay nada que fundir.
+    if (visibles.length === 1 && visibles[0].id === id) return;
+    if (temporizadorCapa.current != null) {
+      window.clearTimeout(temporizadorCapa.current);
+      temporizadorCapa.current = null;
+    }
+    const salientes = visibles.filter((capa) => capa.id !== id);
+    if (!fundir) {
+      for (const capa of salientes) {
+        mapa.setLayoutProperty(capa.id, 'visibility', 'none');
+        mapa.setPaintProperty(capa.id, 'raster-opacity', 1);
+      }
+      mapa.setLayoutProperty(id, 'visibility', 'visible');
+      mapa.setPaintProperty(id, 'raster-opacity', 1);
+      return;
+    }
+    // La entrante arranca en 0 y sube a 1 con la transición global del estilo;
+    // las salientes bajan a 0 y recién al terminar salen del render.
+    mapa.setPaintProperty(id, 'raster-opacity', 0);
+    mapa.setLayoutProperty(id, 'visibility', 'visible');
+    mapa.setPaintProperty(id, 'raster-opacity', 1);
+    for (const capa of salientes) mapa.setPaintProperty(capa.id, 'raster-opacity', 0);
+    const retirar = () => {
+      for (const capa of salientes) {
+        mapa.setLayoutProperty(capa.id, 'visibility', 'none');
+        mapa.setPaintProperty(capa.id, 'raster-opacity', 1);
+      }
+    };
+    if (duracionFundido.current <= 0) {
+      retirar();
+      return;
+    }
+    temporizadorCapa.current = window.setTimeout(() => {
+      temporizadorCapa.current = null;
+      retirar();
+    }, duracionFundido.current + 40);
+  }
+
   function cambiarCapa(id: IdCapa) {
     setCapaActiva(id);
-    const mapa = instancia.current;
-    if (!mapa) return;
-    for (const capa of CAPAS_MAPA) {
-      mapa.setLayoutProperty(capa.id, 'visibility', capa.id === id ? 'visible' : 'none');
-    }
+    capaDestino.current = id;
+    aplicarCapa(id, true);
   }
 
   return (

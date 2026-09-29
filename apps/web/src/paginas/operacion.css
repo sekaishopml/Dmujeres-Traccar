@@ -145,7 +145,7 @@
   text-align: left; cursor: pointer;
 }
 .replay-plegar-paradas:hover { background: var(--linea-2); }
-.replay-plegar-paradas .icono { margin-left: auto; transition: transform .15s ease; }
+.replay-plegar-paradas .icono { margin-left: auto; transition: transform var(--dmj-mov-rapida) var(--dmj-mov-curva); }
 .replay-plegar-paradas[aria-expanded='true'] .icono { transform: rotate(90deg); }
 .replay-paradas ul { list-style: none; margin: 4px 0 0; padding: 0; }
 .replay-paradas li { border-left: 2px solid transparent; }
@@ -365,3 +365,17 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
 }
 .replay-slider:focus-visible { outline: 2px solid rgba(31, 122, 77, .28); outline-offset: 2px; }
 .replay-slider:disabled { opacity: .5; cursor: default; }
+
+/* Aparición del panel, la leyenda y la franja del Replay: solo al montar la
+   página; el plegado del panel y la reproducción no repiten la animación. El
+   panel entra con escala sobria desde su esquina; la leyenda y la franja, con
+   fundido para no mover nada sobre el mapa. */
+.replay-panel {
+  transform-origin: top left;
+  animation: dmj-entrada-panel var(--dmj-mov-media) var(--dmj-mov-curva-entrada);
+}
+.replay-leyenda { animation: dmj-aparecer var(--dmj-mov-lenta) var(--dmj-mov-curva-entrada); }
+.replay-timeline { animation: dmj-aparecer var(--dmj-mov-media) var(--dmj-mov-curva-entrada); }
+@keyframes dmj-entrada-panel {
+  from { opacity: 0; transform: scale(var(--dmj-mov-escala)); }
+}

@@ -158,7 +158,7 @@ h3 { font-size: 13px; font-weight: var(--peso-fuerte); margin: 0 0 6px; }
   .lateral {
     position: fixed; top: 0; bottom: 0; left: 0; width: var(--lateral);
     height: 100vh; height: 100dvh; z-index: 30;
-    transform: translateX(-100%); transition: transform .18s ease;
+    transform: translateX(-100%); transition: transform var(--dmj-mov-media) var(--dmj-mov-curva);
   }
   .app.menu-abierto .lateral { transform: none; }
   .velo-menu {
@@ -228,7 +228,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid rgba(31, 122, 77,
 /* ── Tablas ────────────────────────────────────────────────────────────── */
 .tabla-envoltura { overflow-x: auto; }
 table.tabla { width: 100%; border-collapse: collapse; }
-table.tabla th, table.tabla td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--linea-2); font-size: 13px; }
+table.tabla th, table.tabla td {
+  text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--linea-2); font-size: 13px;
+  transition: background var(--dmj-mov-rapida) var(--dmj-mov-curva);
+}
 table.tabla th { font-size: var(--tamano-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--apagado); font-weight: var(--peso-fuerte); background: #fafbfd; }
 table.tabla tr:hover td { background: #f8fafc; }
 table.tabla tr.seleccionada td { background: #eef3f9; }
@@ -389,7 +392,10 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 .replay-detenciones { margin-top: 10px; border-top: 1px solid var(--linea-2); padding-top: 8px; }
 .replay-detenciones h3 { display: flex; align-items: center; gap: 6px; }
 .replay-detenciones ul { list-style: none; margin: 0; padding: 0; max-height: 168px; overflow: auto; }
-.replay-detenciones li { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+.replay-detenciones li {
+  display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; cursor: pointer;
+  transition: background var(--dmj-mov-rapida) var(--dmj-mov-curva);
+}
 .replay-detenciones li:hover { background: var(--linea-2); }
 .replay-detenciones .hora { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--apagado); min-width: 44px; }
 .replay-detenciones .tiempo { margin-left: auto; font-weight: var(--peso-fuerte); font-size: 12px; }
@@ -480,3 +486,47 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 }
 .con-icono { display: inline-flex; align-items: center; gap: 7px; }
 .dato.deshabilitado .valor { color: var(--gris); }
+
+/* ── Movimiento ─────────────────────────────────────────────────────────── */
+/* Aplicaciones del lenguaje de movimiento (valores en tokens.css; catálogo y
+   reglas en docs/BRANDING-MOVIMIENTO.md). Tres criterios: las entradas usan
+   animación al montar —nunca transiciones de estado— para que un sondeo de
+   datos no las repita; nada gira, rebota ni retrasa una acción; y con
+   prefers-reduced-motion todo queda instantáneo. */
+
+/* Entrada de página: se anima el nodo de la ruta una sola vez, al montarse. */
+@keyframes dmj-entrada-pagina {
+  from { opacity: 0; transform: translateY(var(--dmj-mov-distancia)); }
+}
+.contenido > * { animation: dmj-entrada-pagina var(--dmj-mov-lenta) var(--dmj-mov-curva-entrada); }
+
+/* Aviso o banner que aparece tras una consulta: baja cuatro píxeles y funde. */
+@keyframes dmj-entrada-aviso {
+  from { opacity: 0; transform: translateY(calc(-1 * var(--dmj-mov-distancia))); }
+}
+.aviso, .bloque.fallo { animation: dmj-entrada-aviso var(--dmj-mov-media) var(--dmj-mov-curva-entrada); }
+
+/* Fundido genérico para superficies que aparecen sobre el contenido. */
+@keyframes dmj-aparecer { from { opacity: 0; } }
+
+/* Pulso de carga: solo opacidad, sin desplazamiento. Se aplica junto a .vacio
+   en listas y tablas mientras la consulta está en curso. */
+@keyframes dmj-pulso { 50% { opacity: .5; } }
+.pulso { animation: dmj-pulso 1.8s var(--dmj-mov-curva) infinite; }
+.cargando-pantalla .texto { animation: dmj-pulso 1.8s var(--dmj-mov-curva) infinite; }
+
+/* Acceso: el formulario y la marca llegan con el mismo gesto de una página. */
+.login-caja { animation: dmj-entrada-pagina var(--dmj-mov-lenta) var(--dmj-mov-curva-entrada); }
+.login-marca > * { animation: dmj-aparecer var(--dmj-mov-lenta) var(--dmj-mov-curva-entrada); }
+
+/* Accesibilidad: con movimiento reducido se apagan las animaciones no
+   esenciales (pulso, entradas, giro de carga) y las transiciones pasan a ser
+   instantáneas; la información y los estados siguen visibles igual. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+}

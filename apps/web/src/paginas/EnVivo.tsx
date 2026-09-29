@@ -242,7 +242,7 @@ export default function EnVivo() {
               </button>
             ))}
           </div>
-          {flota.isPending && <p className="vacio">Cargando…</p>}
+          {flota.isPending && <p className="vacio pulso">Cargando…</p>}
           {!flota.isPending && (
             <ul className="equipos-lista">
               {listado.map((equipo) => {

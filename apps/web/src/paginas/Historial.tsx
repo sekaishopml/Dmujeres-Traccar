@@ -334,7 +334,7 @@ export default function Historial() {
           </header>
           <div className="bloque">
             {jornadas.isPending ? (
-              <p className="vacio">Cargando jornadas…</p>
+              <p className="vacio pulso">Cargando jornadas…</p>
             ) : filas.length === 0 ? (
               <p className="vacio">Sin jornadas registradas ese día.</p>
             ) : (
