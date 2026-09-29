@@ -1,7 +1,7 @@
 {
-  "version": "2.1.81",
-  "versionCode": 291,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.81.apk",
-  "notes": "Banner siempre visible y 10 fallas de jornada corregidas",
-  "sha256": "f7dff7f4d2d4e7b9e17a1b03f80e99c70f5b8b045775f9e1118e92b0e8e0710b"
+  "version": "2.1.82",
+  "versionCode": 292,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.82.apk",
+  "notes": "Al iniciar sesion la app queda bajo el equipo de la cuenta",
+  "sha256": "8e3347f45d9f4f37fc181bab53b8c2e89fc7bebcaab5e2309affb6ede47d0884"
 }
