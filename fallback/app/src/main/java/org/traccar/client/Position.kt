@@ -43,6 +43,11 @@ data class Position(
     // Cola de subida: PENDING -> CONFIRMED se borra; DEAD no se reintenta.
     val status: String = STATUS_PENDING,
     val attempts: Int = 0,
+    // Equipo con el que se capturó el fix (columna `device_id` de la v7): lo
+    // fija el almacén al insertar con el Prefs.DEVICE vigente en ese momento.
+    // Vacío en filas anteriores a la migración: se suben con el identificador
+    // actual, como hasta hoy.
+    val captureDeviceId: String = "",
 ) {
 
     constructor(deviceId: String, location: Location, battery: BatteryStatus) : this(

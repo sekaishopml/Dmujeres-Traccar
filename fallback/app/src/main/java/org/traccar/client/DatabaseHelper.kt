@@ -25,13 +25,15 @@ import android.util.Log
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.os.AsyncTask
+import androidx.preference.PreferenceManager
 import java.sql.Date
 
 private const val MAX_BUFFERED_POSITIONS = 5000L
 
 private const val TAG = "DatabaseHelper"
 
-class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
+class DatabaseHelper(private val appContext: Context?) :
+    SQLiteOpenHelper(appContext, DATABASE_NAME, null, DATABASE_VERSION) {
 
     interface DatabaseHandler<T> {
         fun onComplete(success: Boolean, result: T)
@@ -60,7 +62,7 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
     private val db: SQLiteDatabase = writableDatabase
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL(CREATE_POSITION_V5)
+        db.execSQL(CREATE_POSITION)
         db.execSQL(CREATE_META)
     }
 
@@ -74,15 +76,17 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
      * pasar por aquí, y el contenido se asegura por PRAGMA: funciona venga de
      * la 2.1.73 de calle, de una 2.1.74 parcial o de una instalación limpia.
      * Nunca DROP: el búfer offline no se pierde en una actualización.
+     * La v7 agrega `device_id` (equipo de captura por fila): aditiva y sin
+     * DROP, las filas viejas quedan NULL.
      */
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        ensureEsquemaV6(db)
+        ensureEsquemaV7(db)
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Un downgrade tampoco borra: el esquema v6 es un superconjunto del
+        // Un downgrade tampoco borra: el esquema v7 es un superconjunto del
         // anterior y el código viejo ignora las columnas que no conoce.
-        ensureEsquemaV6(db)
+        ensureEsquemaV7(db)
     }
 
     /** Nombres de columna reales de una tabla (vacío si no existe). */
@@ -122,11 +126,25 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
             .onFailure { Log.e(TAG, "no se pudo crear meta", it) }
     }
 
+    /**
+     * Asegura el esquema v7: el v6 más `device_id`, el equipo con el que se
+     * capturó cada fix. Igual de idempotente y aditiva (PRAGMA + ALTER, sin
+     * DROP): las filas anteriores a la migración quedan sin `device_id` y se
+     * suben con el identificador actual, como hasta hoy.
+     */
+    private fun ensureEsquemaV7(db: SQLiteDatabase) {
+        ensureEsquemaV6(db)
+        val columnas = columnasDe(db, "position")
+        if (columnas.isEmpty() || columnas.contains("device_id")) return
+        runCatching { db.execSQL("ALTER TABLE position ADD COLUMN device_id TEXT") }
+            .onFailure { Log.e(TAG, "no se pudo agregar device_id", it) }
+    }
+
     init {
         // Cinturón y tirantes contra colisiones de versión: aunque el upgrade
         // no haya corrido (o haya corrido a medias), cada apertura deja el
         // esquema utilizable sin borrar nada.
-        runCatching { ensureEsquemaV6(db) }
+        runCatching { ensureEsquemaV7(db) }
             .onFailure { Log.e(TAG, "esquema no asegurado al abrir", it) }
     }
 
@@ -153,9 +171,23 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
         values.put("movement_state", identified.movementState)
         values.put("status", identified.status)
         values.put("attempts", identified.attempts)
+        // Equipo del momento: se resuelve al INSERT (no al subir) para que la
+        // subida sea fiel aunque después se cambie de cuenta. Si quien
+        // captura ya lo fijó, se respeta.
+        values.put("device_id", identified.captureDeviceId.ifBlank { currentDeviceId() })
         db.insertOrThrow("position", null, values)
         enforceBufferLimit(db)
     }
+
+    /**
+     * Equipo vigente en el momento de insertar (`Prefs.DEVICE`). Es lo que la
+     * app subía como `X-Device-Id` hasta hoy; ahora queda por fila.
+     */
+    private fun currentDeviceId(): String =
+        appContext?.let {
+            PreferenceManager.getDefaultSharedPreferences(it)
+                .getString(Prefs.DEVICE, "").orEmpty().trim().lowercase()
+        }.orEmpty()
 
     /**
      * Tope del búfer offline (política drop_oldest, igual que la app nativa):
@@ -267,6 +299,7 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
             movementState = text("movement_state"),
             status = text("status").ifBlank { STATUS_PENDING },
             attempts = int("attempts"),
+            captureDeviceId = text("device_id"),
         )
     }
 
@@ -439,7 +472,7 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
     }
 
     companion object {
-        const val DATABASE_VERSION = 6
+        const val DATABASE_VERSION = 7
         const val DATABASE_NAME = "traccar.db"
 
         /** Candado estático de identidad (boot_id + secuencia, ver arriba). */
@@ -456,7 +489,8 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
             "attempts INTEGER",
         )
 
-        private const val CREATE_POSITION_V5 =
+        /** Esquema de instalación limpia: v6 + `device_id` (v7). */
+        private const val CREATE_POSITION =
             "CREATE TABLE position (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT," +
                 "deviceId TEXT," +
@@ -476,7 +510,8 @@ class DatabaseHelper(context: Context?) : SQLiteOpenHelper(context, DATABASE_NAM
                 "provider TEXT," +
                 "movement_state TEXT," +
                 "status TEXT," +
-                "attempts INTEGER)"
+                "attempts INTEGER," +
+                "device_id TEXT)"
 
         private const val CREATE_META =
             "CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor TEXT)"

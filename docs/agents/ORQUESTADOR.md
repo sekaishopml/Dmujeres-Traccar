@@ -559,3 +559,11 @@ RELEASE y únicamente con todos los gates verdes.
 - Alcance de recuperación del histórico fragmentado (FASE 3).
 - PG 18.6 propio vs mantener TimescaleDB (FASE 3).
 - Terminación TLS: Nginx + Let's Encrypt o Cloudflare (FASE 8).
+- 2026-09-28: **fin del doble trazo + cambio de equipo seguro**. Web: la capa
+  MATCHED densa ya no se superpone a la cruda (se suprime el par crudo
+  interior a la ventana; solo una línea por parte, ADR-007 intacto). App:
+  cola con identidad por fila (`device_id` del momento de captura, esquema v7)
+  y subida agrupada por equipo; al entrar con OTRA cuenta se ejecuta el cierre
+  limpio (flush + fin de jornada del equipo anterior) antes de adoptar el
+  equipo nuevo. 180 tests google en verde (fallos preexistentes de Firebase
+  corregidos con @Config). APK 2.1.83.

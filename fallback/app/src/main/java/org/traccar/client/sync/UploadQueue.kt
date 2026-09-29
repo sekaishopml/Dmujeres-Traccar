@@ -116,6 +116,35 @@ object UploadPolicy {
         }
         return BatchMatch(confirmed, dead)
     }
+
+    /** Un lote homogéneo: todas sus filas se capturaron con [deviceId]. */
+    data class DeviceBatch<T>(val deviceId: String, val items: List<T>)
+
+    /**
+     * Agrupa una ventana de la cola por el equipo con el que se capturó cada
+     * fila ([deviceIdOf]), conservando el orden de la cola dentro de cada
+     * grupo y el orden de aparición de los grupos: el primero es el de la fila
+     * más vieja. Una fila sin equipo de captura (esquema anterior a v7) usa
+     * [currentDeviceId]: es lo que hacía la app hasta hoy.
+     *
+     * Por qué agrupar: el servidor dedupea por (equipo, tiempo, boot,
+     * secuencia). Subir una captura con el equipo actual cuando se capturó con
+     * otro la guardaba dos veces (misma ruta bajo dos equipos) y rompía el
+     * Replay. Cada grupo se envía con su propio `X-Device-Id`, jamás con otro.
+     */
+    fun <T> groupByCaptureDevice(
+        rows: List<T>,
+        currentDeviceId: String,
+        deviceIdOf: (T) -> String,
+    ): List<DeviceBatch<T>> {
+        val fallback = currentDeviceId.trim().lowercase()
+        val groups = LinkedHashMap<String, MutableList<T>>()
+        for (row in rows) {
+            val device = deviceIdOf(row).trim().lowercase().ifBlank { fallback }
+            groups.getOrPut(device) { ArrayList() }.add(row)
+        }
+        return groups.map { DeviceBatch(it.key, it.value) }
+    }
 }
 
 /**
@@ -227,18 +256,26 @@ class UploadQueue(
 
     private fun step() {
         try {
-            val batch = runCatching { databaseHelper.selectPositions(UploadPolicy.MAX_BATCH) }
+            val window = runCatching { databaseHelper.selectPositions(UploadPolicy.MAX_BATCH) }
                 .getOrDefault(emptyList())
                 .filter { it.status != org.traccar.client.STATUS_DEAD }
-            if (batch.isEmpty()) {
+            if (window.isEmpty()) {
                 finishOk(0)
                 return
             }
-            runCatching { databaseHelper.addAttempts(batch.map { it.id }) }
+            // Cada lote se arma con UN solo equipo: el de captura de sus filas.
+            // La ventana va ordenada por id (más vieja primero), así que el
+            // primer grupo es el que sigue en la serie estricta; los demás
+            // equipos se drenan en los siguientes pasos.
+            val current = deviceId()
+            val group = UploadPolicy
+                .groupByCaptureDevice(window, current) { it.captureDeviceId }
+                .first()
+            runCatching { databaseHelper.addAttempts(group.items.map { it.id }) }
             if (batchSupported) {
-                sendBatch(batch)
+                sendBatch(group.items, group.deviceId)
             } else {
-                sendLegacyOneByOne(batch)
+                sendLegacyOneByOne(group.items, group.deviceId)
             }
         } catch (e: Exception) {
             Log.w(TAG, "paso de cola falló", e)
@@ -248,8 +285,7 @@ class UploadQueue(
 
     // --- Lote nuevo ----------------------------------------------------------
 
-    private fun sendBatch(batch: List<Position>) {
-        val deviceId = deviceId()
+    private fun sendBatch(batch: List<Position>, deviceId: String) {
         if (deviceId.isBlank()) {
             finishIdle()
             return
@@ -276,7 +312,7 @@ class UploadQueue(
                     batchSupported = false
                     Log.i(TAG, "lote no soportado (404): fallback a OsmAnd 1×1")
                     busy = false
-                    sendLegacyOneByOne(batch)
+                    sendLegacyOneByOne(batch, deviceId)
                 } else {
                     Log.w(TAG, "lote DEAD ($code): no se reintenta")
                     runCatching { databaseHelper.markDead(batch.map { it.id }) }
@@ -369,16 +405,23 @@ class UploadQueue(
      * Camino legacy contra servidores sin el endpoint nuevo: un fix por
      * petición, en serie. No clasifica HTTP (limitación heredada del
      * RequestManager booleano): éxito borra, fallo reintenta con backoff.
+     * El `id` de la query también es el equipo de captura del grupo, no el
+     * actual: la fidelidad no depende del endpoint.
      */
-    private fun sendLegacyOneByOne(batch: List<Position>) {
+    private fun sendLegacyOneByOne(batch: List<Position>, deviceId: String) {
         val url = PreferenceManager.getDefaultSharedPreferences(appContext)
             .getString(Prefs.URL, "").orEmpty()
         val confirmed = ArrayList<Long>()
         var failed = false
         for (position in batch) {
+            val identified = if (deviceId.isNotBlank()) {
+                position.copy(deviceId = deviceId)
+            } else {
+                position
+            }
             if (wakeLockEnabled) SendWakeLock.acquire(appContext)
             val ok = try {
-                RequestManager.sendRequest(ProtocolFormatter.formatRequest(url, position))
+                RequestManager.sendRequest(ProtocolFormatter.formatRequest(url, identified))
             } catch (e: Exception) {
                 false
             } finally {

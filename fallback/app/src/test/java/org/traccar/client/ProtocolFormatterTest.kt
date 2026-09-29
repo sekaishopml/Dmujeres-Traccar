@@ -9,7 +9,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.traccar.client.ProtocolFormatter.formatRequest
 
-@Config(sdk = [Build.VERSION_CODES.P])
+@Config(application = org.traccar.client.MainApplication::class,
+    sdk = [Build.VERSION_CODES.P])
 @RunWith(RobolectricTestRunner::class)
 class ProtocolFormatterTest {
 

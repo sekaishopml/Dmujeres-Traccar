@@ -64,6 +64,19 @@ object SessionClosePlan {
                 (journey == JourneyOutcome.CLOSED || journey == JourneyOutcome.ALREADY_CLOSED)
     }
 
+    /**
+     * ¿Hace falta el cierre limpio ANTES de iniciar sesión? Solo cuando ya hay
+     * una sesión guardada y el usuario que entra es OTRO: la ruta en curso es
+     * del usuario anterior y se cierra con SU equipo antes de adoptar el
+     * nuevo. Entrar con el mismo usuario (normalizado) no repite el cierre.
+     */
+    fun requiresCleanCloseBeforeLogin(
+        hasSession: Boolean,
+        currentUser: String,
+        nextUser: String,
+    ): Boolean =
+        hasSession && SessionAuth.normalizeUser(currentUser) != SessionAuth.normalizeUser(nextUser)
+
     /** Puertos que el entorno Android implementa (falsificados en tests). */
     interface Driver {
         fun pendingCount(): Int

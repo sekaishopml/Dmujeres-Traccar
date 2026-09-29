@@ -385,8 +385,42 @@ function rumboEntre(a: Posicion, b: Posicion): number {
 // Los tramos reconstruidos entran con su método (MATCHED o ESTIMATED) y su
 // estilo propio; los pares que cubren ya no dibujan su recta. Los tramos
 // densos ajustados a vía cubren una ventana de varios fixes (sus extremos no
-// son adyacentes): la cruda interior se conserva debajo y el trazado ajustado
-// se dibuja encima en su capa propia, así que ambas quedan visibles.
+// son adyacentes): su trazado reemplaza la recta cruda interior, así que la
+// misma ruta no queda dibujada dos veces. Solo siguen crudos el par que entra
+// a la ventana (termina en desde) y el que sale (empieza en hasta): son las
+// anclas limpias de la transición cruda→matched→cruda.
+
+// Ventana temporal de un tramo MATCHED: un tramo denso ajustado a vía cubre
+// varios fixes consecutivos entre desde y hasta, y su trazado por calles
+// reemplaza la recta cruda interior. Los extremos de la ventana quedan fuera
+// de `ventanasMatched` (el test es estricto) para conservarlos como anclas de
+// la transición.
+interface VentanaMatched {
+  inicio: number;
+  fin: number;
+}
+
+function ventanasMatched(reconstruidos: TramoReconstruido[]): VentanaMatched[] {
+  const ventanas: VentanaMatched[] = [];
+  for (const tramo of reconstruidos) {
+    if (tramo.metodo !== 'MATCHED') continue;
+    const desde = milisegundos(tramo.desde);
+    const hasta = milisegundos(tramo.hasta);
+    if (!Number.isFinite(desde) || !Number.isFinite(hasta)) continue;
+    ventanas.push({ inicio: Math.min(desde, hasta), fin: Math.max(desde, hasta) });
+  }
+  return ventanas;
+}
+
+// Verdadero cuando el instante cae estrictamente dentro de una ventana MATCHED:
+// el trazado ajustado ya cubre ese tramo y la recta cruda sobra.
+function enVentanaMatched(ventanas: VentanaMatched[], instante: number): boolean {
+  for (const ventana of ventanas) {
+    if (instante > ventana.inicio && instante < ventana.fin) return true;
+  }
+  return false;
+}
+
 export function segmentosDeRecorrido(
   posiciones: Posicion[],
   huecos: Hueco[],
@@ -399,9 +433,12 @@ export function segmentosDeRecorrido(
       .map((hueco) => `${hueco.desde}|${hueco.hasta}`),
   );
   const segmentos: SegmentoRecorrido[] = [];
-  // Clasificación vehículo/caminata/quieto por velocidad efectiva: se calcula
-  // una vez para todo el recorrido para que el modo del par confirme la
-  // caminata con el vecino (sostenida) y la racha detenida marque el quieto.
+  // Ventanas ajustadas a vía que cubren varios fixes: su recta cruda interior
+  // no se dibuja. La clasificación vehículo/caminata/quieto por velocidad
+  // efectiva se calcula una vez para todo el recorrido para que el modo del
+  // par confirme la caminata con el vecino (sostenida) y la racha detenida
+  // marque el quieto.
+  const ventanas = ventanasMatched(reconstruidos);
   const velocidades = velocidadesEfectivas(posiciones);
   const quietos = indicesQuietos(posiciones);
   for (const tramo of reconstruidos) {
@@ -427,6 +464,16 @@ export function segmentosDeRecorrido(
     // El tramo reconstruido ya dibuja este par: la recta quedaría encima del
     // trazado con otro estilo y se vería doble.
     if (paresReconstruidos.has(`${anterior.registradoEn}|${actual.registradoEn}`)) continue;
+    // Ventana densa MATCHED: el trazado ajustado es la única línea de esa
+    // parte y los fixes interiores no dibujan recta. Los pares que entran y
+    // salen de la ventana sí se dibujan (sus extremos no quedan dentro): la
+    // cruda conecta con el inicio y el fin del trazado ajustado.
+    if (
+      enVentanaMatched(ventanas, milisegundos(anterior.registradoEn)) ||
+      enVentanaMatched(ventanas, milisegundos(actual.registradoEn))
+    ) {
+      continue;
+    }
     const coordenadas: [number, number][] = [
       [anterior.longitud, anterior.latitud],
       [actual.longitud, actual.latitud],
@@ -469,6 +516,9 @@ export function flechasEspaciadas(
   const features: Feature<Point>[] = [];
   const paresHueco = new Set(huecos.map((hueco) => `${hueco.desde}|${hueco.hasta}`));
   const paresReconstruidos = new Set(reconstruidos.map((tramo) => `${tramo.desde}|${tramo.hasta}`));
+  // Las marcas crudas dentro de una ventana MATCHED se omiten: la recta cruda
+  // no está dibujada ahí y las marcas del trazado ajustado ya ocupan esa parte.
+  const ventanas = ventanasMatched(reconstruidos);
   const velocidades = velocidadesEfectivas(posiciones);
   const quietos = indicesQuietos(posiciones);
   let acumuladoM = 0;
@@ -486,6 +536,13 @@ export function flechasEspaciadas(
     }
     const clave = `${anterior.registradoEn}|${actual.registradoEn}`;
     if (paresHueco.has(clave) || paresReconstruidos.has(clave)) {
+      acumuladoM = 0;
+      continue;
+    }
+    if (
+      enVentanaMatched(ventanas, milisegundos(anterior.registradoEn)) ||
+      enVentanaMatched(ventanas, milisegundos(actual.registradoEn))
+    ) {
       acumuladoM = 0;
       continue;
     }

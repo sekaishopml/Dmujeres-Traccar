@@ -182,6 +182,18 @@ class SessionCloseTest {
     }
 
     @Test
+    fun `mismo usuario no repite el cierre y otro usuario si lo exige`() {
+        // Mismo usuario (normalizado): la ruta en curso sigue, sin cierre.
+        assertFalse(SessionClosePlan.requiresCleanCloseBeforeLogin(true, "ana", "Ana"))
+        // Otro usuario: cierre limpio con el equipo anterior antes del login.
+        assertTrue(SessionClosePlan.requiresCleanCloseBeforeLogin(true, "ana", "luis"))
+        // Sin sesión guardada no hay nada que cerrar.
+        assertFalse(SessionClosePlan.requiresCleanCloseBeforeLogin(false, "", "ana"))
+        // Sesión sin usuario legible: se cierra por precaución (es "otro").
+        assertTrue(SessionClosePlan.requiresCleanCloseBeforeLogin(true, "", "ana"))
+    }
+
+    @Test
     fun `nuevo login tras 401 tampoco arrastra sesion vencida`() {
         val expired = SessionStore.State()
             .saved("viejo", "ana", "Ana", 100L)

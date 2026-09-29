@@ -23,8 +23,10 @@ import java.net.URL
  *
  * a. Congela la captura nueva ([TrackingController.captureFrozen]).
  * b. Vacía la cola PENDING en lotes del endpoint actual hasta vaciar o
- *    agotar el tope; ante 401 con token se deja de intentar y se sigue al
- *    paso c con lo que quede (lo no enviado queda en SQLite).
+ *    agotar el tope; cada lote lleva el `X-Device-Id` del equipo con el que
+ *    se capturaron sus filas (jamás el actual si difiere). Ante 401 con token
+ *    se deja de intentar y se sigue al paso c con lo que quede (lo no enviado
+ *    queda en SQLite).
  * c. Finaliza la jornada abierta local por el canal actual; si el servidor
  *    ya la tenía cerrada se toma como cerrada sin error. Lo local SIEMPRE
  *    queda cerrado (nunca dos abiertas para la próxima sesión: al entrar de
@@ -104,13 +106,19 @@ object SessionCloser {
     private fun flushOneBatch(app: Context, maxBatch: Int): SessionClosePlan.SendResult {
         val db = runCatching { DatabaseHelper(app) }.getOrNull()
             ?: return SessionClosePlan.SendResult(0, SessionClosePlan.BatchOutcome.RETRY_LATER)
-        val batch = runCatching { db.selectPositions(maxBatch) }
+        val window = runCatching { db.selectPositions(maxBatch) }
             .getOrDefault(emptyList())
             .filter { it.status != STATUS_DEAD }
-        if (batch.isEmpty()) return SessionClosePlan.SendResult(0, SessionClosePlan.BatchOutcome.EMPTY)
-        runCatching { db.addAttempts(batch.map { it.id }) }
-        val deviceId = PreferenceManager.getDefaultSharedPreferences(app)
+        if (window.isEmpty()) return SessionClosePlan.SendResult(0, SessionClosePlan.BatchOutcome.EMPTY)
+        // Un lote por equipo de captura, el más viejo primero (serie estricta).
+        val current = PreferenceManager.getDefaultSharedPreferences(app)
             .getString(Prefs.DEVICE, "").orEmpty().trim().lowercase()
+        val group = UploadPolicy
+            .groupByCaptureDevice(window, current) { it.captureDeviceId }
+            .first()
+        val batch = group.items
+        val deviceId = group.deviceId
+        runCatching { db.addAttempts(batch.map { it.id }) }
         if (deviceId.isBlank()) {
             // Sin identidad no se envía nada: se conserva para la próxima sesión.
             return SessionClosePlan.SendResult(0, SessionClosePlan.BatchOutcome.RETRY_LATER)
@@ -122,7 +130,7 @@ object SessionCloser {
             UploadPolicy.HttpClass.DEAD -> {
                 if (code == 404) {
                     // Servidor sin el endpoint nuevo: fallback OsmAnd 1×1.
-                    flushLegacyOneByOne(app, db, batch)
+                    flushLegacyOneByOne(app, db, batch, deviceId)
                 } else {
                     // El servidor lo rechaza (400/413/422): no se reintenta;
                     // queda contado en meta (sin borrado silencioso).
@@ -214,19 +222,28 @@ object SessionCloser {
         return SessionClosePlan.SendResult(confirmed.size, SessionClosePlan.BatchOutcome.SENT)
     }
 
-    /** Fallback OsmAnd 1×1 en serie (primer fallo para, sin saltos). */
+    /**
+     * Fallback OsmAnd 1×1 en serie (primer fallo para, sin saltos). El `id` de
+     * la query es el equipo de captura del grupo, no el actual.
+     */
     private fun flushLegacyOneByOne(
         app: Context,
         db: DatabaseHelper,
         batch: List<Position>,
+        deviceId: String,
     ): SessionClosePlan.SendResult {
         val url = PreferenceManager.getDefaultSharedPreferences(app)
             .getString(Prefs.URL, "").orEmpty()
         val confirmed = ArrayList<Long>()
         var failed = false
         for (position in batch) {
+            val identified = if (deviceId.isNotBlank()) {
+                position.copy(deviceId = deviceId)
+            } else {
+                position
+            }
             val ok = runCatching {
-                RequestManager.sendRequest(ProtocolFormatter.formatRequest(url, position))
+                RequestManager.sendRequest(ProtocolFormatter.formatRequest(url, identified))
             }.getOrDefault(false)
             if (ok) {
                 confirmed.add(position.id)

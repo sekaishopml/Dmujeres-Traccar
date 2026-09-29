@@ -1,7 +1,9 @@
 package org.traccar.client
 
+import android.database.sqlite.SQLiteDatabase
 import android.location.Location
 import android.os.Build
+import androidx.preference.PreferenceManager
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert
 import org.junit.Test
@@ -9,7 +11,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-@Config(sdk = [Build.VERSION_CODES.P])
+@Config(application = org.traccar.client.MainApplication::class,
+    sdk = [Build.VERSION_CODES.P])
 @RunWith(RobolectricTestRunner::class)
 class DatabaseHelperTest {
     @Test
@@ -57,5 +60,85 @@ class DatabaseHelperTest {
             firstInsertedTime + 10,
             oldest!!.time.time,
         )
+    }
+
+    /**
+     * El equipo se guarda POR FILA al insertar (Prefs.DEVICE vigente): al
+     * cambiar de cuenta, lo capturado antes conserva su identificador y la
+     * subida no lo pisa con el nuevo.
+     */
+    @Test
+    fun `insertPosition guarda el equipo vigente en el momento de capturar`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val databaseHelper = DatabaseHelper(context)
+
+        prefs.edit().putString(Prefs.DEVICE, "macias").commit()
+        val primera = Location("gps").apply { time = 1_000L }
+        databaseHelper.insertPosition(Position("123456789012345", primera, BatteryStatus()))
+
+        prefs.edit().putString(Prefs.DEVICE, "desarrolladro").commit()
+        val segunda = Location("gps").apply { time = 2_000L }
+        databaseHelper.insertPosition(Position("123456789012345", segunda, BatteryStatus()))
+
+        val filas = databaseHelper.selectPositions(10)
+        Assert.assertEquals(2, filas.size)
+        Assert.assertEquals("la vieja conserva su equipo", "macias", filas[0].captureDeviceId)
+        Assert.assertEquals("la nueva usa el equipo del momento", "desarrolladro", filas[1].captureDeviceId)
+    }
+
+    /**
+     * Migración v7 idempotente: una base v6 (sin `device_id`) se abre, gana la
+     * columna y conserva sus filas (nunca DROP). Las filas viejas leen
+     * `captureDeviceId` vacío: se suben con el identificador actual.
+     */
+    @Test
+    fun `migracion v7 agrega device_id sin borrar filas`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val path = context.getDatabasePath(DatabaseHelper.DATABASE_NAME)
+        path.parentFile?.mkdirs()
+        val old = SQLiteDatabase.openOrCreateDatabase(path, null)
+        old.execSQL(
+            "CREATE TABLE position (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "deviceId TEXT, time INTEGER, latitude REAL, longitude REAL," +
+                "altitude REAL, speed REAL, course REAL, accuracy REAL," +
+                "battery REAL, charging INTEGER, mock INTEGER, boot_id TEXT," +
+                "local_sequence INTEGER, journey_id TEXT, provider TEXT," +
+                "movement_state TEXT, status TEXT, attempts INTEGER)",
+        )
+        old.execSQL("CREATE TABLE meta (clave TEXT PRIMARY KEY, valor TEXT)")
+        old.execSQL(
+            "INSERT INTO position (deviceId, time, latitude, longitude, status)" +
+                " VALUES ('macias', 1000, 1.0, 2.0, 'PENDING')",
+        )
+        old.version = 6
+        old.close()
+
+        val databaseHelper = DatabaseHelper(context)
+        Assert.assertEquals("la fila vieja sobrevive a la migración", 1, databaseHelper.countPositions())
+        val heredada = databaseHelper.selectPosition()
+        Assert.assertNotNull(heredada)
+        Assert.assertEquals("sin device_id: se sube con el identificador actual", "", heredada!!.captureDeviceId)
+
+        // La columna quedó realmente agregada: el insert nuevo ya persiste.
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit().putString(Prefs.DEVICE, "macias").commit()
+        val nueva = Location("gps").apply { time = 2_000L }
+        databaseHelper.insertPosition(Position("123456789012345", nueva, BatteryStatus()))
+        val filas = databaseHelper.selectPositions(10)
+        Assert.assertEquals(2, filas.size)
+        Assert.assertEquals("macias", filas[1].captureDeviceId)
+
+        val check = SQLiteDatabase.openDatabase(path.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        val tieneDeviceId = check.rawQuery("PRAGMA table_info(position)", null).use { cursor ->
+            var found = false
+            while (cursor.moveToNext()) {
+                if (cursor.getString(cursor.getColumnIndex("name")) == "device_id") found = true
+            }
+            found
+        }
+        check.close()
+        Assert.assertTrue("device_id existe tras la migración", tieneDeviceId)
     }
 }
