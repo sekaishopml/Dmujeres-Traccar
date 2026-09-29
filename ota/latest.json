@@ -1,7 +1,7 @@
 {
-  "version": "2.1.80",
-  "versionCode": 290,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.80.apk",
-  "notes": "Boton Finalizar sesion visible en release",
-  "sha256": "9855ef54ce971b7572cb6dff9f7d57bc67b905806763606afca8cf8cd7fb9c1f"
+  "version": "2.1.81",
+  "versionCode": 291,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.81.apk",
+  "notes": "Banner siempre visible y 10 fallas de jornada corregidas",
+  "sha256": "f7dff7f4d2d4e7b9e17a1b03f80e99c70f5b8b045775f9e1118e92b0e8e0710b"
 }
