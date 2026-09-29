@@ -6,8 +6,11 @@ import { aUsuario } from './dto.js';
 
 export const NOMBRE_COOKIE = 'dmj_sesion';
 
-// Equipos asignados activos del usuario, como lista de idPublico ordenada por
-// nombre. Se usa en el DTO Usuario (login, me y gestion de usuarios).
+// Equipos habilitados asignados activos del usuario, como lista de idPublico
+// ordenada por nombre. Se usa en el DTO Usuario (login, me y gestion de
+// usuarios). Un equipo dado de baja no aparece en ninguna lista ni conteo del
+// panel (exigencia del dueño): el filtro `d.habilitado` es obligatorio aquí,
+// como en flota/posiciones/replay/jornadas/reportes/batería/salud.
 export const SUBCONSULTA_DISPOSITIVOS = `
   COALESCE((
     SELECT array_agg(d.id_publico::text ORDER BY d.nombre, d.id)
@@ -15,6 +18,7 @@ export const SUBCONSULTA_DISPOSITIVOS = `
     JOIN tracking.dmt_dispositivo d ON d.id = a.dispositivo_id
     WHERE a.usuario_id = u.id AND a.activa
       AND a.desde_en <= now() AND (a.hasta_en IS NULL OR a.hasta_en > now())
+      AND d.habilitado
   ), '{}') AS dispositivo_ids`;
 
 export function leerCookies(req) {

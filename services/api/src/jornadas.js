@@ -18,7 +18,9 @@ function aJornada(fila) {
 }
 
 export async function listarJornadas(ctx) {
-  const dispositivo = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal);
+  const dispositivo = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal, {
+    incluirDeshabilitado: true,
+  });
   if (!dispositivo) throw noEncontrado('El dispositivo no existe o no está visible para la cuenta.');
   const rango = leerRango(ctx.url, {
     porDefecto: 'hoy',

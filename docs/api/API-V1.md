@@ -55,6 +55,17 @@ incluye SQL, nombres de tablas ni trazas internas.
 - **Dispositivos**: `dispositivoId` en consulta y `{id}`/`{deviceId}` en la
   ruta aceptan el `idPublico` (UUID) y, durante la transición, el id legado
   numérico.
+- **Bajas de equipos**: un equipo con `habilitado = false` no aparece en
+  ninguna lista, página ni conteo agregado del panel (flota, posiciones vivas,
+  replay disponible, jornadas, reportes, batería, salud y equipos por usuario).
+  La lectura directa por id (`/fleet/{id}`, `/fleet/{id}/position`,
+  `/fleet/{id}/journeys`, `/replay/{deviceId}`, `/battery/{deviceId}`) sí está
+  permitida **solo a administradores**, para no romper la auditoría de lo
+  registrado antes de la baja; para el resto de cuentas el equipo no visible
+  responde `404`. `PUT /fleet/{id}` mantiene el filtro: un equipo dado de baja
+  no se edita ni se reasigna hasta reactivarlo. El canal móvil no cambia: la
+  ingesta de un equipo deshabilitado se descarta (`200`/`dead`) y su equipo no
+  se adopta al iniciar sesión móvil.
 - **Campos en español**: los DTOs son propios (`latitud`, `velocidadKmh`,
   `registradoEn`) y no exponen el esquema interno del motor de tracking.
 - **Sondeo en vivo**: `GET /api/v1/positions/live` cada ~5 s

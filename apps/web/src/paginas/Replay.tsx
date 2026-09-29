@@ -7,7 +7,7 @@ import Icono from '../componentes/Icono';
 import MapaRaster from './operacion/MapaRaster';
 import ReproductorReplay, { LineaTiempoReplay, ListaParadas, PanelPuntoSeleccionado } from './operacion/ReproductorReplay';
 import FiltroReplay from './operacion/FiltroReplay';
-import { traerFlota, traerJornadas, traerParadas, traerReplay, CLAVE_FLOTA } from './operacion/datos';
+import { traerFlota, traerJornadas, traerParadas, traerReplay, CLAVE_FLOTA, equiposHabilitados } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
 import {
   aColeccion,
@@ -99,9 +99,30 @@ export default function Replay() {
   const [panelRecogido, setPanelRecogido] = useState(false);
 
   const flota = useQuery({ queryKey: CLAVE_FLOTA, queryFn: () => traerFlota() });
-  const equipos = flota.data?.datos ?? [];
-  const seleccionado = dispositivoId || equipos[0]?.idPublico || '';
+  // Solo la flota habilitada alimenta el selector y las consultas: un equipo
+  // dado de baja no aparece como opción ni llega a pedir replay, paradas o
+  // jornadas, aunque la caché conserve la respuesta anterior.
+  const equipos = useMemo(() => equiposHabilitados(flota.data?.datos ?? []), [flota.data]);
+  // La selección es válida solo si apunta a un equipo de la flota habilitada.
+  // Una URL o un estado previo hacia un equipo deshabilitado se resuelve a la
+  // primera unidad disponible sin disparar consultas del equipo dado de baja.
+  const seleccionado = useMemo(
+    () =>
+      equipos.some((equipo) => equipo.idPublico === dispositivoId)
+        ? dispositivoId
+        : equipos[0]?.idPublico ?? '',
+    [dispositivoId, equipos],
+  );
   const rangoValido = desde !== '' && hasta !== '' && desde <= hasta;
+
+  // Sincroniza el estado con la selección efectiva cuando la flota ya cargó y
+  // la selección guardada dejó de ser válida (equipo dado de baja, id
+  // desconocido o lista vacía): el selector nunca queda apuntando a un equipo
+  // que no está entre las opciones.
+  useEffect(() => {
+    if (!flota.data || dispositivoId === seleccionado) return;
+    setDispositivoId(seleccionado);
+  }, [flota.data, dispositivoId, seleccionado]);
 
   const replay = useQuery({
     queryKey: ['replay', seleccionado, desde, hasta],

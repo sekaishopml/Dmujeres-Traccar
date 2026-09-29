@@ -255,10 +255,11 @@ async function rolesDe(poolOCiente, usuarioId) {
   }));
 }
 
-// Equipos visibles del usuario: solo asignaciones activas y vigentes, en el
-// mismo sentido que el predicado de visibilidad de flota/replay/en vivo
-// (operations.dmt_asignacion activa con desde_en <= now() y sin hasta_en
-// vencido). Ordenados por nombre para el panel.
+// Equipos visibles del usuario: solo asignaciones activas y vigentes sobre
+// equipos habilitados, en el mismo sentido que el predicado de visibilidad de
+// flota/replay/en vivo (operations.dmt_asignacion activa con desde_en <= now()
+// y sin hasta_en vencido). Un equipo dado de baja no aparece en la lista ni en
+// el conteo (GET/PUT /usuarios/:id/equipos). Ordenados por nombre para el panel.
 function aEquipo(fila) {
   return {
     id: Number(fila.id),
@@ -275,6 +276,7 @@ async function equiposDe(poolOCliente, usuarioId) {
        JOIN tracking.dmt_dispositivo d ON d.id = a.dispositivo_id
       WHERE a.usuario_id = $1 AND a.activa
         AND a.desde_en <= now() AND (a.hasta_en IS NULL OR a.hasta_en > now())
+        AND d.habilitado
       ORDER BY d.nombre, d.id`,
     [Number(usuarioId)],
   );
@@ -413,7 +415,9 @@ async function sincronizarRoles(cliente, usuarioId, roles) {
 export async function listarCuentas(ctx) {
   await exigirOperativo(ctx);
   const { pagina, tamano, desplazamiento } = leerPaginacion(ctx.url);
-  const orden = leerOrden(ctx.url, ORDEN_CUENTAS, 'u.nombre ASC');
+  // Orden del plantel: activas primero y al final las dadas de baja, cada
+  // bloque en orden alfabético (misma regla que muestra el panel).
+  const orden = leerOrden(ctx.url, ORDEN_CUENTAS, 'u.habilitado DESC, lower(u.nombre) ASC');
   const { rows } = await consultar(
     ctx.pool,
     `SELECT ${CAMPOS_CUENTA}, ${SUBCONSULTA_DISPOSITIVOS},
@@ -466,7 +470,9 @@ export async function crearCuenta(ctx) {
   const grupoIds = listaIds(cuerpo.grupoIds, 'grupoIds') ?? [];
   const rolIds = listaIds(cuerpo.rolIds, 'rolIds') ?? [];
   const configApp = validarConfigApp(cuerpo.configApp) ?? null;
-  const crearEquipo = booleanoOpcional(cuerpo.crearEquipo, 'crearEquipo') ?? false;
+  // Sin indicación explícita, una persona de campo nace con su equipo (1:1);
+  // una cuenta de administración no crea equipo (no rastrea).
+  const crearEquipoSolicitado = booleanoOpcional(cuerpo.crearEquipo, 'crearEquipo');
   const credencial = crearCredencial(clave);
 
   const resultado = await enTransaccion(ctx.pool, async (cliente) => {
@@ -480,8 +486,22 @@ export async function crearCuenta(ctx) {
     const grupos = await resolverGrupos(cliente, grupoIds);
     const roles = await resolverRoles(cliente, rolIds);
     const codigos = roles.map((rol) => rol.codigo);
-    const administrador = codigos.includes('administrador');
-    const soloLectura = codigos.includes('solo_lectura');
+    // Alta de administración desde Sistema: el permiso no depende de que el
+    // catálogo de roles haya cargado en el navegador. Si pide administrador y
+    // el rol existe, se adjunta; si no existe el rol, la bandera manda.
+    const pideAdministrador = cuerpo.administrador === true;
+    if (pideAdministrador && !codigos.includes('administrador')) {
+      const rolAdmin = await cliente.query(
+        "SELECT id, codigo, nombre FROM iam.dmt_rol WHERE codigo = 'administrador' LIMIT 1",
+      );
+      if (rolAdmin.rows[0]) {
+        roles.push(rolAdmin.rows[0]);
+        codigos.push(rolAdmin.rows[0].codigo);
+      }
+    }
+    const administrador = pideAdministrador || codigos.includes('administrador');
+    const soloLectura = !administrador && codigos.includes('solo_lectura');
+    const crearEquipo = crearEquipoSolicitado ?? !administrador;
     const atributos = configApp && Object.keys(configApp).length > 0
       ? JSON.stringify({ configApp })
       : '{}';
@@ -538,7 +558,7 @@ export async function crearCuenta(ctx) {
         identificador: filaEquipo.identificador,
       };
     }
-    return { id, grupos: grupos.map((grupo) => grupo.nombre), roles: codigos, equipo };
+    return { id, grupos: grupos.map((grupo) => grupo.nombre), roles: codigos, equipo, crearEquipo };
   });
 
   const cuenta = await cargarCuenta(ctx.pool, resultado.id);
@@ -548,7 +568,7 @@ export async function crearCuenta(ctx) {
     entidad: 'usuario',
     entidadId: cuenta.id,
     descripcion: `Usuario ${usuario} creado.`,
-    datos: { usuario, grupos: resultado.grupos, roles: resultado.roles, crearEquipo, equipo: resultado.equipo },
+    datos: { usuario, grupos: resultado.grupos, roles: resultado.roles, crearEquipo: resultado.crearEquipo, equipo: resultado.equipo },
     req: ctx.req,
   });
   respuestaJson(ctx.res, 201, { usuario: cuenta, equipo: resultado.equipo ?? null });
@@ -594,6 +614,7 @@ export async function actualizarCuenta(ctx) {
       }
     }
     const deshabilita = habilitado === false && actual.habilitado;
+    const habilita = habilitado === true && !actual.habilitado;
     if (deshabilita && actual.administrador) {
       const administradores = await contarAdministradoresActivos(cliente);
       if (administradores <= 1) {
@@ -654,6 +675,46 @@ export async function actualizarCuenta(ctx) {
           WHERE usuario_id = $1 AND activa`,
         [actual.id],
       );
+      // El equipo 1:1 de la persona (identificador = cuenta) también se da de
+      // baja: un equipo deshabilitado no aparece en En vivo ni en Replay.
+      await cliente.query(
+        `UPDATE tracking.dmt_dispositivo
+            SET habilitado = false, actualizado_en = now()
+          WHERE identificador = lower($1)`,
+        [actual.nombre_usuario],
+      );
+    }
+    if (habilita) {
+      // Reactivar recupera el equipo de la persona y su vínculo (reactivar,
+      // no "dar de alta"): vuelve a aparecer en En vivo y Replay.
+      await cliente.query(
+        `UPDATE tracking.dmt_dispositivo
+            SET habilitado = true, actualizado_en = now()
+          WHERE identificador = lower($1)`,
+        [actual.nombre_usuario],
+      );
+      const reactivadas = await cliente.query(
+        `UPDATE operations.dmt_asignacion
+            SET activa = true, desde_en = now(), hasta_en = NULL, actualizado_en = now()
+          WHERE usuario_id = $1
+            AND dispositivo_id IN (
+              SELECT id FROM tracking.dmt_dispositivo WHERE identificador = lower($2)
+            )
+          RETURNING dispositivo_id`,
+        [actual.id, actual.nombre_usuario],
+      );
+      if (reactivadas.rowCount === 0) {
+        await cliente.query(
+          `INSERT INTO operations.dmt_asignacion (usuario_id, dispositivo_id, activa, desde_en)
+           SELECT $1, d.id, true, now()
+             FROM tracking.dmt_dispositivo d
+            WHERE d.identificador = lower($2)
+              AND NOT EXISTS (
+                SELECT 1 FROM operations.dmt_asignacion a
+                 WHERE a.usuario_id = $1 AND a.dispositivo_id = d.id AND a.activa)`,
+          [actual.id, actual.nombre_usuario],
+        );
+      }
     }
     const campos = [];
     if (nombre !== undefined) campos.push('nombre');
@@ -719,12 +780,22 @@ export async function eliminarCuenta(ctx) {
         RETURNING dispositivo_id`,
       [actual.id],
     );
+    // El equipo 1:1 de la persona también queda dado de baja: no debe
+    // aparecer en En vivo ni en Replay mientras la cuenta esté de baja.
+    const { rows: equiposDadosDeBaja } = await cliente.query(
+      `UPDATE tracking.dmt_dispositivo
+          SET habilitado = false, actualizado_en = now()
+        WHERE identificador = lower($1) AND habilitado
+        RETURNING id`,
+      [actual.nombre_usuario],
+    );
     return {
       id: Number(actual.id),
       usuario: actual.nombre_usuario,
       yaEliminado: false,
       sesionesRevocadas,
       asignacionesDesactivadas: desasignadas.length,
+      equiposDadosDeBaja: equiposDadosDeBaja.length,
     };
   });
 

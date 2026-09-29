@@ -9,14 +9,17 @@ import ChipEstado from './operacion/ChipEstado';
 import BarraBateria from './operacion/BarraBateria';
 import { claveEstado, colorEstado } from './operacion/estado';
 import { contenidoPopup } from './operacion/popup';
-import { traerFlota, traerPosicionesVivas, CLAVE_FLOTA } from './operacion/datos';
+import { traerFlota, traerPosicionesVivas, CLAVE_FLOTA, equiposHabilitados } from './operacion/datos';
 import { mensajeError } from './operacion/errores';
 import '../estilos/paginas.css';
 
 const REFRESCO_MS = 5000;
 
 // Filtros de operación: "sin señal" agrupa SIN_SENAL, SEÑAL_DÉBIL y
-// DESCONOCIDO porque los tres exigen revisar la unidad igual.
+// DESCONOCIDO porque los tres exigen revisar la unidad igual. "Deshabilitado"
+// solo agrupa equipos habilitados con jornada cerrada (estado DESHABILITADO):
+// un equipo dado de baja (habilitado=false) se filtra antes de llegar aquí y no
+// aparece en ningún filtro, ni en la lista, ni en el mapa.
 type FiltroEstado = 'todas' | 'enLinea' | 'detenido' | 'sinSenal' | 'deshabilitado';
 
 const FILTROS: { valor: FiltroEstado; etiqueta: string }[] = [
@@ -58,10 +61,19 @@ export default function EnVivo() {
     refetchInterval: () => (document.hidden ? false : REFRESCO_MS),
   });
 
-  const dispositivos = useMemo(() => flota.data?.datos ?? [], [flota.data]);
+  // La flota habilitada es la única fuente de verdad de En vivo: aunque el
+  // endpoint vivo devuelva posiciones de un equipo recién dado de baja, no se
+  // pinta marcador ni estado porque el equipo no entra en dispositivos.
+  const dispositivos = useMemo(() => equiposHabilitados(flota.data?.datos ?? []), [flota.data]);
+  const idsHabilitados = useMemo(() => new Set(dispositivos.map((equipo) => equipo.id)), [dispositivos]);
   const posiciones = useMemo(
-    () => new Map((vivas.data?.datos ?? []).map((posicion) => [posicion.dispositivoId, posicion] as const)),
-    [vivas.data],
+    () =>
+      new Map(
+        (vivas.data?.datos ?? [])
+          .filter((posicion) => idsHabilitados.has(posicion.dispositivoId))
+          .map((posicion) => [posicion.dispositivoId, posicion] as const),
+      ),
+    [vivas.data, idsHabilitados],
   );
 
   const reconsultarFlota = flota.refetch;

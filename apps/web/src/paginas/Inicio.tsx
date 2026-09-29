@@ -5,7 +5,7 @@ import type { Dispositivo, EstadoSalud } from '@contratos';
 import { consulta } from '../api/cliente';
 import { bateria, duracion, hace, hora, GUION } from '../util/formato';
 import Icono from '../componentes/Icono';
-import { traerFlota, traerJornadasFlota, traerSalud, CLAVE_FLOTA } from './operacion/datos';
+import { traerFlota, traerJornadasFlota, traerSalud, CLAVE_FLOTA, equiposHabilitados } from './operacion/datos';
 import { esNoEncontrado, mensajeError } from './operacion/errores';
 import { claveEstado } from './operacion/estado';
 import { finDeDia, fechaHoyLocal, inicioDeDia } from './operacion/rango';
@@ -82,7 +82,14 @@ export default function Inicio() {
     refetchInterval: REFRESCO_MS,
   });
 
-  const dispositivos = useMemo(() => flota.data?.datos ?? [], [flota.data]);
+  const equiposFlota = useMemo(() => flota.data?.datos ?? [], [flota.data]);
+  // Los equipos habilitados son la fuente del estado vivo (métricas y avisos):
+  // un equipo dado de baja no se cuenta ni se lista, ni aunque la caché
+  // conserve la respuesta anterior. Los identificadores del histórico y de
+  // salud se completan con la flota cruda para no perder datos de equipos que
+  // se dieron de baja después de operar.
+  const dispositivos = useMemo(() => equiposHabilitados(equiposFlota), [equiposFlota]);
+  const idsHabilitados = useMemo(() => new Set(dispositivos.map((equipo) => equipo.id)), [dispositivos]);
 
   const metricas = useMemo(() => {
     const resumen = { enLinea: 0, detenido: 0, sinSenal: 0, deshabilitado: 0, bateriaBaja: 0 };
@@ -119,7 +126,7 @@ export default function Inicio() {
   });
 
   const filasJornadas = useMemo<FilaJornada[]>(() => {
-    const identificadores = new Map(dispositivos.map((equipo) => [equipo.idPublico, equipo.identificadorUnico]));
+    const identificadores = new Map(equiposFlota.map((equipo) => [equipo.idPublico, equipo.identificadorUnico]));
     const filas = (jornadas.data?.datos ?? []).map((jornada) => ({
       unidadId: jornada.idPublico,
       nombre: jornada.nombre,
@@ -131,7 +138,7 @@ export default function Inicio() {
     // Cola de auditoría: la jornada más reciente primero.
     filas.sort((a, b) => new Date(b.inicioEn).getTime() - new Date(a.inicioEn).getTime());
     return filas;
-  }, [jornadas.data, dispositivos]);
+  }, [jornadas.data, equiposFlota]);
 
   const jornadasDisponibles = jornadas.data != null;
 
@@ -182,8 +189,19 @@ export default function Inicio() {
       ? `${filasJornadas.length} jornadas · ${unidadesConJornada} unidades`
       : 'Sin datos del servidor';
 
-  const equiposSalud = salud.data?.datos ?? [];
-  const nombresSalud = useMemo(() => new Map(dispositivos.map((equipo) => [equipo.id, equipo])), [dispositivos]);
+  // La salud por equipo es estado vivo: los equipos deshabilitados no se
+  // listan. Sin flota cargada no se puede distinguir un habilitado y se
+  // conserva la respuesta tal cual para no vaciar la sección por un fallo de
+  // /fleet.
+  const equiposSalud = useMemo(() => {
+    const datos = salud.data?.datos ?? [];
+    if (!flota.data) return datos;
+    return datos.filter((equipo) => idsHabilitados.has(equipo.dispositivoId));
+  }, [salud.data, flota.data, idsHabilitados]);
+  // Los nombres se completan con la flota cruda: una entrada de salud solo se
+  // pinta si su equipo está habilitado, pero el nombre debe existir aunque el
+  // contrato lo haya omitido.
+  const nombresSalud = useMemo(() => new Map(equiposFlota.map((equipo) => [equipo.id, equipo])), [equiposFlota]);
   const cuentaSalud = salud.isPending
     ? 'Consultando…'
     : salud.error

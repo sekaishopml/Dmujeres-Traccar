@@ -56,6 +56,14 @@ export function permisoDe(usuario) {
   return usuario && usuario.administrador ? null : usuario?.id ?? null;
 }
 
+// Decisión de auditoría: el administrador puede leer por id un equipo dado de
+// baja (histórico de posiciones, replay, jornadas, batería) para no perder la
+// trazabilidad de lo que registró antes de la baja. Ese permiso NUNCA aplica a
+// listas ni a escrituras, y las cuentas no administradoras siguen viendo 404.
+export function puedeVerDeshabilitado(usuario) {
+  return usuario?.administrador === true;
+}
+
 const ORDEN_FLOTA = {
   id: 'd.id',
   nombre: 'd.nombre',
@@ -103,7 +111,9 @@ export async function listarFlota(ctx) {
 }
 
 export async function obtenerDispositivo(ctx) {
-  const fila = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal);
+  const fila = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal, {
+    incluirDeshabilitado: true,
+  });
   if (!fila) throw noEncontrado('El dispositivo no existe o no está visible para la cuenta.');
   respuestaJson(ctx.res, 200, aDispositivo(fila, ctx.usuario));
 }
@@ -193,11 +203,16 @@ export async function actualizarDispositivo(ctx) {
   respuestaJson(ctx.res, 200, { dispositivo: aDispositivo(actualizado, ctx.usuario) });
 }
 
-export async function buscarDispositivo(pool, usuario, valor, signal) {
+// Lectura directa por id (id interno, público o legado). `incluirDeshabilitado`
+// solo surte efecto para administradores (ver puedeVerDeshabilitado); el resto
+// de llamadas —listas y escrituras— conservan `d.habilitado`.
+export async function buscarDispositivo(pool, usuario, valor, signal, { incluirDeshabilitado = false } = {}) {
+  const visibilidad =
+    incluirDeshabilitado && puedeVerDeshabilitado(usuario) ? 'TRUE' : 'd.habilitado';
   const { rows } = await consultar(
     pool,
     `${SELECT_DISPOSITIVO}
-     WHERE d.habilitado AND ${PREDICADO_PERMISO}
+     WHERE ${visibilidad} AND ${PREDICADO_PERMISO}
        AND (d.id_publico::text = $2 OR d.id_legado::text = $2 OR d.id::text = $2)
      LIMIT 1`,
     [permisoDe(usuario), String(valor)],

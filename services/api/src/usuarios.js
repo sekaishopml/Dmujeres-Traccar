@@ -90,10 +90,13 @@ function leerDispositivoIds(valor) {
   return [...new Set(ids)];
 }
 
+// Resuelve los equipos pedidos (id interno, público, legado o identificador) y
+// rechaza los deshabilitados: la asignación no debe crear vínculos activos con
+// equipos dados de baja (mismo criterio que cuentas.resolverDispositivos).
 async function resolverDispositivos(cliente, ids) {
   if (ids.length === 0) return [];
   const { rows } = await cliente.query(
-    `SELECT d.id, d.id_legado, d.id_publico, d.nombre
+    `SELECT d.id, d.id_legado, d.id_publico, d.nombre, d.habilitado
      FROM tracking.dmt_dispositivo d
      WHERE d.id_publico::text = ANY($1) OR d.id_legado::text = ANY($1) OR d.id::text = ANY($1)`,
     [ids],
@@ -111,6 +114,7 @@ async function resolverDispositivos(cliente, ids) {
   for (const id of ids) {
     const fila = mapa.get(id);
     if (!fila) throw datosInvalidos(`El dispositivo ${id} no existe.`);
+    if (fila.habilitado !== true) throw datosInvalidos(`El dispositivo ${fila.nombre} no está habilitado.`);
     if (vistos.has(String(fila.id))) continue;
     vistos.add(String(fila.id));
     resueltos.push(fila);

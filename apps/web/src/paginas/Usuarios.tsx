@@ -6,7 +6,6 @@ import type {
   CreacionUsuarioPlataforma,
   Dispositivo,
   EntradaEsquemaAjustes,
-  EquipoCreadoConCuenta,
   GrupoPlataforma,
   RespuestaCreacionUsuarioPlataforma,
   UsuarioPlataforma,
@@ -26,8 +25,7 @@ import { Dialogo } from './admin/Dialogo';
 import { Toast } from './admin/Toast';
 import {
   CLAVE_FLOTA,
-  guardarEquiposDeUsuario,
-  traerEquiposDeUsuario,
+  invalidarFlota,
   traerEsquemaAjustes,
   traerFlota,
   traerGrupos,
@@ -79,10 +77,6 @@ function textoEquipos(usuario: UsuarioPlataforma, flota: Dispositivo[]): string 
   return ids.length === 1 ? '1 equipo' : `${ids.length} equipos`;
 }
 
-function claveEquipo(equipo: { id: number | string; idPublico?: string }): string {
-  return String(equipo.idPublico ?? equipo.id);
-}
-
 type Modal =
   | { modo: 'crear' }
   | { modo: 'editar'; usuario: UsuarioPlataforma }
@@ -93,33 +87,19 @@ interface PropsFormulario {
   usuario: UsuarioPlataforma | null;
   grupos: GrupoPlataforma[];
   gruposError: unknown;
-  equipos: Dispositivo[];
-  cargandoEquipos: boolean;
-  avisoEquipos: string | null;
-  equiposIniciales: string[];
-  // Asignaciones que no están en la flota visible: no se muestran, pero se
-  // conservan al guardar para no borrarlas con el reemplazo.
-  equiposExtras: (number | string)[];
   guardando: boolean;
   error: Error | null;
-  onGuardar: (
-    cuerpo: CreacionUsuarioPlataforma | ActualizacionUsuarioPlataforma,
-    dispositivoIds: (number | string)[],
-  ) => void;
+  onGuardar: (cuerpo: CreacionUsuarioPlataforma | ActualizacionUsuarioPlataforma) => void;
   onCancelar: () => void;
 }
 
 // En edición la clave vacía significa "no cambiar"; en creación es obligatoria.
 // Las cuentas son personas que hacen ruta y el guardado nunca manda roles.
+// Al crear la cuenta, el servidor siempre crea su equipo de rastreo.
 function FormularioCuenta({
   usuario,
   grupos,
   gruposError,
-  equipos,
-  cargandoEquipos,
-  avisoEquipos,
-  equiposIniciales,
-  equiposExtras,
   guardando,
   error,
   onGuardar,
@@ -134,18 +114,10 @@ function FormularioCuenta({
   const [grupoIds, setGrupoIds] = useState<string[]>(() =>
     (usuario?.grupos ?? []).map((grupo) => String(grupo.id)),
   );
-  const [equipoIds, setEquipoIds] = useState<string[]>(() => equiposIniciales);
-  const [crearEquipo, setCrearEquipo] = useState(true);
   const [validacion, setValidacion] = useState('');
 
   function alternarGrupo(id: string) {
     setGrupoIds((actuales) =>
-      actuales.includes(id) ? actuales.filter((otro) => otro !== id) : [...actuales, id],
-    );
-  }
-
-  function alternarEquipo(id: string) {
-    setEquipoIds((actuales) =>
       actuales.includes(id) ? actuales.filter((otro) => otro !== id) : [...actuales, id],
     );
   }
@@ -173,32 +145,21 @@ function FormularioCuenta({
     const gruposElegidos = grupos
       .filter((grupo) => grupoIds.includes(idTextoGrupo(grupo)))
       .map((grupo) => idOriginalGrupo(grupo));
-    // El reemplazo manda el id interno cuando se conoce; lo que no está en la
-    // flota visible se conserva tal cual para no borrarlo sin querer.
-    const porClave = new Map<string, Dispositivo>();
-    for (const equipo of equipos) {
-      porClave.set(claveEquipo(equipo), equipo);
-      porClave.set(String(equipo.id), equipo);
-    }
-    const dispositivoIds: (number | string)[] = [
-      ...equiposExtras,
-      ...equipoIds.map((clave) => porClave.get(clave)?.id ?? clave),
-    ];
     if (!usuario) {
       const cuerpo: CreacionUsuarioPlataforma = {
         usuario: cuenta.trim(),
         clave,
         nombre: nombre.trim(),
+        // El equipo de rastreo se crea siempre junto con la cuenta (misma
+        // transacción en el servidor): no hay caso en que no se quiera.
+        crearEquipo: true,
       };
       const telefonoLimpio = telefono.trim();
       const cargoLimpio = cargo.trim();
       if (telefonoLimpio !== '') cuerpo.telefono = telefonoLimpio;
       if (cargoLimpio !== '') cuerpo.cargo = cargoLimpio;
       if (gruposElegidos.length > 0) cuerpo.grupoIds = gruposElegidos;
-      // El contrato pide crearEquipo:true para que el servidor cree el equipo
-      // de rastreo junto con la cuenta. Si la casilla está apagada, no se manda.
-      if (crearEquipo) cuerpo.crearEquipo = true;
-      onGuardar(cuerpo, dispositivoIds);
+      onGuardar(cuerpo);
       return;
     }
     const cuerpo: ActualizacionUsuarioPlataforma = {
@@ -208,7 +169,7 @@ function FormularioCuenta({
       grupoIds: gruposElegidos,
     };
     if (clave !== '') cuerpo.clave = clave;
-    onGuardar(cuerpo, dispositivoIds);
+    onGuardar(cuerpo);
   }
 
   return (
@@ -288,41 +249,10 @@ function FormularioCuenta({
         </div>
       </fieldset>
       {!usuario && (
-        <div className="campo">
-          <label className="equipo-auto">
-            <input
-              type="checkbox"
-              checked={crearEquipo}
-              onChange={(evento) => setCrearEquipo(evento.target.checked)}
-            />
-            <span>Crear equipo de rastreo</span>
-          </label>
-          <p className="apagado">
-            Se crea con el nombre de la cuenta en minúsculas. Así aparece en Replay y En vivo, y en la
-            app se configura ese mismo nombre como ID de equipo.
-          </p>
-        </div>
+        <p className="apagado">
+          La cuenta se crea con su equipo y ya aparece en En vivo y Replay.
+        </p>
       )}
-      <fieldset className="grupo-equipos">
-        <legend>Equipos que puede ver</legend>
-        {avisoEquipos !== null && <p className="apagado">{avisoEquipos}</p>}
-        {cargandoEquipos && <p className="apagado">Trayendo los equipos de la flota…</p>}
-        {!cargandoEquipos && equipos.length === 0 && avisoEquipos === null && (
-          <p className="apagado">Todavía no hay equipos en la flota.</p>
-        )}
-        <div className="equipos-asignados">
-          {equipos.map((equipo) => (
-            <label key={claveEquipo(equipo)}>
-              <input
-                type="checkbox"
-                checked={equipoIds.includes(claveEquipo(equipo))}
-                onChange={() => alternarEquipo(claveEquipo(equipo))}
-              />
-              <span>{equipo.nombre}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
       {validacion !== '' && (
         <p className="error" role="alert">
           {validacion}
@@ -540,15 +470,26 @@ export default function Usuarios() {
     enabled: administrador,
     queryFn: () => traerEsquemaAjustes(),
   });
-  // La flota alimenta el selector "Equipos que puede ver": la caché se comparte
-  // con el resto de páginas mediante la clave común.
+  // La flota resuelve los nombres de la columna "Equipo(s)": la caché se
+  // comparte con el resto de páginas mediante la clave común.
   const flota = useQuery({
     queryKey: CLAVE_FLOTA,
     enabled: administrador,
     queryFn: () => traerFlota(),
   });
 
-  const lista = useMemo(() => usuarios.data ?? [], [usuarios.data]);
+  // Orden del plantel: primero las cuentas habilitadas y al final las dadas de
+  // baja, cada bloque en orden alfabético por nombre (la cuenta desempata).
+  const lista = useMemo(() => {
+    return [...(usuarios.data ?? [])].sort((a, b) => {
+      if (a.habilitado !== b.habilitado) return a.habilitado ? -1 : 1;
+      const nombreA = (a.nombre.trim() !== '' ? a.nombre : a.usuario).trim();
+      const nombreB = (b.nombre.trim() !== '' ? b.nombre : b.usuario).trim();
+      const porNombre = nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base', numeric: true });
+      if (porNombre !== 0) return porNombre;
+      return a.usuario.localeCompare(b.usuario, 'es', { sensitivity: 'base', numeric: true });
+    });
+  }, [usuarios.data]);
   const total = lista.length;
   const totalPaginas = Math.max(1, Math.ceil(total / TAMANO));
   const paginaSegura = Math.min(pagina, totalPaginas);
@@ -559,175 +500,35 @@ export default function Usuarios() {
   const listaGrupos = useMemo(() => grupos.data ?? [], [grupos.data]);
   const listaEquipos = useMemo(() => flota.data?.datos ?? [], [flota.data]);
 
-  // Equipos asignados a la cuenta en edición. Si GET /api/v1/usuarios ya trae
-  // dispositivoIds se usa eso y no se pide nada; si no, se consulta el endpoint
-  // de equipos (otro frente lo implementa; puede no existir todavía).
-  const usuarioEnEdicion = modal?.modo === 'editar' ? modal.usuario : null;
-  const necesitaEquipos = usuarioEnEdicion != null && usuarioEnEdicion.dispositivoIds == null;
-  const equiposDeUsuario = useQuery({
-    queryKey: ['usuario-equipos', usuarioEnEdicion ? idEnUrl(usuarioEnEdicion) : 'ninguno'],
-    queryFn: () => traerEquiposDeUsuario(idEnUrl(usuarioEnEdicion as UsuarioPlataforma)),
-    enabled: administrador && necesitaEquipos,
-    retry: false,
-  });
-
-  // Fuente de asignaciones: lo que ya trae la cuenta o lo que devolvió el
-  // endpoint de equipos. Null mientras se espera la consulta.
-  const fuenteEquipos = useMemo<(number | string)[] | null>(() => {
-    if (!usuarioEnEdicion) return [];
-    if (usuarioEnEdicion.dispositivoIds != null) return usuarioEnEdicion.dispositivoIds;
-    if (equiposDeUsuario.data) {
-      return equiposDeUsuario.data.map((equipo) => equipo.idPublico ?? equipo.id);
-    }
-    if (equiposDeUsuario.isPending) return null;
-    return [];
-  }, [usuarioEnEdicion, equiposDeUsuario.data, equiposDeUsuario.isPending]);
-
-  // Las claves se normalizan contra la flota para que el marcado funcione
-  // venga el id interno o el público; lo que no está en la flota visible se
-  // conserva aparte para no borrarlo al guardar.
-  const { equiposIniciales, equiposExtras } = useMemo(() => {
-    if (fuenteEquipos == null) return { equiposIniciales: [] as string[], equiposExtras: [] as (number | string)[] };
-    const porId = new Map<string, Dispositivo>();
-    for (const equipo of listaEquipos) {
-      porId.set(String(equipo.id), equipo);
-      if (equipo.idPublico) porId.set(equipo.idPublico, equipo);
-    }
-    const claves: string[] = [];
-    const extras: (number | string)[] = [];
-    for (const id of fuenteEquipos) {
-      const equipo = porId.get(String(id));
-      if (equipo) {
-        const clave = claveEquipo(equipo);
-        if (!claves.includes(clave)) claves.push(clave);
-      } else if (!extras.some((otro) => String(otro) === String(id))) {
-        extras.push(id);
-      }
-    }
-    return { equiposIniciales: claves, equiposExtras: extras };
-  }, [fuenteEquipos, listaEquipos]);
-
-  const avisoEquipos = useMemo<string | null>(() => {
-    if (flota.error) return 'No se pudieron traer los equipos de la flota; puedes guardar sin cambiarlos.';
-    if (equiposDeUsuario.error) {
-      if (esErrorDeEstado(equiposDeUsuario.error, 404)) {
-        return 'El servidor aún no guarda equipos por cuenta: lo que marques se guardará cuando esté listo.';
-      }
-      return 'No se pudieron traer los equipos asignados; revisa la lista completa antes de guardar.';
-    }
-    return null;
-  }, [flota.error, equiposDeUsuario.error]);
-
   function invalidar() {
     cliente.invalidateQueries({ queryKey: ['usuarios-plataforma'] });
   }
 
   const crear = useMutation({
-    mutationFn: async ({
-      cuerpo,
-      equipoIds,
-    }: {
-      cuerpo: CreacionUsuarioPlataforma;
-      equipoIds: (number | string)[];
-    }) => {
-      // Contrato con el otro frente: con crearEquipo:true el servidor crea la
-      // cuenta + el dispositivo (identificador = usuario en minúsculas) +
-      // asignación, y responde equipo:{id,idPublico,nombre,identificador} o
-      // null. Si el servidor aún no lo soporta, la cuenta se crea igual.
-      const quiereEquipo = cuerpo.crearEquipo === true;
-      let respuesta: RespuestaCreacionUsuarioPlataforma;
-      let equipoAutoPendiente = false;
-      try {
-        respuesta = await api.post<RespuestaCreacionUsuarioPlataforma>('/api/v1/usuarios', cuerpo);
-      } catch (error) {
-        // Servidor anterior que rechaza el campo desconocido: se reintenta sin
-        // él para que la cuenta se cree igual y se avisa al final.
-        if (quiereEquipo && esErrorDeEstado(error, 400)) {
-          const { crearEquipo: _omitido, ...cuerpoSinEquipo } = cuerpo;
-          void _omitido;
-          respuesta = await api.post<RespuestaCreacionUsuarioPlataforma>(
-            '/api/v1/usuarios',
-            cuerpoSinEquipo,
-          );
-          equipoAutoPendiente = true;
-        } else {
-          throw error;
-        }
-      }
-      const equipo: EquipoCreadoConCuenta | null = respuesta.equipo ?? null;
-      if (quiereEquipo && !equipo && !equipoAutoPendiente) {
-        equipoAutoPendiente = true;
-      }
-      // Si el servidor ya asignó el equipo nuevo, no se pisa con el reemplazo:
-      // se suma su id a la selección manual (si la hay). Sin selección manual
-      // no hace falta el PUT porque la asignación ya quedó hecha.
-      let idsParaGuardar = equipoIds;
-      if (equipo) {
-        const idAuto = equipo.idPublico ?? equipo.id;
-        const yaIncluido = equipoIds.some(
-          (id) => String(id) === String(equipo.id) || String(id) === String(idAuto),
-        );
-        if (!yaIncluido && equipoIds.length > 0) idsParaGuardar = [...equipoIds, idAuto];
-      }
-      let equiposPendientes = false;
-      if (idsParaGuardar.length > 0 && !(equipo && equipoIds.length === 0)) {
-        try {
-          await guardarEquiposDeUsuario(idEnUrl(respuesta.usuario), idsParaGuardar);
-        } catch (error) {
-          if (!esErrorDeEstado(error, 404)) throw error;
-          equiposPendientes = true;
-        }
-      }
-      return { usuario: respuesta.usuario, equipo, equipoAutoPendiente, equiposPendientes };
-    },
-    onSuccess: ({ equipo, equipoAutoPendiente, equiposPendientes }) => {
+    // El servidor crea la cuenta y su equipo de rastreo en la misma operación
+    // (crearEquipo:true va siempre) y responde el equipo creado.
+    mutationFn: (cuerpo: CreacionUsuarioPlataforma) =>
+      api.post<RespuestaCreacionUsuarioPlataforma>('/api/v1/usuarios', cuerpo),
+    onSuccess: ({ equipo }) => {
       invalidar();
-      cliente.invalidateQueries({ queryKey: CLAVE_FLOTA });
-      if (equipo) {
-        setExito(`Cuenta y equipo creados. “${equipo.nombre}” ya aparece en Replay y En vivo.`);
-      } else if (equipoAutoPendiente) {
-        setExito(
-          'Cuenta creada, pero el servidor aún no crea el equipo automático. Se puede vincular uno en “Cambiar los datos” cuando esté listo.',
-        );
-      } else if (equiposPendientes) {
-        setExito('Cuenta creada, pero el servidor aún no guarda los equipos por cuenta.');
-      } else {
-        setExito('Cuenta creada.');
-      }
+      // El equipo nuevo aparece de inmediato en la caché compartida de flota
+      // (En vivo, Replay, Inicio) sin esperar al siguiente sondeo.
+      invalidarFlota(cliente);
+      setExito(
+        equipo
+          ? `Cuenta y equipo creados. “${equipo.nombre}” ya aparece en Replay y En vivo.`
+          : 'Cuenta creada.',
+      );
       setModal(null);
     },
   });
 
   const actualizar = useMutation({
-    mutationFn: async ({
-      usuario,
-      cuerpo,
-      equipoIds,
-    }: {
-      usuario: UsuarioPlataforma;
-      cuerpo: ActualizacionUsuarioPlataforma;
-      equipoIds: (number | string)[];
-    }) => {
-      const respuesta = await api.patch<{ usuario: UsuarioPlataforma }>(
-        `/api/v1/usuarios/${idEnUrl(usuario)}`,
-        cuerpo,
-      );
-      let equiposPendientes = false;
-      try {
-        await guardarEquiposDeUsuario(idEnUrl(usuario), equipoIds);
-      } catch (error) {
-        if (!esErrorDeEstado(error, 404)) throw error;
-        equiposPendientes = true;
-      }
-      return { usuario: respuesta.usuario, equiposPendientes };
-    },
-    onSuccess: ({ equiposPendientes }) => {
+    mutationFn: ({ usuario, cuerpo }: { usuario: UsuarioPlataforma; cuerpo: ActualizacionUsuarioPlataforma }) =>
+      api.patch<{ usuario: UsuarioPlataforma }>(`/api/v1/usuarios/${idEnUrl(usuario)}`, cuerpo),
+    onSuccess: () => {
       invalidar();
-      setExito(
-        equiposPendientes
-          ? 'Cambios guardados, pero el servidor aún no guarda los equipos por cuenta.'
-          : 'Cambios guardados.',
-      );
+      setExito('Cambios guardados.');
       setModal(null);
     },
   });
@@ -736,19 +537,19 @@ export default function Usuarios() {
     mutationFn: (usuario: UsuarioPlataforma) => api.borrar<void>(`/api/v1/usuarios/${idEnUrl(usuario)}`),
     onSuccess: () => {
       invalidar();
-      setExito('Cuenta dada de baja. Se puede volver a dar de alta cuando se necesite.');
+      setExito('Cuenta dada de baja. Puedes reactivarla cuando la necesites.');
       setModal(null);
     },
   });
 
-  const darDeAlta = useMutation({
+  const reactivar = useMutation({
     mutationFn: (usuario: UsuarioPlataforma) =>
       api.patch<{ usuario: UsuarioPlataforma }>(`/api/v1/usuarios/${idEnUrl(usuario)}`, {
         habilitado: true,
       }),
     onSuccess: () => {
       invalidar();
-      setExito('Cuenta dada de alta de nuevo.');
+      setExito('Cuenta reactivada.');
     },
   });
 
@@ -792,13 +593,10 @@ export default function Usuarios() {
     setModal({ modo: 'ajustes', usuario });
   }
 
-  function guardarCuenta(
-    cuerpo: CreacionUsuarioPlataforma | ActualizacionUsuarioPlataforma,
-    equipoIds: (number | string)[],
-  ) {
+  function guardarCuenta(cuerpo: CreacionUsuarioPlataforma | ActualizacionUsuarioPlataforma) {
     if (!modal) return;
-    if (modal.modo === 'crear') crear.mutate({ cuerpo: cuerpo as CreacionUsuarioPlataforma, equipoIds });
-    else if (modal.modo === 'editar') actualizar.mutate({ usuario: modal.usuario, cuerpo, equipoIds });
+    if (modal.modo === 'crear') crear.mutate(cuerpo as CreacionUsuarioPlataforma);
+    else if (modal.modo === 'editar') actualizar.mutate({ usuario: modal.usuario, cuerpo });
   }
 
   function confirmarBaja() {
@@ -911,12 +709,12 @@ export default function Usuarios() {
                               <button
                                 type="button"
                                 className="suave"
-                                title="Volver a dar de alta la cuenta"
-                                aria-label={`Volver a dar de alta a ${usuario.nombre}`}
-                                onClick={() => darDeAlta.mutate(usuario)}
-                                disabled={darDeAlta.isPending}
+                                title="Reactivar la cuenta"
+                                aria-label={`Reactivar la cuenta de ${usuario.nombre}`}
+                                onClick={() => reactivar.mutate(usuario)}
+                                disabled={reactivar.isPending}
                               >
-                                {darDeAlta.isPending ? 'Dando de alta…' : 'Dar de alta'}
+                                {reactivar.isPending ? 'Reactivando…' : 'Reactivar'}
                               </button>
                             )}
                           </div>
@@ -929,7 +727,7 @@ export default function Usuarios() {
               <Paginacion pagina={paginaSegura} tamano={TAMANO} total={total} onPagina={setPagina} />
             </>
           )}
-          {darDeAlta.error && <MensajeError error={darDeAlta.error} />}
+          {reactivar.error && <MensajeError error={reactivar.error} />}
         </div>
       </section>
 
@@ -939,11 +737,6 @@ export default function Usuarios() {
             usuario={null}
             grupos={listaGrupos}
             gruposError={grupos.error}
-            equipos={listaEquipos}
-            cargandoEquipos={flota.isPending}
-            avisoEquipos={avisoEquipos}
-            equiposIniciales={[]}
-            equiposExtras={[]}
             guardando={crear.isPending}
             error={crear.error}
             onGuardar={guardarCuenta}
@@ -954,31 +747,15 @@ export default function Usuarios() {
 
       {modal?.modo === 'editar' && (
         <Dialogo titulo="Cambiar los datos de la cuenta" onCerrar={cerrarModal}>
-          {fuenteEquipos == null ? (
-            <div>
-              <p className="vacio">Trayendo los equipos que puede ver…</p>
-              <div className="dialogo-pie">
-                <button type="button" className="suave" onClick={cerrarModal}>
-                  Cerrar
-                </button>
-              </div>
-            </div>
-          ) : (
-            <FormularioCuenta
-              usuario={modal.usuario}
-              grupos={listaGrupos}
-              gruposError={grupos.error}
-              equipos={listaEquipos}
-              cargandoEquipos={flota.isPending}
-              avisoEquipos={avisoEquipos}
-              equiposIniciales={equiposIniciales}
-              equiposExtras={equiposExtras}
-              guardando={actualizar.isPending}
-              error={actualizar.error}
-              onGuardar={guardarCuenta}
-              onCancelar={cerrarModal}
-            />
-          )}
+          <FormularioCuenta
+            usuario={modal.usuario}
+            grupos={listaGrupos}
+            gruposError={grupos.error}
+            guardando={actualizar.isPending}
+            error={actualizar.error}
+            onGuardar={guardarCuenta}
+            onCancelar={cerrarModal}
+          />
         </Dialogo>
       )}
 
@@ -986,7 +763,8 @@ export default function Usuarios() {
         <Dialogo titulo="Dar de baja la cuenta" onCerrar={cerrarModal}>
           <p>
             ¿Dar de baja a <b>{modal.usuario.nombre}</b> ({modal.usuario.usuario})? La persona dejará de
-            poder entrar, pero sus datos se conservan y se puede volver a dar de alta.
+            poder entrar; sus datos y su equipo se conservan, y puedes reactivar la cuenta cuando la
+            necesites.
           </p>
           {darDeBaja.error !== null && <MensajeError error={darDeBaja.error} />}
           <div className="dialogo-pie">

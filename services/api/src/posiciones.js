@@ -5,7 +5,7 @@ import { consultar } from './db.js';
 import { aPosicion } from './dto.js';
 import { noEncontrado } from './errores.js';
 import { leerRango, respuestaJson } from './http.js';
-import { PREDICADO_PERMISO, buscarDispositivo, permisoDe } from './flota.js';
+import { PREDICADO_PERMISO, buscarDispositivo, permisoDe, puedeVerDeshabilitado } from './flota.js';
 
 export const SELECT_POSICION_ACTUAL = `
   SELECT coalesce(pa.posicion_id, pa.id) AS id,
@@ -49,12 +49,17 @@ export async function listarPosicionesVivas(ctx) {
 }
 
 export async function obtenerPosicionDispositivo(ctx) {
-  const dispositivo = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal);
+  const dispositivo = await buscarDispositivo(ctx.pool, ctx.usuario, ctx.params.id, ctx.signal, {
+    incluirDeshabilitado: true,
+  });
   if (!dispositivo) throw noEncontrado('El dispositivo no existe o no está visible para la cuenta.');
+  // La visibilidad ya la validó buscarDispositivo; para el administrador que
+  // audita un equipo dado de baja no se vuelve a exigir d.habilitado.
+  const visibilidad = puedeVerDeshabilitado(ctx.usuario) ? 'TRUE' : 'd.habilitado';
   const { rows } = await consultar(
     ctx.pool,
     `${SELECT_POSICION_ACTUAL}
-     WHERE d.habilitado AND pa.dispositivo_id = $2 AND ${PREDICADO_PERMISO}
+     WHERE ${visibilidad} AND pa.dispositivo_id = $2 AND ${PREDICADO_PERMISO}
      LIMIT 1`,
     [permisoDe(ctx.usuario), Number(dispositivo.id)],
     { signal: ctx.signal },

@@ -273,7 +273,7 @@ export default function Sistema() {
     mutationFn: (usuario: UsuarioPlataforma) => api.borrar<void>(`/api/v1/usuarios/${idEnUrl(usuario)}`),
     onSuccess: () => {
       cliente.invalidateQueries({ queryKey: ['usuarios-plataforma'] });
-      setExito('Cuenta dada de baja. Se puede volver a dar de alta desde Usuarios.');
+      setExito('Cuenta dada de baja. Puedes reactivarla cuando la necesites.');
     },
   });
 
@@ -447,7 +447,7 @@ export default function Sistema() {
                               onClick={() => altaAdmin.mutate(usuario)}
                               disabled={altaAdmin.isPending}
                             >
-                              {altaAdmin.isPending ? 'Dando de alta…' : 'Dar de alta'}
+                              {altaAdmin.isPending ? 'Reactivando…' : 'Reactivar'}
                             </button>
                           )}
                         </div>
