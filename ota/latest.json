@@ -1,7 +1,7 @@
 {
-  "version": "2.1.84",
-  "versionCode": 294,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.1.84.apk",
-  "notes": "Ruta continua: GPS activo toda la jornada, arranque de jornada corregido y rescate más rápido",
-  "sha256": "04f663101fbe8d95dd91e3084ba75e9d749d0120161c55c85b1a6a4345f85dd7"
+  "version": "2.2.0",
+  "versionCode": 295,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.2.0.apk",
+  "notes": "Nuevo diseño de bienvenida, permisos y consola; inicio y fin de jornada que llegan aunque no haya señal; velocidad calculada; aviso de apagado por batería o manual; ahorro de envíos con batería baja; actualización más segura",
+  "sha256": "dcc2ce10c339d90834a0f21d440a8dd9a287aed99de97bae8c040cc25cdd207e"
 }
