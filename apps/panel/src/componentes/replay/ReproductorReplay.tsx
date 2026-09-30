@@ -14,8 +14,6 @@ import Icono from './Icono';
 import { colorToken, useTema } from '@/lib/tema';
 import { traerDireccion } from '@/dominio/datos';
 import {
-  ETIQUETA_METODO_TRAMO,
-  ETIQUETA_MODO_REAL,
   estadoDePunto,
   fechaHoraCorta,
   horaCorta,
@@ -24,10 +22,8 @@ import {
   indiceMasCercano,
   indicePorInstante,
   milisegundos,
-  modoDePunto,
   puntoEnInstante,
   serieBateria,
-  tramoDeIndice,
 } from '@/dominio/replay';
 import type { EstadoUnidad, Microparada, Parada, TramoReconstruido } from '@/dominio/replay';
 
@@ -187,7 +183,9 @@ const ContextoReproductor = createContext<Reproductor | null>(null);
 export default function ReproductorReplay({ mapa, posiciones, huecos, reconstruidos, dispositivo, finRango, paradas = SIN_PARADAS, microparadas = SIN_MICROPARADAS, children }: Props) {
   const finRangoMs = finRango ? milisegundos(finRango) : null;
   const [indice, setIndice] = useState(0);
+  const reproduciendoRef = useRef(false);
   const [reproduciendo, setReproduciendo] = useState(false);
+  reproduciendoRef.current = reproduciendo;
   const [velocidadReproduccion, setVelocidadReproduccion] = useState(1);
   // Seguir apagado por defecto: el encuadre inicial del recorrido manda hasta
   // que el usuario pida acompañar el marcador.
@@ -236,16 +234,46 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
   // estado que depende de una prop, y el reloj en un efecto de layout que corre
   // antes de los efectos del marcador y del bucle. La selección vuelve al
   // primer punto del recorrido nuevo (o se suelta si no hay ninguno).
+  //
+  // En vivo (Replay refresca hoy cada 15 s) el array nuevo es el MISMO
+  // recorrido con puntos al final: no se reinicia nada (antes volvía al
+  // inicio y paraba la reproducción en cada refresco). Si se estaba mirando
+  // el último punto, se sigue al nuevo último.
   const [recorrido, setRecorrido] = useState(posiciones);
+  const extensionDe = (previo: Posicion[], nuevo: Posicion[]) =>
+    previo.length > 0 && nuevo.length >= previo.length && nuevo[0]?.registradoEn === previo[0]?.registradoEn;
+  const esExtension = recorrido !== posiciones && extensionDe(recorrido, posiciones);
+  const seguirAlFinal = esExtension && !reproduciendo && indice >= recorrido.length - 1;
   if (recorrido !== posiciones) {
     setRecorrido(posiciones);
-    setIndice(0);
-    setReproduciendo(false);
-    setSeleccionado(posiciones.length > 0 ? 0 : null);
-    setParadaSeleccionada(null);
+    if (esExtension) {
+      if (seguirAlFinal) {
+        setIndice(posiciones.length - 1);
+        if (seleccionado === recorrido.length - 1) setSeleccionado(posiciones.length - 1);
+      }
+    } else {
+      setIndice(0);
+      setReproduciendo(false);
+      setSeleccionado(posiciones.length > 0 ? 0 : null);
+      setParadaSeleccionada(null);
+    }
   }
 
+  const ultimoRecorrido = useRef<Posicion[]>(posiciones);
   useLayoutEffect(() => {
+    const previo = ultimoRecorrido.current;
+    ultimoRecorrido.current = posiciones;
+    if (previo !== posiciones && extensionDe(previo, posiciones)) {
+      // Misma ruta con más puntos: el reloj sigue donde estaba (o salta al
+      // nuevo final si se estaba en el último punto).
+      if (!reproduciendoRef.current && indiceRef.current >= previo.length - 1) {
+        indiceRef.current = posiciones.length - 1;
+        indicePintadoRef.current = posiciones.length - 1;
+        instanteRef.current = milisegundos(posiciones[posiciones.length - 1].registradoEn);
+      }
+      sincronizarSlider(instanteRef.current);
+      return;
+    }
     indiceRef.current = 0;
     indicePintadoRef.current = 0;
     instanteRef.current = posiciones.length > 0 ? milisegundos(posiciones[0].registradoEn) : 0;
@@ -734,24 +762,13 @@ function GraficoBateria({ ampliada }: { ampliada: boolean }) {
 // recepción en el servidor eran datos técnicos y se retiraron. Incluye
 // acciones para volver al punto o soltar la selección.
 export function PanelPuntoSeleccionado() {
-  const { posiciones, huecos, reconstruidos, dispositivo, seleccionado, finRangoMs } = useReproductor();
+  const { posiciones, huecos, dispositivo, seleccionado, finRangoMs } = useReproductor();
   const punto = seleccionado != null ? posiciones[seleccionado] ?? null : null;
   const estado = useMemo(
     () => (seleccionado == null ? null : estadoDePunto(posiciones, huecos, seleccionado, Date.now(), finRangoMs)),
     [posiciones, huecos, seleccionado, finRangoMs],
   );
   // El clic sobre un trazado reconstruido selecciona su fix más cercano, que
-  // es un extremo del tramo: la ficha muestra su método (ADR-007). En GPS
-  // registrado se añade el modo (vehículo, a pie o detenido) sin mezclar las
-  // semánticas: lo reconstruido nunca se rotula como GPS.
-  const tramo = useMemo(
-    () => (seleccionado == null ? null : tramoDeIndice(posiciones, reconstruidos, seleccionado)),
-    [posiciones, reconstruidos, seleccionado],
-  );
-  const modo = useMemo(
-    () => (seleccionado == null || tramo != null ? null : modoDePunto(posiciones, seleccionado)),
-    [posiciones, seleccionado, tramo],
-  );
   const direccion = useDireccion(punto?.latitud ?? null, punto?.longitud ?? null, punto != null, punto?.precisionM ?? null);
   if (!punto || seleccionado == null) {
     return (
@@ -775,12 +792,6 @@ export function PanelPuntoSeleccionado() {
         <dd>{bateria(punto.bateriaPct)}</dd>
         <dt>Estado</dt>
         <dd>{estado ? ETIQUETA_ESTADO_PUNTO[estado] : GUION}</dd>
-        <dt>Tramo</dt>
-        <dd>
-          {tramo
-            ? `${ETIQUETA_METODO_TRAMO[tramo.metodo] ?? 'Tramo reconstruido'}`
-            : `Registrado por el equipo${modo ? ` · ${ETIQUETA_MODO_REAL[modo]}` : ''}`}
-        </dd>
         <dt>Equipo</dt>
         <dd>{dispositivo ? (dispositivo.habilitado ? 'Activo' : 'Dado de baja') : GUION}</dd>
       </dl>
@@ -1137,9 +1148,14 @@ function PistaTiempo({ ampliada }: { ampliada: boolean }) {
     setBajo({ fraccion, instante, marca: marcaEn(instante, anchoUtil) });
   }
 
-  // El clic ya movió el slider (onChange); si cayó sobre una parada o una
-  // microparada, además se selecciona y el mapa vuela hasta ella.
-  function alPulsar() {
+  // Un arrastre del slider también termina en "click" al soltar: antes eso
+  // seleccionaba la parada bajo el cursor y devolvía el reproductor a su
+  // inicio. Solo cuenta como clic si el puntero casi no se movió.
+  const inicioPulsacion = useRef<number | null>(null);
+  function alPulsar(evento: EventoRaton<HTMLDivElement>) {
+    const desde = inicioPulsacion.current;
+    inicioPulsacion.current = null;
+    if (desde == null || Math.abs(evento.clientX - desde) > 4) return;
     const marca = bajo?.marca;
     if (marca?.tipo === 'parada') {
       const { parada, indice } = marca;
@@ -1183,6 +1199,9 @@ function PistaTiempo({ ampliada }: { ampliada: boolean }) {
         className={`pista-riel${bajo && bajo.marca.tipo !== 'hora' ? ' sobre-marca' : ''}`}
         onMouseMove={alMover}
         onMouseLeave={() => setBajo(null)}
+        onMouseDown={(evento) => {
+          inicioPulsacion.current = evento.clientX;
+        }}
         onClick={alPulsar}
       >
         <div className="pista-marcas" aria-hidden="true">
@@ -1205,7 +1224,7 @@ function PistaTiempo({ ampliada }: { ampliada: boolean }) {
                 className={`pista-parada${paradaSeleccionada === i ? ' activa' : ''}${enCurso ? ' en-curso' : ''}`}
                 style={{ left: `${pct(desde)}%`, width: `${pct(hasta) - pct(desde)}%` }}
               >
-                <span>{i + 1}</span>
+                <span className="pista-rombo" />
               </span>
             );
           })}

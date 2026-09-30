@@ -1011,15 +1011,11 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
     border: 0; background: transparent; color: var(--color-texto-3);
   }
   & .replay-ampliar:hover { color: var(--color-marca); background: var(--color-fondo); }
-  /* Al pasar el cursor el icono late hacia afuera (o hacia adentro al
-     reducir) y el borde de la franja insinúa el cambio de tamaño. */
-  & .replay-ampliar svg { transition: transform 200ms ease; }
-  & .replay-ampliar:hover svg { animation: replay-latir-ampliar 900ms var(--curva-liquida) infinite; }
-  & .replay-ampliar[aria-pressed="true"]:hover svg { animation-name: replay-latir-reducir; }
-  & .replay-timeline:has(.replay-ampliar:hover) { animation: replay-insinuar 900ms ease-in-out infinite; }
-  @media (prefers-reduced-motion: reduce) {
-    & .replay-ampliar:hover svg, & .replay-timeline:has(.replay-ampliar:hover) { animation: none; }
-  }
+  /* Sin animaciones en bucle al pasar el cursor: cambiar la propiedad
+     animation de la franja al entrar y salir del botón relanzaba su fundido de
+     entrada y la franja parpadeaba. Solo un realce del ícono. */
+  & .replay-ampliar svg { transition: transform 180ms ease; }
+  & .replay-ampliar:hover svg { transform: scale(1.15); }
   & .replay-lectura { padding-right: 20px; }
   & .replay-timeline .replay-bateria {
     position: relative;
@@ -1089,6 +1085,36 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
   & .replay-timeline .replay-bateria { zoom: calc(1 / var(--zoom-ui)); height: calc(36px * var(--zoom-ui)); }
   & .replay-timeline:has(.replay-linea.ampliada) .replay-bateria { height: calc(130px * var(--zoom-ui)); }
   & .bateria-etiqueta { font-size: calc(11.5px * var(--zoom-ui)); }
+  & .replay-vivo {
+    display: inline-flex; align-items: center; gap: 6px; margin: 0 0 4px; padding: 2px 9px 2px 7px;
+    border-radius: 999px; background: color-mix(in srgb, var(--color-movimiento) 12%, transparent);
+    color: var(--color-movimiento); font-size: 12px; font-weight: 600;
+  }
+  & .replay-vivo-punto {
+    width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+    animation: replay-vivo 1.6s ease-in-out infinite;
+  }
+  /* Paradas en la pista: un rombo en el inicio y una línea fina del mismo
+     color que marca cuánto duró (sin sombrear la franja). Se lee igual en la
+     franja chica y en la ampliada. Microparadas: rombo hueco pequeño. */
+  & .pista-parada {
+    height: 3px; min-width: 2px; border: 0; border-radius: 2px; overflow: visible; display: block;
+    background: color-mix(in srgb, var(--color-detenido) 70%, transparent); container-type: normal;
+  }
+  & .pista-parada > .pista-rombo {
+    position: absolute; left: 0; top: 50%; width: 10px; height: 10px;
+    transform: translate(-50%, -50%) rotate(45deg); border-radius: 2px;
+    background: var(--color-detenido); box-shadow: 0 0 0 2px var(--color-superficie);
+    transition: transform 160ms ease, background 160ms ease;
+  }
+  & .pista-parada.en-curso > .pista-rombo { transform: translate(-50%, -50%) rotate(45deg) scale(1.2); }
+  & .pista-parada.activa { background: color-mix(in srgb, var(--color-marca) 70%, transparent); }
+  & .pista-parada.activa > .pista-rombo { background: var(--color-marca); transform: translate(-50%, -50%) rotate(45deg) scale(1.25); }
+  & .pista-micro {
+    width: 7px; height: 7px; margin-left: -3.5px; border-radius: 1.5px; transform: translateY(-50%) rotate(45deg);
+    background: var(--color-superficie); border: 1.5px solid var(--color-detenido); box-shadow: none;
+  }
+  & .replay-linea.ampliada .pista-parada > .pista-rombo { width: 12px; height: 12px; }
   /* Chrome marca el slider como foco de teclado también al hacer clic: el
      marco magenta global rodeaba toda la pista. El foco se indica en el pulgar. */
   & .replay-slider:focus, & .replay-slider:focus-visible { outline: none; box-shadow: none; border-color: transparent; }
@@ -1139,3 +1165,5 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
 .replay-plegar-micro { margin-top: 2px; font-size: 13px; color: var(--apagado); }
 .replay-microparadas li > button { padding-block: 5px; }
 .replay-microparadas .parada-hora, .replay-microparadas .parada-tiempo { font-size: 13px; font-weight: 600; }
+
+@keyframes replay-vivo { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.75); } }

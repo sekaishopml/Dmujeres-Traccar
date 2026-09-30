@@ -43,7 +43,9 @@ function IntegridadRecorrido({
   huecos,
   reconstruidos,
   calidad,
+  enVivo = false,
 }: {
+  enVivo?: boolean;
   totalFixes: number;
   huecos: Hueco[];
   reconstruidos: TramoReconstruido[];
@@ -58,6 +60,11 @@ function IntegridadRecorrido({
       : `${huecos.length} ${huecos.length === 1 ? 'corte' : 'cortes'} de señal (${formatoMinutos(minutosSinSenal)})`;
   return (
     <section className="replay-integridad" aria-label="Integridad del recorrido">
+      {enVivo && (
+        <p className="replay-vivo">
+          <span className="replay-vivo-punto" aria-hidden="true" /> En vivo · se actualiza cada 15 s
+        </p>
+      )}
       <p>
         <strong>{totalFixes.toLocaleString('es-EC')}</strong> puntos GPS · {sinSenal}
         {estimados > 0 && ` · ${estimados} ${estimados === 1 ? 'salto estimado' : 'saltos estimados'} por calle`}
@@ -109,6 +116,8 @@ const COLOR_BORDE = '#ffffff';
 const COLOR_SIN_SENAL = '#8a94a3';
 const ID_FLECHA = 'dir-ruta';
 const MIN_PARADA_MS = 3 * 60_000;
+const REFRESCO_VIVO_MS = 15_000;
+const REFRESCO_VIVO_PARADAS_MS = 60_000;
 // Distancia plana en metros; a escala de cuadras el error frente a la esfera
 // es despreciable.
 function distanciaAproxM(latA: number, lonA: number, latB: number, lonB: number): number {
@@ -351,11 +360,17 @@ export default function Replay() {
     setDispositivoId(seleccionado);
   }, [flota.data, dispositivoId, seleccionado]);
 
+  // En vivo: si el rango llega a hoy, el recorrido se vuelve a pedir cada
+  // 15 s y la ruta se va trazando sola. El resto de rangos es histórico y no
+  // se refresca.
+  const enVivo = rangoValido && hasta === fechaHoyLocal();
   const replay = useQuery({
     queryKey: ['replay', seleccionado, desde, hasta],
     queryFn: () => traerReplay(seleccionado, inicioDeDia(desde), finDeDia(hasta)),
     enabled: seleccionado !== '' && rangoValido,
-    staleTime: CACHE_AUDITORIA_MS,
+    staleTime: enVivo ? 0 : CACHE_AUDITORIA_MS,
+    refetchInterval: enVivo ? REFRESCO_VIVO_MS : false,
+    refetchIntervalInBackground: false,
   });
 
   // Paradas del servidor en paralelo al recorrido. Si la consulta falla, el
@@ -365,7 +380,8 @@ export default function Replay() {
     queryKey: ['paradas', seleccionado, desde, hasta],
     queryFn: () => traerParadas(seleccionado, inicioDeDia(desde), finDeDia(hasta)),
     enabled: seleccionado !== '' && rangoValido,
-    staleTime: CACHE_AUDITORIA_MS,
+    staleTime: enVivo ? 0 : CACHE_AUDITORIA_MS,
+    refetchInterval: enVivo ? REFRESCO_VIVO_PARADAS_MS : false,
   });
 
   // Jornadas del equipo en la ventana: alimentan los marcadores de
@@ -378,7 +394,8 @@ export default function Replay() {
     queryFn: () => traerJornadas(seleccionado, inicioDeDia(desde), finDeDia(hasta)),
     enabled: seleccionado !== '' && rangoValido,
     retry: false,
-    staleTime: CACHE_AUDITORIA_MS,
+    staleTime: enVivo ? 0 : CACHE_AUDITORIA_MS,
+    refetchInterval: enVivo ? REFRESCO_VIVO_PARADAS_MS : false,
   });
 
   const { posiciones, estancias } = useMemo(() => {
@@ -707,10 +724,16 @@ export default function Replay() {
   // El efecto depende de las posiciones cargadas, no del índice de
   // reproducción, así que reproducir nunca reencuadra el mapa. Los marcadores
   // se recrean al cambiar de recorrido para refrescar sus etiquetas.
+  // El encuadre solo se hace al abrir un recorrido (persona o fechas): en vivo
+  // llegan puntos cada 15 s y reencuadrar movería el mapa bajo el cursor.
+  const recorridoEncuadrado = useRef('');
   useEffect(() => {
     if (!mapa || posiciones.length === 0) return;
     const primera = posiciones[0];
     const ultima = posiciones[posiciones.length - 1];
+    const claveRecorrido = `${seleccionado}|${desde}|${hasta}`;
+    const encuadrar = recorridoEncuadrado.current !== claveRecorrido;
+    recorridoEncuadrado.current = claveRecorrido;
     // El encuadre se fija antes de colocar los pines: las ranuras de etiqueta
     // se deciden con la proyección de pantalla definitiva. cameraForBounds +
     // jumpTo aplica la cámara en el acto (fitBounds la agenda al siguiente
@@ -719,10 +742,12 @@ export default function Replay() {
       (caja, posicion) => caja.extend([posicion.longitud, posicion.latitud] as [number, number]),
       new LngLatBounds([primera.longitud, primera.latitud], [primera.longitud, primera.latitud]),
     );
-    const camara = mapa.cameraForBounds(limites, { padding: 64, maxZoom: 14 });
-    if (camara) mapa.jumpTo(camara);
+    if (encuadrar) {
+      const camara = mapa.cameraForBounds(limites, { padding: 64, maxZoom: 14 });
+      if (camara) mapa.jumpTo(camara);
+    }
     const textoInicio = `Inicio ${horaCorta(primera.registradoEn)}`;
-    const textoFin = `Fin ${horaCorta(ultima.registradoEn)}`;
+    const textoFin = `${enVivo ? 'Último' : 'Fin'} ${horaCorta(ultima.registradoEn)}`;
     const inicio = marcadorExtremo(
       mapa,
       'inicio',
@@ -744,7 +769,7 @@ export default function Replay() {
       fin.remove();
       liberarUbicaciones(etiquetasExtremos, ['inicio', 'fin']);
     };
-  }, [mapa, posiciones]);
+  }, [mapa, posiciones, seleccionado, desde, hasta, enVivo]);
 
   // Inicio y fin de jornada. El endpoint solo trae horas, así que cada extremo
   // se ancla al fix más cercano en el tiempo y solo si cae dentro del tramo
@@ -813,6 +838,7 @@ export default function Replay() {
     return (
       <>
         <IntegridadRecorrido
+          enVivo={enVivo}
           totalFixes={posiciones.length}
           huecos={huecos}
           reconstruidos={reconstruidos}
