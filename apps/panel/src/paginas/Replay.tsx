@@ -11,8 +11,8 @@ import ReproductorReplay, {
   ListaParadas,
   PanelPuntoSeleccionado,
 } from '@/componentes/replay/ReproductorReplay';
-import type { FeatureCollection, LineString } from 'geojson';
 import FiltroReplay from '@/componentes/replay/FiltroReplay';
+import { flechasDeRecorrido } from '@/componentes/replay/flechas';
 import { depurarRecorrido } from '@/dominio/depuracion';
 import { traerFlota, traerJornadas, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from '@/dominio/datos';
 import { esNoEncontrado, mensajeError } from '@/dominio/errores';
@@ -99,8 +99,6 @@ const LADO_FLECHA = 64;
 const PIXEL_RATIO_FLECHA = 2;
 // Núcleo claro de la flecha: se lee sobre la línea azul y sobre satélite.
 const NUCLEO_FLECHA = '#ffffff';
-// Grosor del filo en px nativos (3 px lógicos a escala 1).
-const FILO_FLECHA = 10;
 // Trazado: una sola línea azul marino con borde blanco, que se lee igual sobre
 // calles y satélite. Lo estimado va punteado en el mismo azul y la falta de señal en
 // gris punteado: nunca se confunden con GPS registrado.
@@ -111,43 +109,32 @@ const ID_FLECHA = 'dir-ruta';
 const MIN_PARADA_MS = 3 * 60_000;
 const REFRESCO_VIVO_MS = 15_000;
 const REFRESCO_VIVO_PARADAS_MS = 60_000;
-// Distancia plana en metros; a escala de cuadras el error frente a la esfera
-// es despreciable.
-function distanciaAproxM(latA: number, lonA: number, latB: number, lonB: number): number {
-  const dLat = (latB - latA) * 111320;
-  const dLon = (lonB - lonA) * 111320 * Math.cos(((latA + latB) / 2) * (Math.PI / 180));
-  return Math.hypot(dLat, dLon);
-}
-
-// Chevrón de sentido registrado como imagen del mapa (ver capa replay-flechas).
-function imagenDireccion(borde: string): ImageData | null {
+// Flecha de sentido registrada como imagen del mapa (capa replay-flechas):
+// disco azul marino con borde blanco y punta de flecha blanca hacia el norte;
+// la capa la gira con el rumbo de cada fix.
+function imagenDireccion(nucleo: string): ImageData | null {
   const lienzo = document.createElement('canvas');
   lienzo.width = LADO_FLECHA;
   lienzo.height = LADO_FLECHA;
   const contexto = lienzo.getContext('2d');
-  // Sin contexto 2D no hay imagen; la capa de dirección se omite y queda el
-  // corredor coloreado por velocidad.
+  // Sin contexto 2D no hay imagen; la capa de dirección se omite.
   if (!contexto) return null;
-  // Chevrón ">" blanco con contorno del azul de la ruta: se lee sobre la
-  // línea, sobre calles y sobre satélite. Apunta hacia donde avanza el
-  // recorrido (la capa lo alinea con la línea).
-  const escala = LADO_FLECHA / 64;
-  const trazar = () => {
-    contexto.beginPath();
-    contexto.moveTo(20 * escala, 12 * escala);
-    contexto.lineTo(44 * escala, 32 * escala);
-    contexto.lineTo(20 * escala, 52 * escala);
-  };
-  contexto.lineCap = 'round';
-  contexto.lineJoin = 'round';
-  trazar();
-  contexto.lineWidth = (FILO_FLECHA + 8) * escala;
-  contexto.strokeStyle = COLOR_RUTA;
+  const c = LADO_FLECHA / 2;
+  contexto.beginPath();
+  contexto.arc(c, c, c - 3, 0, Math.PI * 2);
+  contexto.fillStyle = COLOR_RUTA;
+  contexto.fill();
+  contexto.lineWidth = 5;
+  contexto.strokeStyle = COLOR_BORDE;
   contexto.stroke();
-  trazar();
-  contexto.lineWidth = FILO_FLECHA * escala;
-  contexto.strokeStyle = borde;
-  contexto.stroke();
+  contexto.beginPath();
+  contexto.moveTo(c, 13);
+  contexto.lineTo(c + 14, 44);
+  contexto.lineTo(c, 36);
+  contexto.lineTo(c - 14, 44);
+  contexto.closePath();
+  contexto.fillStyle = nucleo;
+  contexto.fill();
   return contexto.getImageData(0, 0, LADO_FLECHA, LADO_FLECHA);
 }
 
@@ -478,40 +465,12 @@ export default function Replay() {
     [posiciones, huecos, reconstruidos],
   );
   const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
-  // Marcas de dirección espaciadas por distancia (no una por fix); la selección
-  // del mapa no depende de ellas, se resuelve por cercanía sobre la línea de
-  // acierto. Las marcas que caen sobre una parada se descartan en cualquier
-  // origen (ajustadas, GPS real y la marca centrada de un tramo corto): una
-  // flecha encima de la insignia fingiría movimiento en el punto detenido. Con
-  // el mismo criterio se descartan las que caen junto a un tramo sin GPS
-  // (estimado o hueco): el fix es real, pero encima del punteado gris la marca
-  // fingiría un movimiento que la traza no respalda.
-  // Líneas continuas del recorrido con movimiento (GPS o ajustado a calles):
-  // la capa de flechas coloca chevrones a lo largo de ellas con separación en
-  // píxeles de pantalla, así hay flecha en cada tramo y la densidad se adapta
-  // al zoom sola. Se unen los pares consecutivos porque un tramo de dos puntos
-  // es más corto que la separación y no recibiría flecha.
-  const direccion = useMemo<FeatureCollection<LineString>>(() => {
-    const lineas: [number, number][][] = [];
-    for (const segmento of segmentos) {
-      const conFlecha =
-        (segmento.tipo === 'ruta' && segmento.modo !== 'quieto') || segmento.tipo === 'matched';
-      if (!conFlecha || segmento.coordenadas.length < 2) continue;
-      const ultima = lineas[lineas.length - 1];
-      const fin = ultima?.[ultima.length - 1];
-      const [primero, ...resto] = segmento.coordenadas;
-      // Unión con tolerancia de 25 m: el trazado ajustado a calles no empieza
-      // exactamente en el fix crudo y sin unir quedaban trocitos sin flecha.
-      if (fin && distanciaAproxM(fin[1], fin[0], primero[1], primero[0]) <= 25) ultima.push(...resto);
-      else lineas.push([...segmento.coordenadas]);
-    }
-    return {
-      type: 'FeatureCollection',
-      features: lineas
-        .filter((linea) => linea.length >= 2)
-        .map((coordinates) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates } })),
-    };
-  }, [segmentos]);
+  // Flechas de sentido sobre la línea dibujada, con zoom progresivo y la hora
+  // de paso de cada una (ver flechas.ts). En paradas y deriva quieta no hay.
+  const direccion = useMemo(
+    () => flechasDeRecorrido(posiciones, segmentos, reconstruidos, paradas),
+    [posiciones, segmentos, reconstruidos, paradas],
+  );
   // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
   // dispersión real sin líneas que la unan.
   const halos = useMemo(() => halosDeParadas(posiciones, paradas), [posiciones, paradas]);
@@ -662,8 +621,9 @@ export default function Replay() {
     if (mapa.hasImage(ID_FLECHA)) mapa.removeImage(ID_FLECHA);
     const imagenFlecha = imagenDireccion(NUCLEO_FLECHA);
     if (imagenFlecha) mapa.addImage(ID_FLECHA, imagenFlecha, { pixelRatio: PIXEL_RATIO_FLECHA });
-    // Capas de flechas de versiones anteriores (puntos sueltos) se reemplazan.
-    if (mapa.getLayer('replay-flechas') && mapa.getLayoutProperty('replay-flechas', 'symbol-placement') !== 'line') {
+    // Capas de flechas de versiones anteriores (chevrones a lo largo de la
+    // línea) se reemplazan por la flecha por fix.
+    if (mapa.getLayer('replay-flechas') && mapa.getLayoutProperty('replay-flechas', 'symbol-placement') === 'line') {
       mapa.removeLayer('replay-flechas');
     }
     if (mapa.hasImage(ID_FLECHA) && !mapa.getLayer('replay-flechas')) {
@@ -671,19 +631,18 @@ export default function Replay() {
         id: 'replay-flechas',
         type: 'symbol',
         source: 'replay-flechas',
-        minzoom: 11,
+        // Zoom progresivo: cada flecha aparece desde su nivel (n).
+        filter: ['<=', ['get', 'n'], ['zoom']] as never,
         layout: {
-          'symbol-placement': 'line',
-          'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 11, 40, 14, 56, 17, 72],
           'icon-image': ID_FLECHA,
+          'icon-rotate': ['get', 'r'],
           'icon-rotation-alignment': 'map',
-          'icon-keep-upright': false,
-          'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.5, 14, 0.62, 17, 0.8],
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.42, 15, 0.52, 18, 0.66],
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
           'icon-padding': 0,
+          'symbol-sort-key': ['get', 't'],
         },
-        paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0.75, 13, 1] },
       });
     }
     // ReproductorReplay agrega el aro del punto seleccionado en un efecto

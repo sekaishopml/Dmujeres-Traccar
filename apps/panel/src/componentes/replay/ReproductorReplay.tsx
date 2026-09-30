@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as EventoRaton, ReactNode, RefObject } from 'react';
-import { Marker } from 'maplibre-gl';
+import { Marker, Popup } from 'maplibre-gl';
 import type { GeoJSONSource, Map as TipoMapa, MapMouseEvent } from 'maplibre-gl';
 import { useQuery } from '@tanstack/react-query';
 import { CategoryScale, Chart as ChartJS, Filler, LineElement, LinearScale, PointElement } from 'chart.js';
@@ -8,7 +8,7 @@ import type { ChartData, ChartOptions } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import type { FeatureCollection, Point } from 'geojson';
 import type { Dispositivo, Hueco, Posicion } from '@contratos';
-import { bateria, duracion, GUION, velocidad } from '@/dominio/formatoBase';
+import { bateria, duracion, fecha, GUION, velocidad } from '@/dominio/formatoBase';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import Icono from './Icono';
 import { colorToken, useTema } from '@/lib/tema';
@@ -33,6 +33,17 @@ import type { EstadoUnidad, Microparada, Parada, TramoReconstruido } from '@/dom
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Filler);
 
 const SIN_PARADAS: Parada[] = [];
+const HORA_SEGUNDOS = new Intl.DateTimeFormat('es-EC', {
+  timeZone: 'America/Guayaquil',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+function horaConSegundos(valor: string): string {
+  const d = new Date(valor);
+  return Number.isNaN(d.getTime()) ? GUION : HORA_SEGUNDOS.format(d);
+}
 // Deben coincidir con --eje-bateria y --eje-velocidad de replay.css.
 const ANCHO_EJE_BATERIA_PX = 42;
 const ANCHO_EJE_VELOCIDAD_PX = 58;
@@ -54,6 +65,21 @@ const ZOOM_PARADA_MIN = 15;
 const ZOOM_PARADA_MAX = 16;
 const DURACION_VUELO_PARADA_MS = 900;
 const CURVA_VUELO_PARADA = 1.42;
+
+// Fix más próximo en el tiempo al instante dado (posiciones en orden).
+function indiceCercano(posiciones: Posicion[], instante: number): number {
+  let bajo = 0;
+  let alto = posiciones.length - 1;
+  while (bajo < alto) {
+    const medio = (bajo + alto) >> 1;
+    if (milisegundos(posiciones[medio].registradoEn) < instante) bajo = medio + 1;
+    else alto = medio;
+  }
+  if (bajo > 0 && instante - milisegundos(posiciones[bajo - 1].registradoEn) < milisegundos(posiciones[bajo].registradoEn) - instante) {
+    return bajo - 1;
+  }
+  return bajo;
+}
 
 function movimientoReducido(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -190,6 +216,11 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
   // Seguir apagado por defecto: el encuadre inicial del recorrido manda hasta
   // que el usuario pida acompañar el marcador.
   const [seguir, setSeguir] = useState(false);
+  // El clic en el mapa pide el globo del punto (ver efecto del globo).
+  const globoPedido = useRef(false);
+  // Posición sobre la línea donde se hizo clic: el aro y el globo se muestran
+  // ahí (el fix crudo puede quedar a decenas de metros de la calle).
+  const [puntoClic, setPuntoClic] = useState<[number, number] | null>(null);
   // El primer punto del recorrido queda seleccionado por defecto: la ficha
   // abre con el detalle del arranque y el mapa lo refleja con su aro, sin
   // vuelo (el encuadre inicial del recorrido manda hasta que el usuario pida
@@ -418,11 +449,11 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
         {
           type: 'Feature',
           properties: {},
-          geometry: { type: 'Point', coordinates: [fijado.longitud, fijado.latitud] },
+          geometry: { type: 'Point', coordinates: puntoClic ?? [fijado.longitud, fijado.latitud] },
         },
       ],
     };
-  }, [posiciones, seleccionado]);
+  }, [posiciones, seleccionado, puntoClic]);
 
   useEffect(() => {
     if (!mapa) return;
@@ -444,6 +475,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
       setReproduciendo(false);
       setIndice(acotado);
       setSeleccionado(acotado);
+      setPuntoClic(null);
       // Un fix suelto de la ruta ya no es la parada elegida.
       setParadaSeleccionada(null);
     },
@@ -481,17 +513,47 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
 
   useEffect(() => {
     if (!mapa) return;
-    // El clic se engancha a la capa de acierto de línea ('replay-linea-hit'),
-    // una copia ancha y casi transparente de la ruta que Replay agrega con sus
-    // capas. El enlace puede registrarse antes de que la capa exista (los
-    // efectos del hijo corren antes que los del padre), pero maplibre filtra
-    // las capas inexistentes en el momento del evento, así que queda válido en
-    // cuanto Replay la crea. Al no depender de acertar un fix, la selección
-    // funciona en cualquier punto del trazo y sobre los chevrones.
+    // Clic en el recorrido: si cae sobre una flecha se elige ese fix exacto
+    // (cada flecha lleva su índice); si cae sobre la línea, el fix más cercano.
+    // En ambos casos el mapa se centra en el punto elegido y el globo muestra
+    // fecha, hora y batería. El enlace a 'replay-linea-hit' puede registrarse
+    // antes de que Replay cree la capa: maplibre filtra las capas inexistentes
+    // en el momento del evento.
+    const centrar = (lon: number, lat: number) => {
+      mapa.easeTo({ center: [lon, lat], duration: movimientoReducido() ? 0 : 450, essential: true });
+    };
+    // Flecha más cercana al clic (en píxeles), aunque su nivel de zoom aún no
+    // se dibuje: cualquier punto del trazo resuelve a una posición sobre la
+    // línea y a su hora de paso.
+    const flechaEn = (evento: MapMouseEvent, radioPx: number): { lon: number; lat: number; t: number } | null => {
+      if (!mapa.getSource('replay-flechas')) return null;
+      let mejor: { lon: number; lat: number; t: number } | null = null;
+      let mejorPx = radioPx;
+      for (const flecha of mapa.querySourceFeatures('replay-flechas')) {
+        if (flecha.geometry.type !== 'Point') continue;
+        const [lon, lat] = flecha.geometry.coordinates;
+        const px = mapa.project([lon, lat]);
+        const d = Math.hypot(px.x - evento.point.x, px.y - evento.point.y);
+        if (d < mejorPx) {
+          mejorPx = d;
+          mejor = { lon, lat, t: Number(flecha.properties?.t) };
+        }
+      }
+      return mejor;
+    };
     const alPulsar = (evento: MapMouseEvent) => {
+      globoPedido.current = true;
+      const flecha = flechaEn(evento, 24);
+      if (flecha && Number.isFinite(flecha.t)) {
+        seleccionar(indiceCercano(posiciones, flecha.t));
+        setPuntoClic([flecha.lon, flecha.lat]);
+        centrar(flecha.lon, flecha.lat);
+        return;
+      }
       const indice = indiceMasCercano(posiciones, evento.lngLat.lng, evento.lngLat.lat);
       if (indice == null) return;
       seleccionar(indice);
+      centrar(posiciones[indice].longitud, posiciones[indice].latitud);
     };
     const alEntrar = () => {
       mapa.getCanvas().style.cursor = 'pointer';
@@ -499,15 +561,60 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     const alSalir = () => {
       mapa.getCanvas().style.cursor = '';
     };
-    mapa.on('click', 'replay-linea-hit', alPulsar);
+    mapa.on('mouseenter', 'replay-flechas', alEntrar);
+    mapa.on('mouseleave', 'replay-flechas', alSalir);
+    mapa.on('click', ['replay-linea-hit', 'replay-flechas'], alPulsar);
     mapa.on('mouseenter', 'replay-linea-hit', alEntrar);
     mapa.on('mouseleave', 'replay-linea-hit', alSalir);
     return () => {
-      mapa.off('click', 'replay-linea-hit', alPulsar);
+      mapa.off('mouseenter', 'replay-flechas', alEntrar);
+      mapa.off('mouseleave', 'replay-flechas', alSalir);
+      mapa.off('click', ['replay-linea-hit', 'replay-flechas'], alPulsar);
       mapa.off('mouseenter', 'replay-linea-hit', alEntrar);
       mapa.off('mouseleave', 'replay-linea-hit', alSalir);
     };
   }, [mapa, posiciones, seleccionar]);
+
+  // Globo sobre el aro del punto elegido: fecha, hora y batería del fix. Solo
+  // aparece tras un clic en el mapa (no con la selección inicial del recorrido).
+  const globo = useRef<Popup | null>(null);
+  useEffect(() => {
+    globoPedido.current = false;
+  }, [posiciones]);
+  useEffect(() => {
+    const fix = seleccionado != null ? posiciones[seleccionado] ?? null : null;
+    if (!mapa || !fix || !globoPedido.current) {
+      globo.current?.remove();
+      globo.current = null;
+      return;
+    }
+    const contenido = document.createElement('div');
+    contenido.className = 'globo-fix';
+    const filas: [string, string][] = [
+      ['Fecha', fecha(fix.registradoEn)],
+      ['Hora', horaConSegundos(fix.registradoEn)],
+      ['Batería', bateria(fix.bateriaPct)],
+    ];
+    for (const [etiqueta, valor] of filas) {
+      const fila = document.createElement('p');
+      const e = document.createElement('span');
+      e.textContent = etiqueta;
+      const v = document.createElement('strong');
+      v.textContent = valor;
+      fila.append(e, v);
+      contenido.append(fila);
+    }
+    if (!globo.current) {
+      globo.current = new Popup({ anchor: 'bottom', offset: 14, closeButton: false, closeOnClick: false, className: 'replay-globo' });
+    }
+    globo.current.setLngLat(puntoClic ?? [fix.longitud, fix.latitud]).setDOMContent(contenido).addTo(mapa);
+  }, [mapa, posiciones, seleccionado, puntoClic]);
+  useEffect(
+    () => () => {
+      globo.current?.remove();
+    },
+    [],
+  );
 
   function moverA(nuevoIndice: number) {
     if (posiciones.length === 0) return;

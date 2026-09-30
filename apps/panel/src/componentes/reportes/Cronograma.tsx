@@ -43,15 +43,21 @@ export default function Cronograma() {
   const [persona, setPersona] = useState('');
 
   const flota = useQuery({ queryKey: CLAVE_FLOTA, queryFn: () => traerFlota() });
-  const equipos = useMemo(() => equiposHabilitados(flota.data?.datos ?? []), [flota.data]);
+  // Personas en orden alfabético; sin elección, se muestra la primera.
+  const equipos = useMemo(
+    () => equiposHabilitados(flota.data?.datos ?? []).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    [flota.data],
+  );
+  const elegida = persona || equipos[0]?.idPublico || '';
 
   const lunes = lunesDe(ancla);
   const desde = vista === 'semana' ? lunes : primeroDeMes(ancla);
   const hasta = vista === 'semana' ? sumarDias(lunes, 6) : ultimoDeMes(ancla);
 
   const cronograma = useQuery({
-    queryKey: ['cronograma', desde, hasta, persona],
-    queryFn: () => traerCronograma(desde, hasta, persona),
+    queryKey: ['cronograma', desde, hasta, elegida],
+    queryFn: () => traerCronograma(desde, hasta, elegida),
+    enabled: elegida !== '',
     refetchInterval: 60_000,
   });
   const datos = useMemo(() => cronograma.data?.datos ?? [], [cronograma.data]);
@@ -60,15 +66,13 @@ export default function Cronograma() {
     setAncla(vista === 'semana' ? sumarDias(ancla, paso * 7) : sumarMeses(ancla, paso));
   const titulo = vista === 'semana' ? rangoSemana(desde, hasta) : etiquetaMes(desde);
 
-  const personas = new Set(datos.map((a) => a.dispositivoId)).size;
   const novedades = datos.filter((a) => a.tipo === 'novedad').length;
   const sinJornada = datos.filter((a) => !a.registro.conJornada).length;
 
   return (
     <div className="space-y-4">
       <AccionesPagina>
-        <Selector aria-label="Persona" className="w-48" value={persona} onChange={(e) => setPersona(e.target.value)}>
-          <option value="">Todas las personas</option>
+        <Selector aria-label="Persona" className="w-48" value={elegida} onChange={(e) => setPersona(e.target.value)}>
           {equipos.map((e) => (
             <option key={e.idPublico} value={e.idPublico}>
               {e.nombre}
@@ -100,7 +104,6 @@ export default function Cronograma() {
       <Tarjeta className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
         <p className="font-display text-[15px] font-semibold text-marino-900 first-letter:uppercase">{titulo}</p>
         <Dato valor={datos.length} etiqueta="actividades" />
-        <Dato valor={personas} etiqueta="personas" />
         <Dato valor={novedades} etiqueta="novedades" tono={novedades > 0 ? 'text-marca' : undefined} />
         <Dato
           valor={sinJornada}
@@ -125,10 +128,8 @@ export default function Cronograma() {
             setVista('semana');
           }}
         />
-      ) : persona ? (
-        <Planilla dias={diasDeSemana(lunes)} hoy={hoy} datos={datos} />
       ) : (
-        <PlanillasEquipo dias={diasDeSemana(lunes)} hoy={hoy} datos={datos} />
+        <Planilla dias={diasDeSemana(lunes)} hoy={hoy} datos={datos} />
       )}
     </div>
   );
@@ -297,25 +298,6 @@ function AuditoriaCorta({ actividad: a }: { actividad: Actividad }) {
         {!a.registro.conJornada && <TriangleAlert className="size-3 flex-none" />}
         {carga}
       </p>
-    </div>
-  );
-}
-
-// Todas las personas: una planilla por persona con actividades en la semana.
-function PlanillasEquipo({ dias, hoy, datos }: { dias: string[]; hoy: string; datos: Actividad[] }) {
-  if (datos.length === 0) {
-    return (
-      <Tarjeta>
-        <Vacio titulo="Sin actividades esta semana">Nadie cargó actividades en la app para estas fechas.</Vacio>
-      </Tarjeta>
-    );
-  }
-  const personas = [...new Map(datos.map((a) => [a.dispositivoId, a.nombre])).entries()].sort((x, y) => x[1].localeCompare(y[1], 'es'));
-  return (
-    <div className="space-y-4">
-      {personas.map(([id, nombre]) => (
-        <Planilla key={id} dias={dias} hoy={hoy} nombre={nombre} datos={datos.filter((a) => a.dispositivoId === id)} />
-      ))}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.view.animation.PathInterpolator
 import android.widget.ImageView
 import android.widget.TextView
@@ -39,6 +40,7 @@ class SplashActivity : AppCompatActivity() {
             scaleY = 0.94f
             animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(700).setInterpolator(suave).start()
         }
+        findViewById<View>(R.id.splash_loader).animate().alpha(1f).setStartDelay(300).setDuration(500).start()
         findViewById<TextView>(R.id.splash_version).apply {
             text = getString(R.string.version_format, BuildConfig.VERSION_NAME)
             animate().alpha(1f).setStartDelay(400).setDuration(600).start()

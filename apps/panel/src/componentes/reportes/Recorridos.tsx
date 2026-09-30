@@ -54,15 +54,22 @@ export default function Recorridos() {
   const [paginaViajes, setPaginaViajes] = useState(1);
   const [paginaParadas, setPaginaParadas] = useState(1);
 
+  // Personas en orden alfabético; sin elección, se muestra la primera.
+  const personas = useMemo(
+    () => equiposHabilitados(flota.data?.datos ?? []).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    [flota.data],
+  );
+  const elegido = equipo || personas[0]?.idPublico || '';
+
   const filtros = {
-    dispositivoId: equipo || undefined,
+    dispositivoId: elegido || undefined,
     desde: fechaValida(rango.desde) ? inicioDeDia(rango.desde) : undefined,
     hasta: fechaValida(rango.hasta) ? finDeDia(rango.hasta) : undefined,
   };
 
   const viajes = useQuery({
     queryKey: ['reportes', 'viajes', filtros, paginaViajes],
-    enabled: pestana === 'viajes',
+    enabled: pestana === 'viajes' && elegido !== '',
     placeholderData: keepPreviousData,
     staleTime: CACHE_AUDITORIA_MS,
     queryFn: () =>
@@ -73,7 +80,7 @@ export default function Recorridos() {
 
   const paradas = useQuery({
     queryKey: ['reportes', 'paradas', filtros, paginaParadas],
-    enabled: pestana === 'paradas',
+    enabled: pestana === 'paradas' && elegido !== '',
     placeholderData: keepPreviousData,
     staleTime: CACHE_AUDITORIA_MS,
     queryFn: () =>
@@ -84,12 +91,12 @@ export default function Recorridos() {
 
   const resumen = useQuery({
     queryKey: ['reportes', 'resumen', filtros],
+    enabled: elegido !== '',
     placeholderData: keepPreviousData,
     staleTime: CACHE_AUDITORIA_MS,
     queryFn: () => api.get<ResumenReporte>(`/api/v1/reports/summary${consulta(filtros)}`),
   });
 
-  const personas = useMemo(() => equiposHabilitados(flota.data?.datos ?? []), [flota.data]);
   // Los reportes traen el id legado; la flota lo traduce a nombre (sin
   // coincidencia se muestra "—", nunca un nombre inventado).
   const nombres = useMemo(() => new Map(personas.map((d) => [d.id, d.nombre])), [personas]);
@@ -119,13 +126,12 @@ export default function Recorridos() {
         <Selector
           aria-label="Persona"
           className="w-44"
-          value={equipo}
+          value={elegido}
           onChange={(e) => {
             setEquipo(e.target.value);
             reiniciarPaginas();
           }}
         >
-          <option value="">Todas las personas</option>
           {personas.map((p) => (
             <option key={p.idPublico} value={p.idPublico}>
               {p.nombre}
@@ -177,7 +183,7 @@ export default function Recorridos() {
           ) : r && r.porDispositivo.length > 0 ? (
             <GraficoDistancia
               filas={r.porDispositivo}
-              resaltarId={equipo}
+              resaltarId={elegido}
             />
           ) : (
             <Vacio titulo="Sin actividad">No hay actividad de personas en el rango.</Vacio>

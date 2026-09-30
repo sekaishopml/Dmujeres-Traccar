@@ -1167,3 +1167,19 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
 .replay-microparadas .parada-hora, .replay-microparadas .parada-tiempo { font-size: 13px; font-weight: 600; }
 
 @keyframes replay-vivo { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.75); } }
+
+/* Globo del punto elegido en el mapa: fecha, hora y batería del fix. Vive en
+   el contenedor de maplibre, así que se declara fuera del bloque anidado. */
+.replay-globo .maplibregl-popup-content {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #17365d;
+  color: #fff;
+  box-shadow: 0 6px 18px rgb(11 37 69 / 0.28);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.replay-globo.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: #17365d; }
+.replay-globo .globo-fix p { display: flex; justify-content: space-between; gap: 14px; margin: 0; }
+.replay-globo .globo-fix span { color: rgb(255 255 255 / 0.7); }
+.replay-globo .globo-fix strong { font-weight: 600; font-variant-numeric: tabular-nums; }
