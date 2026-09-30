@@ -1,7 +1,7 @@
 {
-  "version": "2.3.3",
-  "versionCode": 300,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.3.3.apk",
-  "notes": "Logo y estado más abajo, Iniciar/Finalizar jornada justo debajo de pendientes y batería",
-  "sha256": "7241e013b3622676748f061d4fdeda1f19ff6d24cc3ad9e62c15de019ea9db71"
+  "version": "2.4.0",
+  "versionCode": 301,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.4.0.apk",
+  "notes": "Tablets: vertical y horizontal (dos columnas), contenido centrado; teléfonos fijos en vertical",
+  "sha256": "4d9875614b78d8ad8c4df21e292dd4afcea94238c5ae8c780d47863530b01b99"
 }
