@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode, RefObject } from 'react';
+import type { MouseEvent as EventoRaton, ReactNode, RefObject } from 'react';
 import { Marker } from 'maplibre-gl';
 import type { GeoJSONSource, Map as TipoMapa, MapMouseEvent } from 'maplibre-gl';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +20,7 @@ import {
   fechaHoraCorta,
   horaCorta,
   indiceBateriaConocida,
+  duracionCorta,
   indiceMasCercano,
   indicePorInstante,
   milisegundos,
@@ -28,7 +29,7 @@ import {
   serieBateria,
   tramoDeIndice,
 } from '@/dominio/replay';
-import type { EstadoUnidad, Parada, TramoReconstruido } from '@/dominio/replay';
+import type { EstadoUnidad, Microparada, Parada, TramoReconstruido } from '@/dominio/replay';
 
 // Chart.js exige registrar las piezas que se dibujan. El gráfico del
 // reproductor es una línea con relleno, sin ejes, sin leyenda y sin tooltip:
@@ -36,6 +37,10 @@ import type { EstadoUnidad, Parada, TramoReconstruido } from '@/dominio/replay';
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Filler);
 
 const SIN_PARADAS: Parada[] = [];
+// Deben coincidir con --eje-bateria y --eje-velocidad de replay.css.
+const ANCHO_EJE_BATERIA_PX = 42;
+const ANCHO_EJE_VELOCIDAD_PX = 58;
+const SIN_MICROPARADAS: Microparada[] = [];
 const VELOCIDADES = [0.25, 0.5, 1, 2, 4, 8];
 
 // El marcador se mueve en cada frame (rAF), pero la interfaz (gráfico, slider,
@@ -124,18 +129,22 @@ interface Props {
   // Fin del rango consultado (ISO): referencia del estado del último fix.
   finRango?: string;
   paradas?: Parada[];
+  microparadas?: Microparada[];
   children: ReactNode;
 }
 
 interface Reproductor {
   finRangoMs: number | null;
   paradas: Parada[];
+  microparadas: Microparada[];
   posiciones: Posicion[];
   huecos: Hueco[];
   reconstruidos: TramoReconstruido[];
   dispositivo: Dispositivo | null;
   indice: number;
   punto: Posicion | null;
+  // Estado del fix en curso (movimiento, detenido, sin señal).
+  estado: EstadoUnidad;
   reproduciendo: boolean;
   velocidad: number;
   seguir: boolean;
@@ -159,7 +168,8 @@ interface Reproductor {
   // Selección de una parada: pausa, ubica el reloj, selecciona su fix, marca
   // la parada y lleva el mapa hasta ella con un vuelo suave (salto directo con
   // movimiento reducido), igual que elegir un colaborador en En vivo.
-  seleccionarParada: (indiceParada: number, latitud: number, longitud: number, instante: number) => void;
+  // Con indiceParada null (microparada) hace lo mismo sin resaltar parada.
+  seleccionarParada: (indiceParada: number | null, latitud: number, longitud: number, instante: number) => void;
   // Selección de un fix al pulsar la ruta: pausa y ubica el reproductor.
   seleccionar: (indice: number) => void;
   quitarSeleccion: () => void;
@@ -174,7 +184,7 @@ const ContextoReproductor = createContext<Reproductor | null>(null);
 // lógica. La superficie de selección es la capa de acierto de línea que agrega
 // Replay sobre la ruta; el reproductor se engancha a ella y resuelve el fix más
 // cercano con posiciones, que ya tiene en memoria.
-export default function ReproductorReplay({ mapa, posiciones, huecos, reconstruidos, dispositivo, finRango, paradas = SIN_PARADAS, children }: Props) {
+export default function ReproductorReplay({ mapa, posiciones, huecos, reconstruidos, dispositivo, finRango, paradas = SIN_PARADAS, microparadas = SIN_MICROPARADAS, children }: Props) {
   const finRangoMs = finRango ? milisegundos(finRango) : null;
   const [indice, setIndice] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
@@ -213,7 +223,9 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
       const total = Math.max(0, milisegundos(ultima.registradoEn) - inicio);
       const posicion = Math.min(Math.max(instante - inicio, 0), total);
       nodo.value = String(posicion);
-      nodo.style.setProperty('--progreso', total > 0 ? `${(posicion / total) * 100}%` : '0%');
+      // El riel de la pista (hermano del slider) dibuja el progreso: se
+      // escribe en el contenedor para que lo herede.
+      (nodo.parentElement ?? nodo).style.setProperty('--progreso', total > 0 ? `${(posicion / total) * 100}%` : '0%');
     },
     [posiciones],
   );
@@ -417,7 +429,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
   // vuela el mapa hasta ella. El vuelo mantiene el zoom actual si ya está en la
   // banda urbana (15-16); con movimiento reducido el encuadre es instantáneo.
   const seleccionarParada = useCallback(
-    (indiceParada: number, latitud: number, longitud: number, instante: number) => {
+    (indiceParada: number | null, latitud: number, longitud: number, instante: number) => {
       if (posiciones.length === 0) return;
       seleccionar(indicePorInstante(posiciones, instante));
       setParadaSeleccionada(indiceParada);
@@ -529,8 +541,10 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     dispositivo,
     finRangoMs,
     paradas,
+    microparadas,
     indice: indiceAcotado,
     punto,
+    estado: estadoUnidad,
     reproduciendo,
     velocidad: velocidadReproduccion,
     seguir,
@@ -587,93 +601,73 @@ function useDireccion(
   return consulta.data?.direccion ?? null;
 }
 
-// Gráfico de batería de la franja inferior: la serie completa en línea fina y
-// un segundo dataset con un único punto no nulo en la posición actual, que se
-// mueve con la reproducción. Sin porcentajes en las posiciones no se dibuja.
+// Gráfico de la franja inferior: batería en línea fina con relleno y un punto
+// en la posición actual. Ampliado suma la velocidad en su propio eje: el
+// espacio extra muestra cómo se movía la persona, no solo cuánto le quedaba de
+// batería. Las paradas no van aquí: se marcan en la pista de tiempo.
 function GraficoBateria({ ampliada }: { ampliada: boolean }) {
-  const { posiciones, paradas, indice, pausar, mover } = useReproductor();
+  const { posiciones, indice, pausar, mover } = useReproductor();
   const [bajoCursor, setBajoCursor] = useState<{ indice: number; x: number } | null>(null);
-  // Parada fijada con clic en la gráfica ampliada (otro clic la suelta).
-  const [paradaFija, setParadaFija] = useState<number | null>(null);
-  const [bandas, setBandas] = useState<{ izquierda: number; ancho: number; arriba: number; alto: number }[]>([]);
-  const grafico = useRef<ChartJS<'line'> | null>(null);
   const serie = useMemo(() => serieBateria(posiciones), [posiciones]);
+  const velocidades = useMemo(
+    () => posiciones.map((p) => (p.velocidadKmh != null && Number.isFinite(p.velocidadKmh) ? p.velocidadKmh : null)),
+    [posiciones],
+  );
   const instantes = useMemo(() => posiciones.map((p) => milisegundos(p.registradoEn)), [posiciones]);
   const hayBateria = useMemo(() => serie.some((valor) => valor != null), [serie]);
   const tema = useTema((e) => e.tema);
-  useEffect(() => setParadaFija(null), [paradas]);
 
-  // Eje X en tiempo real: una parada de horas ocupa su ancho verdadero.
+  // Eje X en tiempo real: una parada de horas ocupa su ancho verdadero, igual
+  // que en la pista de tiempo de abajo.
   const datos = useMemo<ChartData<'line', { x: number; y: number | null }[]>>(() => {
     const linea = colorToken('marino-600');
     const relleno = tema === 'oscuro' ? 'rgba(147, 176, 214, .12)' : 'rgba(10, 37, 64, .1)';
     const indicePunto = indiceBateriaConocida(serie, indice);
     const punto = instantes[indicePunto];
-    return {
-      datasets: [
-        {
-          data: serie.map((valor, i) => ({ x: instantes[i], y: valor })),
-          borderColor: linea,
-          backgroundColor: relleno,
-          borderWidth: 1.5,
-          pointRadius: 0,
-          fill: true,
-          spanGaps: true,
-        },
-        {
-          data: punto != null ? [{ x: punto, y: serie[indicePunto] }] : [],
-          borderColor: linea,
-          backgroundColor: linea,
-          pointRadius: 3,
-          pointHoverRadius: 3,
-          showLine: false,
-        },
-      ],
-    };
-  }, [serie, instantes, indice, tema]);
-
-  const paradaEnIndice = useCallback(
-    (i: number) => {
-      const t = instantes[i];
-      if (t == null) return null;
-      const encontrada = paradas.findIndex((p) => milisegundos(p.inicio) <= t && t <= milisegundos(p.fin));
-      return encontrada >= 0 ? encontrada : null;
-    },
-    [instantes, paradas],
-  );
-
-  // Bandas de parada en píxeles del lienzo; se recalculan tras cada maquetado
-  // (incluida la animación de ampliar) con un plugin propio.
-  const pluginBandas = useMemo(
-    () => ({
-      id: 'bandasParadas',
-      afterLayout: (chart: ChartJS) => {
-        const escala = chart.scales.x;
-        const area = chart.chartArea;
-        if (!escala || !area) return;
-        const nuevas = paradas.map((p) => {
-          const izquierda = Math.max(escala.getPixelForValue(milisegundos(p.inicio)), area.left);
-          const derecha = Math.min(escala.getPixelForValue(milisegundos(p.fin)), area.right);
-          return { izquierda, ancho: Math.max(derecha - izquierda, 3), arriba: area.top, alto: area.bottom - area.top };
-        });
-        setBandas((previas) => (JSON.stringify(previas) === JSON.stringify(nuevas) ? previas : nuevas));
+    const conjuntos: ChartData<'line', { x: number; y: number | null }[]>['datasets'] = [
+      {
+        data: serie.map((valor, i) => ({ x: instantes[i], y: valor })),
+        borderColor: linea,
+        backgroundColor: relleno,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: true,
+        spanGaps: true,
+        yAxisID: 'y',
       },
-    }),
-    [paradas],
-  );
+      {
+        data: punto != null ? [{ x: punto, y: serie[indicePunto] }] : [],
+        borderColor: linea,
+        backgroundColor: linea,
+        pointRadius: 3.5,
+        pointHoverRadius: 3.5,
+        showLine: false,
+        yAxisID: 'y',
+      },
+    ];
+    if (ampliada) {
+      conjuntos.push({
+        data: velocidades.map((valor, i) => ({ x: instantes[i], y: valor })),
+        borderColor: colorToken('movimiento'),
+        borderWidth: 1,
+        pointRadius: 0,
+        fill: false,
+        spanGaps: false,
+        yAxisID: 'velocidad',
+      });
+    }
+    return { datasets: conjuntos };
+  }, [serie, velocidades, instantes, indice, tema, ampliada]);
 
-  const opciones = useMemo<ChartOptions<'line'>>(
-    () => ({
+  const opciones = useMemo<ChartOptions<'line'>>(() => {
+    const ticks = { font: { size: 10 }, color: colorToken('texto-3') };
+    return {
       ...OPCIONES_BATERIA,
       interaction: { mode: 'nearest', axis: 'x', intersect: false },
       parsing: false,
       onClick: (_evento, elementos) => {
         const elemento = elementos.find((e) => e.datasetIndex === 0);
         if (!elemento) return;
-        if (ampliada) {
-          const parada = paradaEnIndice(elemento.index);
-          setParadaFija((actual) => (parada == null || actual === parada ? null : parada));
-        }
         pausar();
         mover(elemento.index);
       },
@@ -684,55 +678,48 @@ function GraficoBateria({ ampliada }: { ampliada: boolean }) {
         setBajoCursor(elemento ? { indice: elemento.index, x: elemento.element.x } : null);
       },
       scales: {
-        x: {
-          type: 'linear',
-          display: false,
-          min: instantes[0],
-          max: instantes[instantes.length - 1],
-        },
+        x: { type: 'linear', display: false, min: instantes[0], max: instantes[instantes.length - 1] },
         y: ampliada
           ? {
               display: true,
               min: 0,
               max: 100,
-              ticks: { stepSize: 50, callback: (v) => `${v}%`, font: { size: 10 }, color: colorToken('texto-3') },
+              ticks: { ...ticks, stepSize: 50, callback: (v) => `${v}%` },
               grid: { color: colorToken('borde') },
               border: { display: false },
+              // Ancho fijo de los ejes: la pista de tiempo de abajo usa los
+              // mismos márgenes (replay.css) y así cada parada queda debajo
+              // de su tramo de la gráfica.
+              afterFit: (escala) => {
+                escala.width = ANCHO_EJE_BATERIA_PX;
+              },
             }
           : { display: false, min: 0, max: 100 },
+        velocidad: {
+          display: ampliada,
+          position: 'right',
+          min: 0,
+          suggestedMax: 40,
+          ticks: { ...ticks, maxTicksLimit: 3, callback: (v) => `${v} km/h` },
+          grid: { display: false },
+          border: { display: false },
+          afterFit: (escala) => {
+            if (ampliada) escala.width = ANCHO_EJE_VELOCIDAD_PX;
+          },
+        },
       },
-    }),
-    [mover, pausar, ampliada, instantes, paradaEnIndice],
-  );
+    };
+  }, [mover, pausar, ampliada, instantes]);
   if (!hayBateria) return null;
   const bajo = bajoCursor ? posiciones[bajoCursor.indice] : null;
   const valorBajo = bajoCursor ? serie[bajoCursor.indice] : null;
-  const paradaBajo = ampliada && bajoCursor ? paradaEnIndice(bajoCursor.indice) : null;
-  const paradaMostrada = paradaFija ?? paradaBajo;
-  const detalle = paradaMostrada != null ? paradas[paradaMostrada] : null;
-  const banda = paradaMostrada != null ? bandas[paradaMostrada] : null;
   return (
     <div className="replay-bateria" onMouseLeave={() => setBajoCursor(null)}>
-      <Line ref={grafico} data={datos} options={opciones} plugins={[pluginBandas]} />
-      {ampliada &&
-        bandas.map((b, i) => (
-          <span
-            key={i}
-            className={`bateria-parada${paradaMostrada === i ? ' activa' : ''}${paradaFija === i ? ' fija' : ''}`}
-            style={{ left: b.izquierda, width: b.ancho, top: b.arriba, height: b.alto }}
-            aria-hidden="true"
-          />
-        ))}
-      {detalle && banda && (
-        <span className="bateria-parada-detalle" style={{ left: banda.izquierda + banda.ancho / 2, top: banda.arriba }}>
-          <strong>Parada {paradaMostrada! + 1}</strong> · {horaCorta(detalle.inicio)} – {horaCorta(detalle.fin)} ·{' '}
-          {duracion(detalle.duracionMin * 60)}
-          {paradaFija != null && <em> · fijada</em>}
-        </span>
-      )}
+      <Line data={datos} options={opciones} />
       {bajo && valorBajo != null && bajoCursor && (
         <span className="bateria-etiqueta" style={{ left: bajoCursor.x }} role="status">
           <strong>{Math.round(valorBajo)}%</strong> · {horaCorta(bajo.registradoEn)}
+          {ampliada && bajo.velocidadKmh != null && ` · ${velocidad(bajo.velocidadKmh)}`}
         </span>
       )}
     </div>
@@ -791,7 +778,7 @@ export function PanelPuntoSeleccionado() {
         <dt>Tramo</dt>
         <dd>
           {tramo
-            ? `${ETIQUETA_METODO_TRAMO[tramo.metodo] ?? 'Tramo reconstruido'}${tramo.mapaVersion ? ` · mapa ${tramo.mapaVersion}` : ''}`
+            ? `${ETIQUETA_METODO_TRAMO[tramo.metodo] ?? 'Tramo reconstruido'}`
             : `Registrado por el equipo${modo ? ` · ${ETIQUETA_MODO_REAL[modo]}` : ''}`}
         </dd>
         <dt>Equipo</dt>
@@ -862,10 +849,11 @@ export function ListaParadas({
   total?: number;
 }) {
   const [abiertas, setAbiertas] = useState(true);
+  const [microAbiertas, setMicroAbiertas] = useState(false);
   // La parada activa vive en el reproductor: elegirla desde su insignia del
   // mapa también resalta su fila, y viceversa.
-  const { paradaSeleccionada } = useReproductor();
-  if (paradas.length === 0) return null;
+  const { paradaSeleccionada, microparadas, seleccionarParada } = useReproductor();
+  if (paradas.length === 0 && microparadas.length === 0) return null;
   // El total del servidor puede superar las filas cargadas (tope de la
   // consulta): "y N más" cuenta lo que quedó fuera de la carga.
   const restantes = Math.max(total ?? paradas.length, paradas.length) - paradas.length;
@@ -898,6 +886,38 @@ export function ListaParadas({
           {restantes > 0 && <p className="replay-nota">y {restantes} más</p>}
         </>
       )}
+      {/* Microparadas: detenciones de 40 s a 3 min en medio de un trayecto.
+          Plegadas por defecto; no se numeran ni cortan viajes. */}
+      {microparadas.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="replay-plegar-paradas replay-plegar-micro"
+            onClick={() => setMicroAbiertas((valor) => !valor)}
+            aria-expanded={microAbiertas}
+          >
+            Microparadas ({microparadas.length})
+            <Icono nombre="flecha" />
+          </button>
+          {microAbiertas && (
+            <ul className="replay-microparadas">
+              {microparadas.map((micro) => (
+                <li key={micro.inicio}>
+                  <button
+                    type="button"
+                    onClick={() => seleccionarParada(null, micro.latitud, micro.longitud, milisegundos(micro.inicio))}
+                  >
+                    <span className="parada-hora">
+                      {horaCorta(micro.inicio)} – {horaCorta(micro.fin)}
+                    </span>
+                    <span className="parada-tiempo">{duracionCorta(micro.duracionS)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </section>
   );
 }
@@ -909,8 +929,26 @@ export function ListaParadas({
 // (fila e insignia) y vuela el mapa hasta ella. Vive junto al reproductor para
 // leer el contexto de selección; Replay solo la monta dentro.
 export function InsigniasParadas({ mapa, paradas }: { mapa: TipoMapa | null; paradas: Parada[] }) {
-  const { paradaSeleccionada, seleccionarParada } = useReproductor();
+  const { paradaSeleccionada, seleccionarParada, microparadas } = useReproductor();
   const elementos = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  // Microparadas: punto chico sin número, debajo de las insignias. Pulsarlo
+  // ubica el reloj y vuela el mapa hasta él, igual que una parada.
+  useEffect(() => {
+    if (!mapa) return;
+    const marcadores = microparadas.map((micro) => {
+      const elemento = document.createElement('div');
+      elemento.className = 'marcador-microparada';
+      elemento.title = `Microparada: ${horaCorta(micro.inicio)} – ${horaCorta(micro.fin)} (${duracionCorta(micro.duracionS)})`;
+      elemento.addEventListener('click', () => {
+        seleccionarParada(null, micro.latitud, micro.longitud, milisegundos(micro.inicio));
+      });
+      return new Marker({ element: elemento, anchor: 'center' }).setLngLat([micro.longitud, micro.latitud]).addTo(mapa);
+    });
+    return () => {
+      for (const marcador of marcadores) marcador.remove();
+    };
+  }, [mapa, microparadas, seleccionarParada]);
 
   useEffect(() => {
     if (!mapa) return;
@@ -949,9 +987,9 @@ export function InsigniasParadas({ mapa, paradas }: { mapa: TipoMapa | null; par
   return null;
 }
 
-// Mandos del reproductor: play/pausa, seguir, paso a paso por el recorrido y
-// velocidades. Van en la franja inferior, entre la lectura del punto y el
-// slider, como estaban antes de moverlos al panel.
+// Mandos del reproductor: transporte (play/pausa, seguir, paso a paso) y
+// velocidades, como dos grupos que la rejilla de la franja ubica: compacta,
+// en una fila sobre la pista; ampliada, a los lados de la pista.
 function ControlesReplay() {
   const {
     posiciones,
@@ -966,7 +1004,8 @@ function ControlesReplay() {
   } = useReproductor();
   const unico = posiciones.length < 2;
   return (
-    <div className="replay-controles">
+    <>
+      <div className="replay-transporte">
       <button
         type="button"
         className="suave icono-solo"
@@ -1010,6 +1049,7 @@ function ControlesReplay() {
       >
         <Icono nombre="flecha" />
       </button>
+      </div>
       <div className="velocidades">
         {VELOCIDADES.map((valor) => (
           <button
@@ -1024,26 +1064,218 @@ function ControlesReplay() {
           </button>
         ))}
       </div>
-    </div>
+    </>
   );
 }
 
-// Franja inferior: gráfico de batería con la lectura del punto en curso, los
-// mandos y el slider sobre la línea de tiempo del recorrido. Arrastrar el
-// slider pausa la reproducción, que es la misma acción manual que los saltos.
-export function LineaTiempoReplay() {
-  const { posiciones, punto, sliderRef, mover, pausar } = useReproductor();
-  const [ampliada, setAmpliada] = useState(false);
+// Qué hay bajo el cursor en la pista: una parada, una microparada, un corte
+// de señal o solo la hora.
+type MarcaPista =
+  | { tipo: 'parada'; indice: number; parada: Parada }
+  | { tipo: 'micro'; micro: Microparada }
+  | { tipo: 'hueco'; hueco: Hueco }
+  | { tipo: 'hora' };
+
+// Holgura en píxeles para acertar una microparada, que en la pista es una
+// raya de 3 px.
+const TOLERANCIA_MICRO_PX = 5;
+// Margen de la pista a cada lado: medio pulgar del slider (12 px). El pulgar
+// recorre [6 px, ancho - 6 px] y las marcas se dibujan en ese mismo tramo.
+const MARGEN_PISTA_PX = 6;
+
+// Pista de tiempo: el slider con su riel propio, donde se leen las paradas
+// (bloques numerados como en la lista), las microparadas (rayas) y los cortes
+// de señal (punteado). Al pasar el cursor, un globo dice qué hay en ese
+// instante; al pulsar una parada o microparada se selecciona y el mapa vuela
+// hasta ella, igual que desde la lista.
+function PistaTiempo({ ampliada }: { ampliada: boolean }) {
+  const {
+    posiciones,
+    huecos,
+    paradas,
+    microparadas,
+    paradaSeleccionada,
+    punto,
+    sliderRef,
+    mover,
+    pausar,
+    seleccionarParada,
+  } = useReproductor();
+  const [bajo, setBajo] = useState<{ fraccion: number; instante: number; marca: MarcaPista } | null>(null);
   const primera = posiciones[0] ?? null;
   const ultima = posiciones[posiciones.length - 1] ?? null;
   const inicio = primera ? milisegundos(primera.registradoEn) : 0;
   const fin = ultima ? milisegundos(ultima.registradoEn) : 0;
-  const duracionTotal = Math.max(0, fin - inicio);
-  // El slider trabaja en tiempo, no en índices: los fixes llegan espaciados de
-  // forma irregular y así el avance concuerda con la lectura y el gráfico. Es
-  // no controlado: el contenedor escribe su valor y su relleno de progreso por
-  // frame durante la reproducción (ver ReproductorReplay), y aquí solo se
-  // atiende el arrastre del usuario.
+  const total = Math.max(0, fin - inicio);
+  const pct = (instante: number) => (total > 0 ? Math.min(Math.max(((instante - inicio) / total) * 100, 0), 100) : 0);
+  const ahora = punto ? milisegundos(punto.registradoEn) : null;
+
+  function marcaEn(instante: number, anchoUtil: number): MarcaPista {
+    const indice = paradas.findIndex((p) => milisegundos(p.inicio) <= instante && instante <= milisegundos(p.fin));
+    if (indice >= 0) return { tipo: 'parada', indice, parada: paradas[indice] };
+    const tolerancia = anchoUtil > 0 ? (TOLERANCIA_MICRO_PX / anchoUtil) * total : 0;
+    const micro = microparadas.find(
+      (m) => milisegundos(m.inicio) - tolerancia <= instante && instante <= milisegundos(m.fin) + tolerancia,
+    );
+    if (micro) return { tipo: 'micro', micro };
+    const hueco = huecos.find((h) => milisegundos(h.desde) <= instante && instante <= milisegundos(h.hasta));
+    if (hueco) return { tipo: 'hueco', hueco };
+    return { tipo: 'hora' };
+  }
+
+  function alMover(evento: EventoRaton<HTMLDivElement>) {
+    // La interfaz lleva zoom (--zoom-ui): la caja y el cursor vienen en
+    // píxeles de pantalla y el margen en píxeles de maquetación, así que se
+    // escala. El globo se ubica por fracción, que no depende del zoom.
+    const caja = evento.currentTarget.getBoundingClientRect();
+    const escala = evento.currentTarget.offsetWidth > 0 ? caja.width / evento.currentTarget.offsetWidth : 1;
+    const margen = MARGEN_PISTA_PX * escala;
+    const anchoUtil = caja.width - margen * 2;
+    if (anchoUtil <= 0 || total <= 0) return;
+    const fraccion = Math.min(Math.max((evento.clientX - caja.left - margen) / anchoUtil, 0), 1);
+    const instante = inicio + fraccion * total;
+    setBajo({ fraccion, instante, marca: marcaEn(instante, anchoUtil) });
+  }
+
+  // El clic ya movió el slider (onChange); si cayó sobre una parada o una
+  // microparada, además se selecciona y el mapa vuela hasta ella.
+  function alPulsar() {
+    const marca = bajo?.marca;
+    if (marca?.tipo === 'parada') {
+      const { parada, indice } = marca;
+      seleccionarParada(indice, parada.latitud, parada.longitud, milisegundos(parada.inicio));
+    } else if (marca?.tipo === 'micro') {
+      const { micro } = marca;
+      seleccionarParada(null, micro.latitud, micro.longitud, milisegundos(micro.inicio));
+    }
+  }
+
+  function textoGlobo(marca: MarcaPista, instante: number): ReactNode {
+    switch (marca.tipo) {
+      case 'parada':
+        return (
+          <>
+            <strong>Parada {marca.indice + 1}</strong> · {horaCorta(marca.parada.inicio)} – {horaCorta(marca.parada.fin)} ·{' '}
+            {duracion(marca.parada.duracionMin * 60)}
+          </>
+        );
+      case 'micro':
+        return (
+          <>
+            <strong>Microparada</strong> · {horaCorta(marca.micro.inicio)} · {duracionCorta(marca.micro.duracionS)}
+          </>
+        );
+      case 'hueco':
+        return (
+          <>
+            <strong>Sin señal</strong> · {horaCorta(marca.hueco.desde)} – {horaCorta(marca.hueco.hasta)}
+          </>
+        );
+      default:
+        return horaCorta(new Date(instante).toISOString());
+    }
+  }
+
+  return (
+    <div className="replay-pista">
+      {ampliada && <span className="pista-hora">{horaCorta(primera?.registradoEn)}</span>}
+      <div
+        className={`pista-riel${bajo && bajo.marca.tipo !== 'hora' ? ' sobre-marca' : ''}`}
+        onMouseMove={alMover}
+        onMouseLeave={() => setBajo(null)}
+        onClick={alPulsar}
+      >
+        <div className="pista-marcas" aria-hidden="true">
+          <span className="pista-base" />
+          <span className="pista-progreso" />
+          {huecos.map((h, i) => (
+            <span
+              key={`h${i}`}
+              className="pista-hueco"
+              style={{ left: `${pct(milisegundos(h.desde))}%`, width: `${pct(milisegundos(h.hasta)) - pct(milisegundos(h.desde))}%` }}
+            />
+          ))}
+          {paradas.map((p, i) => {
+            const desde = milisegundos(p.inicio);
+            const hasta = milisegundos(p.fin);
+            const enCurso = ahora != null && desde <= ahora && ahora <= hasta;
+            return (
+              <span
+                key={`p${i}`}
+                className={`pista-parada${paradaSeleccionada === i ? ' activa' : ''}${enCurso ? ' en-curso' : ''}`}
+                style={{ left: `${pct(desde)}%`, width: `${pct(hasta) - pct(desde)}%` }}
+              >
+                <span>{i + 1}</span>
+              </span>
+            );
+          })}
+          {microparadas.map((m, i) => (
+            <span key={`m${i}`} className="pista-micro" style={{ left: `${pct(milisegundos(m.inicio))}%` }} />
+          ))}
+        </div>
+        <input
+          ref={sliderRef}
+          type="range"
+          className="replay-slider"
+          min={0}
+          max={total}
+          defaultValue={0}
+          disabled={posiciones.length < 2}
+          aria-label="Posición del recorrido"
+          onChange={(evento) => {
+            pausar();
+            mover(indicePorInstante(posiciones, inicio + Number(evento.target.value)));
+          }}
+        />
+        {bajo && (
+          <span
+            className={`pista-globo globo-${bajo.marca.tipo}`}
+            style={{ left: `calc(${MARGEN_PISTA_PX}px + ${bajo.fraccion} * (100% - ${MARGEN_PISTA_PX * 2}px))` }}
+            role="status"
+          >
+            {textoGlobo(bajo.marca, bajo.instante)}
+          </span>
+        )}
+      </div>
+      {ampliada && <span className="pista-hora">{horaCorta(ultima?.registradoEn)}</span>}
+    </div>
+  );
+}
+
+// Lectura del instante en curso. Ampliada suma el estado y la parada en la
+// que cae, para leer el punto sin mirar el panel.
+function LecturaPunto({ ampliada }: { ampliada: boolean }) {
+  const { punto, estado, paradas, microparadas } = useReproductor();
+  const instante = punto ? milisegundos(punto.registradoEn) : null;
+  const enParada =
+    ampliada && instante != null
+      ? paradas.findIndex((p) => milisegundos(p.inicio) <= instante && instante <= milisegundos(p.fin))
+      : -1;
+  const enMicro =
+    ampliada && instante != null && enParada < 0
+      ? microparadas.find((m) => milisegundos(m.inicio) <= instante && instante <= milisegundos(m.fin)) ?? null
+      : null;
+  return (
+    <span className="replay-tiempos">
+      <strong>{punto ? horaCorta(punto.registradoEn) : GUION}</strong> · {velocidad(punto?.velocidadKmh)} ·{' '}
+      {bateria(punto?.bateriaPct)}
+      {ampliada && punto && <span className={`lectura-estado ${CLASE_ESTADO[estado]}`}>{ETIQUETA_ESTADO_PUNTO[estado]}</span>}
+      {enParada >= 0 && (
+        <span className="lectura-parada">
+          Parada {enParada + 1} · {duracion(paradas[enParada].duracionMin * 60)}
+        </span>
+      )}
+      {enMicro && <span className="lectura-parada">Microparada · {duracionCorta(enMicro.duracionS)}</span>}
+    </span>
+  );
+}
+
+// Franja inferior: gráfico con la lectura del punto en curso, los mandos y la
+// pista de tiempo con las paradas. Compacta es un bloque angosto; ampliada
+// pone la lectura arriba, el gráfico a todo el ancho y los mandos en una sola
+// fila con la pista al centro, para no dejar franjas vacías.
+export function LineaTiempoReplay() {
+  const [ampliada, setAmpliada] = useState(false);
   return (
     <div className={`replay-linea${ampliada ? ' ampliada' : ''}`}>
       <button
@@ -1058,26 +1290,12 @@ export function LineaTiempoReplay() {
       </button>
       <div className="replay-lectura">
         <GraficoBateria ampliada={ampliada} />
-        <span className="replay-tiempos">
-          <strong>{punto ? horaCorta(punto.registradoEn) : GUION}</strong> · {velocidad(punto?.velocidadKmh)} ·{' '}
-          {bateria(punto?.bateriaPct)}
-        </span>
+        <LecturaPunto ampliada={ampliada} />
       </div>
-      <ControlesReplay />
-      <input
-        ref={sliderRef}
-        type="range"
-        className="replay-slider"
-        min={0}
-        max={duracionTotal}
-        defaultValue={0}
-        disabled={posiciones.length < 2}
-        aria-label="Posición del recorrido"
-        onChange={(evento) => {
-          pausar();
-          mover(indicePorInstante(posiciones, inicio + Number(evento.target.value)));
-        }}
-      />
+      <div className="replay-controles">
+        <ControlesReplay />
+        <PistaTiempo ampliada={ampliada} />
+      </div>
     </div>
   );
 }

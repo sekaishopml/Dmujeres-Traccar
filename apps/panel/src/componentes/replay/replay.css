@@ -797,14 +797,17 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
 /* Mandos en la franja inferior: transporte a la izquierda y velocidades a la
    derecha, en una fila bajo la lectura del punto. */
 .replay-timeline .replay-controles {
-  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
-  justify-content: space-between;
+  display: grid; align-items: center; gap: 6px 8px;
+  grid-template-columns: auto 1fr; grid-template-areas: "trans vel" "pista pista";
 }
+.replay-transporte { grid-area: trans; display: flex; align-items: center; gap: 5px; }
+.replay-controles .velocidades { grid-area: vel; justify-self: end; }
+.replay-pista { grid-area: pista; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .replay-controles .icono-solo { padding: 5px; }
 .replay-controles .voltear { display: inline-flex; transform: rotate(180deg); }
 .replay-tiempos { font-size: 12.5px; color: var(--apagado); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .replay-tiempos strong { color: var(--color-marino-900); }
-.replay-controles .velocidades { margin-left: auto; display: flex; gap: 4px; }
+.replay-controles .velocidades { display: flex; gap: 4px; }
 .velocidades button { padding: 3px 6px; font-size: 12.5px; }
 button.velocidad-activa { background: var(--navy); border-color: var(--navy); color: #fff; }
 /* Seguir activo: mismo lenguaje visual que la velocidad seleccionada. */
@@ -825,25 +828,65 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
   border: 0; border-radius: 0;
   background: transparent; accent-color: var(--navy); cursor: pointer;
 }
-.replay-slider::-webkit-slider-runnable-track {
-  height: 4px; border-radius: 2px;
-  background: linear-gradient(to right, var(--navy) 0 var(--progreso, 0%), var(--linea) var(--progreso, 0%) 100%);
-}
+.replay-slider::-webkit-slider-runnable-track { height: 4px; background: transparent; }
 .replay-slider::-webkit-slider-thumb {
   -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px;
   border: 2px solid #fff; border-radius: 50%; background: var(--navy);
   box-shadow: 0 0 0 1px var(--linea);
 }
-.replay-slider::-moz-range-track {
-  height: 4px; border-radius: 2px;
-  background: linear-gradient(to right, var(--navy) 0 var(--progreso, 0%), var(--linea) var(--progreso, 0%) 100%);
-}
+.replay-slider::-moz-range-track { height: 4px; background: transparent; }
 .replay-slider::-moz-range-thumb {
   width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%;
   background: var(--navy); box-shadow: 0 0 0 1px var(--linea);
 }
 .replay-slider:focus-visible { outline: 2px solid rgba(31, 90, 150, .28); outline-offset: 2px; }
 .replay-slider:disabled { opacity: .5; cursor: default; }
+
+/* Pista de tiempo: riel propio bajo el slider (transparente salvo el pulgar).
+   Base gris, progreso en navy, paradas como bloques numerados, microparadas
+   como rayas y cortes de señal punteados. Las marcas usan el mismo tramo que
+   recorre el pulgar (6 px de margen a cada lado). */
+.pista-riel { position: relative; flex: 1; min-width: 0; height: 18px; display: flex; align-items: center; }
+.pista-riel .replay-slider { position: relative; z-index: 1; }
+.pista-riel.sobre-marca .replay-slider { cursor: pointer; }
+.pista-marcas { position: absolute; inset: 0 6px; pointer-events: none; }
+.pista-marcas > span { position: absolute; top: 50%; transform: translateY(-50%); }
+.pista-base, .pista-progreso { left: 0; height: 4px; border-radius: 2px; }
+.pista-base { right: 0; background: var(--linea); }
+.pista-progreso { width: var(--progreso, 0%); background: var(--navy); }
+.pista-hueco {
+  height: 4px;
+  background: repeating-linear-gradient(90deg, var(--color-sin-senal) 0 3px, transparent 3px 6px);
+}
+.pista-parada {
+  min-width: 4px; height: 12px; border-radius: 3px; container-type: inline-size;
+  display: grid; place-items: center; overflow: hidden;
+  background: color-mix(in srgb, var(--color-detenido) 22%, var(--color-superficie));
+  border: 1px solid color-mix(in srgb, var(--color-detenido) 60%, transparent);
+  transition: background var(--dmj-mov-rapida) ease, border-color var(--dmj-mov-rapida) ease;
+}
+.pista-parada > span {
+  font-size: 9px; font-weight: 700; line-height: 1; color: var(--color-detenido);
+  font-variant-numeric: tabular-nums;
+}
+@container (max-width: 13px) { .pista-parada > span { display: none; } }
+.pista-parada.en-curso { background: color-mix(in srgb, var(--color-detenido) 40%, var(--color-superficie)); }
+.pista-parada.activa { background: color-mix(in srgb, var(--color-marca) 18%, var(--color-superficie)); border-color: var(--color-marca); }
+.pista-parada.activa > span { color: var(--color-marca); }
+.pista-micro {
+  width: 3px; height: 10px; margin-left: -1px; border-radius: 2px;
+  background: var(--color-detenido); box-shadow: 0 0 0 1px var(--color-superficie);
+}
+.pista-hora { font-size: 11px; color: var(--color-texto-3); font-variant-numeric: tabular-nums; }
+.pista-globo {
+  position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%); z-index: 3;
+  padding: 3px 8px; border-radius: 7px; white-space: nowrap; pointer-events: none;
+  font-size: 11.5px; font-variant-numeric: tabular-nums;
+  background: var(--color-tinta); color: #fff; box-shadow: var(--shadow-flotante);
+}
+.pista-globo strong { color: #fff; }
+.pista-globo.globo-parada { background: var(--color-detenido); }
+.pista-globo.globo-hueco { background: var(--color-sin-senal); }
 
 /* Aparición del panel y la franja del Replay: solo al montar la página; el
    plegado del panel y la reproducción no repiten la animación. El panel entra
@@ -968,6 +1011,15 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
     border: 0; background: transparent; color: var(--color-texto-3);
   }
   & .replay-ampliar:hover { color: var(--color-marca); background: var(--color-fondo); }
+  /* Al pasar el cursor el icono late hacia afuera (o hacia adentro al
+     reducir) y el borde de la franja insinúa el cambio de tamaño. */
+  & .replay-ampliar svg { transition: transform 200ms ease; }
+  & .replay-ampliar:hover svg { animation: replay-latir-ampliar 900ms var(--curva-liquida) infinite; }
+  & .replay-ampliar[aria-pressed="true"]:hover svg { animation-name: replay-latir-reducir; }
+  & .replay-timeline:has(.replay-ampliar:hover) { animation: replay-insinuar 900ms ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    & .replay-ampliar:hover svg, & .replay-timeline:has(.replay-ampliar:hover) { animation: none; }
+  }
   & .replay-lectura { padding-right: 20px; }
   & .replay-timeline .replay-bateria {
     position: relative;
@@ -981,8 +1033,21 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
     width: min(880px, calc(100% - 80px));
     border-radius: 18px; padding: 12px 14px;
   }
-  & .replay-timeline:has(.replay-linea.ampliada) .replay-bateria { height: 150px; }
-  & .replay-linea.ampliada .replay-lectura { align-items: flex-start; }
+  & .replay-timeline:has(.replay-linea.ampliada) .replay-bateria { height: 130px; }
+  & .replay-linea.ampliada .replay-lectura { flex-direction: column-reverse; align-items: stretch; gap: 6px; padding-right: 28px; }
+  & .replay-linea.ampliada .replay-lectura .replay-bateria { flex: none; }
+  & .replay-linea.ampliada .replay-tiempos { display: flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; font-size: 13px; }
+  & .replay-linea.ampliada .replay-tiempos strong { font-family: var(--font-display); font-size: 15px; }
+  & .replay-linea.ampliada .replay-controles {
+    grid-template-columns: auto 1fr auto; grid-template-areas: "trans pista vel"; gap: 12px;
+  }
+  & .lectura-estado, & .lectura-parada {
+    margin-left: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  }
+  & .lectura-estado.estado-movimiento { background: var(--color-movimiento-suave); color: var(--color-movimiento); }
+  & .lectura-estado.estado-detencion { background: var(--color-detenido-suave); color: var(--color-detenido); }
+  & .lectura-estado.estado-sin-senal { background: var(--color-sin-senal-suave); color: var(--color-sin-senal); }
+  & .lectura-parada { margin-left: 0; background: var(--color-fondo); color: var(--color-texto-2); border: 1px solid var(--color-borde); }
   @media (min-width: 761px) {
     &:has(.replay-panel:not(.colapsado)) .replay-timeline:has(.replay-linea.ampliada) {
       width: min(880px, calc(100% - var(--ancho-panel-replay) - 56px - 24px));
@@ -1022,25 +1087,55 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
      valor mostrado no coincidía con el punto bajo el mouse. Las alturas se
      multiplican por el mismo factor para que se vea del mismo tamaño. */
   & .replay-timeline .replay-bateria { zoom: calc(1 / var(--zoom-ui)); height: calc(36px * var(--zoom-ui)); }
-  & .replay-timeline:has(.replay-linea.ampliada) .replay-bateria { height: calc(150px * var(--zoom-ui)); }
-  & .bateria-etiqueta, & .bateria-parada-detalle { font-size: calc(11.5px * var(--zoom-ui)); }
-  /* Paradas sobre la gráfica ampliada: franja tenue; la señalada, en magenta. */
-  & .bateria-parada {
-    position: absolute; pointer-events: none; border-radius: 3px;
-    background: color-mix(in srgb, var(--color-detenido) 14%, transparent);
-    border-inline: 1px solid color-mix(in srgb, var(--color-detenido) 45%, transparent);
-    animation: dmj-aparecer 260ms ease;
+  & .replay-timeline:has(.replay-linea.ampliada) .replay-bateria { height: calc(130px * var(--zoom-ui)); }
+  & .bateria-etiqueta { font-size: calc(11.5px * var(--zoom-ui)); }
+  /* Chrome marca el slider como foco de teclado también al hacer clic: el
+     marco magenta global rodeaba toda la pista. El foco se indica en el pulgar. */
+  & .replay-slider:focus, & .replay-slider:focus-visible { outline: none; box-shadow: none; border-color: transparent; }
+  & .replay-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-marca) 25%, transparent); }
+  & .replay-slider:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-marca) 25%, transparent); }
+  /* Franja ampliada: la pista de tiempo va en su propia fila, justo debajo de
+     la gráfica y con sus mismos márgenes (ancho fijo de los ejes, ver
+     ANCHO_EJE_* en ReproductorReplay). La gráfica anula el zoom de la
+     interfaz, por eso los márgenes se dividen por --zoom-ui; el riel tiene 6 px
+     internos para el pulgar del slider. Los mandos quedan en la fila de abajo. */
+  --eje-bateria: 42px;
+  --eje-velocidad: 58px;
+  & .replay-linea.ampliada .replay-controles {
+    grid-template-columns: auto 1fr; grid-template-areas: "pista pista" "trans vel"; gap: 8px 12px;
   }
-  & .bateria-parada.activa {
-    background: color-mix(in srgb, var(--color-marca) 16%, transparent);
-    border-inline-color: var(--color-marca);
+  & .replay-linea.ampliada .replay-pista {
+    position: relative; gap: 0; padding-bottom: 14px;
+    padding-left: calc(var(--eje-bateria) / var(--zoom-ui) - 6px);
+    padding-right: calc(28px + var(--eje-velocidad) / var(--zoom-ui) - 6px);
   }
-  & .bateria-parada.fija { box-shadow: inset 0 2px 0 var(--color-marca); }
-  & .bateria-parada-detalle {
-    position: absolute; transform: translate(-50%, calc(-100% - 6px)); white-space: nowrap; pointer-events: none;
-    padding: 3px 9px; border-radius: 7px; background: var(--color-marca); color: #fff; box-shadow: var(--shadow-flotante);
-    font-variant-numeric: tabular-nums;
-  }
-  & .bateria-parada-detalle strong { color: #fff; }
-  & .bateria-parada-detalle em { font-style: normal; opacity: .8; }
+  & .replay-linea.ampliada .pista-hora { position: absolute; bottom: 0; font-size: 10.5px; }
+  & .replay-linea.ampliada .pista-hora:first-child { left: calc(var(--eje-bateria) / var(--zoom-ui)); }
+  & .replay-linea.ampliada .pista-hora:last-child { right: calc(28px + var(--eje-velocidad) / var(--zoom-ui)); }
+  /* El número de parada no se sale de su banda: se recorta. */
+  & .pista-parada > span { max-width: 100%; overflow: hidden; }
 }
+
+@keyframes replay-latir-ampliar {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  45% { transform: scale(1.35); opacity: .65; }
+}
+@keyframes replay-latir-reducir {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  45% { transform: scale(.7); opacity: .65; }
+}
+@keyframes replay-insinuar {
+  0%, 100% { box-shadow: 0 8px 22px rgba(11, 31, 51, .12), 0 0 0 0 color-mix(in srgb, var(--color-marca) 0%, transparent); }
+  45% { box-shadow: 0 8px 22px rgba(11, 31, 51, .12), 0 0 0 4px color-mix(in srgb, var(--color-marca) 18%, transparent); }
+}
+
+/* Microparada en el mapa: punto chico sin número, bajo las insignias. */
+.marcador-microparada {
+  width: 10px; height: 10px; border-radius: 50%; cursor: pointer;
+  background: #fff; border: 2.5px solid #2563eb; box-shadow: 0 1px 3px rgba(4, 18, 31, .35);
+}
+.marcador-microparada:hover { transform: scale(1.3); }
+/* Lista de microparadas: filas de una línea, más discretas que las paradas. */
+.replay-plegar-micro { margin-top: 2px; font-size: 13px; color: var(--apagado); }
+.replay-microparadas li > button { padding-block: 5px; }
+.replay-microparadas .parada-hora, .replay-microparadas .parada-tiempo { font-size: 13px; font-weight: 600; }

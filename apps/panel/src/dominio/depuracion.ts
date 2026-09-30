@@ -19,6 +19,8 @@ const DURACION_ESTANCIA_MS = 2 * 60_000;
 const PRECISION_DUDOSA_M = 80;
 const PICO_MIN_M = 60;
 const PICO_VELOCIDAD_KMH = 90;
+// Velocidad reportada con la que una lectura del borde ya es movimiento.
+const VELOCIDAD_BORDE_KMH = 5;
 
 export interface Estancia {
   inicio: string;
@@ -64,10 +66,48 @@ function quitarPicos(posiciones: Posicion[]): Posicion[] {
   return salida;
 }
 
+// 3. Fusión de estancias vecinas. En una parada larga el GPS sale a 60-100 m
+//    un par de lecturas y vuelve (Manzaba 29/09, 18:05-18:50: salidas a 91,
+//    67, 102 y 57 m). Cada salida partía la estancia en trozos y la línea
+//    dibujaba una estrella de radios con flechas alrededor de la parada. Dos
+//    estancias se funden si sus centros quedan cerca, la separación es corta
+//    y ninguna lectura intermedia se aleja más de FUSION_EXCURSION_M: eso es
+//    deriva o una vuelta dentro del mismo sitio, no un viaje.
+const FUSION_CENTROS_M = 80;
+const FUSION_EXCURSION_M = 130;
+const FUSION_SEPARACION_MS = 6 * 60_000;
+
+function centro(grupo: Posicion[]): { latitud: number; longitud: number } {
+  return { latitud: mediana(grupo.map((p) => p.latitud)), longitud: mediana(grupo.map((p) => p.longitud)) };
+}
+
+function fundirEstancias(posiciones: Posicion[], grupos: [number, number][]): [number, number][] {
+  const fundidos: [number, number][] = [];
+  for (const grupo of grupos) {
+    const previo = fundidos[fundidos.length - 1];
+    if (previo) {
+      const centroPrevio = centro(posiciones.slice(previo[0], previo[1] + 1));
+      const centroActual = centro(posiciones.slice(grupo[0], grupo[1] + 1));
+      const separacion = ms(posiciones[grupo[0]].registradoEn) - ms(posiciones[previo[1]].registradoEn);
+      const intermedias = posiciones.slice(previo[1] + 1, grupo[0]);
+      if (
+        separacion <= FUSION_SEPARACION_MS &&
+        metros(centroPrevio, centroActual) <= FUSION_CENTROS_M &&
+        intermedias.every((p) => metros(centroPrevio, p) <= FUSION_EXCURSION_M)
+      ) {
+        previo[1] = grupo[1];
+        continue;
+      }
+    }
+    fundidos.push([grupo[0], grupo[1]]);
+  }
+  return fundidos;
+}
+
 export function depurarRecorrido(originales: Posicion[]): { posiciones: Posicion[]; estancias: Estancia[] } {
   const posiciones = quitarPicos(originales);
   const salida = posiciones.map((p) => ({ ...p }));
-  const estancias: Estancia[] = [];
+  const grupos: [number, number][] = [];
   let i = 0;
   while (i < salida.length) {
     // Crece la estancia mientras los fixes sigan dentro del radio del centro
@@ -86,19 +126,29 @@ export function depurarRecorrido(originales: Posicion[]): { posiciones: Posicion
       n += 1;
       j += 1;
     }
-    const hasta = j - 1;
-    if (hasta > i && ms(salida[hasta].registradoEn) - ms(salida[i].registradoEn) >= DURACION_ESTANCIA_MS) {
-      const grupo = salida.slice(i, hasta + 1);
-      const latitud = mediana(grupo.map((p) => p.latitud));
-      const longitud = mediana(grupo.map((p) => p.longitud));
-      for (let k = i; k <= hasta; k += 1) {
-        salida[k] = { ...salida[k], latitud, longitud, velocidadKmh: 0 };
-      }
-      estancias.push({ inicio: salida[i].registradoEn, fin: salida[hasta].registradoEn, latitud, longitud, desde: i, hasta });
+    // Los bordes del grupo pueden ser el vehículo frenando o arrancando dentro
+    // del radio (Manzaba 19:07:35 a 36 km/h): esas lecturas no son estancia y,
+    // llevadas al centro, fingían una llegada recta.
+    let desde = i;
+    let hasta = j - 1;
+    while (desde < hasta && (salida[desde].velocidadKmh ?? 0) >= VELOCIDAD_BORDE_KMH) desde += 1;
+    while (hasta > desde && (salida[hasta].velocidadKmh ?? 0) >= VELOCIDAD_BORDE_KMH) hasta -= 1;
+    if (hasta > desde && ms(salida[hasta].registradoEn) - ms(salida[desde].registradoEn) >= DURACION_ESTANCIA_MS) {
+      grupos.push([desde, hasta]);
       i = hasta + 1;
     } else {
       i += 1;
     }
   }
+  // Cada estancia (ya fundida) lleva todas sus lecturas, también las de la
+  // excursión absorbida, a la mediana del grupo: la mediana ignora esas
+  // salidas y el centro queda donde la persona estuvo.
+  const estancias: Estancia[] = fundirEstancias(posiciones, grupos).map(([desde, hasta]) => {
+    const { latitud, longitud } = centro(posiciones.slice(desde, hasta + 1));
+    for (let k = desde; k <= hasta; k += 1) {
+      salida[k] = { ...salida[k], latitud, longitud, velocidadKmh: 0 };
+    }
+    return { inicio: salida[desde].registradoEn, fin: salida[hasta].registradoEn, latitud, longitud, desde, hasta };
+  });
   return { posiciones: salida, estancias };
 }

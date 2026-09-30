@@ -23,6 +23,7 @@ import {
   halosDeParadas,
   horaCorta,
   indiceCercaDeInstante,
+  microparadasDeRecorrido,
   milisegundos,
   normalizarReconstruidos,
   puntosQuietos,
@@ -455,6 +456,9 @@ export default function Replay() {
     return [...ubicadas, ...nuevas].sort((a, b) => milisegundos(a.inicio) - milisegundos(b.inicio));
   }, [paradasServidor, paradasLocales, estancias]);
   const paradasLocalesEnUso = paradasServidor == null && paradasConsulta.isError;
+  // Detenciones de 40 s a 3 min que la regla de parada no cuenta (semáforo
+  // largo, entrega rápida, espera en la vía): se marcan aparte.
+  const microparadas = useMemo(() => microparadasDeRecorrido(posiciones, paradas), [posiciones, paradas]);
 
   // Segmentos con modo vehículo/caminata/quieto: el quieto no dibuja línea
   // (su dispersión se muestra como halo + nube de puntos) para no tejer el
@@ -833,6 +837,7 @@ export default function Replay() {
       dispositivo={replay.data?.dispositivo ?? null}
       finRango={finDeDia(hasta)}
       paradas={paradas}
+      microparadas={microparadas}
     >
       <section className="replay-pantalla">
         {/* El mapa ocupa la pantalla completa; panel y franja flotan encima

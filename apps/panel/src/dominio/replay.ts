@@ -1211,6 +1211,104 @@ export function detencionesDeRecorrido(posiciones: Posicion[], huecos: Hueco[]):
   return detenciones;
 }
 
+// Microparada: detención corta (40 s a 3 min) en medio de un trayecto, bajo el
+// umbral de parada. Manzaba 29/09 entre 19:05 y 19:15 se detuvo cinco veces
+// entre 40 s y 2 min y ninguna aparecía. No corta viajes ni entra en la
+// numeración de paradas: se marca aparte, más discreta.
+export interface Microparada {
+  inicio: string;
+  fin: string;
+  duracionS: number;
+  latitud: number;
+  longitud: number;
+}
+
+export const MICROPARADA_MIN_S = 40;
+// Las lecturas de la detención quedan en un círculo chico alrededor de su
+// centro; la precisión del fix suma holgura hasta un tope.
+const RADIO_MICROPARADA_M = 20;
+const HOLGURA_PRECISION_MICRO_M = 15;
+// La mediana de velocidad separa una detención de una caminata lenta que por
+// su corto avance cabe en el círculo (4 km/h en 40 s son 44 m).
+const VELOCIDAD_MICROPARADA_KMH = 3;
+// Un silencio más largo entre lecturas es falta de señal, no detención
+// observada.
+const MAX_SEPARACION_MICRO_MS = 2 * 60_000;
+
+// Agrupa lecturas consecutivas que no salen del círculo; si el grupo dura lo
+// suficiente, su velocidad típica es de detenido y no cae dentro de una
+// parada, es una microparada. La duración va del primer al último fix del
+// grupo: tiempo observado, sin extrapolar.
+export function microparadasDeRecorrido(posiciones: Posicion[], paradas: Parada[]): Microparada[] {
+  const velocidades = velocidadesEfectivas(posiciones);
+  const ventanas = paradas.map((p) => [milisegundos(p.inicio), milisegundos(p.fin)] as const);
+  const resultado: Microparada[] = [];
+  let i = 0;
+  while (i < posiciones.length) {
+    let sumaLat = posiciones[i].latitud;
+    let sumaLon = posiciones[i].longitud;
+    let n = 1;
+    let j = i + 1;
+    while (j < posiciones.length) {
+      const centro = { latitud: sumaLat / n, longitud: sumaLon / n };
+      const radio = RADIO_MICROPARADA_M + Math.min(posiciones[j].precisionM ?? 0, HOLGURA_PRECISION_MICRO_M);
+      const separacion = milisegundos(posiciones[j].registradoEn) - milisegundos(posiciones[j - 1].registradoEn);
+      if (separacion > MAX_SEPARACION_MICRO_MS || distanciaKm(centro, posiciones[j]) * 1000 > radio) break;
+      sumaLat += posiciones[j].latitud;
+      sumaLon += posiciones[j].longitud;
+      n += 1;
+      j += 1;
+    }
+    // Se recortan los bordes con velocidad reportada de marcha: el vehículo
+    // frenando o arrancando cabe en el círculo pero no está detenido.
+    let desde = i;
+    let hasta = j - 1;
+    const enMarcha = (k: number) => (posiciones[k].velocidadKmh ?? 0) >= VELOCIDAD_MICROPARADA_KMH;
+    while (desde < hasta && enMarcha(desde)) desde += 1;
+    while (hasta > desde && enMarcha(hasta)) hasta -= 1;
+    const inicio = milisegundos(posiciones[desde].registradoEn);
+    const fin = milisegundos(posiciones[hasta].registradoEn);
+    const duracionS = (fin - inicio) / 1000;
+    const grupo = posiciones.slice(desde, hasta + 1);
+    const conocidas = velocidades
+      .slice(desde + 1, hasta + 1)
+      .filter((v): v is number => v != null && Number.isFinite(v))
+      .sort((a, b) => a - b);
+    const mediana = conocidas.length > 0 ? conocidas[Math.floor(conocidas.length / 2)] : null;
+    const enParada = ventanas.some(([desdeP, hastaP]) => inicio <= hastaP && desdeP <= fin);
+    if (
+      hasta > desde &&
+      duracionS >= MICROPARADA_MIN_S &&
+      duracionS < DURACION_DETENCION_MIN * 60 &&
+      mediana != null &&
+      mediana < VELOCIDAD_MICROPARADA_KMH &&
+      !enParada
+    ) {
+      resultado.push({
+        inicio: posiciones[desde].registradoEn,
+        fin: posiciones[hasta].registradoEn,
+        duracionS,
+        latitud: grupo.reduce((suma, p) => suma + p.latitud, 0) / grupo.length,
+        longitud: grupo.reduce((suma, p) => suma + p.longitud, 0) / grupo.length,
+      });
+      i = hasta + 1;
+    } else {
+      i += 1;
+    }
+  }
+  return resultado;
+}
+
+// Duración corta legible: "45 s", "1 min 20 s". duracion() de formatoBase
+// redondea a minutos y una microparada de 50 s saldría "0 min".
+export function duracionCorta(segundos: number): string {
+  const total = Math.max(0, Math.round(segundos));
+  if (total < 60) return `${total} s`;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return s === 0 ? `${m} min` : `${m} min ${s} s`;
+}
+
 // Velocidad derivada del punto seleccionado: distancia/tiempo entre el fix
 // anterior y el siguiente. Con ambos extremos el cálculo queda centrado en el
 // punto y filtra mejor el ruido del GPS; en los extremos del recorrido solo
