@@ -12,3 +12,7 @@
   - Flechas sobre la línea dibujada (GPS o ajustada a calles), no sobre el fix crudo: el rumbo sale de ±15 m a lo largo del trazo, así no hay flechas locas por la deriva del GPS.
   - Zoom progresivo anidado: una cada 1,28 km a z12, duplicando por nivel hasta una cada 10 m a z19 (filtro `['<=', ['get','n'], ['zoom']]`).
   - Cada flecha lleva su hora de paso (`t`). El clic (flecha o línea) toma la flecha más cercana en ≤24 px, elige el fix más próximo en el tiempo, pone el aro sobre la línea, centra el mapa (easeTo) y abre un globo con fecha, hora y batería. El globo solo aparece tras un clic.
+
+## App 2.3.3
+- Logo más abajo (84dp) y píldora de estado más separada (72dp).
+- Iniciar/Finalizar jornada y Actualizar justo debajo de los indicadores (el bloque ya no ocupa todo el alto); el espacio libre queda entre los botones y el pie marino. Se quitaron las barras de carga de los botones antiguos para que no salten al cargar.

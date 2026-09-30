@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pantalla principal (2.3.2): logo y estado arriba, indicadores del día,
-     Iniciar/Finalizar jornada y Actualizar; el pie marino lleva el cronograma
+<!-- Pantalla principal (2.3.3): logo y estado arriba, indicadores del día y,
+     debajo de ellos, Iniciar/Finalizar jornada y Actualizar; el pie marino lleva el cronograma
      de actividades con su sincronización y la versión al fondo. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -29,7 +29,7 @@
             android:layout_width="170dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="60dp"
+            android:layout_marginTop="84dp"
             android:adjustViewBounds="true"
             android:contentDescription="@string/app_logo"
             android:src="@drawable/logo_banner" />
@@ -48,7 +48,7 @@
         android:id="@+id/status_pill"
         android:layout_width="match_parent"
         android:layout_height="44dp"
-        android:layout_marginTop="56dp"
+        android:layout_marginTop="72dp"
         android:background="@drawable/bg_pill_red"
         android:gravity="center"
         android:orientation="horizontal"
@@ -86,9 +86,8 @@
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="10dp"
-        android:layout_weight="1">
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp">
 
         <LinearLayout
             android:id="@+id/skeleton_group"
@@ -98,7 +97,7 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="78dp"
+                android:layout_height="84dp"
                 android:orientation="horizontal">
 
                 <View
@@ -121,18 +120,6 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_skeleton" />
             </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_skeleton" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_skeleton" />
         </LinearLayout>
 
         <LinearLayout
@@ -236,11 +223,12 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- Acciones de la jornada. -->
+    <!-- Acciones de la jornada, justo debajo de los indicadores. -->
     <Button
         android:id="@+id/journey_button"
         android:layout_width="match_parent"
         android:layout_height="52dp"
+        android:layout_marginTop="12dp"
         android:background="@drawable/bg_button_green"
         android:stateListAnimator="@null"
         android:text="@string/journey_start_upper"
@@ -265,7 +253,8 @@
 
     <Space
         android:layout_width="match_parent"
-        android:layout_height="14dp" />
+        android:layout_height="0dp"
+        android:layout_weight="1" />
     </LinearLayout>
 
     <!-- Pie marino: cronograma de actividades y versión. -->
