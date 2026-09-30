@@ -284,7 +284,10 @@ function ControlCampo({
 }
 
 export default function Configuracion() {
-  const administrador = useSesion((estado) => estado.usuario?.administrador === true);
+  // Editar exige administrador y que la cuenta no sea de solo lectura.
+  const administrador = useSesion(
+    (estado) => estado.usuario?.administrador === true && estado.usuario?.soloLectura !== true,
+  );
   const cliente = useQueryClient();
   const [busqueda, setBusqueda] = useState('');
   const [seleccionId, setSeleccionId] = useState('');
@@ -372,7 +375,7 @@ export default function Configuracion() {
 
       {!administrador && (
         <p className="rounded-tarjeta border border-sin-senal/25 bg-sin-senal-suave px-4 py-3 text-[13px] font-medium text-sin-senal">
-          Necesitas permisos de administrador para cambiar la configuración; el formulario está en solo lectura.
+          Tu cuenta no puede cambiar la configuración (hace falta ser administrador y no ser de solo lectura); el formulario está en solo lectura.
         </p>
       )}
 

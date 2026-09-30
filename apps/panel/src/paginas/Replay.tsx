@@ -855,6 +855,7 @@ export default function Replay() {
       huecos={huecos}
       reconstruidos={reconstruidos}
       dispositivo={replay.data?.dispositivo ?? null}
+      finRango={finDeDia(hasta)}
     >
       <section className="replay-pantalla">
         {/* El mapa ocupa la pantalla completa; panel y franja flotan encima

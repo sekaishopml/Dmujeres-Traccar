@@ -1,3 +1,4 @@
+import { cn } from '@/lib/cn';
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff, Pencil, Plus, SlidersHorizontal, Trash2, Users } from 'lucide-react';
@@ -391,6 +392,9 @@ function DialogoAjustes({
 
 export default function Usuarios() {
   const administrador = useSesion((estado) => estado.usuario?.administrador === true);
+  // Una cuenta administradora marcada como solo lectura ve la lista pero no
+  // las acciones: la API rechaza sus cambios con 403.
+  const soloLectura = useSesion((estado) => estado.usuario?.soloLectura === true);
   const cliente = useQueryClient();
   const [pagina, setPagina] = useState(1);
   const [busqueda, setBusqueda] = useState('');
@@ -549,10 +553,17 @@ export default function Usuarios() {
           }}
           placeholder="Buscar cuenta o persona"
         />
-        <Boton variante="principal" icono={Plus} onClick={abrirCrear}>
-          Agregar cuenta
-        </Boton>
+        {!soloLectura && (
+          <Boton variante="principal" icono={Plus} onClick={abrirCrear}>
+            Agregar cuenta
+          </Boton>
+        )}
       </AccionesPagina>
+      {soloLectura && (
+        <p className="rounded-control border border-borde bg-superficie px-4 py-3 text-[13px] text-texto-2">
+          Tu cuenta es de solo lectura: puedes consultar, pero no hacer cambios.
+        </p>
+      )}
 
       <Tarjeta>
         <CabeceraTarjeta
@@ -608,7 +619,7 @@ export default function Usuarios() {
                       )}
                     </Td>
                     <Td>
-                      <div className="flex items-center justify-end gap-1">
+                      <div className={cn('flex items-center justify-end gap-1', soloLectura && 'hidden')}>
                         <BotonIcono
                           icono={Pencil}
                           etiqueta={`Cambiar los datos de ${usuario.nombre}`}

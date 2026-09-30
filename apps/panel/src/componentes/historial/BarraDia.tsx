@@ -1,8 +1,10 @@
+import { diaDe, inicioDeDia } from '@/dominio/rango';
+
 // Barra delgada de 24 h con el tramo de la jornada. Si la jornada cruza la
 // medianoche, el tramo se recorta al día de inicio (la hora de fin lleva +1).
 export function BarraDia({ inicioEn, finEn }: { inicioEn: string; finEn: string | null }) {
   const inicio = new Date(inicioEn);
-  const diaInicio = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate()).getTime();
+  const diaInicio = new Date(inicioDeDia(diaDe(inicio))).getTime();
   const dia = 24 * 3_600_000;
   const fin = finEn ? new Date(finEn).getTime() : Date.now();
   const desde = Math.max(0, Math.min(1, (inicio.getTime() - diaInicio) / dia));

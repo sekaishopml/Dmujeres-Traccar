@@ -1,3 +1,4 @@
+import { cn } from '@/lib/cn';
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, UsersRound, UserCog } from 'lucide-react';
@@ -206,6 +207,7 @@ function DialogoMiembros({
 
 export default function Grupos() {
   const administrador = useSesion((estado) => estado.usuario?.administrador === true);
+  const soloLectura = useSesion((estado) => estado.usuario?.soloLectura === true);
   const cliente = useQueryClient();
   const [pagina, setPagina] = useState(1);
   const [busqueda, setBusqueda] = useState('');
@@ -286,17 +288,24 @@ export default function Grupos() {
           }}
           placeholder="Buscar grupo"
         />
-        <Boton
-          variante="principal"
-          icono={Plus}
-          onClick={() => {
-            crear.reset();
-            setModal({ modo: 'crear' });
-          }}
-        >
-          Agregar grupo
-        </Boton>
+        {!soloLectura && (
+          <Boton
+            variante="principal"
+            icono={Plus}
+            onClick={() => {
+              crear.reset();
+              setModal({ modo: 'crear' });
+            }}
+          >
+            Agregar grupo
+          </Boton>
+        )}
       </AccionesPagina>
+      {soloLectura && (
+        <p className="rounded-control border border-borde bg-superficie px-4 py-3 text-[13px] text-texto-2">
+          Tu cuenta es de solo lectura: puedes consultar, pero no hacer cambios.
+        </p>
+      )}
 
       <Tarjeta>
         <CabeceraTarjeta
@@ -334,7 +343,7 @@ export default function Grupos() {
                       <Td className="max-w-72">{grupo.descripcion ?? GUION}</Td>
                       <Td className="max-w-80">{nombres.length > 0 ? nombres.join(', ') : textoConteo(grupo)}</Td>
                       <Td>
-                        <div className="flex items-center justify-end gap-1">
+                        <div className={cn('flex items-center justify-end gap-1', soloLectura && 'hidden')}>
                           <BotonIcono
                             icono={UserCog}
                             etiqueta={`Cambiar quiénes están en ${grupo.nombre}`}

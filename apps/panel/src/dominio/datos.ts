@@ -98,10 +98,34 @@ export function traerJornadasFlota(
   dispositivoId?: string,
   opciones?: OpcionesPeticion,
 ): Promise<RespuestaJornadasFlota> {
-  return api.get<RespuestaJornadasFlota>(
-    `/api/v1/journeys${consulta({ desde, hasta, dispositivoId, tamano: 200 })}`,
-    opciones,
-  );
+  return traerTodasLasJornadas(desde, hasta, dispositivoId, opciones);
+}
+
+// La API pagina de a 200 como máximo: se piden todas las páginas para que las
+// cifras de Historial (jornadas, tiempo total) no se corten sin aviso.
+const TAMANO_PAGINA_JORNADAS = 200;
+const MAX_PAGINAS_JORNADAS = 50;
+
+async function traerTodasLasJornadas(
+  desde: string,
+  hasta: string,
+  dispositivoId: string | undefined,
+  opciones: OpcionesPeticion | undefined,
+): Promise<RespuestaJornadasFlota> {
+  const pedir = (pagina: number) =>
+    api.get<RespuestaJornadasFlota>(
+      `/api/v1/journeys${consulta({ desde, hasta, dispositivoId, tamano: TAMANO_PAGINA_JORNADAS, pagina })}`,
+      opciones,
+    );
+  const primera = await pedir(1);
+  const datos = [...primera.datos];
+  const total = primera.total ?? datos.length;
+  for (let pagina = 2; datos.length < total && pagina <= MAX_PAGINAS_JORNADAS; pagina++) {
+    const siguiente = await pedir(pagina);
+    if (siguiente.datos.length === 0) break;
+    datos.push(...siguiente.datos);
+  }
+  return { ...primera, datos };
 }
 
 // Paradas del servidor: segmentación precisa de la plataforma (>= 3 min y por

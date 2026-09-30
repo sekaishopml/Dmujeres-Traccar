@@ -120,10 +120,13 @@ interface Props {
   huecos: Hueco[];
   reconstruidos: TramoReconstruido[];
   dispositivo: Dispositivo | null;
+  // Fin del rango consultado (ISO): referencia del estado del último fix.
+  finRango?: string;
   children: ReactNode;
 }
 
 interface Reproductor {
+  finRangoMs: number | null;
   posiciones: Posicion[];
   huecos: Hueco[];
   reconstruidos: TramoReconstruido[];
@@ -168,7 +171,8 @@ const ContextoReproductor = createContext<Reproductor | null>(null);
 // lógica. La superficie de selección es la capa de acierto de línea que agrega
 // Replay sobre la ruta; el reproductor se engancha a ella y resuelve el fix más
 // cercano con posiciones, que ya tiene en memoria.
-export default function ReproductorReplay({ mapa, posiciones, huecos, reconstruidos, dispositivo, children }: Props) {
+export default function ReproductorReplay({ mapa, posiciones, huecos, reconstruidos, dispositivo, finRango, children }: Props) {
+  const finRangoMs = finRango ? milisegundos(finRango) : null;
   const [indice, setIndice] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
   const [velocidadReproduccion, setVelocidadReproduccion] = useState(1);
@@ -240,8 +244,8 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
   // evalúa contra Date.now(), pero solo manda en el último fix del recorrido;
   // en los intermedios la señal la decide el salto al fix siguiente.
   const estadoUnidad = useMemo(
-    () => estadoDePunto(posiciones, huecos, indiceAcotado),
-    [posiciones, huecos, indiceAcotado],
+    () => estadoDePunto(posiciones, huecos, indiceAcotado, Date.now(), finRangoMs),
+    [posiciones, huecos, indiceAcotado, finRangoMs],
   );
 
   useEffect(() => {
@@ -520,6 +524,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     huecos,
     reconstruidos,
     dispositivo,
+    finRangoMs,
     indice: indiceAcotado,
     punto,
     reproduciendo,
@@ -673,11 +678,11 @@ function GraficoBateria({ ampliada }: { ampliada: boolean }) {
 // recepción en el servidor eran datos técnicos y se retiraron. Incluye
 // acciones para volver al punto o soltar la selección.
 export function PanelPuntoSeleccionado() {
-  const { posiciones, huecos, reconstruidos, dispositivo, seleccionado } = useReproductor();
+  const { posiciones, huecos, reconstruidos, dispositivo, seleccionado, finRangoMs } = useReproductor();
   const punto = seleccionado != null ? posiciones[seleccionado] ?? null : null;
   const estado = useMemo(
-    () => (seleccionado == null ? null : estadoDePunto(posiciones, huecos, seleccionado)),
-    [posiciones, huecos, seleccionado],
+    () => (seleccionado == null ? null : estadoDePunto(posiciones, huecos, seleccionado, Date.now(), finRangoMs)),
+    [posiciones, huecos, seleccionado, finRangoMs],
   );
   // El clic sobre un trazado reconstruido selecciona su fix más cercano, que
   // es un extremo del tramo: la ficha muestra su método (ADR-007). En GPS

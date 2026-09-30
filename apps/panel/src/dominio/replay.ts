@@ -195,7 +195,7 @@ export function milisegundos(iso: string): number {
 // util/formato.hora añade "a. m./p. m." y alarga la franja compacta y los
 // rótulos. horaCorta se queda solo con la hora y fechaHoraCorta (abajo) con el
 // día, para la ficha del punto.
-const HORA_CORTA = new Intl.DateTimeFormat('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false });
+const HORA_CORTA = new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit', hour12: false });
 
 export function horaCorta(valor?: string | null): string {
   return valor ? HORA_CORTA.format(new Date(valor)) : GUION;
@@ -205,7 +205,7 @@ export function horaCorta(valor?: string | null): string {
 // formato de es-EC con "a. m./p. m.", así que el Replay no comparte ese
 // formateador. Componentes explícitos en vez de dateStyle/timeStyle para fijar
 // el orden y los dos dígitos; el año a dos dígitos mantiene la fila compacta.
-const FECHA_HORA_CORTA = new Intl.DateTimeFormat('es-EC', {
+const FECHA_HORA_CORTA = new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil',
   day: '2-digit',
   month: '2-digit',
   year: '2-digit',
@@ -223,12 +223,7 @@ export function fechaHoraCorta(valor?: string | null): string {
 // con los componentes locales (Date normaliza el desborde de mes o año) y se
 // compensa la zona para leer la fecha con toISOString, el mismo criterio local
 // que usa fechaHoyLocal.
-export function fechaAyerLocal(): string {
-  const ahora = new Date();
-  const ayer = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - 1);
-  const local = new Date(ayer.getTime() - ayer.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-}
+export { fechaAyerLocal } from './rango';
 
 const RADIO_TIERRA_KM = 6371;
 
@@ -1373,7 +1368,11 @@ export function estadoDePunto(
   huecos: Hueco[],
   indice: number,
   ahora = Date.now(),
+  finRangoMs: number | null = null,
 ): EstadoUnidad {
+  // En un día pasado, "ahora" es el fin del rango consultado: si no, el último
+  // fix de cualquier día viejo salía siempre como "Sin señal".
+  const referencia = finRangoMs != null ? Math.min(ahora, finRangoMs) : ahora;
   const posicion = posiciones[indice];
   if (!posicion) return 'sinSenal';
   const instante = milisegundos(posicion.registradoEn);
@@ -1383,7 +1382,7 @@ export function estadoDePunto(
   const siguiente = posiciones[indice + 1] ?? null;
   if (siguiente) {
     if (milisegundos(siguiente.registradoEn) - instante > ANTIGUEDAD_SIN_SENAL_MS) return 'sinSenal';
-  } else if (ahora - instante > ANTIGUEDAD_SIN_SENAL_MS) {
+  } else if (referencia - instante > ANTIGUEDAD_SIN_SENAL_MS) {
     return 'sinSenal';
   }
   const anterior = indice > 0 ? posiciones[indice - 1] : null;

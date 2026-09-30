@@ -18,7 +18,7 @@ import { colorEstado, claveEstado } from '@/dominio/estado';
 import { mensajeError, esNoEncontrado } from '@/dominio/errores';
 import { bateria, duracion, fecha, fechaHora, GUION, hace, hora, velocidad } from '@/dominio/formatoBase';
 import { coordenadas, entero, grados, metros, siNo } from '@/dominio/formato';
-import { fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
+import { fechaAyerLocal, fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
 import { AccionesPagina } from '@/componentes/marco/Marco';
 import { Avatar } from '@/componentes/ui/Avatar';
 import { claseBoton } from '@/componentes/ui/Boton';
@@ -36,12 +36,6 @@ import type { PuntoMapa } from '@/componentes/expediente/MapaLugar';
 
 const REFRESCO_MS = 10_000;
 
-function fechaAyerLocal(): string {
-  const d = new Date(`${fechaHoyLocal()}T12:00:00`);
-  d.setDate(d.getDate() - 1);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
 
 function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
   return (

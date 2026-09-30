@@ -16,11 +16,11 @@ import { BarraDia } from '@/componentes/historial/BarraDia';
 import { GUION } from '@/dominio/formatoBase';
 import { traerFlota, traerJornadasFlota, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from '@/dominio/datos';
 import { mensajeError } from '@/dominio/errores';
-import { fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
+import { fechaAyerLocal, fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
 
-const HORA = new Intl.DateTimeFormat('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false });
-const FECHA_CORTA = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
-const FECHA_LARGA = new Intl.DateTimeFormat('es-EC', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+const HORA = new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit', hour12: false });
+const FECHA_CORTA = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit' });
+const FECHA_LARGA = new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil', weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
 
 type Atajo = 'hoy' | 'ayer' | 'ambos';
 const ATAJOS: readonly { valor: Atajo; etiqueta: string }[] = [
@@ -39,9 +39,7 @@ function diaLocal(valor: string): string {
 }
 
 function ayerLocal(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return FECHA_CORTA.format(d);
+  return fechaAyerLocal();
 }
 
 // Fin con marca de cruce de medianoche (+1): la hora sola engañaría a la auditoría.

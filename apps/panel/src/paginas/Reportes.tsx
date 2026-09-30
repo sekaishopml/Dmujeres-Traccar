@@ -13,7 +13,7 @@ import { Cargando, ErrorCarga, Vacio } from '@/componentes/ui/Estados';
 import { CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados, traerFlota } from '@/dominio/datos';
 import { GUION, duracion, fechaHora, kilometros, velocidad } from '@/dominio/formatoBase';
 import { mensajeError } from '@/dominio/errores';
-import { fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
+import { fechaHaceDias, fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
 import GraficoDistancia from '@/componentes/reportes/GraficoDistancia';
 import Paginacion from '@/componentes/reportes/Paginacion';
 import Persona from '@/componentes/reportes/Persona';
@@ -35,16 +35,10 @@ const PERIODOS = [
   { valor: '30', etiqueta: '30 días' },
 ] as const;
 
-function fechaLocalHaceDias(dias: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - dias);
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-}
 
 function rangoDePeriodo(periodo: Periodo): { desde: string; hasta: string } {
   const dias = periodo === 'hoy' ? 0 : Number(periodo);
-  return { desde: fechaLocalHaceDias(dias), hasta: fechaHoyLocal() };
+  return { desde: fechaHaceDias(dias), hasta: fechaHoyLocal() };
 }
 
 function fechaValida(valor: string): boolean {
