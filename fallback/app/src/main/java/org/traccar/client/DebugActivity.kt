@@ -43,19 +43,20 @@ class DebugActivity : AppCompatActivity() {
         addRow(rows, R.string.debug_home_title, R.string.debug_home_summary) {
             startActivity(android.content.Intent(this, MainActivity::class.java))
         }
+        // Vistas previas: nunca tocan la sesión ni la marca de "configurada".
+        // Antes el asistente completo borraba esa marca y, si se salía sin
+        // terminarlo, la app quedaba atrapada en el asistente.
         addRow(rows, R.string.debug_welcome_title, R.string.debug_welcome_summary) {
-            OnboardingActivity.start(this, OnboardingActivity.STEP_WELCOME)
+            OnboardingActivity.start(this, OnboardingActivity.STEP_WELCOME, preview = true)
         }
         addRow(rows, R.string.debug_login_title, R.string.debug_login_summary) {
-            OnboardingActivity.start(this, OnboardingActivity.STEP_LOGIN)
+            OnboardingActivity.start(this, OnboardingActivity.STEP_LOGIN, preview = true)
         }
         addRow(rows, R.string.debug_perms_title, R.string.debug_perms_summary) {
-            OnboardingActivity.start(this, OnboardingActivity.STEP_PERMISSIONS)
+            OnboardingActivity.start(this, OnboardingActivity.STEP_PERMISSIONS, preview = true)
         }
         addRow(rows, R.string.debug_wizard_title, R.string.debug_wizard_summary) {
-            PreferenceManager.getDefaultSharedPreferences(this).edit()
-                .putBoolean(Prefs.ONBOARDED, false).apply()
-            OnboardingActivity.start(this, OnboardingActivity.STEP_WELCOME)
+            OnboardingActivity.start(this, OnboardingActivity.STEP_WELCOME, preview = true)
         }
         addRow(rows, R.string.debug_console_title, R.string.debug_console_summary) {
             startActivity(android.content.Intent(this, StatusActivity::class.java))

@@ -71,6 +71,14 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        // Reparación: equipos ya configurados (con usuario y asistente
+        // completado alguna vez) que perdieron la marca por la vista previa
+        // antigua del menú de depuración vuelven al inicio normal.
+        if (!prefs.getBoolean(Prefs.ONBOARDED, false) &&
+            (prefs.getLong(Prefs.ONBOARDED_AT, 0L) > 0L || SessionStore.state(this).hasSession())
+        ) {
+            prefs.edit().putBoolean(Prefs.ONBOARDED, true).apply()
+        }
         if (!prefs.getBoolean(Prefs.ONBOARDED, false)) {
             startActivity(Intent(this, OnboardingActivity::class.java))
             finish()
@@ -244,6 +252,10 @@ class MainActivity : AppCompatActivity() {
         // Consola de estado (1.1.x): arriba a la derecha.
         findViewById<android.widget.ImageButton>(R.id.console_button).setOnClickListener {
             startActivity(Intent(this, StatusActivity::class.java))
+        }
+        // Cronograma de actividades (reemplaza el Excel de ruta semanal).
+        findViewById<Button>(R.id.cronograma_button).setOnClickListener {
+            startActivity(Intent(this, org.traccar.client.cronograma.CronogramaActivity::class.java))
         }
 
         button.setOnClickListener {

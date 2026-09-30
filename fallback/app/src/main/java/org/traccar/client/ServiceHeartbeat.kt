@@ -170,6 +170,8 @@ object ServiceHeartbeat {
             // Avisos de jornada que no llegaron (sin señal al tocar): reintento.
             runCatching { DmujeresApi.flushJourneyEvents(context) }
             runCatching { PowerEvents.flush(context) }
+            // Actividades del cronograma cargadas sin conexión.
+            runCatching { org.traccar.client.cronograma.Actividades.sincronizar(context) }
         }.start()
     }
 }

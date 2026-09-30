@@ -206,6 +206,38 @@ object DmujeresApi {
         flushJourneyEvents(context)
     }
 
+    /** Cronograma: actividades del equipo entre dos fechas (YYYY-MM-DD). null = sin conexión/error. */
+    fun fetchActividades(context: Context, desde: String, hasta: String): org.json.JSONArray? {
+        val base = webBase(context)
+        val device = deviceId(context)
+        if (base.isBlank() || device.isBlank()) return null
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = URL("$base/api/mobile/v1/actividades?deviceId=${java.net.URLEncoder.encode(device, "UTF-8")}&desde=$desde&hasta=$hasta")
+                .openConnection() as HttpURLConnection
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 8_000
+            val hadToken = setAuthHeaders(connection, context)
+            connection.setRequestProperty("X-Device-Id", device)
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                noteHttpResult(context, code, hadToken)
+                null
+            } else {
+                JSONObject(connection.inputStream.bufferedReader().use { it.readText() }).optJSONArray("actividades")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "cronograma: no se pudo leer", e)
+            null
+        } finally {
+            runCatching { connection?.disconnect() }
+        }
+    }
+
+    /** Cronograma: alta, edición o baja (idempotente por clientId). */
+    fun postActividad(context: Context, body: JSONObject): Boolean =
+        postSync(context, "/api/mobile/v1/actividades", JSONObject(body.toString()).put("deviceId", deviceId(context)))
+
     /** Aviso de apagado/encendido (cola de PowerEvents). */
     fun postPowerEvent(context: Context, event: JSONObject): Boolean =
         postSync(context, "/api/mobile/v1/power", JSONObject(event.toString()).put("deviceId", deviceId(context)))

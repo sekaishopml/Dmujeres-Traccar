@@ -17,6 +17,8 @@ object Prefs {
     const val ACCURACY = "accuracy"
     const val STATUS = "status"
     const val ONBOARDED = "onboarded"
+    /** Hora en que se completó el asistente (repara la marca si se perdió). */
+    const val ONBOARDED_AT = "onboardedAt"
     const val BUFFER = "buffer"
     const val WAKELOCK = "wakelock"
 

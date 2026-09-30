@@ -356,4 +356,37 @@ Se registrará el cierre en el panel.</string>
   <string name="update_banner_fmt">Actualizar a la versión %1$s · Toca para instalar</string>
   <string name="update_title_fmt">Versión %1$s</string>
   <string name="update_title">Nueva versión</string>
+  <!-- Cronograma de actividades -->
+  <string name="crono_title">Cronograma de actividades</string>
+  <string name="crono_button">Cronograma de actividades</string>
+  <string name="crono_prev">Anterior</string>
+  <string name="crono_next">Siguiente</string>
+  <string name="crono_add">Agregar actividad</string>
+  <string name="crono_ver_mes">Ver el mes</string>
+  <string name="crono_tipo">Tipo</string>
+  <string name="crono_lugar">Lugar o dirección</string>
+  <string name="crono_lugar_hint">Por ejemplo: Coral Río</string>
+  <string name="crono_nota">Nota (opcional)</string>
+  <string name="crono_nota_obligatoria">Describe la novedad</string>
+  <string name="crono_nota_hint">Por ejemplo: me quedé sin batería</string>
+  <string name="crono_nueva">Nueva actividad</string>
+  <string name="crono_editar">Editar actividad</string>
+  <string name="crono_guardar">Guardar</string>
+  <string name="crono_cancelar">Cancelar</string>
+  <string name="crono_eliminar">Eliminar</string>
+  <string name="crono_error_lugar">Escribe el lugar de la visita.</string>
+  <string name="crono_error_nota">Describe la novedad.</string>
+  <string name="crono_ubic_si_fmt">Se guardará tu ubicación actual (precisión %1$d m).</string>
+  <string name="crono_ubic_sin_fix">Jornada iniciada: se guardará la ubicación cuando haya GPS.</string>
+  <string name="crono_ubic_no">Sin jornada iniciada: no se guarda la ubicación.</string>
+  <string name="crono_ubic_otro_dia">Actividad de otro día: no se guarda la ubicación.</string>
+  <string name="crono_vacio">Sin actividades este día.</string>
+  <string name="crono_todo_dia">Marcar todo el día como:</string>
+  <string name="crono_sync_ok">Sincronizado</string>
+  <string name="crono_sync_pend_fmt">%1$d por enviar · se sube al tener conexión</string>
+  <string name="crono_sync_offline">Sin conexión · se muestra lo guardado en el teléfono</string>
+  <string name="crono_con_ubicacion">Con ubicación</string>
+  <string name="crono_pendiente">Por enviar</string>
+  <string name="crono_confirmar_eliminar">¿Eliminar esta actividad?</string>
+  <string name="crono_ver_dia_fmt">Ver el %1$s</string>
 </resources>

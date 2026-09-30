@@ -10,6 +10,9 @@
         <item name="android:windowBackground">@color/white</item>
         <item name="android:windowSplashScreenBackground">@color/white</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@color/white</item>
+        <!-- Sin ícono en el arranque del sistema (lo recortaba en círculo): el
+             logo completo lo muestra SplashActivity sobre el mismo blanco. -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ds_transparente</item>
         <item name="android:statusBarColor">@color/white</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:forceDarkAllowed">false</item>

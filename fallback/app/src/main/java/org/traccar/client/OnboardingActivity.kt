@@ -56,7 +56,11 @@ class OnboardingActivity : AppCompatActivity() {
             when (step) {
                 STEP_WELCOME -> showLogin()
                 STEP_LOGIN -> validateAndContinue()
-                else -> if (requiredGranted()) finishOnboarding() else requestMissing()
+                else -> when {
+                    preview -> finish()
+                    requiredGranted() -> finishOnboarding()
+                    else -> requestMissing()
+                }
             }
         }
         // El menú de depuración puede abrir directamente un paso del asistente
@@ -154,7 +158,14 @@ class OnboardingActivity : AppCompatActivity() {
      * se avanza a permisos. Sin sesión guardada la app sigue con la clave
      * compartida (no se bloquea la flota instalada).
      */
+    private val preview: Boolean
+        get() = intent.getBooleanExtra(EXTRA_PREVIEW, false)
+
     private fun validateAndContinue() {
+        if (preview) {
+            showPermissions()
+            return
+        }
         val view = container.getChildAt(0) ?: return
         val userField = view.findViewById<EditText>(R.id.field_user) ?: return
         val passField = view.findViewById<EditText>(R.id.field_pass) ?: return
@@ -366,6 +377,7 @@ class OnboardingActivity : AppCompatActivity() {
     private fun finishOnboarding() {
         PreferenceManager.getDefaultSharedPreferences(this).edit()
             .putBoolean(Prefs.ONBOARDED, true)
+            .putLong(Prefs.ONBOARDED_AT, System.currentTimeMillis())
             .putBoolean(Prefs.STATUS, true)
             .apply()
         // Reinicio limpio: si el servicio venía corriendo con la configuración
@@ -405,11 +417,18 @@ class OnboardingActivity : AppCompatActivity() {
         const val STEP_LOGIN = "login"
         const val STEP_PERMISSIONS = "permissions"
 
-        /** Abre el asistente, opcionalmente en un paso concreto (pruebas). */
-        fun start(context: Context, step: String? = null) {
+        private const val EXTRA_PREVIEW = "preview"
+
+        /**
+         * Abre el asistente, opcionalmente en un paso concreto. `preview` (menú
+         * de depuración) recorre el diseño sin iniciar sesión, sin reiniciar el
+         * servicio y sin cambiar la configuración: al final solo se cierra.
+         */
+        fun start(context: Context, step: String? = null, preview: Boolean = false) {
             context.startActivity(
                 Intent(context, OnboardingActivity::class.java)
-                    .putExtra(EXTRA_STEP, step ?: STEP_WELCOME),
+                    .putExtra(EXTRA_STEP, step ?: STEP_WELCOME)
+                    .putExtra(EXTRA_PREVIEW, preview),
             )
         }
     }

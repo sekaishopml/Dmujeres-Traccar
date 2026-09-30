@@ -126,7 +126,13 @@ abstract class PositionProvider(
                 )
                 if (implied != null) location.speed = implied.toFloat()
             }
-            preferences.edit().putLong(KEY_LAST_FIX_AT, System.currentTimeMillis()).apply()
+            preferences.edit()
+                .putLong(KEY_LAST_FIX_AT, System.currentTimeMillis())
+                // Último fix para el cronograma (ubicación al registrar una actividad).
+                .putString(KEY_LAST_FIX_LAT, location.latitude.toString())
+                .putString(KEY_LAST_FIX_LON, location.longitude.toString())
+                .putFloat(KEY_LAST_FIX_ACC, if (location.hasAccuracy()) location.accuracy else -1f)
+                .apply()
             this.lastLocation = location
             listener.onPositionUpdate(Position(deviceId, location, getBatteryStatus(context)))
         } else {
@@ -141,6 +147,9 @@ abstract class PositionProvider(
 
         /** Hora del último fix aceptado (para el refresco progresivo). */
         const val KEY_LAST_FIX_AT = "lastFixAt"
+        const val KEY_LAST_FIX_LAT = "lastFixLat"
+        const val KEY_LAST_FIX_LON = "lastFixLon"
+        const val KEY_LAST_FIX_ACC = "lastFixAcc"
 
         /**
          * Pata mínima (m) para que un giro cuente como reporte (filtra jitter).

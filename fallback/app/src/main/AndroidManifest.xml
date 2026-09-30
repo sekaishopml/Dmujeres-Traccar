@@ -41,10 +41,20 @@
             android:exported="true"
             android:launchMode="singleTask" />
 
+        <activity
+            android:name=".cronograma.CronogramaActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity
+            android:name=".SplashActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
         <activity-alias
             android:name=".Launcher"
             android:exported="true"
-            android:targetActivity=".MainActivity">
+            android:targetActivity=".SplashActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
