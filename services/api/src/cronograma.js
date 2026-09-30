@@ -8,8 +8,8 @@
 // y el panel las pide por /geocode/reverse.
 
 import { consultar } from './db.js';
-import { datosInvalidos } from './errores.js';
-import { respuestaJson } from './http.js';
+import { datosInvalidos, noEncontrado } from './errores.js';
+import { leerCuerpoJson, respuestaJson } from './http.js';
 import { PREDICADO_PERMISO, permisoDe } from './flota.js';
 import { detectarParadas } from './paradas.js';
 import { precalentar, resolucionEnCache } from './geocodigo.js';
@@ -141,4 +141,59 @@ export async function listarCronograma(ctx) {
     };
   });
   respuestaJson(ctx.res, 200, { desde, hasta, datos });
+}
+
+// Sin marca previa (cuenta nueva o primera vez), cuenta como nuevo lo de la
+// última semana: avisa lo reciente sin inundar con todo el historial.
+const VENTANA_SIN_MARCA = "interval '7 days'";
+
+// GET /api/v1/cronograma/novedades -> {total, personas:[{dispositivoId,
+// nombre, nuevas, ultimaEn}]}: actividades cargadas o editadas en la app
+// después de la última vez que esta cuenta abrió el cronograma de cada
+// persona. `total` es la suma (número del menú).
+export async function novedadesCronograma(ctx) {
+  const { rows } = await consultar(
+    ctx.pool,
+    `SELECT d.id_publico AS dispositivo_publico, d.nombre,
+            count(*)::int AS nuevas, max(a.actualizado_en) AS ultima_en
+       FROM operations.dmt_actividad a
+       JOIN tracking.dmt_dispositivo d ON d.id = a.dispositivo_id
+       LEFT JOIN operations.dmt_cronograma_visto v
+              ON v.dispositivo_id = a.dispositivo_id AND v.usuario_id = $2
+      WHERE NOT a.eliminada
+        AND ${PREDICADO_PERMISO}
+        AND a.actualizado_en > COALESCE(v.visto_en, now() - ${VENTANA_SIN_MARCA})
+      GROUP BY d.id_publico, d.nombre
+      ORDER BY max(a.actualizado_en) DESC`,
+    [permisoDe(ctx.usuario), ctx.usuario.id],
+    { signal: ctx.signal },
+  );
+  const personas = rows.map((fila) => ({
+    dispositivoId: fila.dispositivo_publico,
+    nombre: fila.nombre,
+    nuevas: Number(fila.nuevas),
+    ultimaEn: fila.ultima_en instanceof Date ? fila.ultima_en.toISOString() : fila.ultima_en,
+  }));
+  respuestaJson(ctx.res, 200, { total: personas.reduce((suma, p) => suma + p.nuevas, 0), personas });
+}
+
+// POST /api/v1/cronograma/visto {dispositivoId}: esta cuenta ya vio el
+// cronograma de esa persona hasta ahora (se borra su aviso).
+export async function marcarCronogramaVisto(ctx) {
+  const cuerpo = await leerCuerpoJson(ctx.req, 2048);
+  const equipo = typeof cuerpo?.dispositivoId === 'string' ? cuerpo.dispositivoId.trim() : '';
+  if (equipo === '') throw datosInvalidos('dispositivoId es obligatorio.');
+  const { rowCount } = await consultar(
+    ctx.pool,
+    `INSERT INTO operations.dmt_cronograma_visto (usuario_id, dispositivo_id, visto_en)
+     SELECT $2, d.id, now()
+       FROM tracking.dmt_dispositivo d
+      WHERE (d.id_publico::text = $3 OR d.id::text = $3)
+        AND ${PREDICADO_PERMISO}
+     ON CONFLICT (usuario_id, dispositivo_id) DO UPDATE SET visto_en = now()`,
+    [permisoDe(ctx.usuario), ctx.usuario.id, equipo],
+    { signal: ctx.signal },
+  );
+  if (rowCount === 0) throw noEncontrado('La persona no existe o no está a tu cargo.');
+  respuestaJson(ctx.res, 200, { ok: true });
 }

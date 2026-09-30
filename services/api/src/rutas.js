@@ -58,6 +58,8 @@ export const DEFINICIONES = [
   { metodo: 'GET', ruta: '/api/v1/config', manejar: config.obtenerConfiguracion },
   { metodo: 'GET', ruta: '/api/v1/geocode/reverse', manejar: geocodigo.obtenerDireccion },
   { metodo: 'GET', ruta: '/api/v1/cronograma', manejar: cronograma.listarCronograma },
+  { metodo: 'GET', ruta: '/api/v1/cronograma/novedades', manejar: cronograma.novedadesCronograma },
+  { metodo: 'POST', ruta: '/api/v1/cronograma/visto', manejar: cronograma.marcarCronogramaVisto },
   { metodo: 'GET', ruta: '/api/v1/health', publica: true, manejar: salud.salud },
   { metodo: 'GET', ruta: '/api/v1/ready', publica: true, manejar: salud.disponibilidad },
   { metodo: 'GET', ruta: '/api/v1/version', publica: true, manejar: salud.version },

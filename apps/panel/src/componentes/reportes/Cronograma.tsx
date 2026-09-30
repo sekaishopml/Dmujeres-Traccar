@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Download, MapPin, Navigation, TriangleAlert } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Download, MapPin, Navigation, TriangleAlert } from 'lucide-react';
 import { AccionesPagina } from '@/componentes/marco/Marco';
-import { Selector } from '@/componentes/ui/Campo';
 import { Segmentado } from '@/componentes/ui/Segmentado';
 import { Tarjeta } from '@/componentes/ui/Tarjeta';
 import { Avatar } from '@/componentes/ui/Avatar';
@@ -26,6 +25,12 @@ import {
   type Actividad,
 } from '@/dominio/cronograma';
 import { cn } from '@/lib/cn';
+import {
+  CLAVE_NOVEDADES_CRONOGRAMA,
+  REFRESCO_NOVEDADES_MS,
+  marcarCronogramaVisto,
+  traerNovedadesCronograma,
+} from './novedades';
 
 type Vista = 'semana' | 'mes';
 const VISTAS = [
@@ -62,6 +67,27 @@ export default function Cronograma() {
   });
   const datos = useMemo(() => cronograma.data?.datos ?? [], [cronograma.data]);
 
+  // Avisos: cuántas actividades nuevas cargó cada persona desde la última vez
+  // que se abrió su cronograma. Ver el de una persona la marca como vista.
+  const cliente = useQueryClient();
+  const avisos = useQuery({
+    queryKey: CLAVE_NOVEDADES_CRONOGRAMA,
+    queryFn: traerNovedadesCronograma,
+    refetchInterval: REFRESCO_NOVEDADES_MS,
+    retry: false,
+  });
+  const nuevasPor = useMemo(
+    () => new Map((avisos.data?.personas ?? []).map((p) => [p.dispositivoId, p.nuevas])),
+    [avisos.data],
+  );
+  const nuevasElegida = nuevasPor.get(elegida) ?? 0;
+  useEffect(() => {
+    if (elegida === '' || nuevasElegida === 0 || !cronograma.isSuccess) return;
+    marcarCronogramaVisto(elegida)
+      .then(() => cliente.invalidateQueries({ queryKey: CLAVE_NOVEDADES_CRONOGRAMA }))
+      .catch(() => undefined);
+  }, [elegida, nuevasElegida, cronograma.isSuccess, cronograma.dataUpdatedAt, cliente]);
+
   const mover = (paso: number) =>
     setAncla(vista === 'semana' ? sumarDias(ancla, paso * 7) : sumarMeses(ancla, paso));
   const titulo = vista === 'semana' ? rangoSemana(desde, hasta) : etiquetaMes(desde);
@@ -72,13 +98,11 @@ export default function Cronograma() {
   return (
     <div className="space-y-4">
       <AccionesPagina>
-        <Selector aria-label="Persona" className="w-48" value={elegida} onChange={(e) => setPersona(e.target.value)}>
-          {equipos.map((e) => (
-            <option key={e.idPublico} value={e.idPublico}>
-              {e.nombre}
-            </option>
-          ))}
-        </Selector>
+        <SelectorPersona
+          personas={equipos.map((e) => ({ id: e.idPublico, nombre: e.nombre, nuevas: nuevasPor.get(e.idPublico) ?? 0 }))}
+          valor={elegida}
+          alCambiar={setPersona}
+        />
         <Segmentado opciones={VISTAS} valor={vista} alCambiar={setVista} />
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => mover(-1)} className={claseBoton('secundario', 'sm')} aria-label="Anterior">
@@ -130,6 +154,96 @@ export default function Cronograma() {
         />
       ) : (
         <Planilla dias={diasDeSemana(lunes)} hoy={hoy} datos={datos} />
+      )}
+    </div>
+  );
+}
+
+// Lista de personas con el aviso de actividades nuevas: círculo magenta con
+// el número junto a quien subió o actualizó su cronograma. El selector nativo
+// no admite color, por eso es una lista propia con el aspecto del Selector.
+function SelectorPersona({
+  personas,
+  valor,
+  alCambiar,
+}: {
+  personas: { id: string; nombre: string; nuevas: number }[];
+  valor: string;
+  alCambiar: (id: string) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const caja = useRef<HTMLDivElement>(null);
+  const actual = personas.find((p) => p.id === valor);
+  const otrasConAviso = personas.filter((p) => p.id !== valor && p.nuevas > 0).length;
+
+  useEffect(() => {
+    if (!abierto) return;
+    const fuera = (evento: MouseEvent) => {
+      if (!caja.current?.contains(evento.target as Node)) setAbierto(false);
+    };
+    const tecla = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') setAbierto(false);
+    };
+    document.addEventListener('mousedown', fuera);
+    document.addEventListener('keydown', tecla);
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      document.removeEventListener('keydown', tecla);
+    };
+  }, [abierto]);
+
+  return (
+    <div ref={caja} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={abierto}
+        aria-label={otrasConAviso > 0 ? `Persona: ${actual?.nombre ?? ''}. ${otrasConAviso} con actividades nuevas` : `Persona: ${actual?.nombre ?? ''}`}
+        onClick={() => setAbierto((v) => !v)}
+        className="flex h-9 w-52 cursor-pointer items-center gap-2 rounded-control border border-borde-fuerte bg-superficie px-3 text-left text-[13px] text-texto transition-[border-color,box-shadow] hover:border-marino-300 focus-visible:border-marca focus-visible:ring-3 focus-visible:ring-marca/15 focus-visible:outline-none"
+      >
+        <span className="min-w-0 flex-1 truncate">{actual?.nombre ?? '—'}</span>
+        {otrasConAviso > 0 && (
+          <span className="size-2.5 flex-none rounded-full bg-marca" title={`${otrasConAviso} con actividades nuevas`} />
+        )}
+        <ChevronDown className="size-4 flex-none text-texto-3" />
+      </button>
+      {abierto && (
+        <ul
+          role="listbox"
+          aria-label="Persona"
+          className="absolute right-0 z-50 mt-1 max-h-80 w-60 overflow-auto rounded-control border border-borde bg-superficie py-1 shadow-[0_12px_32px_rgb(11_37_69/0.16)]"
+        >
+          {personas.map((p) => {
+            const elegida = p.id === valor;
+            return (
+              <li key={p.id} role="option" aria-selected={elegida}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    alCambiar(p.id);
+                    setAbierto(false);
+                  }}
+                  className={cn(
+                    'flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-fondo',
+                    elegida ? 'font-semibold text-marino-900' : 'text-texto',
+                  )}
+                >
+                  <Check className={cn('size-3.5 flex-none', elegida ? 'text-marca' : 'invisible')} />
+                  <span className="min-w-0 flex-1 truncate">{p.nombre}</span>
+                  {p.nuevas > 0 && (
+                    <span
+                      className="grid h-5 min-w-5 flex-none place-items-center rounded-full bg-marca px-1.5 text-[11px] leading-none font-bold text-white cifras"
+                      title={`${p.nuevas} actividades nuevas`}
+                    >
+                      {p.nuevas > 99 ? '99+' : p.nuevas}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

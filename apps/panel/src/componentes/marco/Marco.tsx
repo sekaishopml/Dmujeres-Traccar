@@ -16,6 +16,11 @@ import { hace } from '@/dominio/formatoBase';
 import { Logo } from './Logo';
 import { Notificaciones } from './Notificaciones';
 import { GRUPOS, paginaDeRuta } from './navegacion';
+import {
+  CLAVE_NOVEDADES_CRONOGRAMA,
+  REFRESCO_NOVEDADES_MS,
+  traerNovedadesCronograma,
+} from '@/componentes/reportes/novedades';
 
 const ID_ACCIONES = 'marco-acciones-pagina';
 const CLAVE_LATERAL = 'dmj.panel.lateral';
@@ -47,6 +52,15 @@ export default function Marco() {
   const [menuMovil, setMenuMovil] = useState(false);
   const [plegado, setPlegado] = useState(lateralPlegadoInicial);
   const pantallaCompleta = pathname.startsWith('/replay') || pathname.startsWith('/en-vivo');
+  // Actividades nuevas en el cronograma: número magenta en "Reportes".
+  const novedades = useQuery({
+    queryKey: CLAVE_NOVEDADES_CRONOGRAMA,
+    queryFn: traerNovedadesCronograma,
+    enabled: usuario != null,
+    refetchInterval: REFRESCO_NOVEDADES_MS,
+    retry: false,
+  });
+  const avisos: Record<string, number> = { '/reportes': novedades.data?.total ?? 0 };
 
   useEffect(() => {
     alNoAutorizado(() => navegar('/login', { replace: true }));
@@ -153,26 +167,46 @@ export default function Marco() {
                     />
                   </p>
                   <div className="flex flex-col gap-1">
-                    {enlaces.map(({ ruta, texto, icono: Icono, exacto }) => (
+                    {enlaces.map(({ ruta, texto, icono: Icono, exacto }) => {
+                      const aviso = avisos[ruta] ?? 0;
+                      const cifra = aviso > 99 ? '99+' : String(aviso);
+                      return (
                       <NavLink
                         key={ruta}
                         to={ruta}
                         end={exacto}
-                        title={plegado ? texto : undefined}
-                        aria-label={texto}
+                        title={plegado ? (aviso > 0 ? `${texto} · ${aviso} nuevas` : texto) : undefined}
+                        aria-label={aviso > 0 ? `${texto}, ${aviso} actividades nuevas` : texto}
                         className={({ isActive }) =>
                           cn(
-                            'flex h-(--alto-item) items-center gap-3.5 overflow-hidden rounded-[12px] px-4 text-[14px] font-medium whitespace-nowrap transition-colors',
+                            'group/nav relative flex h-(--alto-item) items-center gap-3.5 overflow-hidden rounded-[12px] px-4 text-[14px] font-medium whitespace-nowrap transition-colors',
                             isActive
                               ? 'bg-marca text-white shadow-[0_6px_16px_-4px_rgb(235_0_69/0.45)]'
                               : 'text-texto-2 hover:bg-fondo hover:text-marino-900',
                           )
                         }
                       >
-                        <Icono className="size-[19px] flex-none" strokeWidth={1.9} />
-                        <span className={cn('transition-opacity duration-150', plegado && 'lg:opacity-0')}>{texto}</span>
+                        {({ isActive }) => (
+                          <>
+                            <Icono className="size-[19px] flex-none" strokeWidth={1.9} />
+                            <span className={cn('transition-opacity duration-150', plegado && 'lg:opacity-0')}>{texto}</span>
+                            {aviso > 0 && (
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  'ml-auto grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] leading-none font-bold cifras',
+                                  isActive ? 'bg-white text-marca' : 'bg-marca text-white',
+                                  plegado && 'lg:absolute lg:top-1 lg:left-7 lg:ml-0 lg:h-4 lg:min-w-4 lg:px-1 lg:text-[10px]',
+                                )}
+                              >
+                                {cifra}
+                              </span>
+                            )}
+                          </>
+                        )}
                       </NavLink>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
