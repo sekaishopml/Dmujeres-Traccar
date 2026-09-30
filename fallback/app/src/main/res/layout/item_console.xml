@@ -4,8 +4,8 @@
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingTop="11dp"
-    android:paddingBottom="11dp">
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
 
     <TextView
         android:id="@+id/console_time"
@@ -29,5 +29,5 @@
         android:ellipsize="end"
         android:maxLines="2"
         android:textColor="@color/text_primary"
-        android:textSize="13sp" />
+        android:textSize="12.5sp" />
 </LinearLayout>

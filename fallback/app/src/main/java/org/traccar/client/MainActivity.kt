@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity() {
                 onDone?.invoke()
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (label == null) return@runOnUiThread
-                showUpdateBanner(url, sha256)
+                showUpdateBanner(url, sha256, version = label)
             }
         }
     }
@@ -147,9 +147,15 @@ class MainActivity : AppCompatActivity() {
      * flotante, SOLO desplaza la hamburguesa (el resto del contenido no se
      * mueve). Animación suave con desaceleración.
      */
-    private fun showUpdateBanner(url: String, sha256: String, demo: Boolean = false) {
+    private fun showUpdateBanner(url: String, sha256: String, demo: Boolean = false, version: String = "") {
         if (isFinishing || isDestroyed) return
         val banner = findViewById<LinearLayout>(R.id.update_banner) ?: return
+        // El banner dice a qué versión se actualiza.
+        findViewById<TextView>(R.id.banner_text)?.text = if (version.isNotBlank()) {
+            getString(R.string.update_banner_fmt, version)
+        } else {
+            getString(R.string.update_banner_text)
+        }
         // La acción siempre lleva la ÚLTIMA url publicada: si se publicó una
         // versión aún mayor con el banner ya visible, tocar debe descargar lo
         // nuevo, no lo viejo (antes el listener quedaba con la url anterior).
@@ -158,10 +164,14 @@ class MainActivity : AppCompatActivity() {
                 hideUpdateBanner()
                 Toast.makeText(this, getString(R.string.debug_banner_demo_done), Toast.LENGTH_SHORT).show()
             } else {
-                UpdateActivity.start(this, url, sha256)
+                UpdateActivity.start(this, url, sha256, version)
             }
         }
         if (banner.visibility == View.VISIBLE) return
+        if (!demo && version.isNotBlank()) {
+            StatusActivity.addMessage(getString(R.string.console_update_fmt, version))
+        }
+        startBannerPulse()
         val console = findViewById<android.widget.ImageButton>(R.id.console_button)
         val height = (46 * resources.displayMetrics.density).toInt()
         val slide = android.view.animation.DecelerateInterpolator()
@@ -170,6 +180,31 @@ class MainActivity : AppCompatActivity() {
         banner.animate().translationY(0f).setDuration(420).setInterpolator(slide).start()
         // La hamburguesa acompaña la bajada para quedar visible debajo.
         console?.animate()?.translationY(height.toFloat())?.setDuration(420)?.setInterpolator(slide)?.start()
+    }
+
+    private var bannerPulse: android.animation.Animator? = null
+
+    /**
+     * Pulso sutil del ícono del banner (escala y opacidad, 1.6 s): llama la
+     * atención sin mover el texto.
+     */
+    private fun startBannerPulse() {
+        val icon = findViewById<android.widget.ImageView>(R.id.banner_icon) ?: return
+        bannerPulse?.cancel()
+        val scaleX = android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.18f, 1f)
+        val scaleY = android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.18f, 1f)
+        val alpha = android.animation.PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.65f, 1f)
+        bannerPulse = android.animation.ObjectAnimator.ofPropertyValuesHolder(icon, scaleX, scaleY, alpha).apply {
+            duration = 1_600
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            start()
+        }
+    }
+
+    override fun onDestroy() {
+        bannerPulse?.cancel()
+        super.onDestroy()
     }
 
     /** Sube el banner y devuelve la hamburguesa a su sitio (misma suavidad). */

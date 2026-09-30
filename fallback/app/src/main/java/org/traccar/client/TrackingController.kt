@@ -36,6 +36,8 @@ import org.traccar.client.sync.UploadQueue
  * Única autoridad del tracking (§3): captura, máquina de estados, cola y
  * recuperación pasan por aquí. Ningún otro componente manda sobre la cadencia.
  */
+private const val CONSOLE_FIX_GAP_MS = 60_000L
+
 class TrackingController(private val context: Context) :
     PositionListener, NetworkHandler, MotionMonitor.TurnListener, UploadQueue.Listener {
 
@@ -401,7 +403,6 @@ class TrackingController(private val context: Context) :
         updateStationaryFence()
         persistMovementState()
         watchdog.noteFix(now)
-        StatusActivity.addMessage(context.getString(R.string.status_location_update))
         // Filtros de captura: colapso en parado (tira el ruido) y giro (obliga
         // la esquina). Lo que no se almacena aquí no es dato perdido: es ruido
         // colapsado o esquina ya cubierta; el teleport ya se rechazó arriba.
@@ -417,6 +418,14 @@ class TrackingController(private val context: Context) :
         if (outcome.reason == CaptureGate.Reason.STORE_TURN) {
             Log.i(TAG, "giro: esquina almacenada")
         }
+        // Consola: una línea por minuto como máximo (el GPS entrega 1 fix/s).
+        if (now - lastConsoleFixAt >= CONSOLE_FIX_GAP_MS) {
+            lastConsoleFixAt = now
+            val kmh = (position.speed * 1.852).toInt()
+            StatusActivity.addMessage(
+                context.getString(R.string.console_fix_fmt, position.accuracy.toInt(), kmh),
+            )
+        }
         if (buffer) {
             // El evento lleva proveedor y estado para el lote e idempotencia.
             write(position.copy(provider = positionProvider.providerName, movementState = machine.state.name))
@@ -424,6 +433,9 @@ class TrackingController(private val context: Context) :
             send(position)
         }
     }
+
+    private var lastConsoleFixAt = 0L
+    private var lowBatteryNoticed = false
 
     /** Última subida disparada por un fix nuevo (ahorro con batería baja). */
     @Volatile
@@ -480,6 +492,7 @@ class TrackingController(private val context: Context) :
     /** La cola confirmó eventos: si estábamos en rescate, se cierra. */
     override fun onQueueFlowing(confirmed: Int) {
         ConnectionState.noteSuccess(System.currentTimeMillis())
+        if (confirmed > 0) StatusActivity.addMessage(context.getString(R.string.console_sent_fmt, confirmed))
         // Hay red y servidor: buen momento para los avisos de jornada pendientes.
         runCatching { DmujeresApi.flushJourneyEvents(context) }
         runCatching { PowerEvents.flush(context) }
@@ -547,6 +560,11 @@ class TrackingController(private val context: Context) :
         lastStoredFix = candidate
         databaseHelper.insertPositionAsync(position, object : DatabaseHandler<Unit?> {
             override fun onComplete(success: Boolean, result: Unit?) {
+                val low = position.battery in 0.0..UploadThrottle.LOW_BATTERY_PCT && !position.charging
+                if (low != lowBatteryNoticed) {
+                    lowBatteryNoticed = low
+                    if (low) StatusActivity.addMessage(context.getString(R.string.console_low_battery_mode))
+                }
                 if (success && UploadThrottle.shouldKick(
                         nowMs = System.currentTimeMillis(),
                         lastKickMs = lastWriteKickMs,

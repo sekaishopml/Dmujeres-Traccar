@@ -8,6 +8,8 @@
         <item name="colorPrimaryDark">@color/primary_dark</item>
         <item name="colorAccent">@color/accent</item>
         <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+        <!-- Fondo blanco desde el primer cuadro (antes del layout). -->
+        <item name="android:windowBackground">@color/white</item>
     </style>
 
 </resources>

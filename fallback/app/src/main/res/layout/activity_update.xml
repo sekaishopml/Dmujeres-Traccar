@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Actualización OTA: logo, avance y estado, con el contenido hacia el
-     35-40% de la pantalla (los pesos reparten el aire de arriba y abajo). -->
+<!-- Actualización: logo, versión, porcentaje con cifras que ruedan, barra fina
+     continua y el estado en texto pequeño. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/white"
     android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:paddingStart="24dp"
-    android:paddingEnd="24dp">
+    android:paddingStart="40dp"
+    android:paddingEnd="40dp">
 
     <Space
         android:layout_width="match_parent"
@@ -16,48 +16,79 @@
         android:layout_weight="1.1" />
 
     <ImageView
-        android:layout_width="170dp"
+        android:layout_width="150dp"
         android:layout_height="wrap_content"
         android:adjustViewBounds="true"
         android:contentDescription="@string/app_logo"
         android:src="@drawable/logo_banner" />
 
+    <TextView
+        android:id="@+id/update_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="28dp"
+        android:text="@string/update_title"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="bottom"
+        android:orientation="horizontal">
+
+        <org.traccar.client.Odometro
+            android:id="@+id/update_odometro"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:layout_marginBottom="5dp"
+            android:fontFamily="sans-serif-light"
+            android:text="%"
+            android:textColor="@color/text_secondary"
+            android:textSize="20sp" />
+    </LinearLayout>
+
     <ProgressBar
         android:id="@+id/update_progress"
-        style="?android:attr/progressBarStyleLarge"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="36dp"
-        android:indeterminateTint="@color/primary" />
-
-    <TextView
-        android:id="@+id/update_detail"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:gravity="center"
-        android:textColor="@color/ink"
-        android:textSize="30sp" />
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginTop="18dp"
+        android:max="1000"
+        android:progressDrawable="@drawable/ds_progress" />
 
     <TextView
         android:id="@+id/update_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="12dp"
         android:gravity="center"
         android:text="@string/update_downloading"
-        android:textColor="@color/muted"
-        android:textSize="15sp" />
+        android:textColor="@color/text_tertiary"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/update_detail"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
 
     <Button
         android:id="@+id/update_retry"
         android:layout_width="wrap_content"
-        android:layout_height="42dp"
+        android:layout_height="40dp"
         android:layout_marginTop="18dp"
-        android:background="@drawable/bg_button_soft"
+        android:background="@drawable/ds_button_outline"
         android:minWidth="0dp"
         android:paddingStart="18dp"
         android:paddingEnd="18dp"
+        android:stateListAnimator="@null"
         android:text="@string/update_retry"
         android:textAllCaps="false"
         android:textColor="@color/primary"

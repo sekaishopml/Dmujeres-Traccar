@@ -46,6 +46,7 @@ object PowerEvents {
                 val (pct, charging) = battery(ctx)
                 val now = System.currentTimeMillis()
                 enqueue(ctx, "shutdown", causeFor(pct, charging), now, pct)
+                StatusActivity.addMessage(ctx.getString(R.string.console_shutdown_fmt, pct))
                 PreferenceManager.getDefaultSharedPreferences(ctx).edit()
                     .putLong(KEY_SHUTDOWN_RECORDED_AT, now).commit()
                 // Intento rápido: con suerte hay red unos segundos más.
@@ -75,6 +76,7 @@ object PowerEvents {
         }
         val (pct, _) = battery(context)
         enqueue(context, "boot", null, System.currentTimeMillis(), pct)
+        StatusActivity.addMessage(context.getString(R.string.console_boot_fmt, pct))
     }
 
     /** Última batería vista (la llama la captura con cada fix). */

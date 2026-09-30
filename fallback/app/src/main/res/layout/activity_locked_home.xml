@@ -285,13 +285,22 @@
         android:orientation="horizontal"
         android:visibility="gone">
 
+        <ImageView
+            android:id="@+id/banner_icon"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_update"
+            android:tint="@color/white" />
+
         <TextView
+            android:id="@+id/banner_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
             android:text="@string/update_banner_text"
             android:textColor="@color/white"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:textSize="13sp" />
     </LinearLayout>
 
 </FrameLayout>

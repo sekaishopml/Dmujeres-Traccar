@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -28,6 +29,9 @@ class UpdateActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var detail: TextView
     private lateinit var retry: Button
+    private lateinit var odometro: Odometro
+    private var barra: android.animation.ObjectAnimator? = null
+    private var pulso: android.animation.Animator? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +40,12 @@ class UpdateActivity : AppCompatActivity() {
         status = findViewById(R.id.update_status)
         detail = findViewById(R.id.update_detail)
         retry = findViewById(R.id.update_retry)
+        odometro = findViewById(R.id.update_odometro)
+        odometro.setValor(0)
+        val version = intent.getStringExtra(EXTRA_VERSION).orEmpty()
+        if (version.isNotBlank()) {
+            findViewById<TextView>(R.id.update_title).text = getString(R.string.update_title_fmt, version)
+        }
         retry.setOnClickListener { download() }
         if (intent.getBooleanExtra(EXTRA_DEMO, false)) {
             // Menú de depuración: recorre el diseño sin descargar nada.
@@ -43,6 +53,36 @@ class UpdateActivity : AppCompatActivity() {
         } else {
             download()
         }
+    }
+
+    /** Avance continuo: la barra se desliza hasta el nuevo valor (sin saltos). */
+    private fun mostrarAvance(percent: Int) {
+        odometro.setValor(percent)
+        val destino = percent.coerceIn(0, 100) * 10
+        barra?.cancel()
+        barra = android.animation.ObjectAnimator.ofInt(progress, "progress", progress.progress, destino).apply {
+            duration = 420
+            interpolator = android.view.animation.DecelerateInterpolator(1.6f)
+            start()
+        }
+    }
+
+    /** Instalando: barra completa con un pulso suave mientras el sistema instala. */
+    private fun faseInstalacion() {
+        mostrarAvance(100)
+        status.text = getString(R.string.update_installing)
+        pulso?.cancel()
+        pulso = android.animation.ObjectAnimator.ofFloat(progress, View.ALPHA, 1f, 0.35f, 1f).apply {
+            duration = 1_400
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            start()
+        }
+    }
+
+    override fun onDestroy() {
+        barra?.cancel()
+        pulso?.cancel()
+        super.onDestroy()
     }
 
     private fun download() {
@@ -57,8 +97,10 @@ class UpdateActivity : AppCompatActivity() {
         if (!downloading.compareAndSet(false, true)) return
         retry.visibility = Button.GONE
         progress.visibility = ProgressBar.VISIBLE
+        progress.alpha = 1f
+        pulso?.cancel()
         status.text = getString(R.string.update_downloading)
-        detail.text = ""
+        mostrarAvance(0)
         Thread {
             try {
                 runCatching { downloadAndInstall(url, sha256) }
@@ -76,34 +118,23 @@ class UpdateActivity : AppCompatActivity() {
     private fun simulate() {
         retry.visibility = Button.GONE
         progress.visibility = ProgressBar.VISIBLE
-        progress.isIndeterminate = true
         status.text = getString(R.string.update_downloading)
-        detail.text = ""
         Thread {
             try {
-                runOnUiThread {
-                    progress.isIndeterminate = false
-                    detail.text = "0%"
+                var percent = 0
+                while (percent < 100) {
+                    Thread.sleep(160)
+                    percent = (percent + (1..4).random()).coerceAtMost(100)
+                    val valor = percent
+                    runOnUiThread { if (!isFinishing && !isDestroyed) mostrarAvance(valor) }
                 }
-                for (percent in 0..100 step 4) {
-                    Thread.sleep(120)
-                    runOnUiThread {
-                        if (isFinishing || isDestroyed) return@runOnUiThread
-                        detail.text = "$percent%"
-                        progress.progress = percent
-                    }
-                }
-                Thread.sleep(400)
+                Thread.sleep(500)
+                runOnUiThread { if (!isFinishing && !isDestroyed) faseInstalacion() }
+                Thread.sleep(2_600)
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
-                    status.text = getString(R.string.update_installing)
-                    detail.text = ""
-                    progress.isIndeterminate = true
-                }
-                Thread.sleep(2_200)
-                runOnUiThread {
-                    if (isFinishing || isDestroyed) return@runOnUiThread
-                    progress.visibility = ProgressBar.GONE
+                    pulso?.cancel()
+                    progress.alpha = 1f
                     status.text = getString(R.string.update_demo_done)
                 }
             } catch (e: InterruptedException) {
@@ -142,11 +173,7 @@ class UpdateActivity : AppCompatActivity() {
                         // por cada bloque de 16 KB: miles por descarga).
                         if (percent >= 0 && percent != lastPercent) {
                             lastPercent = percent
-                            runOnUiThread {
-                                detail.text = "$percent%"
-                                progress.isIndeterminate = false
-                                progress.progress = percent
-                            }
+                            runOnUiThread { if (!isFinishing && !isDestroyed) mostrarAvance(percent) }
                         }
                     }
                 }
@@ -165,11 +192,7 @@ class UpdateActivity : AppCompatActivity() {
                 showError()
                 return
             }
-            runOnUiThread {
-                status.text = getString(R.string.update_installing)
-                detail.text = getString(R.string.update_ready)
-                progress.isIndeterminate = true
-            }
+            runOnUiThread { if (!isFinishing && !isDestroyed) faseInstalacion() }
             install(target)
         } catch (e: Exception) {
             Log.w(TAG, "Descarga de actualización falló", e)
@@ -195,9 +218,10 @@ class UpdateActivity : AppCompatActivity() {
         // reaparece en la próxima apertura o al minuto siguiente. El parcial
         // se sobrescribe en el próximo intento (mismo nombre de archivo).
         runOnUiThread {
-            progress.visibility = ProgressBar.GONE
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            pulso?.cancel()
+            progress.alpha = 1f
             status.text = getString(R.string.update_download_failed)
-            detail.text = ""
             retry.visibility = Button.VISIBLE
         }
     }
@@ -221,10 +245,11 @@ class UpdateActivity : AppCompatActivity() {
         private const val APK_NAME = "dmujeres-update.apk"
         const val EXTRA_URL = "update_url"
         const val EXTRA_SHA256 = "update_sha256"
+        const val EXTRA_VERSION = "update_version"
         private const val EXTRA_DEMO = "update_demo"
 
         /** Abre la pantalla de carga; si falta el permiso, manda a Ajustes. */
-        fun start(activity: Activity, url: String, sha256: String) {
+        fun start(activity: Activity, url: String, sha256: String, version: String = "") {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
                 !activity.packageManager.canRequestPackageInstalls()
             ) {
@@ -242,7 +267,8 @@ class UpdateActivity : AppCompatActivity() {
             activity.startActivity(
                 Intent(activity, UpdateActivity::class.java)
                     .putExtra(EXTRA_URL, url)
-                    .putExtra(EXTRA_SHA256, sha256),
+                    .putExtra(EXTRA_SHA256, sha256)
+                    .putExtra(EXTRA_VERSION, version),
             )
         }
 

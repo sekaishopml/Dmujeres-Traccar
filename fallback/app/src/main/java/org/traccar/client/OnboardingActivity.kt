@@ -104,9 +104,9 @@ class OnboardingActivity : AppCompatActivity() {
             getString(R.string.onboarding_step_fmt, number, getString(labelRes))
     }
 
-    private fun bindFeature(view: View, id: Int, iconRes: Int, titleRes: Int, textRes: Int) {
+    private fun bindFeature(view: View, id: Int, number: Int, titleRes: Int, textRes: Int) {
         val row = view.findViewById<View>(id) ?: return
-        row.findViewById<android.widget.ImageView>(R.id.feature_icon)?.setImageResource(iconRes)
+        row.findViewById<TextView>(R.id.feature_number)?.text = number.toString()
         row.findViewById<TextView>(R.id.feature_title)?.setText(titleRes)
         row.findViewById<TextView>(R.id.feature_text)?.setText(textRes)
     }
@@ -117,9 +117,9 @@ class OnboardingActivity : AppCompatActivity() {
         container.removeAllViews()
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_welcome, container, false)
         container.addView(view)
-        bindFeature(view, R.id.welcome_step1, R.drawable.ds_ic_shield, R.string.welcome_feature_login_title, R.string.welcome_feature_login_text)
-        bindFeature(view, R.id.welcome_step2, R.drawable.ds_ic_pin, R.string.welcome_feature_perms_title, R.string.welcome_feature_perms_text)
-        bindFeature(view, R.id.welcome_step3, R.drawable.ds_ic_route, R.string.welcome_feature_ready_title, R.string.welcome_feature_ready_text)
+        bindFeature(view, R.id.welcome_step1, 1, R.string.welcome_feature_login_title, R.string.welcome_feature_login_text)
+        bindFeature(view, R.id.welcome_step2, 2, R.string.welcome_feature_perms_title, R.string.welcome_feature_perms_text)
+        bindFeature(view, R.id.welcome_step3, 3, R.string.welcome_feature_ready_title, R.string.welcome_feature_ready_text)
         primary.text = getString(R.string.onboarding_continue)
         // Entrada escalonada: fade + desplazamiento corto + zoom mínimo (sin blur).
         listOf(
@@ -242,7 +242,7 @@ class OnboardingActivity : AppCompatActivity() {
             }
         }
         row(R.drawable.ds_ic_battery, R.string.perm_battery, R.string.perm_battery_why,
-            ignoringBatteryOptimizations(), false, R.string.onboarding_perms_allow) { requestBattery() }
+            ignoringBatteryOptimizations(), true, R.string.onboarding_perms_allow) { requestBattery() }
         // El inicio automático del fabricante no se puede consultar: queda
         // como recomendado, con botón para abrir su ajuste (no cuenta en el total).
         addRow(rows, R.drawable.ds_ic_power, R.string.perm_autostart, R.string.perm_autostart_why,
@@ -298,6 +298,7 @@ class OnboardingActivity : AppCompatActivity() {
         ) {
             return false
         }
+        if (!ignoringBatteryOptimizations()) return false
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             isGranted(Manifest.permission.POST_NOTIFICATIONS)
     }
@@ -315,6 +316,7 @@ class OnboardingActivity : AppCompatActivity() {
                 arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                 REQUEST_NOTIFICATIONS,
             )
+            !ignoringBatteryOptimizations() -> requestBattery()
         }
     }
 

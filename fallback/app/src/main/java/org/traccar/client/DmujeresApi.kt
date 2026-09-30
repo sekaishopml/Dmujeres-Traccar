@@ -240,8 +240,16 @@ object DmujeresApi {
                             .put("at", event.at)
                             .put("client", CLIENT),
                     )
-                    if (!ok) break
+                    if (!ok) {
+                        StatusActivity.addMessage(app.getString(R.string.console_journey_queued))
+                        break
+                    }
                     JourneyOutbox.remove(app, event)
+                    StatusActivity.addMessage(
+                        app.getString(
+                            if (event.action == "start") R.string.console_journey_start_ok else R.string.console_journey_stop_ok,
+                        ),
+                    )
                 }
             } finally {
                 flushing = false

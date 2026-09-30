@@ -9,7 +9,7 @@
         android:layout_height="wrap_content"
         android:text="@string/onboarding_perms_title"
         android:textColor="@color/text_primary"
-        android:textSize="22sp"
+        android:textSize="20sp"
         android:textStyle="bold" />
 
     <TextView
@@ -24,7 +24,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -51,7 +51,7 @@
         android:id="@+id/permissions_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
+        android:layout_marginTop="12dp"
         android:orientation="vertical" />
 
 </LinearLayout>
