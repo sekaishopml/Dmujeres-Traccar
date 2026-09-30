@@ -1,7 +1,7 @@
 {
-  "version": "2.2.0",
-  "versionCode": 295,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.2.0.apk",
-  "notes": "Nuevo diseño de bienvenida, permisos y consola; inicio y fin de jornada que llegan aunque no haya señal; velocidad calculada; aviso de apagado por batería o manual; ahorro de envíos con batería baja; actualización más segura",
-  "sha256": "dcc2ce10c339d90834a0f21d440a8dd9a287aed99de97bae8c040cc25cdd207e"
+  "version": "2.2.1",
+  "versionCode": 296,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.2.1.apk",
+  "notes": "Bienvenida y permisos sin desplazamiento, arranque en blanco, banner con la versión, pantalla de actualización con avance continuo y consola más completa",
+  "sha256": "a90b6f06a6f4d0af37cead5898f2a9b85938960780d17814ad37ef5326a266a2"
 }
