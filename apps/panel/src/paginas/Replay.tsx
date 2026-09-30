@@ -11,9 +11,8 @@ import ReproductorReplay, {
   ListaParadas,
   PanelPuntoSeleccionado,
 } from '@/componentes/replay/ReproductorReplay';
-import type { FeatureCollection, Point } from 'geojson';
 import FiltroReplay from '@/componentes/replay/FiltroReplay';
-import { esPreciso, flechasDeLineas, lineasDeRecorrido, sinPicos } from '@/componentes/replay/flechas';
+import { flechasDeLineas, lineasDeRecorrido, sinPicos } from '@/componentes/replay/flechas';
 import { depurarRecorrido } from '@/dominio/depuracion';
 import { traerFlota, traerJornadas, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from '@/dominio/datos';
 import { esNoEncontrado, mensajeError } from '@/dominio/errores';
@@ -390,9 +389,6 @@ export default function Replay() {
   }, [replay.data]);
 
   const huecos = useMemo(() => replay.data?.huecos ?? [], [replay.data]);
-  // Solo los fixes precisos (GPS, hasta 50 m de error) forman la línea; el
-  // servidor aplica la misma regla al ajuste a calles.
-  const precisas = useMemo(() => posiciones.filter(esPreciso), [posiciones]);
   // Tramos reconstruidos por el servidor (ADR-007): el contrato vigente trae
   // `reconstruidos` con método; los `estimados` heredados se normalizan a
   // ESTIMATED en replay.ts como compatibilidad temporal.
@@ -467,27 +463,31 @@ export default function Replay() {
   // (su dispersión se muestra como halo + nube de puntos) para no tejer el
   // espagueti de la deriva parada.
   const segmentos = useMemo(
-    () => segmentosDeRecorrido(precisas, huecos, reconstruidos),
-    [precisas, huecos, reconstruidos],
+    () => {
+      // Los fixes de antena llegan con velocidad 0 aunque la persona avance, y
+      // el par quedaba "quieto" (sin línea): la ruta se veía cortada. Un par
+      // quieto que se desplazó 40 m o más fuera de una parada es movimiento.
+      const ventanasParada = paradas.map((p) => [milisegundos(p.inicio), milisegundos(p.fin)] as const);
+      return segmentosDeRecorrido(posiciones, huecos, reconstruidos).map((segmento) => {
+        if (segmento.tipo !== 'ruta' || segmento.modo !== 'quieto' || segmento.coordenadas.length < 2) return segmento;
+        const [a, b] = [segmento.coordenadas[0], segmento.coordenadas[segmento.coordenadas.length - 1]];
+        const dLat = (b[1] - a[1]) * 111320;
+        const dLon = (b[0] - a[0]) * 111320 * Math.cos(((a[1] + b[1]) / 2) * (Math.PI / 180));
+        const t = segmento.instante ?? 0;
+        const enParada = ventanasParada.some(([desde, hasta]) => t >= desde && t < hasta);
+        return Math.hypot(dLat, dLon) >= 40 && !enParada ? { ...segmento, modo: 'vehiculo' as const } : segmento;
+      });
+    },
+    [posiciones, huecos, reconstruidos, paradas],
   );
   const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
   // Flechas de sentido sobre la línea dibujada, con zoom progresivo y la hora
-  // de paso de cada una (ver flechas.ts). En paradas y deriva quieta no hay.
-  const lineas = useMemo(() => lineasDeRecorrido(precisas, segmentos, reconstruidos), [precisas, segmentos, reconstruidos]);
+  // de paso de cada una (ver flechas.ts). La línea pasa por todos los fixes,
+  // también los aproximados (antena/wifi): el servidor no los usa para el
+  // ajuste a calles, pero el recorrido se ve continuo y el globo del punto
+  // avisa "Ubicación aproximada ±N m".
+  const lineas = useMemo(() => lineasDeRecorrido(posiciones, segmentos, reconstruidos), [posiciones, segmentos, reconstruidos]);
   const direccion = useMemo(() => flechasDeLineas(lineas), [lineas]);
-  // Fixes aproximados (antena o wifi, más de 50 m de error): se muestran como
-  // círculos huecos, sin línea que los una. Cada uno lleva su índice.
-  const coleccionAproximados = useMemo<FeatureCollection<Point>>(
-    () => ({
-      type: 'FeatureCollection',
-      features: posiciones.flatMap((p, i) =>
-        esPreciso(p)
-          ? []
-          : [{ type: 'Feature' as const, properties: { i }, geometry: { type: 'Point' as const, coordinates: [p.longitud, p.latitud] } }],
-      ),
-    }),
-    [posiciones],
-  );
   // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
   // dispersión real sin líneas que la unan.
   const halos = useMemo(() => halosDeParadas(posiciones, paradas), [posiciones, paradas]);
@@ -515,9 +515,6 @@ export default function Replay() {
     }
     if (!mapa.getSource('replay-halos')) {
       mapa.addSource('replay-halos', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    }
-    if (!mapa.getSource('replay-aproximado')) {
-      mapa.addSource('replay-aproximado', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
     if (!mapa.getSource('replay-quieto')) {
       mapa.addSource('replay-quieto', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -637,21 +634,8 @@ export default function Replay() {
         },
       });
     }
-    // Ubicaciones aproximadas: círculo hueco gris, se pueden elegir.
-    if (!mapa.getLayer('replay-aproximado')) {
-      mapa.addLayer({
-        id: 'replay-aproximado',
-        type: 'circle',
-        source: 'replay-aproximado',
-        paint: {
-          'circle-color': '#ffffff',
-          'circle-opacity': 0.55,
-          'circle-stroke-color': COLOR_SIN_SENAL,
-          'circle-stroke-width': 1.5,
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 16, 5],
-        },
-      });
-    }
+    // Versión anterior: círculos huecos de ubicación aproximada (se retiran).
+    if (mapa.getLayer('replay-aproximado')) mapa.removeLayer('replay-aproximado');
     // Flechas de sentido: punta blanca con filo del color de su línea.
     if (mapa.hasImage(ID_FLECHA)) mapa.removeImage(ID_FLECHA);
     const imagenFlecha = imagenDireccion(NUCLEO_FLECHA);
@@ -701,10 +685,6 @@ export default function Replay() {
     mapa.getSource<GeoJSONSource>('replay-quieto')?.setData(coleccionQuietos);
   }, [mapa, coleccionQuietos]);
 
-  useEffect(() => {
-    if (!mapa) return;
-    mapa.getSource<GeoJSONSource>('replay-aproximado')?.setData(coleccionAproximados);
-  }, [mapa, coleccionAproximados]);
 
   useEffect(() => {
     if (!mapa) return;

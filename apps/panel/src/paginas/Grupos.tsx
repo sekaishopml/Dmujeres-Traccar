@@ -137,7 +137,44 @@ function DialogoNuevoGrupo({
   );
 }
 
-function DialogoMiembros({
+// Claves (id y id público) de quienes ya están en el grupo, para marcarlos.
+function clavesMiembros(grupo: GrupoPlataforma, usuarios: UsuarioPlataforma[]): string[] {
+  const conocidas = new Set(idsMiembros(grupo));
+  return usuarios
+    .filter((usuario) => conocidas.has(String(usuario.id)) || conocidas.has(String(usuario.idPublico)))
+    .map(claveUsuario);
+}
+
+// El listado de grupos solo trae el total de miembros: al abrir el diálogo se
+// lee el grupo con sus miembros para marcar a quienes ya están. Sin esto el
+// diálogo abría todo desmarcado y "Guardar lista" vaciaba el grupo.
+function DialogoMiembros(props: {
+  grupo: GrupoPlataforma;
+  usuarios: UsuarioPlataforma[];
+  guardando: boolean;
+  error: unknown;
+  alGuardar: (usuarioIds: (number | string)[]) => void;
+  alCerrar: () => void;
+}) {
+  const detalle = useQuery({
+    queryKey: ['grupo', String(props.grupo.idPublico ?? props.grupo.id)],
+    queryFn: async () => {
+      const respuesta = await api.get<{ grupo: GrupoPlataforma } | GrupoPlataforma>(`/api/v1/grupos/${idEnUrl(props.grupo)}`);
+      return 'grupo' in respuesta ? respuesta.grupo : respuesta;
+    },
+    staleTime: 0,
+  });
+  if (!detalle.data) {
+    return (
+      <Dialogo abierto alCerrar={props.alCerrar} titulo={`Quiénes están en ${props.grupo.nombre}`}>
+        {detalle.error != null ? <AvisoError>{mensajeError(detalle.error)}</AvisoError> : <Cargando />}
+      </Dialogo>
+    );
+  }
+  return <ListaMiembros key={detalle.dataUpdatedAt} {...props} grupo={detalle.data} />;
+}
+
+function ListaMiembros({
   grupo,
   usuarios,
   guardando,
@@ -152,7 +189,21 @@ function DialogoMiembros({
   alGuardar: (usuarioIds: (number | string)[]) => void;
   alCerrar: () => void;
 }) {
-  const [elegidos, setElegidos] = useState<string[]>(() => idsMiembros(grupo));
+  const iniciales = useMemo(() => clavesMiembros(grupo, usuarios), [grupo, usuarios]);
+  const [elegidos, setElegidos] = useState<string[]>(iniciales);
+
+  // Orden fijo al abrir (no salta al marcar): primero quienes ya están en el
+  // grupo, luego las personas disponibles y al final las dadas de baja.
+  const { enGrupo, disponibles } = useMemo(() => {
+    const porNombre = (a: UsuarioPlataforma, b: UsuarioPlataforma) =>
+      Number(a.habilitado === false) - Number(b.habilitado === false) ||
+      (a.nombre || a.usuario || '').localeCompare(b.nombre || b.usuario || '', 'es');
+    const dentro = new Set(iniciales);
+    return {
+      enGrupo: usuarios.filter((u) => dentro.has(claveUsuario(u))).sort(porNombre),
+      disponibles: usuarios.filter((u) => !dentro.has(claveUsuario(u))).sort(porNombre),
+    };
+  }, [usuarios, iniciales]);
 
   function alternar(clave: string) {
     setElegidos((actuales) => (actuales.includes(clave) ? actuales.filter((otro) => otro !== clave) : [...actuales, clave]));
@@ -167,11 +218,28 @@ function DialogoMiembros({
     alGuardar(usuarioIds);
   }
 
+  const fila = (usuario: UsuarioPlataforma) => (
+    <div key={claveUsuario(usuario)} className="flex items-center gap-2.5">
+      <Avatar nombre={usuario.nombre || usuario.usuario} tamano="sm" />
+      <Casilla
+        etiqueta={
+          <span>
+            {usuario.nombre}
+            {usuario.usuario ? ` (${usuario.usuario})` : ''}
+            {usuario.habilitado === false ? ' · dada de baja' : ''}
+          </span>
+        }
+        checked={elegidos.includes(claveUsuario(usuario))}
+        onChange={() => alternar(claveUsuario(usuario))}
+      />
+    </div>
+  );
+
   return (
     <DialogoFormulario
       id="form-miembros"
       titulo={`Quiénes están en ${grupo.nombre}`}
-      descripcion="Marca quiénes pertenecen a este grupo. Se guarda la lista completa."
+      descripcion="Las marcadas pertenecen al grupo. Marca para sumar y desmarca para quitar."
       alCerrar={alCerrar}
       alEnviar={enviar}
       guardando={guardando}
@@ -179,26 +247,22 @@ function DialogoMiembros({
     >
       {usuarios.length === 0 && <p className="text-[13px] text-texto-3">No hay personas para asignar.</p>}
       {usuarios.length > 0 && (
-        <fieldset>
-          <legend className="mb-2 text-[12px] font-semibold text-marino-900">Personas</legend>
-          <div className="flex flex-col gap-2.5">
-            {usuarios.map((usuario) => (
-              <div key={claveUsuario(usuario)} className="flex items-center gap-2.5">
-                <Avatar nombre={usuario.nombre || usuario.usuario} tamano="sm" />
-                <Casilla
-                  etiqueta={
-                    <span>
-                      {usuario.nombre} ({usuario.usuario})
-                      {usuario.habilitado ? '' : ' · dada de baja'}
-                    </span>
-                  }
-                  checked={elegidos.includes(claveUsuario(usuario))}
-                  onChange={() => alternar(claveUsuario(usuario))}
-                />
-              </div>
-            ))}
-          </div>
-        </fieldset>
+        <div className="space-y-5">
+          <fieldset>
+            <legend className="mb-2 text-[12px] font-semibold text-marino-900">En el grupo ({enGrupo.length})</legend>
+            {enGrupo.length === 0 ? (
+              <p className="text-[13px] text-texto-3">Todavía nadie. Marca abajo a quienes quieras sumar.</p>
+            ) : (
+              <div className="flex flex-col gap-2.5">{enGrupo.map(fila)}</div>
+            )}
+          </fieldset>
+          {disponibles.length > 0 && (
+            <fieldset>
+              <legend className="mb-2 text-[12px] font-semibold text-marino-900">Disponibles para sumar ({disponibles.length})</legend>
+              <div className="flex flex-col gap-2.5">{disponibles.map(fila)}</div>
+            </fieldset>
+          )}
+        </div>
       )}
       {error != null && <AvisoError>{mensajeError(error)}</AvisoError>}
     </DialogoFormulario>

@@ -593,18 +593,6 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
         centrar(flecha.lon, flecha.lat);
         return;
       }
-      // Ubicación aproximada (círculo hueco): se elige ese fix tal cual.
-      const aproximado = mapa.getLayer('replay-aproximado')
-        ? mapa.queryRenderedFeatures(evento.point, { layers: ['replay-aproximado'] })[0]
-        : undefined;
-      const indiceAprox = Number(aproximado?.properties?.i);
-      if (aproximado?.geometry.type === 'Point' && Number.isInteger(indiceAprox) && posiciones[indiceAprox]) {
-        const [lon, lat] = aproximado.geometry.coordinates;
-        seleccionar(indiceAprox);
-        setPuntoClic([lon, lat]);
-        centrar(lon, lat);
-        return;
-      }
       const indice = indiceMasCercano(posiciones, evento.lngLat.lng, evento.lngLat.lat);
       if (indice == null) return;
       seleccionar(indice);
@@ -619,13 +607,13 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     };
     mapa.on('mouseenter', 'replay-flechas', alEntrar);
     mapa.on('mouseleave', 'replay-flechas', alSalir);
-    mapa.on('click', ['replay-linea-hit', 'replay-flechas', 'replay-aproximado'], alPulsar);
+    mapa.on('click', ['replay-linea-hit', 'replay-flechas'], alPulsar);
     mapa.on('mouseenter', 'replay-linea-hit', alEntrar);
     mapa.on('mouseleave', 'replay-linea-hit', alSalir);
     return () => {
       mapa.off('mouseenter', 'replay-flechas', alEntrar);
       mapa.off('mouseleave', 'replay-flechas', alSalir);
-      mapa.off('click', ['replay-linea-hit', 'replay-flechas', 'replay-aproximado'], alPulsar);
+      mapa.off('click', ['replay-linea-hit', 'replay-flechas'], alPulsar);
       mapa.off('mouseenter', 'replay-linea-hit', alEntrar);
       mapa.off('mouseleave', 'replay-linea-hit', alSalir);
     };

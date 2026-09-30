@@ -194,7 +194,7 @@ export async function atenderSesion(req, res, ctx) {
       `SELECT u.id, u.nombre, u.nombre_usuario, u.correo, u.habilitado,
               u.hash_clave, u.sal, u.atributos
          FROM iam.dmt_usuario u
-        WHERE u.nombre_usuario = $1 OR u.correo = $1
+        WHERE lower(u.nombre_usuario) = lower($1) OR lower(u.correo) = lower($1)
         LIMIT 1`,
       [identificador],
     );
