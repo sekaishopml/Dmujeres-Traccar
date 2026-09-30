@@ -1,7 +1,7 @@
 {
-  "version": "2.3.0",
-  "versionCode": 297,
-  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.3.0.apk",
-  "notes": "Cronograma de actividades, pantalla de inicio con el logo completo y corrección del menú de pruebas",
-  "sha256": "a092284255e5ad9965ce1fcb5578e61155e9700665155859d5d060a588b5dcd6"
+  "version": "2.3.1",
+  "versionCode": 298,
+  "url": "http://68.168.20.219:999/DMujeres-Tracking-2.3.1.apk",
+  "notes": "Cronograma con horas en orden y ajustes rápidos, pantalla principal con resumen del cronograma y pie marino, permisos corregidos",
+  "sha256": "a40c5536a5391eedede7a4341ed69e7da2b315bd4d0360a45664effc0031b0b3"
 }
