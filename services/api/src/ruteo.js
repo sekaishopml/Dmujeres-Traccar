@@ -91,6 +91,17 @@ const AJUSTE_DESVIACION_MARGEN_M = 15;
 const AJUSTE_RUIDO_PRECISION_M = 25;
 const AJUSTE_RUIDO_MAX_FRACCION = 0.3;
 
+// Precisión máxima para dibujar trazo: por encima, el fix viene de antenas o
+// wifi (error de 90 a 270 m medido el 29/09 con Manzaba) y no entra al ajuste
+// a vía ni a las estimaciones; la web lo muestra como "ubicación aproximada".
+// El crudo no cambia: solo se aparta del trazado.
+export const PRECISION_MAX_TRAZO_M = 50;
+
+export function esPrecisoParaTrazo(posicion) {
+  const precision = leerPrecisionM(posicion);
+  return precision == null || precision <= PRECISION_MAX_TRAZO_M;
+}
+
 const cache = new Map();
 
 function claveRuta(a, b) {
@@ -726,8 +737,12 @@ export async function estimarTramos(posiciones, signal) {
   return reconstruirTramos(posiciones, signal);
 }
 
-export async function reconstruirTramos(posiciones, signal) {
-  if (!Array.isArray(posiciones) || posiciones.length === 0) return [];
+export async function reconstruirTramos(todas, signal) {
+  if (!Array.isArray(todas) || todas.length === 0) return [];
+  // Solo fixes precisos: los aproximados (antena/wifi) torcían el ajuste con
+  // colas y picos que la persona nunca recorrió.
+  const posiciones = todas.filter(esPrecisoParaTrazo);
+  if (posiciones.length === 0) return [];
   const candidatos = [];
   for (let i = 1; i < posiciones.length && candidatos.length < MAX_TRAMOS_ESTIMADOS; i += 1) {
     const anterior = posiciones[i - 1];

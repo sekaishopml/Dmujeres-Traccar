@@ -11,8 +11,9 @@ import ReproductorReplay, {
   ListaParadas,
   PanelPuntoSeleccionado,
 } from '@/componentes/replay/ReproductorReplay';
+import type { FeatureCollection, Point } from 'geojson';
 import FiltroReplay from '@/componentes/replay/FiltroReplay';
-import { flechasDeRecorrido } from '@/componentes/replay/flechas';
+import { esPreciso, flechasDeLineas, lineasDeRecorrido, sinPicos } from '@/componentes/replay/flechas';
 import { depurarRecorrido } from '@/dominio/depuracion';
 import { traerFlota, traerJornadas, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from '@/dominio/datos';
 import { esNoEncontrado, mensajeError } from '@/dominio/errores';
@@ -389,11 +390,16 @@ export default function Replay() {
   }, [replay.data]);
 
   const huecos = useMemo(() => replay.data?.huecos ?? [], [replay.data]);
+  // Solo los fixes precisos (GPS, hasta 50 m de error) forman la línea; el
+  // servidor aplica la misma regla al ajuste a calles.
+  const precisas = useMemo(() => posiciones.filter(esPreciso), [posiciones]);
   // Tramos reconstruidos por el servidor (ADR-007): el contrato vigente trae
   // `reconstruidos` con método; los `estimados` heredados se normalizan a
   // ESTIMATED en replay.ts como compatibilidad temporal.
+  // El ajuste a calles se dibuja sin picos de ida y vuelta (el matcher entra
+  // a una esquina y regresa): la persona nunca recorrió ese trocito.
   const reconstruidos = useMemo<TramoReconstruido[]>(
-    () => normalizarReconstruidos(replay.data),
+    () => normalizarReconstruidos(replay.data).map((tramo) => ({ ...tramo, trazado: sinPicos(tramo.trazado) })),
     [replay.data],
   );
   const paradasServidor = useMemo<Parada[] | null>(() => {
@@ -461,15 +467,26 @@ export default function Replay() {
   // (su dispersión se muestra como halo + nube de puntos) para no tejer el
   // espagueti de la deriva parada.
   const segmentos = useMemo(
-    () => segmentosDeRecorrido(posiciones, huecos, reconstruidos),
-    [posiciones, huecos, reconstruidos],
+    () => segmentosDeRecorrido(precisas, huecos, reconstruidos),
+    [precisas, huecos, reconstruidos],
   );
   const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
   // Flechas de sentido sobre la línea dibujada, con zoom progresivo y la hora
   // de paso de cada una (ver flechas.ts). En paradas y deriva quieta no hay.
-  const direccion = useMemo(
-    () => flechasDeRecorrido(posiciones, segmentos, reconstruidos, paradas),
-    [posiciones, segmentos, reconstruidos, paradas],
+  const lineas = useMemo(() => lineasDeRecorrido(precisas, segmentos, reconstruidos), [precisas, segmentos, reconstruidos]);
+  const direccion = useMemo(() => flechasDeLineas(lineas), [lineas]);
+  // Fixes aproximados (antena o wifi, más de 50 m de error): se muestran como
+  // círculos huecos, sin línea que los una. Cada uno lleva su índice.
+  const coleccionAproximados = useMemo<FeatureCollection<Point>>(
+    () => ({
+      type: 'FeatureCollection',
+      features: posiciones.flatMap((p, i) =>
+        esPreciso(p)
+          ? []
+          : [{ type: 'Feature' as const, properties: { i }, geometry: { type: 'Point' as const, coordinates: [p.longitud, p.latitud] } }],
+      ),
+    }),
+    [posiciones],
   );
   // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
   // dispersión real sin líneas que la unan.
@@ -498,6 +515,9 @@ export default function Replay() {
     }
     if (!mapa.getSource('replay-halos')) {
       mapa.addSource('replay-halos', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!mapa.getSource('replay-aproximado')) {
+      mapa.addSource('replay-aproximado', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
     if (!mapa.getSource('replay-quieto')) {
       mapa.addSource('replay-quieto', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -617,6 +637,21 @@ export default function Replay() {
         },
       });
     }
+    // Ubicaciones aproximadas: círculo hueco gris, se pueden elegir.
+    if (!mapa.getLayer('replay-aproximado')) {
+      mapa.addLayer({
+        id: 'replay-aproximado',
+        type: 'circle',
+        source: 'replay-aproximado',
+        paint: {
+          'circle-color': '#ffffff',
+          'circle-opacity': 0.55,
+          'circle-stroke-color': COLOR_SIN_SENAL,
+          'circle-stroke-width': 1.5,
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 16, 5],
+        },
+      });
+    }
     // Flechas de sentido: punta blanca con filo del color de su línea.
     if (mapa.hasImage(ID_FLECHA)) mapa.removeImage(ID_FLECHA);
     const imagenFlecha = imagenDireccion(NUCLEO_FLECHA);
@@ -665,6 +700,11 @@ export default function Replay() {
     if (!mapa) return;
     mapa.getSource<GeoJSONSource>('replay-quieto')?.setData(coleccionQuietos);
   }, [mapa, coleccionQuietos]);
+
+  useEffect(() => {
+    if (!mapa) return;
+    mapa.getSource<GeoJSONSource>('replay-aproximado')?.setData(coleccionAproximados);
+  }, [mapa, coleccionAproximados]);
 
   useEffect(() => {
     if (!mapa) return;
@@ -811,6 +851,7 @@ export default function Replay() {
       posiciones={posiciones}
       huecos={huecos}
       reconstruidos={reconstruidos}
+      lineas={lineas}
       dispositivo={replay.data?.dispositivo ?? null}
       finRango={finDeDia(hasta)}
       paradas={paradas}

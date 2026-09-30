@@ -1,35 +1,41 @@
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import type { Posicion } from '@contratos';
 import { milisegundos } from '@/dominio/replay';
-import type { Parada, SegmentoRecorrido, TramoReconstruido } from '@/dominio/replay';
+import type { SegmentoRecorrido, TramoReconstruido } from '@/dominio/replay';
 
-// Flechas de sentido sobre la línea dibujada (GPS o ajustada a calles), nunca
-// sobre el fix crudo: con precisión de decenas de metros el fix cae fuera de
-// la calle y su rumbo entre vecinos gira en cualquier sentido. Aquí la flecha
-// va sobre el trazo y apunta a lo largo de él, en el sentido del tiempo.
-//
-// Hay una flecha cada PASO_M metros de recorrido. Cada una lleva:
-//   t: instante (ms) en que la persona pasó por ahí, para ubicar su fix,
-//   r: rumbo en grados (0 = norte),
-//   n: zoom desde el que se dibuja.
-// Los niveles son anidados: a zoom 12 hay una cada 1,28 km; cada nivel de zoom
-// duplica la cantidad (640 m, 320 m, … 20 m) y a zoom 19 hay una cada 10 m.
-// Lo que se ve a un zoom sigue viéndose al acercar.
+// Trazado con hora: la línea que se dibuja (GPS o ajustada a calles) con la
+// hora de paso en cada vértice. Es la única geometría del reproductor: las
+// flechas, el marcador, el aro del punto elegido, el globo y el centrado se
+// ubican sobre ella, así nunca hay un círculo fuera de la línea ni dos
+// círculos para el mismo instante.
+
+export interface Vertice {
+  lon: number;
+  lat: number;
+  t: number;
+}
+
+// Precisión máxima para dibujar trazo (igual que el servidor, ruteo.js): por
+// encima el fix viene de antenas o wifi y se muestra como ubicación aproximada.
+export const PRECISION_MAX_TRAZO_M = 50;
+
+export function esPreciso(posicion: Posicion): boolean {
+  const precision = posicion.precisionM;
+  return precision == null || !Number.isFinite(precision) || precision <= PRECISION_MAX_TRAZO_M;
+}
 
 const PASO_M = 10;
 const NIVEL_MIN = 12;
 const NIVEL_MAX = 19;
 // Media base del rumbo, a lo largo del trazo: suaviza los quiebres cortos.
-const MEDIA_BASE_M = 15;
-// Tolerancia para unir tramos consecutivos en una sola línea: el trazado
-// ajustado a calles no empieza exactamente en el fix crudo.
+const MEDIA_BASE_M = 12;
+// Tolerancia para unir tramos consecutivos en una sola línea.
 const UNION_M = 25;
-
-interface Vertice {
-  lon: number;
-  lat: number;
-  t: number;
-}
+// Pico: ida y vuelta corta en el ajuste a calles (el matcher entra a una
+// esquina y regresa). Se quita el vértice si el giro supera 150° y alguno de
+// sus dos lados mide menos de 35 m.
+const PICO_GIRO_GRADOS = 150;
+const PICO_LADO_M = 35;
 
 function distanciaM(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
   const dLat = (b.lat - a.lat) * 111320;
@@ -45,7 +51,154 @@ function rumbo(a: { lat: number; lon: number }, b: { lat: number; lon: number })
   return (Math.atan2(y, x) / rad + 360) % 360;
 }
 
+function giro(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+// Trazado ajustado sin picos de ida y vuelta ni vértices repetidos.
+export function sinPicos(trazado: [number, number][]): [number, number][] {
+  const puntos = trazado
+    .map(([lon, lat]) => ({ lon, lat }))
+    .filter((p, k, lista) => k === 0 || distanciaM(lista[k - 1], p) > 0.5);
+  let cambio = true;
+  while (cambio && puntos.length >= 3) {
+    cambio = false;
+    for (let k = 1; k < puntos.length - 1; k += 1) {
+      const antes = distanciaM(puntos[k - 1], puntos[k]);
+      const despues = distanciaM(puntos[k], puntos[k + 1]);
+      const angulo = giro(rumbo(puntos[k - 1], puntos[k]), rumbo(puntos[k], puntos[k + 1]));
+      if (angulo >= PICO_GIRO_GRADOS && Math.min(antes, despues) < PICO_LADO_M) {
+        puntos.splice(k, 1);
+        cambio = true;
+        break;
+      }
+    }
+  }
+  return puntos.map((p) => [p.lon, p.lat]);
+}
+
+// Proyección de p sobre el tramo a-b: fracción [0,1] y distancia en metros.
+function proyectar(p: Vertice | Posicion, a: Vertice, b: Vertice): { f: number; d: number } {
+  const lat = 'lat' in p ? p.lat : p.latitud;
+  const lon = 'lon' in p ? p.lon : p.longitud;
+  const k = Math.cos(lat * (Math.PI / 180));
+  const ax = a.lon * k;
+  const bx = b.lon * k;
+  const px = lon * k;
+  const dx = bx - ax;
+  const dy = b.lat - a.lat;
+  const largo2 = dx * dx + dy * dy;
+  const f = largo2 > 0 ? Math.min(Math.max(((px - ax) * dx + (lat - a.lat) * dy) / largo2, 0), 1) : 0;
+  const d = distanciaM({ lat, lon }, { lat: a.lat + dy * f, lon: a.lon + (b.lon - a.lon) * f });
+  return { f, d };
+}
+
+// Horas de un trazado ajustado: cada fix del tramo se proyecta sobre la línea
+// avanzando siempre hacia adelante; la hora de cada vértice sale de esas
+// anclas. Así, si la persona estuvo quieta al inicio del tramo, la hora se
+// acumula ahí y no se reparte pareja por toda la línea.
+function horasDeTrazado(coords: [number, number][], desde: number, hasta: number, fixes: Posicion[]): Vertice[] {
+  const v: Vertice[] = coords.map(([lon, lat]) => ({ lon, lat, t: desde }));
+  const acumulada = [0];
+  for (let k = 1; k < v.length; k += 1) acumulada.push(acumulada[k - 1] + distanciaM(v[k - 1], v[k]));
+  const total = acumulada[acumulada.length - 1];
+  const anclas: { s: number; t: number }[] = [{ s: 0, t: desde }];
+  let tramo = 0;
+  for (const fix of fixes) {
+    const t = milisegundos(fix.registradoEn);
+    if (!(t > desde && t < hasta)) continue;
+    let mejor = { k: tramo, f: 0, d: Infinity };
+    for (let k = tramo; k < v.length - 1; k += 1) {
+      const { f, d } = proyectar(fix, v[k], v[k + 1]);
+      if (d < mejor.d) mejor = { k, f, d };
+    }
+    const s = acumulada[mejor.k] + (acumulada[mejor.k + 1] - acumulada[mejor.k]) * mejor.f;
+    const previa = anclas[anclas.length - 1];
+    if (s >= previa.s) {
+      anclas.push({ s, t });
+      tramo = mejor.k;
+    }
+  }
+  anclas.push({ s: total, t: hasta });
+  let j = 0;
+  for (let k = 0; k < v.length; k += 1) {
+    const s = acumulada[k];
+    while (j < anclas.length - 2 && anclas[j + 1].s < s) j += 1;
+    const a = anclas[j];
+    const b = anclas[j + 1];
+    // Con varias anclas en el mismo punto (persona quieta) el vértice toma la
+    // última hora que pasó por ahí.
+    const f = b.s > a.s ? (s - a.s) / (b.s - a.s) : 1;
+    v[k].t = a.t + (b.t - a.t) * Math.min(Math.max(f, 0), 1);
+  }
+  return v;
+}
+
+// Líneas continuas con hora en cada vértice, en orden de tiempo.
+export function lineasDeRecorrido(
+  precisas: Posicion[],
+  segmentos: SegmentoRecorrido[],
+  reconstruidos: TramoReconstruido[],
+): Vertice[][] {
+  const siguienteFix = new Map<number, number>();
+  for (let i = 0; i + 1 < precisas.length; i += 1) {
+    siguienteFix.set(milisegundos(precisas[i].registradoEn), milisegundos(precisas[i + 1].registradoEn));
+  }
+  const finReconstruido = new Map(reconstruidos.map((tramo) => [milisegundos(tramo.desde), milisegundos(tramo.hasta)]));
+
+  const dibujados = segmentos
+    .filter((s) => ((s.tipo === 'ruta' && s.modo !== 'quieto') || s.tipo === 'matched') && s.coordenadas.length >= 2)
+    .sort((a, b) => (a.instante ?? 0) - (b.instante ?? 0));
+
+  const lineas: Vertice[][] = [];
+  for (const segmento of dibujados) {
+    const inicio = segmento.instante;
+    if (inicio == null) continue;
+    const fin = segmento.tipo === 'matched' ? finReconstruido.get(inicio) : siguienteFix.get(inicio);
+    if (fin == null || fin < inicio) continue;
+    const vertices =
+      segmento.tipo === 'matched'
+        ? horasDeTrazado(
+            segmento.coordenadas,
+            inicio,
+            fin,
+            precisas.filter((p) => {
+              const t = milisegundos(p.registradoEn);
+              return t > inicio && t < fin;
+            }),
+          )
+        : [
+            { lon: segmento.coordenadas[0][0], lat: segmento.coordenadas[0][1], t: inicio },
+            { lon: segmento.coordenadas[1][0], lat: segmento.coordenadas[1][1], t: fin },
+          ];
+    const ultima = lineas[lineas.length - 1];
+    const cola = ultima?.[ultima.length - 1];
+    if (cola && distanciaM(cola, vertices[0]) <= UNION_M && vertices[0].t >= cola.t) ultima.push(...vertices.slice(1));
+    else lineas.push(vertices);
+  }
+  return lineas.filter((linea) => linea.length >= 2);
+}
+
+// Posición sobre el trazado en el instante t (null si t cae fuera de toda
+// línea: parada, deriva quieta o tramo sin trazo).
+export function puntoEnLineas(lineas: Vertice[][], t: number): [number, number] | null {
+  for (const linea of lineas) {
+    if (t < linea[0].t || t > linea[linea.length - 1].t) continue;
+    for (let k = 0; k < linea.length - 1; k += 1) {
+      const a = linea[k];
+      const b = linea[k + 1];
+      if (t < a.t || t > b.t) continue;
+      const f = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1;
+      return [a.lon + (b.lon - a.lon) * f, a.lat + (b.lat - a.lat) * f];
+    }
+  }
+  return null;
+}
+
 // Nivel de la flecha número m (a m·PASO_M metros del inicio de su línea).
+// Anidados: a zoom 12 una cada 1,28 km; cada nivel duplica la cantidad hasta
+// una cada 10 m a zoom 19. Lo que se ve a un zoom sigue al acercar.
 function nivelDe(m: number): number {
   let z = NIVEL_MAX;
   let paso = 2;
@@ -56,84 +209,34 @@ function nivelDe(m: number): number {
   return z;
 }
 
-// Vértices con hora: el tramo GPS une dos fixes (sus horas se conocen); el
-// ajustado a calles reparte su hora de inicio a fin según la distancia.
-function verticesDe(segmento: SegmentoRecorrido, finDe: (inicio: number) => number | null): Vertice[] | null {
-  const inicio = segmento.instante;
-  if (inicio == null) return null;
-  const fin = finDe(inicio);
-  if (fin == null || fin < inicio) return null;
-  const coords = segmento.coordenadas;
-  const acumulada = [0];
-  for (let k = 1; k < coords.length; k += 1) {
-    acumulada.push(
-      acumulada[k - 1] + distanciaM({ lon: coords[k - 1][0], lat: coords[k - 1][1] }, { lon: coords[k][0], lat: coords[k][1] }),
-    );
-  }
-  const total = acumulada[acumulada.length - 1];
-  return coords.map(([lon, lat], k) => ({ lon, lat, t: total > 0 ? inicio + ((fin - inicio) * acumulada[k]) / total : inicio }));
-}
-
-export function flechasDeRecorrido(
-  posiciones: Posicion[],
-  segmentos: SegmentoRecorrido[],
-  reconstruidos: TramoReconstruido[],
-  paradas: Parada[],
-): FeatureCollection<Point> {
-  // Hora de fin de cada tramo: la del fix siguiente (GPS) o la del tramo
-  // reconstruido que empieza en ese instante.
-  const siguienteFix = new Map<number, number>();
-  for (let i = 0; i + 1 < posiciones.length; i += 1) {
-    siguienteFix.set(milisegundos(posiciones[i].registradoEn), milisegundos(posiciones[i + 1].registradoEn));
-  }
-  const finReconstruido = new Map(reconstruidos.map((tramo) => [milisegundos(tramo.desde), milisegundos(tramo.hasta)]));
-
-  const conFlecha = segmentos
-    .filter((s) => ((s.tipo === 'ruta' && s.modo !== 'quieto') || s.tipo === 'matched') && s.coordenadas.length >= 2)
-    .sort((a, b) => (a.instante ?? 0) - (b.instante ?? 0));
-
-  const lineas: Vertice[][] = [];
-  for (const segmento of conFlecha) {
-    const vertices = verticesDe(segmento, (inicio) =>
-      segmento.tipo === 'matched' ? finReconstruido.get(inicio) ?? null : siguienteFix.get(inicio) ?? null,
-    );
-    if (!vertices) continue;
-    const ultima = lineas[lineas.length - 1];
-    const fin = ultima?.[ultima.length - 1];
-    if (fin && distanciaM(fin, vertices[0]) <= UNION_M && vertices[0].t >= fin.t) ultima.push(...vertices.slice(1));
-    else lineas.push(vertices);
-  }
-
-  const ventanasParada = paradas.map((p) => [milisegundos(p.inicio), milisegundos(p.fin)] as const);
-  const enParada = (t: number) => ventanasParada.some(([a, b]) => t >= a && t <= b);
-
+// Flechas cada PASO_M metros de trazado, apuntando a lo largo de la línea.
+// Cada una lleva t (hora de paso), r (rumbo) y n (zoom desde el que aparece).
+export function flechasDeLineas(lineas: Vertice[][]): FeatureCollection<Point> {
   const features: Feature<Point>[] = [];
   for (const linea of lineas) {
     const acumulada = [0];
     for (let k = 1; k < linea.length; k += 1) acumulada.push(acumulada[k - 1] + distanciaM(linea[k - 1], linea[k]));
     const total = acumulada[acumulada.length - 1];
-    // Punto a s metros del inicio de la línea (interpolado entre vértices).
-    let tramo = 0;
-    const puntoEn = (s: number, desde = 0): Vertice & { k: number } => {
-      let k = desde;
+    const puntoEn = (s: number): Vertice => {
+      let k = 0;
       while (k < linea.length - 2 && acumulada[k + 1] < s) k += 1;
       const largo = acumulada[k + 1] - acumulada[k];
       const f = largo > 0 ? Math.min(Math.max((s - acumulada[k]) / largo, 0), 1) : 0;
       const a = linea[k];
       const b = linea[k + 1];
-      return { lon: a.lon + (b.lon - a.lon) * f, lat: a.lat + (b.lat - a.lat) * f, t: a.t + (b.t - a.t) * f, k };
+      return { lon: a.lon + (b.lon - a.lon) * f, lat: a.lat + (b.lat - a.lat) * f, t: a.t + (b.t - a.t) * f };
     };
-    for (let m = 1; m * PASO_M < total - PASO_M / 2; m += 1) {
-      const s = m * PASO_M;
-      const aqui = puntoEn(s, tramo);
-      tramo = aqui.k;
-      if (enParada(aqui.t)) continue;
+    // La primera flecha va a media distancia del inicio: el arranque de la
+    // línea también tiene flecha y se puede elegir.
+    for (let m = 0; m * PASO_M + PASO_M / 2 <= total; m += 1) {
+      const s = m * PASO_M + PASO_M / 2;
+      const aqui = puntoEn(s);
       const atras = puntoEn(Math.max(s - MEDIA_BASE_M, 0));
-      const adelante = puntoEn(Math.min(s + MEDIA_BASE_M, total), tramo);
+      const adelante = puntoEn(Math.min(s + MEDIA_BASE_M, total));
       if (distanciaM(atras, adelante) < 1) continue;
       features.push({
         type: 'Feature',
-        properties: { t: Math.round(aqui.t), r: Math.round(rumbo(atras, adelante)), n: nivelDe(m) },
+        properties: { t: Math.round(aqui.t), r: Math.round(rumbo(atras, adelante)), n: nivelDe(m + 1) },
         geometry: { type: 'Point', coordinates: [aqui.lon, aqui.lat] },
       });
     }
