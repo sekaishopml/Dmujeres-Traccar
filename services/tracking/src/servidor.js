@@ -20,6 +20,8 @@ import {
   atenderConfig,
   atenderDiagnosticos,
   atenderEnergia,
+  atenderActividad,
+  atenderActividadesConsulta,
   atenderJornada,
   atenderJornadaConsulta,
   atenderLotePosiciones,
@@ -65,6 +67,12 @@ async function manejar(req, res, ctx) {
   }
   if (ruta === '/api/mobile/v1/positions' && metodo === 'POST') {
     return atenderLotePosiciones(req, res, { ...ctx, url });
+  }
+  if (ruta === '/api/mobile/v1/actividades' && metodo === 'GET') {
+    return atenderActividadesConsulta(req, res, { ...ctx, url });
+  }
+  if (ruta === '/api/mobile/v1/actividades' && metodo === 'POST') {
+    return atenderActividad(req, res, { ...ctx, url });
   }
   if (ruta === '/api/mobile/v1/power' && metodo === 'POST') {
     return atenderEnergia(req, res, { ...ctx, url });

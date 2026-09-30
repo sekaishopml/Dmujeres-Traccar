@@ -218,7 +218,7 @@ function DialogoCuenta({
           <Entrada
             value={cargo}
             onChange={(evento) => setCargo(evento.target.value)}
-            placeholder="Por ejemplo: Zona norte"
+            placeholder="Por ejemplo: Asistente de cobranza"
           />
         </Campo>
       </div>

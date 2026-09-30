@@ -32,7 +32,7 @@ export const GRUPOS: { titulo: string; enlaces: Enlace[] }[] = [
       { ruta: '/replay', descripcion: 'Reconstrucción auditada del recorrido: trayectos, paradas e interrupciones de señal.', texto: 'Repetición de ruta', icono: Route },
       { ruta: '/historial', descripcion: 'Jornadas por día: inicio, cierre, duración y cortes.', texto: 'Historial', icono: History },
       { ruta: '/bateria', descripcion: 'Nivel de batería, cargas y equipos en riesgo de apagarse.', texto: 'Batería', icono: BatteryMedium },
-      { ruta: '/reportes', descripcion: 'Viajes, paradas y distancias por persona y periodo.', texto: 'Reportes', icono: ChartColumn },
+      { ruta: '/reportes', descripcion: 'Cronograma de actividades declarado por cada persona y auditado contra su recorrido.', texto: 'Reportes', icono: ChartColumn },
     ],
   },
   {

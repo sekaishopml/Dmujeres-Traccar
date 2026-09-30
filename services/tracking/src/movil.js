@@ -491,6 +491,99 @@ export async function atenderJornada(req, res, ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// Cronograma de actividades
+// GET  /api/mobile/v1/actividades?deviceId=&desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+// POST /api/mobile/v1/actividades {deviceId, clientId, fecha, hora, tipo,
+//      lugar, nota, at, lat, lon, accuracy, deleted}
+// ---------------------------------------------------------------------------
+
+const TIPOS_ACTIVIDAD = new Set(['visita', 'almuerzo', 'permiso_medico', 'vacaciones', 'permiso', 'novedad']);
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+const HORA_RE = /^[0-2]\d:[0-5]\d$/;
+
+function recortar(valor, maximo) {
+  const limpio = texto(valor);
+  return limpio ? limpio.slice(0, maximo) : null;
+}
+
+export async function atenderActividadesConsulta(req, res, ctx) {
+  if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 404);
+  if (!(await autorizacionMovil(req, ctx))) return responderSinCuerpo(res, 401);
+  const identificador = identificadorDe(req, ctx.url);
+  if (!identificador) return responderSinCuerpo(res, 400);
+  const dispositivo = await buscarOFallar(ctx, res, identificador, 404);
+  if (!dispositivo) return;
+  const desde = ctx.url.searchParams.get('desde');
+  const hasta = ctx.url.searchParams.get('hasta');
+  if (!FECHA_RE.test(desde ?? '') || !FECHA_RE.test(hasta ?? '')) return responderSinCuerpo(res, 400);
+  try {
+    const filas = await ctx.almacen.listarActividades({ dispositivoId: dispositivo.id, desde, hasta });
+    return responderJson(res, 200, {
+      actividades: filas.map((f) => ({
+        clientId: f.cliente_id,
+        fecha: f.fecha,
+        hora: f.hora,
+        tipo: f.tipo,
+        lugar: f.lugar,
+        nota: f.nota,
+        registradoEn: f.registrado_en instanceof Date ? f.registrado_en.getTime() : Date.parse(f.registrado_en),
+        conJornada: f.con_jornada,
+        conUbicacion: f.latitud !== null,
+      })),
+    });
+  } catch (error) {
+    ctx.log.error(`movil/actividades-get: ${error.message}`);
+    return responderSinCuerpo(res, 503);
+  }
+}
+
+export async function atenderActividad(req, res, ctx) {
+  if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 404);
+  if (!(await autorizacionMovil(req, ctx))) return responderSinCuerpo(res, 401);
+  const lectura = await leerJson(req, LIMITE_JSON);
+  if (!lectura.ok) return responderSinCuerpo(res, lectura.motivo === 'grande' ? 413 : 400);
+  const cuerpo = objeto(lectura.datos);
+  const identificador = cuerpo ? texto(cuerpo.deviceId) : null;
+  if (!identificador) return responderSinCuerpo(res, 400);
+  const dispositivo = await buscarOFallar(ctx, res, identificador, 404);
+  if (!dispositivo) return;
+  const clienteId = recortar(cuerpo.clientId, 64);
+  const fecha = texto(cuerpo.fecha);
+  const hora = texto(cuerpo.hora);
+  const tipo = texto(cuerpo.tipo);
+  if (!clienteId || !FECHA_RE.test(fecha ?? '') || !HORA_RE.test(hora ?? '') || !TIPOS_ACTIVIDAD.has(tipo)) {
+    return responderSinCuerpo(res, 400);
+  }
+  const lugar = recortar(cuerpo.lugar, 200);
+  const nota = recortar(cuerpo.nota, 500);
+  if (tipo === 'novedad' && !nota) return responderSinCuerpo(res, 400);
+  if (tipo === 'visita' && !lugar) return responderSinCuerpo(res, 400);
+  const ahora = Date.now();
+  const at = numeroFinito(cuerpo.at);
+  const registradoEn = new Date(at !== null && at >= ahora - 30 * 86_400_000 && at <= ahora + 120_000 ? Math.min(at, ahora) : ahora);
+  try {
+    const guardada = await ctx.almacen.guardarActividad({
+      dispositivoId: dispositivo.id,
+      clienteId,
+      fecha,
+      hora,
+      tipo,
+      lugar,
+      nota,
+      registradoEn,
+      latitud: numeroFinito(cuerpo.lat),
+      longitud: numeroFinito(cuerpo.lon),
+      precisionM: numeroFinito(cuerpo.accuracy),
+      eliminada: cuerpo.deleted === true,
+    });
+    return responderJson(res, 200, { ok: true, conJornada: guardada.con_jornada, conUbicacion: guardada.con_coordenada });
+  } catch (error) {
+    ctx.log.error(`movil/actividades: ${error.message}`);
+    return responderSinCuerpo(res, 503);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/mobile/v1/power
 // ---------------------------------------------------------------------------
 // Apagado y encendido del teléfono: {deviceId, event:'shutdown'|'boot',

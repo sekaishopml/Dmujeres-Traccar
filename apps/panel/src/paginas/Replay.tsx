@@ -43,9 +43,7 @@ function IntegridadRecorrido({
   huecos,
   reconstruidos,
   calidad,
-  enVivo = false,
 }: {
-  enVivo?: boolean;
   totalFixes: number;
   huecos: Hueco[];
   reconstruidos: TramoReconstruido[];
@@ -60,11 +58,6 @@ function IntegridadRecorrido({
       : `${huecos.length} ${huecos.length === 1 ? 'corte' : 'cortes'} de señal (${formatoMinutos(minutosSinSenal)})`;
   return (
     <section className="replay-integridad" aria-label="Integridad del recorrido">
-      {enVivo && (
-        <p className="replay-vivo">
-          <span className="replay-vivo-punto" aria-hidden="true" /> En vivo · se actualiza cada 15 s
-        </p>
-      )}
       <p>
         <strong>{totalFixes.toLocaleString('es-EC')}</strong> puntos GPS · {sinSenal}
         {estimados > 0 && ` · ${estimados} ${estimados === 1 ? 'salto estimado' : 'saltos estimados'} por calle`}
@@ -838,7 +831,6 @@ export default function Replay() {
     return (
       <>
         <IntegridadRecorrido
-          enVivo={enVivo}
           totalFixes={posiciones.length}
           huecos={huecos}
           reconstruidos={reconstruidos}

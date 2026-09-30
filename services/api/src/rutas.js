@@ -3,6 +3,7 @@
 import * as auth from './auth.js';
 import * as bateria from './bateria.js';
 import * as config from './config.js';
+import * as cronograma from './cronograma.js';
 import * as cuentas from './cuentas.js';
 import * as esquema from './esquema.js';
 import * as flota from './flota.js';
@@ -56,6 +57,7 @@ export const DEFINICIONES = [
   { metodo: 'GET', ruta: '/api/v1/configuracion/esquema', manejar: esquema.obtenerEsquema },
   { metodo: 'GET', ruta: '/api/v1/config', manejar: config.obtenerConfiguracion },
   { metodo: 'GET', ruta: '/api/v1/geocode/reverse', manejar: geocodigo.obtenerDireccion },
+  { metodo: 'GET', ruta: '/api/v1/cronograma', manejar: cronograma.listarCronograma },
   { metodo: 'GET', ruta: '/api/v1/health', publica: true, manejar: salud.salud },
   { metodo: 'GET', ruta: '/api/v1/ready', publica: true, manejar: salud.disponibilidad },
   { metodo: 'GET', ruta: '/api/v1/version', publica: true, manejar: salud.version },

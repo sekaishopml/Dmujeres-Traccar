@@ -639,6 +639,50 @@ export class Almacen {
     }
   }
 
+  // Cronograma de actividades (operations.dmt_actividad).
+  async listarActividades({ dispositivoId, desde, hasta }) {
+    const { rows } = await this.#pool.query(
+      `SELECT cliente_id, to_char(fecha, 'YYYY-MM-DD') AS fecha, hora, tipo, lugar, nota,
+              registrado_en, con_jornada, latitud, longitud, precision_m
+         FROM operations.dmt_actividad
+        WHERE dispositivo_id = $1 AND NOT eliminada AND fecha BETWEEN $2::date AND $3::date
+        ORDER BY fecha, hora, registrado_en`,
+      [dispositivoId, desde, hasta],
+    );
+    return rows;
+  }
+
+  // Alta o edición idempotente por cliente_id. La coordenada solo se guarda
+  // si al momento de registrar había una jornada abierta del equipo: fuera de
+  // jornada (p. ej. rellenando desde la casa) no describe el lugar declarado.
+  async guardarActividad({ dispositivoId, clienteId, fecha, hora, tipo, lugar, nota, registradoEn, latitud, longitud, precisionM, eliminada }) {
+    const jornada = await this.#pool.query(
+      `SELECT 1 FROM operations.dmt_jornada
+        WHERE dispositivo_id = $1 AND inicio_en <= $2 AND (fin_en IS NULL OR fin_en >= $2)
+        LIMIT 1`,
+      [dispositivoId, registradoEn],
+    );
+    const conJornada = jornada.rowCount > 0;
+    const conCoordenada = conJornada && Number.isFinite(latitud) && Number.isFinite(longitud);
+    const { rows } = await this.#pool.query(
+      `INSERT INTO operations.dmt_actividad
+         (dispositivo_id, cliente_id, fecha, hora, tipo, lugar, nota, registrado_en, con_jornada,
+          latitud, longitud, precision_m, eliminada)
+       VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       ON CONFLICT (dispositivo_id, cliente_id) DO UPDATE SET
+         fecha = EXCLUDED.fecha, hora = EXCLUDED.hora, tipo = EXCLUDED.tipo,
+         lugar = EXCLUDED.lugar, nota = EXCLUDED.nota, eliminada = EXCLUDED.eliminada,
+         actualizado_en = now()
+       RETURNING con_jornada, latitud IS NOT NULL AS con_coordenada`,
+      [
+        dispositivoId, clienteId, fecha, hora, tipo, lugar, nota, registradoEn, conJornada,
+        conCoordenada ? latitud : null, conCoordenada ? longitud : null,
+        conCoordenada && Number.isFinite(precisionM) ? precisionM : null, eliminada === true,
+      ],
+    );
+    return rows[0];
+  }
+
   async cerrarJornada({ dispositivoId, journeyId, finEn, bateriaFin, parcheDispositivo }) {
     const conexion = await this.#pool.connect();
     try {
