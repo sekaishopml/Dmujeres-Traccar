@@ -114,7 +114,7 @@
   <string name="perm_location">Ubicación</string>
   <string name="perm_background">Ubicación siempre</string>
   <string name="perm_notifications">Notificaciones</string>
-  <string name="perm_battery">Uso de batería sin restricción</string>
+  <string name="perm_battery">Batería sin restricción</string>
   <string name="perm_autostart">Inicio automático</string>
   <string name="ota_notification_title">Actualización disponible</string>
   <string name="ota_notification_text">Toca para instalar la versión %1$s. El seguimiento mejora con cada versión.</string>
@@ -314,7 +314,7 @@ Se registrará el cierre en el panel.</string>
   <string name="perm_location_why">Necesaria para registrar el recorrido.</string>
   <string name="perm_background_why">Selecciona “Permitir todo el tiempo”.</string>
   <string name="perm_notifications_why">Muestra que el registro está activo.</string>
-  <string name="perm_battery_why">Evita que el sistema detenga el registro.</string>
+  <string name="perm_battery_why">Evita que el sistema detenga el registro para ahorrar energía.</string>
   <string name="perm_autostart_why">Retoma el registro al reiniciar el teléfono.</string>
   <string name="perm_autostart_open">Abrir</string>
   <string name="onboarding_perms_all_ready">Todo listo</string>
@@ -389,4 +389,10 @@ Se registrará el cierre en el panel.</string>
   <string name="crono_pendiente">Por enviar</string>
   <string name="crono_confirmar_eliminar">¿Eliminar esta actividad?</string>
   <string name="crono_ver_dia_fmt">Ver el %1$s</string>
+  <string name="crono_home_vacio">Sin actividades hoy · toca para planificar tu día</string>
+  <string name="crono_home_siguiente_fmt">Hoy %1$d · siguiente %2$s %3$s</string>
+  <string name="crono_home_total_fmt">Hoy %1$d actividades registradas</string>
+  <string name="crono_sync_at_fmt">Sincronizado a las %1$s</string>
+  <string name="crono_sync_nunca">Aún sin sincronizar</string>
+  <string name="crono_hora_ocupada_fmt">Ya hay una actividad a las %1$s: se cambió a las %2$s. Toca Guardar para confirmar.</string>
 </resources>

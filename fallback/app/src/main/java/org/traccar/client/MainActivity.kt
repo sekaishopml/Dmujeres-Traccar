@@ -254,7 +254,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, StatusActivity::class.java))
         }
         // Cronograma de actividades (reemplaza el Excel de ruta semanal).
-        findViewById<Button>(R.id.cronograma_button).setOnClickListener {
+        findViewById<View>(R.id.cronograma_card).setOnClickListener {
             startActivity(Intent(this, org.traccar.client.cronograma.CronogramaActivity::class.java))
         }
 
@@ -390,6 +390,21 @@ class MainActivity : AppCompatActivity() {
         }
         // Avisos de jornada que quedaron sin enviar (sin señal al tocar).
         DmujeresApi.flushJourneyEvents(this)
+        // Cronograma del mes al día para el resumen de la tarjeta.
+        run {
+            val zona = java.util.TimeZone.getTimeZone("America/Guayaquil")
+            val c = java.util.Calendar.getInstance(zona)
+            val f = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply { timeZone = zona }
+            c.set(java.util.Calendar.DAY_OF_MONTH, 1)
+            val desde = f.format(c.time)
+            c.set(java.util.Calendar.DAY_OF_MONTH, c.getActualMaximum(java.util.Calendar.DAY_OF_MONTH))
+            val hasta = f.format(c.time)
+            org.traccar.client.cronograma.Actividades.sincronizar(this) {
+                org.traccar.client.cronograma.Actividades.actualizar(this, desde, hasta) {
+                    runOnUiThread { if (!isFinishing && !isDestroyed) refreshCronograma() }
+                }
+            }
+        }
         // Y chequeo de actualización (con freno) al volver a la app.
         maybeCheckOta()
         // Sesión terminada por el servidor (401 con token): se pide login de
@@ -476,6 +491,36 @@ class MainActivity : AppCompatActivity() {
             }
         }.start()
         refreshDuration()
+        refreshCronograma()
+    }
+
+    /**
+     * Tarjeta del cronograma: resumen de hoy (cuántas actividades y la
+     * siguiente o la última) y la hora de la última sincronización.
+     */
+    private fun refreshCronograma() {
+        val resumen = findViewById<TextView>(R.id.crono_resumen) ?: return
+        val zona = java.util.TimeZone.getTimeZone("America/Guayaquil")
+        val ahora = java.util.Calendar.getInstance(zona)
+        val hoy = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply { timeZone = zona }.format(ahora.time)
+        val horaActual = String.format(java.util.Locale.US, "%02d:%02d", ahora.get(java.util.Calendar.HOUR_OF_DAY), ahora.get(java.util.Calendar.MINUTE))
+        val delDia = org.traccar.client.cronograma.Actividades.delDia(this, hoy)
+        val siguiente = delDia.firstOrNull { it.hora >= horaActual }
+        resumen.text = when {
+            delDia.isEmpty() -> getString(R.string.crono_home_vacio)
+            siguiente != null -> getString(
+                R.string.crono_home_siguiente_fmt, delDia.size, siguiente.hora,
+                siguiente.lugar ?: siguiente.tipo.etiqueta,
+            )
+            else -> getString(R.string.crono_home_total_fmt, delDia.size)
+        }
+        val pendientes = org.traccar.client.cronograma.Actividades.pendientes(this)
+        val sync = org.traccar.client.cronograma.Actividades.sincronizadoEn(this)
+        findViewById<TextView>(R.id.crono_sync_home)?.text = when {
+            pendientes > 0 -> getString(R.string.crono_sync_pend_fmt, pendientes)
+            sync > 0 -> getString(R.string.crono_sync_at_fmt, java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).apply { timeZone = zona }.format(java.util.Date(sync)))
+            else -> getString(R.string.crono_sync_nunca)
+        }
     }
 
     private fun refreshDuration() {

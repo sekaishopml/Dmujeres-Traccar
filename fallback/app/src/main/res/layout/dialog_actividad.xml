@@ -37,6 +37,14 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <!-- Ajuste rápido de la hora, sin abrir el reloj. -->
+    <LinearLayout
+        android:id="@+id/act_ajustes"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -115,11 +123,4 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
-    <TextView
-        android:id="@+id/act_ubicacion"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:textColor="@color/text_tertiary"
-        android:textSize="11.5sp" />
 </LinearLayout>

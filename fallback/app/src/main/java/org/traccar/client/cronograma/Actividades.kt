@@ -69,6 +69,7 @@ data class Actividad(
  */
 object Actividades {
     private const val KEY = "cronogramaLocal"
+    private const val KEY_SYNC_AT = "cronogramaSincronizadoEn"
     private const val MAX = 800
 
     @Synchronized
@@ -87,13 +88,35 @@ object Actividades {
         PreferenceManager.getDefaultSharedPreferences(context).edit().putString(KEY, a.toString()).commit()
     }
 
+    // Orden estable: por hora y, a igual hora, por orden de carga.
     fun delDia(context: Context, fecha: String): List<Actividad> =
-        todas(context).filter { it.fecha == fecha && !it.eliminada }.sortedBy { it.hora }
+        todas(context).filter { it.fecha == fecha && !it.eliminada }
+            .sortedWith(compareBy({ it.hora }, { it.registradoEn }))
 
     fun delMes(context: Context, mes: String): List<Actividad> =
         todas(context).filter { it.fecha.startsWith(mes) && !it.eliminada }
 
     fun pendientes(context: Context): Int = todas(context).count { it.pendiente }
+
+    /** Última vez que el teléfono quedó al día con el servidor (0 = nunca). */
+    fun sincronizadoEn(context: Context): Long =
+        PreferenceManager.getDefaultSharedPreferences(context).getLong(KEY_SYNC_AT, 0L)
+
+    private fun marcarSincronizado(context: Context) {
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .putLong(KEY_SYNC_AT, System.currentTimeMillis()).apply()
+    }
+
+    /**
+     * Hora sugerida para una actividad nueva del día: continúa después de la
+     * última cargada (+30 min) aunque esté en el futuro; así, si ya se planificó
+     * algo a las 17:00, la siguiente sale a las 17:30 y no a la hora actual,
+     * que la dejaba desordenada. Sin actividades, la hora actual redondeada.
+     */
+    fun horaSugerida(delDia: List<Actividad>, horaActual: String): String {
+        val ultima = delDia.maxOfOrNull { it.hora } ?: return horaActual
+        return HoraCronograma.sumar(ultima, 30)
+    }
 
     /** Alta o edición: queda guardada y pendiente de subir. */
     @Synchronized
@@ -133,11 +156,16 @@ object Actividades {
         sincronizando = true
         Thread {
             try {
+                var todoSubido = true
                 for (a in todas(app).filter { it.pendiente }) {
-                    if (!DmujeresApi.postActividad(app, a.aJson())) break
+                    if (!DmujeresApi.postActividad(app, a.aJson())) {
+                        todoSubido = false
+                        break
+                    }
                     marcarSubida(app, a)
                     StatusActivity.addMessage("Cronograma: ${a.tipo.etiqueta.lowercase()} de las ${a.hora} sincronizada")
                 }
+                if (todoSubido && pendientes(app) == 0) marcarSincronizado(app)
             } finally {
                 sincronizando = false
                 alTerminar?.invoke()
@@ -177,6 +205,7 @@ object Actividades {
                         .filter { it.clientId !in pendientes }
                     guardarTodas(app, fuera + delServidor)
                 }
+                if (pendientes(app) == 0) marcarSincronizado(app)
             }
             alTerminar(remoto != null)
         }.start()

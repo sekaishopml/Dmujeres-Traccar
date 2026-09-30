@@ -17,7 +17,6 @@ import {
   TIPOS,
   diasDeSemana,
   etiquetaDia,
-  etiquetaDiaLargo,
   etiquetaMes,
   lunesDe,
   primeroDeMes,
@@ -127,9 +126,9 @@ export default function Cronograma() {
           }}
         />
       ) : persona ? (
-        <SemanaPersona dias={diasDeSemana(lunes)} hoy={hoy} datos={datos} />
+        <Planilla dias={diasDeSemana(lunes)} hoy={hoy} datos={datos} />
       ) : (
-        <SemanaEquipo datos={datos} hoy={hoy} />
+        <PlanillasEquipo dias={diasDeSemana(lunes)} hoy={hoy} datos={datos} />
       )}
     </div>
   );
@@ -144,10 +143,20 @@ function Dato({ valor, etiqueta, tono, titulo }: { valor: number; etiqueta: stri
   );
 }
 
-// Semana de una persona: una columna por día, como su planilla.
-function SemanaPersona({ dias, hoy, datos }: { dias: string[]; hoy: string; datos: Actividad[] }) {
-  const visibles = dias.filter((d, i) => i < 6 || datos.some((a) => a.fecha === d));
-  if (datos.length === 0) {
+// Colores de día de la planilla Excel que usa el equipo (lunes salmón,
+// martes azul, miércoles verde, jueves amarillo, viernes lavanda). Se mezclan
+// con la superficie para que funcionen también en modo nocturno.
+const COLOR_DIA = ['#f4b183', '#9dc3e6', '#c5e0b4', '#ffe699', '#c9cdea', '#d9d9d9', '#e7e6e6'];
+const NOMBRE_DIA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const tinte = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, var(--color-superficie))`;
+
+// Planilla semanal de una persona, con la misma forma que su Excel: una
+// columna por día (HORA | PLANIFICACIÓN) y una fila por actividad en orden.
+function Planilla({ dias, hoy, datos, nombre }: { dias: string[]; hoy: string; datos: Actividad[]; nombre?: string }) {
+  const visibles = dias.map((d, i) => ({ d, i })).filter(({ d, i }) => i < 5 || datos.some((a) => a.fecha === d));
+  const porDia = visibles.map(({ d }) => datos.filter((a) => a.fecha === d).sort((x, y) => x.hora.localeCompare(y.hora)));
+  const filas = Math.max(1, ...porDia.map((l) => l.length));
+  if (datos.length === 0 && !nombre) {
     return (
       <Tarjeta>
         <Vacio titulo="Sin actividades esta semana">La persona no cargó actividades en la app para estas fechas.</Vacio>
@@ -155,35 +164,145 @@ function SemanaPersona({ dias, hoy, datos }: { dias: string[]; hoy: string; dato
     );
   }
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${visibles.length}, minmax(0, 1fr))` }}>
-      {visibles.map((dia) => {
-        const delDia = datos.filter((a) => a.fecha === dia);
-        return (
-          <div key={dia} className="min-w-0">
-            <p
-              className={cn(
-                'mb-2 rounded-control px-2.5 py-1.5 text-[12px] font-semibold first-letter:uppercase',
-                dia === hoy ? 'bg-marca text-white' : 'bg-marino-50 text-marino-800',
-              )}
-            >
-              {etiquetaDia(dia)}
-            </p>
-            <div className="space-y-2">
-              {delDia.length === 0 ? (
-                <p className="px-1 text-[12px] text-texto-3">—</p>
-              ) : (
-                delDia.map((a) => <TarjetaActividad key={a.id} actividad={a} compacta />)
-              )}
-            </div>
-          </div>
-        );
-      })}
+    <Tarjeta className="overflow-x-auto">
+      {nombre && (
+        <div className="flex items-center gap-2.5 border-b border-borde px-4 py-2.5">
+          <Avatar nombre={nombre} tamano="sm" />
+          <span className="text-[13.5px] font-semibold text-marino-900">{nombre}</span>
+          <span className="text-[12px] text-texto-3">{datos.length} actividades</span>
+        </div>
+      )}
+      <table className="w-full min-w-[900px] table-fixed border-collapse text-[12.5px]">
+        <colgroup>
+          {visibles.map(({ d }) => (
+            <FragmentoCol key={d} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr>
+            {visibles.map(({ d, i }) => (
+              <th
+                key={d}
+                colSpan={2}
+                className="border border-borde px-2 py-1.5 text-center text-[12.5px] font-bold text-marino-900"
+                style={{ background: tinte(COLOR_DIA[i], d === hoy ? 90 : 70) }}
+              >
+                {NOMBRE_DIA[i]} {Number(d.slice(8))}
+                {d === hoy && <span className="ml-1.5 rounded-full bg-marca px-1.5 text-[10px] text-white">hoy</span>}
+              </th>
+            ))}
+          </tr>
+          <tr>
+            {visibles.map(({ d, i }) => (
+              <FragmentoCabecera key={d} color={COLOR_DIA[i]} />
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: filas }, (_, fila) => (
+            <tr key={fila}>
+              {visibles.map(({ d, i }, col) => {
+                const a = porDia[col][fila];
+                const almuerzo = a?.tipo === 'almuerzo';
+                return (
+                  <FragmentoCelda key={d} actividad={a} color={COLOR_DIA[i]} almuerzo={almuerzo} />
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Tarjeta>
+  );
+}
+
+
+function FragmentoCol() {
+  return (
+    <>
+      <col className="w-[62px]" />
+      <col />
+    </>
+  );
+}
+
+function FragmentoCabecera({ color }: { color: string }) {
+  return (
+    <>
+      <th className="border border-borde px-1 py-1 text-center text-[10.5px] font-bold tracking-[0.04em] text-marino-900 uppercase" style={{ background: tinte(color, 45) }}>
+        Hora
+      </th>
+      <th className="border border-borde px-2 py-1 text-center text-[10.5px] font-bold tracking-[0.04em] text-marino-900 uppercase" style={{ background: tinte(color, 25) }}>
+        Planificación
+      </th>
+    </>
+  );
+}
+
+function FragmentoCelda({ actividad: a, color, almuerzo }: { actividad?: Actividad; color: string; almuerzo: boolean }) {
+  const fondoHora = tinte(color, 40);
+  const fondo = almuerzo ? 'color-mix(in srgb, var(--color-texto-3) 18%, var(--color-superficie))' : undefined;
+  if (!a) {
+    return (
+      <>
+        <td className="border border-borde" style={{ background: tinte(color, 22) }} />
+        <td className="border border-borde" />
+      </>
+    );
+  }
+  const tipo = TIPOS[a.tipo];
+  return (
+    <>
+      <td
+        className="border border-borde px-1 py-1.5 text-center align-top font-mono text-[12px] font-semibold text-marino-900"
+        style={{ background: fondo ?? fondoHora }}
+      >
+        {a.hora}
+      </td>
+      <td className="border border-borde px-2 py-1.5 align-top" style={{ background: fondo }}>
+        <div className="flex flex-wrap items-center gap-1">
+          {a.tipo !== 'visita' && (
+            <span className={cn('rounded-full px-1.5 text-[10px] font-semibold', tipo.clase)}>{tipo.etiqueta}</span>
+          )}
+          {a.lugar && <span className="font-semibold break-words text-marino-900">{a.lugar}</span>}
+        </div>
+        {a.nota && <p className="mt-0.5 text-[11.5px] break-words text-texto-2">{a.nota}</p>}
+        <AuditoriaCorta actividad={a} />
+      </td>
+    </>
+  );
+}
+
+// Auditoría en una línea dentro de la celda; el detalle completo va en el
+// título (al pasar el mouse) y en el enlace a la ruta.
+function AuditoriaCorta({ actividad: a }: { actividad: Actividad }) {
+  const eh = a.enHora;
+  const direccion = useDireccionFaltante(eh?.latitud ?? null, eh?.longitud ?? null, eh?.direccion ?? null);
+  const texto = !eh
+    ? 'Sin recorrido a esa hora'
+    : `${eh.detenida ? 'Detenida' : 'En camino'}${eh.detenida && eh.paradaDesde && eh.paradaHasta ? ` ${hora(eh.paradaDesde)}–${hora(eh.paradaHasta)}` : ''}${direccion ? ` · ${direccion}` : ''}`;
+  const carga = `Cargada ${hora(a.registro.en)}${diaDe(a.registro.en) !== a.fecha ? ` del ${etiquetaDia(diaDe(a.registro.en))}` : ''}${a.registro.conJornada ? ' con jornada' : ' sin jornada'}`;
+  return (
+    <div className="mt-1 space-y-0.5 text-[10.5px] leading-tight">
+      <p className="flex items-start gap-1 text-texto-3" title={texto}>
+        {eh?.detenida ? <MapPin className="mt-px size-3 flex-none text-detenido" /> : <Navigation className="mt-px size-3 flex-none text-movimiento" />}
+        <span className="line-clamp-2">{texto}</span>
+        {eh && (
+          <Link to={`/replay?dispositivo=${a.dispositivoId}&desde=${a.fecha}&hasta=${a.fecha}`} className="ml-auto flex-none font-semibold text-marino-700 hover:text-marca">
+            Ruta
+          </Link>
+        )}
+      </p>
+      <p className={cn('flex items-center gap-1', a.registro.conJornada ? 'text-texto-3' : 'text-sin-senal')} title={carga}>
+        {!a.registro.conJornada && <TriangleAlert className="size-3 flex-none" />}
+        {carga}
+      </p>
     </div>
   );
 }
 
-// Semana de todo el equipo: tabla agrupada por día, fácil de recorrer.
-function SemanaEquipo({ datos, hoy }: { datos: Actividad[]; hoy: string }) {
+// Todas las personas: una planilla por persona con actividades en la semana.
+function PlanillasEquipo({ dias, hoy, datos }: { dias: string[]; hoy: string; datos: Actividad[] }) {
   if (datos.length === 0) {
     return (
       <Tarjeta>
@@ -191,33 +310,11 @@ function SemanaEquipo({ datos, hoy }: { datos: Actividad[]; hoy: string }) {
       </Tarjeta>
     );
   }
-  const dias = [...new Set(datos.map((a) => a.fecha))];
+  const personas = [...new Map(datos.map((a) => [a.dispositivoId, a.nombre])).entries()].sort((x, y) => x[1].localeCompare(y[1], 'es'));
   return (
     <div className="space-y-4">
-      {dias.map((dia) => (
-        <Tarjeta key={dia} className="overflow-hidden">
-          <p
-            className={cn(
-              'border-b border-borde px-5 py-2.5 text-[13px] font-semibold first-letter:uppercase',
-              dia === hoy ? 'text-marca' : 'text-marino-900',
-            )}
-          >
-            {etiquetaDiaLargo(dia)}
-          </p>
-          <div className="divide-y divide-borde">
-            {datos
-              .filter((a) => a.fecha === dia)
-              .map((a) => (
-                <div key={a.id} className="grid grid-cols-[11rem_minmax(0,1fr)] items-start gap-4 px-5 py-2.5">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <Avatar nombre={a.nombre} tamano="sm" />
-                    <span className="truncate text-[13px] font-semibold text-marino-900">{a.nombre}</span>
-                  </div>
-                  <TarjetaActividad actividad={a} plana />
-                </div>
-              ))}
-          </div>
-        </Tarjeta>
+      {personas.map(([id, nombre]) => (
+        <Planilla key={id} dias={dias} hoy={hoy} nombre={nombre} datos={datos.filter((a) => a.dispositivoId === id)} />
       ))}
     </div>
   );
@@ -297,55 +394,6 @@ function Mes({
         })}
       </div>
     </Tarjeta>
-  );
-}
-
-// Una actividad: hora, tipo, lugar y nota, más la auditoría: dónde estaba la
-// persona a esa hora según su recorrido y cuándo/dónde se cargó.
-function TarjetaActividad({ actividad: a, compacta = false, plana = false }: { actividad: Actividad; compacta?: boolean; plana?: boolean }) {
-  const tipo = TIPOS[a.tipo];
-  return (
-    <div className={cn(!plana && 'rounded-control border border-borde bg-superficie p-2.5', 'min-w-0')}>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="font-mono text-[12.5px] font-semibold text-marino-900">{a.hora}</span>
-        <span className={cn('rounded-full px-2 py-0.5 text-[10.5px] font-semibold', tipo.clase)}>{tipo.etiqueta}</span>
-        {a.lugar && <span className="min-w-0 text-[13px] font-semibold break-words text-marino-900">{a.lugar}</span>}
-      </div>
-      {a.nota && <p className="mt-1 text-[12px] break-words text-texto-2">{a.nota}</p>}
-      <div className={cn('mt-1.5 space-y-0.5 text-[11.5px]', compacta && 'text-[11px]')}>
-        <EnHora actividad={a} />
-        <p className={cn('flex items-center gap-1', a.registro.conJornada ? 'text-texto-3' : 'text-sin-senal')}>
-          {!a.registro.conJornada && <TriangleAlert className="size-3 flex-none" />}
-          Cargada {hora(a.registro.en)}
-          {diaDe(a.registro.en) !== a.fecha ? ` del ${etiquetaDia(diaDe(a.registro.en))}` : ''}
-          {a.registro.conJornada ? ' · con jornada' : ' · sin jornada, sin ubicación'}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function EnHora({ actividad: a }: { actividad: Actividad }) {
-  const eh = a.enHora;
-  const direccion = useDireccionFaltante(eh?.latitud ?? null, eh?.longitud ?? null, eh?.direccion ?? null);
-  if (!eh) {
-    return <p className="text-texto-3">Sin recorrido registrado a esa hora</p>;
-  }
-  return (
-    <p className="flex items-start gap-1 text-texto-2">
-      {eh.detenida ? <MapPin className="mt-px size-3 flex-none text-detenido" /> : <Navigation className="mt-px size-3 flex-none text-movimiento" />}
-      <span className="min-w-0">
-        A esa hora {eh.detenida ? 'estaba detenida' : 'estaba en camino'}
-        {eh.detenida && eh.paradaDesde && eh.paradaHasta ? ` (${hora(eh.paradaDesde)}–${hora(eh.paradaHasta)})` : ''}
-        {direccion ? ` en ${direccion}` : ''}{' '}
-        <Link
-          to={`/replay?dispositivo=${a.dispositivoId}&desde=${a.fecha}&hasta=${a.fecha}`}
-          className="font-semibold text-marino-700 hover:text-marca"
-        >
-          Ver ruta
-        </Link>
-      </span>
-    </p>
   );
 }
 

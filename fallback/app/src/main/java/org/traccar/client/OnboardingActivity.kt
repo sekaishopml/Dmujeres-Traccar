@@ -287,7 +287,10 @@ class OnboardingActivity : AppCompatActivity() {
         val row = LayoutInflater.from(this).inflate(R.layout.onboarding_permission_row, rows, false)
         row.findViewById<android.widget.ImageView>(R.id.row_icon).setImageResource(iconRes)
         row.findViewById<TextView>(R.id.row_title).setText(titleRes)
-        row.findViewById<TextView>(R.id.row_badge).setText(if (required) R.string.perm_required else R.string.perm_recommended)
+        // Solo los obligatorios llevan etiqueta; el resto no se rotula.
+        row.findViewById<TextView>(R.id.row_badge).apply {
+            if (required) setText(R.string.perm_required) else visibility = View.GONE
+        }
         row.findViewById<TextView>(R.id.row_status).setText(whyRes)
         val button = row.findViewById<Button>(R.id.row_action)
         val done = row.findViewById<android.widget.ImageView>(R.id.row_done)

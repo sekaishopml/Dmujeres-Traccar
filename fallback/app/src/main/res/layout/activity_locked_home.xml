@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Pantalla principal (2.3.1): logo y estado arriba, indicadores del día,
+     tarjeta del cronograma en marino y un pie marino con Iniciar/Finalizar
+     jornada y Actualizar; la versión al fondo. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -7,21 +10,26 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:orientation="vertical"
         android:paddingStart="14dp"
-        android:paddingEnd="14dp"
         android:paddingTop="4dp"
-        android:paddingBottom="10dp">
+        android:paddingEnd="14dp">
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
         <ImageView
-            android:layout_width="180dp"
+            android:layout_width="170dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="72dp"
+            android:layout_marginTop="44dp"
             android:adjustViewBounds="true"
             android:contentDescription="@string/app_logo"
             android:src="@drawable/logo_banner" />
@@ -40,24 +48,22 @@
         android:id="@+id/status_pill"
         android:layout_width="match_parent"
         android:layout_height="44dp"
-        android:layout_marginTop="84dp"
+        android:layout_marginTop="40dp"
         android:background="@drawable/bg_pill_red"
         android:gravity="center"
         android:orientation="horizontal"
         android:paddingStart="12dp"
         android:paddingEnd="12dp">
 
-
-            <TextView
-                android:id="@+id/pill_text"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:text="@string/pill_none"
-                android:textColor="@color/white"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+        <TextView
+            android:id="@+id/pill_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pill_none"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/location_warning"
@@ -81,7 +87,7 @@
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="10dp"
         android:layout_weight="1">
 
         <LinearLayout
@@ -227,58 +233,121 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <Button
-                android:id="@+id/journey_button"
+            <!-- Cronograma: resumen del día y última sincronización. -->
+            <LinearLayout
+                android:id="@+id/cronograma_card"
                 android:layout_width="match_parent"
-                android:layout_height="54dp"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_button_green"
-                android:text="@string/journey_start_upper"
-                android:textAllCaps="false"
-                android:textColor="@color/white"
-                android:textSize="16sp"
-                android:stateListAnimator="@null"
-                android:textStyle="bold" />
+                android:background="@drawable/ds_card_navy"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="14dp"
+                android:paddingTop="12dp"
+                android:paddingEnd="10dp"
+                android:paddingBottom="12dp">
 
-            <Button
-                android:id="@+id/update_button"
-                android:layout_width="match_parent"
-                android:layout_height="46dp"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/bg_update_progress"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="@string/refresh_button"
-                android:textAllCaps="false"
-                android:textColor="@color/navy"
-                android:textSize="13sp" />
+                <ImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@drawable/ds_icon_translucido"
+                    android:importantForAccessibility="no"
+                    android:padding="8dp"
+                    android:src="@drawable/ds_ic_calendar" />
 
-            <Button
-                android:id="@+id/cronograma_button"
-                android:layout_width="match_parent"
-                android:layout_height="46dp"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/ds_button_outline"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:stateListAnimator="@null"
-                android:text="@string/crono_button"
-                android:textAllCaps="false"
-                android:textColor="@color/primary"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/crono_title"
+                        android:textColor="@color/white"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/crono_resumen"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="#E6FFFFFF"
+                        android:textSize="12.5sp" />
+
+                    <TextView
+                        android:id="@+id/crono_sync_home"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textColor="#99FFFFFF"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ds_ic_chevron" />
+            </LinearLayout>
         </LinearLayout>
     </FrameLayout>
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/version_label"
+    <!-- Pie marino: acciones de la jornada. -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:gravity="center"
-        android:padding="6dp"
-        android:textColor="@color/text_secondary"
-        android:textSize="12sp" />
+        android:background="@drawable/ds_footer_navy"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp">
+
+        <Button
+            android:id="@+id/journey_button"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_button_green"
+            android:stateListAnimator="@null"
+            android:text="@string/journey_start_upper"
+            android:textAllCaps="false"
+            android:textColor="@color/white"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/update_button"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_update_progress"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:stateListAnimator="@null"
+            android:text="@string/refresh_button"
+            android:textAllCaps="false"
+            android:textColor="@color/navy"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/version_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:padding="4dp"
+            android:textColor="#80FFFFFF"
+            android:textSize="11sp" />
+    </LinearLayout>
 
     </LinearLayout>
 

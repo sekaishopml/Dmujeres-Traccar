@@ -112,10 +112,15 @@ class CronogramaActivity : AppCompatActivity() {
 
     private fun estadoSincronizacion(conectado: Boolean) {
         val pendientes = Actividades.pendientes(this)
+        val sync = Actividades.sincronizadoEn(this)
         findViewById<TextView>(R.id.crono_sync).text = when {
             pendientes > 0 -> getString(R.string.crono_sync_pend_fmt, pendientes)
-            !conectado -> getString(R.string.crono_sync_offline)
-            else -> getString(R.string.crono_sync_ok)
+            !conectado && sync <= 0L -> getString(R.string.crono_sync_offline)
+            sync > 0L -> getString(
+                R.string.crono_sync_at_fmt,
+                SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = zona }.format(java.util.Date(sync)),
+            )
+            else -> getString(R.string.crono_sync_nunca)
         }
     }
 
@@ -138,7 +143,6 @@ class CronogramaActivity : AppCompatActivity() {
             modo.text = getString(R.string.crono_ver_mes)
             pintarDia()
         }
-        textoUbicacion()
         estadoSincronizacion(true)
     }
 
@@ -356,17 +360,6 @@ class CronogramaActivity : AppCompatActivity() {
         return Triple(lat, lon, prefs.getFloat(PositionProvider.KEY_LAST_FIX_ACC, -1f))
     }
 
-    private fun textoUbicacion(): String {
-        val texto = when {
-            !DmujeresApi.isJourneyOpen(this) -> getString(R.string.crono_ubic_no)
-            fechaDe(dia) != hoy() -> getString(R.string.crono_ubic_otro_dia)
-            else -> ubicacionActual()?.let { getString(R.string.crono_ubic_si_fmt, it.third.toInt().coerceAtLeast(1)) }
-                ?: getString(R.string.crono_ubic_sin_fix)
-        }
-        findViewById<TextView>(R.id.crono_ubicacion)?.text = texto
-        return texto
-    }
-
     // ── Formulario ─────────────────────────────────────────────────────────
 
     private fun horaActualRedondeada(): String {
@@ -407,10 +400,20 @@ class CronogramaActivity : AppCompatActivity() {
         val nota = vista.findViewById<EditText>(R.id.act_nota)
         val notaLabel = vista.findViewById<TextView>(R.id.act_nota_label)
         val error = vista.findViewById<TextView>(R.id.act_error)
-        vista.findViewById<TextView>(R.id.act_ubicacion).text = if (existente != null) "" else textoUbicacion()
 
         titulo.setText(if (existente == null) R.string.crono_nueva else R.string.crono_editar)
-        hora.text = existente?.hora ?: horaActualRedondeada()
+        val delDia = Actividades.delDia(this, fechaDe(dia))
+        val ocupadas = delDia.filter { it.clientId != existente?.clientId }.map { it.hora }.toSet()
+        // La nueva continúa después de la última del día (aunque sea futura) y
+        // nunca repite una hora ya usada.
+        hora.text = existente?.hora
+            ?: HoraCronograma.libreDesde(Actividades.horaSugerida(delDia, horaActualRedondeada()), ocupadas)
+        val ajustes = vista.findViewById<LinearLayout>(R.id.act_ajustes)
+        listOf(-15 to "−15 min", 15 to "+15 min", 30 to "+30 min", 60 to "+1 h").forEach { (minutos, texto) ->
+            ajustes.addView(chip(texto, false) {
+                hora.text = HoraCronograma.sumar(hora.text.toString(), minutos)
+            })
+        }
         lugar.setText(existente?.lugar.orEmpty())
         nota.setText(existente?.nota.orEmpty())
         lugar.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, Actividades.lugaresFrecuentes(this)))
@@ -474,6 +477,16 @@ class CronogramaActivity : AppCompatActivity() {
                 }
                 if (falta != null) {
                     error.setText(falta)
+                    error.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
+                // Hora repetida: se corre a la siguiente libre y se avisa; el
+                // segundo toque guarda (así el cronograma no se amontona).
+                val elegida = hora.text.toString()
+                if (elegida in ocupadas) {
+                    val libre = HoraCronograma.libreDesde(elegida, ocupadas)
+                    hora.text = libre
+                    error.text = getString(R.string.crono_hora_ocupada_fmt, elegida, libre)
                     error.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
