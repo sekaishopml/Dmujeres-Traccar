@@ -14,4 +14,20 @@
     <!-- Azul marino intenso (botón ACTUALIZAR y consola) -->
     <color name="navy">#0B2545</color>
 
+    <!-- Sistema de diseño 2.2: superficies, texto y estados -->
+    <color name="navy_700">#17365D</color>
+    <color name="navy_soft">#EEF2F8</color>
+    <color name="magenta_soft">#FDEBF1</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="canvas">#F4F6FA</color>
+    <color name="line">#E6E9EF</color>
+    <color name="text_primary">#0C1F3D</color>
+    <color name="text_secondary">#5B6576</color>
+    <color name="text_tertiary">#8C95A4</color>
+    <color name="ok">#15803D</color>
+    <color name="ok_soft">#E6F4EA</color>
+    <color name="warn">#C2410C</color>
+    <color name="warn_soft">#FDEFE3</color>
+    <color name="danger_soft">#FDECEC</color>
+
 </resources>

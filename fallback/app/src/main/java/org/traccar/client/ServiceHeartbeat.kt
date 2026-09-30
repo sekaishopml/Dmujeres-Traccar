@@ -167,6 +167,9 @@ object ServiceHeartbeat {
             RemoteConfig.applyAndRestartIfChanged(context)
             // Actualización sin abrir la app: aviso en la barra (cada 6 h).
             runCatching { OtaNotifier.maybeCheck(context) }
+            // Avisos de jornada que no llegaron (sin señal al tocar): reintento.
+            runCatching { DmujeresApi.flushJourneyEvents(context) }
+            runCatching { PowerEvents.flush(context) }
         }.start()
     }
 }

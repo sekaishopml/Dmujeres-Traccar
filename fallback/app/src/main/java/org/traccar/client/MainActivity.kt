@@ -44,6 +44,12 @@ private const val KEY_LAST_OTA_CHECK = "lastOtaCheckApp"
 /** Pasos visibles del refresco manual (para el relleno proporcional). */
 private const val REFRESH_STEPS = 8
 
+/** Bloqueo del botón de jornada tras un toque (anti doble toque). */
+private const val JOURNEY_TAP_GUARD_MS = 1_200L
+
+/** Pendientes a partir de los cuales el estado pasa a "Sin conexión". */
+private const val PENDING_OFFLINE_THRESHOLD = 30
+
 /** Aviso "inicia la jornada" en el botón ACTUALIZAR (luego vuelve solo). */
 private const val JOURNEY_NOTICE_MS = 2_500L
 
@@ -51,6 +57,8 @@ private const val JOURNEY_NOTICE_MS = 2_500L
 private val REFRESH_WARNING_COLOR = 0xFFE65100.toInt()
 
 class MainActivity : AppCompatActivity() {
+
+    private var lastJourneyTapAt = 0L
 
     private var tapCount = 0
     private var tapFirstAt = 0L
@@ -204,6 +212,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         button.setOnClickListener {
+            // Anti doble toque: el botón se bloquea un instante mientras cambia
+            // de estado (dos toques rápidos abrían y cerraban la jornada).
+            if (SystemClock.elapsedRealtime() - lastJourneyTapAt < JOURNEY_TAP_GUARD_MS) return@setOnClickListener
+            lastJourneyTapAt = SystemClock.elapsedRealtime()
             if (DmujeresApi.isJourneyOpen(this)) {
                 val startedAt = PreferenceManager.getDefaultSharedPreferences(this)
                     .getLong(DmujeresApi.KEY_JOURNEY_STARTED_AT, 0L)
@@ -290,9 +302,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         refreshLockedHome()
-        // Antes el ticker se creaba pero NUNCA se lanzaba: por eso los cuadros
-        // solo cambiaban al salir y volver a entrar.
-        uiHandler.postDelayed(durationTicker!!, LIVE_REFRESH_MS)
+        // El ticker lo lanza onResume (siempre corre tras onCreate). Antes se
+        // lanzaba aquí Y en onResume: dos cadenas de refresco en paralelo.
     }
 
 
@@ -326,7 +337,12 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // Refresco inmediato + vivo cada 5 s mientras la pantalla esté abierta.
         runCatching { refreshLockedHome() }
-        durationTicker?.let { uiHandler.postDelayed(it, LIVE_REFRESH_MS) }
+        durationTicker?.let {
+            uiHandler.removeCallbacks(it)
+            uiHandler.postDelayed(it, LIVE_REFRESH_MS)
+        }
+        // Avisos de jornada que quedaron sin enviar (sin señal al tocar).
+        DmujeresApi.flushJourneyEvents(this)
         // Y chequeo de actualización (con freno) al volver a la app.
         maybeCheckOta()
         // Sesión terminada por el servidor (401 con token): se pide login de
@@ -388,10 +404,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         val battery = readBattery()
-        findViewById<TextView>(R.id.battery_value)?.text = getString(R.string.battery_value_fmt, battery.first)
+        // Sin lectura del sistema se muestra "--%" (antes "-1%" en rojo).
+        findViewById<TextView>(R.id.battery_value)?.text =
+            if (battery.first < 0) "--%" else getString(R.string.battery_value_fmt, battery.first)
         findViewById<TextView>(R.id.battery_value)?.setTextColor(
             getColor(
                 when {
+                    battery.first < 0 -> R.color.muted
                     battery.first <= 15 -> R.color.primary
                     battery.first <= 35 -> android.R.color.holo_orange_dark
                     else -> R.color.status_ok
@@ -658,7 +677,11 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun canSend(): Boolean = !ConnectionState.isFailing() && cachedPending == 0
+    // Con GPS continuo casi siempre hay 1-3 puntos esperando su lote: exigir 0
+    // hacía parpadear "Sin conexión" con la red perfecta. Cuenta la falla real
+    // de envío o una cola que ya se acumula.
+    private fun canSend(): Boolean =
+        !ConnectionState.isFailing() && cachedPending < PENDING_OFFLINE_THRESHOLD
 
     /**
      * Aviso de sesión vencida (una sola vez por limpieza): diálogo no

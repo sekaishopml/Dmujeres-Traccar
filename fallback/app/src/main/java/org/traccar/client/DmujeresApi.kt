@@ -92,6 +92,36 @@ object DmujeresApi {
         return url.replace(":5055", ":999").trimEnd('/')
     }
 
+    /** POST síncrono (hilo propio del llamador): true si respondió 2xx. */
+    private fun postSync(context: Context, path: String, body: JSONObject): Boolean {
+        val base = webBase(context)
+        val device = deviceId(context)
+        if (base.isBlank() || device.isBlank()) return false
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = URL(base + path).openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 8_000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            val hadToken = setAuthHeaders(connection, context)
+            connection.setRequestProperty("X-Device-Id", device)
+            connection.outputStream.use { it.write(body.toString().toByteArray()) }
+            val code = connection.responseCode
+            if (code !in 200..299) noteHttpResult(context, code, hadToken)
+            // 4xx distinto de 401/408/429: el servidor nunca lo aceptará
+            // (equipo desconocido, cuerpo inválido); se descarta para no
+            // bloquear la cola para siempre.
+            code in 200..299 || (code in 400..499 && code != 401 && code != 408 && code != 429)
+        } catch (e: Exception) {
+            Log.w(TAG, "POST $path falló", e)
+            false
+        } finally {
+            runCatching { connection?.disconnect() }
+        }
+    }
+
     private fun post(context: Context, path: String, body: JSONObject, onDone: ((Boolean) -> Unit)? = null) {
         val base = webBase(context)
         val device = deviceId(context)
@@ -139,22 +169,20 @@ object DmujeresApi {
 
     /** Inicio de jornada: id = epoch ms, evento mobileJourneyStarted en el panel. */
     fun journeyStarted(context: Context) {
-        val journeyId = System.currentTimeMillis()
+        // Doble toque o reintento de la UI: si ya hay jornada abierta no se
+        // abre otra (antes creaba un journeyId nuevo y el servidor cerraba la
+        // anterior al instante).
+        if (isJourneyOpen(context)) return
+        val now = System.currentTimeMillis()
+        val journeyId = now
         prefs(context).edit()
             .putLong(KEY_JOURNEY_ID, journeyId)
-            .putLong(KEY_JOURNEY_STARTED_AT, System.currentTimeMillis())
+            .putLong(KEY_JOURNEY_STARTED_AT, now)
             .putBoolean(KEY_JOURNEY_OPEN, true)
             .apply()
         StatusActivity.addMessage(context.getString(R.string.journey_started_toast))
-        post(
-            context,
-            "/api/mobile/v1/journey",
-            JSONObject()
-                .put("deviceId", deviceId(context))
-                .put("action", "start")
-                .put("journeyId", journeyId)
-                .put("client", CLIENT),
-        )
+        JourneyOutbox.enqueue(context, "start", journeyId, now)
+        flushJourneyEvents(context)
     }
 
     fun isJourneyOpen(context: Context): Boolean =
@@ -170,19 +198,55 @@ object DmujeresApi {
     /** Fin de jornada: cierra la jornada abierta (si la hay). */
     fun journeyEnded(context: Context) {
         val open = prefs(context).getBoolean(KEY_JOURNEY_OPEN, false)
+        if (!open) return
         val journeyId = prefs(context).getLong(KEY_JOURNEY_ID, System.currentTimeMillis())
         prefs(context).edit().putBoolean(KEY_JOURNEY_OPEN, false).apply()
-        if (!open) return
         StatusActivity.addMessage(context.getString(R.string.journey_ended_toast))
-        post(
-            context,
-            "/api/mobile/v1/journey",
-            JSONObject()
-                .put("deviceId", deviceId(context))
-                .put("action", "stop")
-                .put("journeyId", journeyId)
-                .put("client", CLIENT),
-        )
+        JourneyOutbox.enqueue(context, "stop", journeyId, System.currentTimeMillis())
+        flushJourneyEvents(context)
+    }
+
+    /** Aviso de apagado/encendido (cola de PowerEvents). */
+    fun postPowerEvent(context: Context, event: JSONObject): Boolean =
+        postSync(context, "/api/mobile/v1/power", JSONObject(event.toString()).put("deviceId", deviceId(context)))
+
+    @Volatile
+    private var flushing = false
+
+    /**
+     * Envía los avisos de jornada pendientes, en orden, con la hora real del
+     * toque (`at`). Antes el aviso salía una sola vez: sin señal en ese
+     * momento el servidor nunca se enteraba del inicio o del fin. Se detiene
+     * en el primer fallo para no desordenar inicio/fin; lo llaman el toque,
+     * el latido del servicio y la pantalla principal. El servidor es
+     * idempotente por journeyId, así que un reintento no duplica nada.
+     */
+    fun flushJourneyEvents(context: Context) {
+        if (flushing) return
+        val app = context.applicationContext
+        if (JourneyOutbox.peek(app) == null) return
+        flushing = true
+        Thread {
+            try {
+                while (true) {
+                    val event = JourneyOutbox.peek(app) ?: break
+                    val ok = postSync(
+                        app,
+                        "/api/mobile/v1/journey",
+                        JSONObject()
+                            .put("deviceId", deviceId(app))
+                            .put("action", event.action)
+                            .put("journeyId", event.journeyId)
+                            .put("at", event.at)
+                            .put("client", CLIENT),
+                    )
+                    if (!ok) break
+                    JourneyOutbox.remove(app, event)
+                }
+            } finally {
+                flushing = false
+            }
+        }.start()
     }
 
     /** Resultado de validar el acceso del colaborador en el servidor. */

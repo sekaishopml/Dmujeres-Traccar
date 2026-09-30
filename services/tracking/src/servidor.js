@@ -19,6 +19,7 @@ import { atenderOsmand } from './osmand.js';
 import {
   atenderConfig,
   atenderDiagnosticos,
+  atenderEnergia,
   atenderJornada,
   atenderJornadaConsulta,
   atenderLotePosiciones,
@@ -64,6 +65,9 @@ async function manejar(req, res, ctx) {
   }
   if (ruta === '/api/mobile/v1/positions' && metodo === 'POST') {
     return atenderLotePosiciones(req, res, { ...ctx, url });
+  }
+  if (ruta === '/api/mobile/v1/power' && metodo === 'POST') {
+    return atenderEnergia(req, res, { ...ctx, url });
   }
   if (ruta === '/api/mobile/v1/diagnostics' && metodo === 'POST') {
     return atenderDiagnosticos(req, res, { ...ctx, url });

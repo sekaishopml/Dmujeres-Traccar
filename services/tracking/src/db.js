@@ -160,7 +160,7 @@ export class Almacen {
   // jornada para que evento y jornada queden consistentes. El SELECT previo
   // evita el duplicado y el ON CONFLICT DO NOTHING cubre la carrera entre dos
   // peticiones simultáneas (sin UNIQUE dedicado, el bare DO NOTHING no falla).
-  async #insertarEvento(conexion, { dispositivoId, tipo, journeyId, bateria }) {
+  async #insertarEvento(conexion, { dispositivoId, tipo, journeyId, bateria, ocurridoEn = null }) {
     if (journeyId === null || journeyId === undefined) return false;
     const existente = await conexion.query(
       `SELECT 1
@@ -172,7 +172,7 @@ export class Almacen {
       [dispositivoId, tipo, String(journeyId)],
     );
     if (existente.rowCount > 0) return false;
-    const marca = (await conexion.query('SELECT now() AS ahora')).rows[0].ahora;
+    const marca = ocurridoEn ?? (await conexion.query('SELECT now() AS ahora')).rows[0].ahora;
     await this.#asegurarParticionEvento(conexion, marca);
     const atributos = { journeyId, mobileSeverity: 'info' };
     if (typeof bateria === 'number' && Number.isFinite(bateria)) atributos.battery = bateria;
@@ -552,18 +552,34 @@ export class Almacen {
     }
   }
 
-  async abrirJornada({ dispositivoId, journeyId, bateriaInicio, atributosJornada, parcheDispositivo }) {
+  // inicioEn: hora real del toque en el teléfono (la app reintenta el aviso
+  // hasta que llega; sin esto una jornada iniciada sin señal quedaba con la
+  // hora del reintento). Idempotente por journeyId: un reintento del mismo
+  // inicio no cierra ni duplica la jornada ya abierta.
+  async abrirJornada({ dispositivoId, journeyId, bateriaInicio, atributosJornada, parcheDispositivo, inicioEn = new Date() }) {
     const conexion = await this.#pool.connect();
     try {
       await conexion.query('BEGIN');
+      if (journeyId != null) {
+        const existente = await conexion.query(
+          `SELECT id FROM operations.dmt_jornada
+            WHERE dispositivo_id = $1 AND atributos->>'journeyId' = $2::text
+            ORDER BY inicio_en DESC LIMIT 1`,
+          [dispositivoId, String(journeyId)],
+        );
+        if (existente.rows.length > 0) {
+          await conexion.query('COMMIT');
+          return String(existente.rows[0].id);
+        }
+      }
       await conexion.query(
         `UPDATE operations.dmt_jornada
             SET estado = 'cerrada',
-                fin_en = now(),
-                duracion_s = GREATEST(0, EXTRACT(EPOCH FROM (now() - inicio_en))::bigint),
+                fin_en = GREATEST($2::timestamptz, inicio_en),
+                duracion_s = GREATEST(0, EXTRACT(EPOCH FROM ($2::timestamptz - inicio_en))::bigint),
                 actualizado_en = now()
           WHERE dispositivo_id = $1 AND estado = 'abierta'`,
-        [dispositivoId],
+        [dispositivoId, inicioEn],
       );
       const insertada = await conexion.query(
         `INSERT INTO operations.dmt_jornada (
@@ -577,16 +593,17 @@ export class Almacen {
                AND (hasta_en IS NULL OR hasta_en > now())
              ORDER BY desde_en DESC
              LIMIT 1),
-           now(), 'abierta', $2, $3::jsonb
+           $4, 'abierta', $2, $3::jsonb
          )
          RETURNING id`,
-        [dispositivoId, bateriaInicio, JSON.stringify(atributosJornada)],
+        [dispositivoId, bateriaInicio, JSON.stringify(atributosJornada), inicioEn],
       );
       await this.#insertarEvento(conexion, {
         dispositivoId,
         tipo: 'mobileJourneyStarted',
         journeyId: journeyId ?? atributosJornada?.journeyId ?? null,
         bateria: bateriaInicio,
+        ocurridoEn: inicioEn,
       });
       await this.#fusionarAtributos(conexion, dispositivoId, parcheDispositivo);
       await conexion.query('COMMIT');
@@ -594,6 +611,29 @@ export class Almacen {
     } catch (error) {
       await conexion.query('ROLLBACK').catch(() => {});
       throw error;
+    } finally {
+      conexion.release();
+    }
+  }
+
+  // Apagado/encendido del teléfono informado por la app (con la hora real y
+  // la causa). Idempotente por (tipo, clave) para los reintentos.
+  async registrarEventoEnergia({ dispositivoId, tipo, ocurridoEn, atributos }) {
+    const conexion = await this.#pool.connect();
+    try {
+      const clave = String(atributos.clave);
+      const existente = await conexion.query(
+        `SELECT 1 FROM tracking.dmt_evento WHERE dispositivo_id = $1 AND tipo = $2 AND atributos->>'clave' = $3 LIMIT 1`,
+        [dispositivoId, tipo, clave],
+      );
+      if (existente.rowCount > 0) return false;
+      await this.#asegurarParticionEvento(conexion, ocurridoEn);
+      await conexion.query(
+        `INSERT INTO tracking.dmt_evento (dispositivo_id, tipo, ocurrido_en, atributos)
+         VALUES ($1, $2, $3, $4::jsonb) ON CONFLICT DO NOTHING`,
+        [dispositivoId, tipo, ocurridoEn, JSON.stringify(atributos)],
+      );
+      return true;
     } finally {
       conexion.release();
     }
@@ -613,12 +653,17 @@ export class Almacen {
           WHERE dispositivo_id = $1 AND estado = 'abierta'`,
         [dispositivoId, finEn, bateriaFin],
       );
-      await this.#insertarEvento(conexion, {
-        dispositivoId,
-        tipo: 'mobileJourneyEnded',
-        journeyId: journeyId ?? null,
-        bateria: bateriaFin,
-      });
+      // Un reintento del mismo cierre no encuentra jornada abierta: no se
+      // repite el evento.
+      if (cerradas.rowCount > 0) {
+        await this.#insertarEvento(conexion, {
+          dispositivoId,
+          tipo: 'mobileJourneyEnded',
+          journeyId: journeyId ?? null,
+          bateria: bateriaFin,
+          ocurridoEn: finEn,
+        });
+      }
       await this.#fusionarAtributos(conexion, dispositivoId, parcheDispositivo);
       await conexion.query('COMMIT');
       return cerradas.rowCount;

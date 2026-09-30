@@ -16,7 +16,6 @@
 package org.traccar.client
 
 import android.location.Location
-import android.location.LocationManager
 import android.os.Build
 import java.util.*
 
@@ -58,11 +57,9 @@ data class Position(
         altitude = location.altitude,
         speed = location.speed * 1.943844, // speed in knots
         course = location.bearing.toDouble(),
-        accuracy = if (location.provider != null && location.provider != LocationManager.GPS_PROVIDER) {
-            location.accuracy.toDouble()
-        } else {
-            0.0
-        },
+        // Precisión real de cualquier proveedor (antes el GPS puro viajaba con 0
+        // y el servidor no podía distinguir un fix bueno de uno aproximado).
+        accuracy = if (location.hasAccuracy()) location.accuracy.toDouble() else 0.0,
         battery = battery.level,
         charging = battery.charging,
         mock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

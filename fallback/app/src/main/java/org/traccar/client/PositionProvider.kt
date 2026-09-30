@@ -113,6 +113,19 @@ abstract class PositionProvider(
                     && abs(location.bearing - lastLocation.bearing) >= angle)
         ) {
             Log.i(TAG, "location new")
+            // Velocidad calculada: muchos teléfonos no informan velocidad (0 o
+            // sin dato) aunque la persona camine o viaje (mantilla 29/09: todo
+            // el día en 0.0). Si el desplazamiento desde el último punto
+            // aceptado supera el ruido del fix, se usa la velocidad implícita.
+            val sinVelocidad = !location.hasSpeed() || location.speed < 0.3f
+            if (lastLocation != null && sinVelocidad) {
+                val implied = SpeedFallback.impliedSpeedMps(
+                    legMeters = leg,
+                    dtSeconds = dtSeconds,
+                    accuracyMeters = if (location.hasAccuracy()) location.accuracy.toDouble() else 0.0,
+                )
+                if (implied != null) location.speed = implied.toFloat()
+            }
             preferences.edit().putLong(KEY_LAST_FIX_AT, System.currentTimeMillis()).apply()
             this.lastLocation = location
             listener.onPositionUpdate(Position(deviceId, location, getBatteryStatus(context)))

@@ -26,6 +26,10 @@ class AutostartReceiver : WakefulBroadcastReceiver() {
         // La alarma de rescate se rearma en boot y en reemplazo del paquete
         // (Doze congela el Handler pero respeta setAndAllowWhileIdle).
         runCatching { org.traccar.client.recovery.DozeAlarmReceiver.schedule(context) }
+        // Encendido del teléfono (no la reinstalación de la app).
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            runCatching { PowerEvents.onBoot(context) }
+        }
         val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
         // Si había jornada abierta persistida, el próximo arranque entra en
         // RECOVERING y reconcilia con el servidor (no se asume continuidad).

@@ -52,11 +52,20 @@ class UpdateActivity : AppCompatActivity() {
             finish()
             return
         }
+        // Una sola descarga a la vez: volver a abrir la pantalla (o tocar
+        // Reintentar) mientras baja escribía dos veces el mismo archivo.
+        if (!downloading.compareAndSet(false, true)) return
         retry.visibility = Button.GONE
         progress.visibility = ProgressBar.VISIBLE
         status.text = getString(R.string.update_downloading)
         detail.text = ""
-        Thread { runCatching { downloadAndInstall(url, sha256) } }.start()
+        Thread {
+            try {
+                runCatching { downloadAndInstall(url, sha256) }
+            } finally {
+                downloading.set(false)
+            }
+        }.start()
     }
 
     /**
@@ -109,18 +118,30 @@ class UpdateActivity : AppCompatActivity() {
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.connectTimeout = 15_000
             connection.readTimeout = 60_000
-            val total = connection.contentLength.toLong()
+            // Un 404/500 devolvía su página de error y se "instalaba" como APK
+            // (el sistema decía "error al analizar el paquete").
+            if (connection.responseCode !in 200..299) {
+                Log.w(TAG, "descarga respondió ${connection.responseCode}")
+                connection.disconnect()
+                showError()
+                return
+            }
+            val total = connection.contentLengthLong
+            var readTotal = 0L
+            var lastPercent = -1
             connection.inputStream.use { input ->
                 target.outputStream().use { output ->
                     val buffer = ByteArray(16 * 1024)
-                    var readTotal = 0L
                     while (true) {
                         val read = input.read(buffer)
                         if (read <= 0) break
                         output.write(buffer, 0, read)
                         readTotal += read
-                        if (total > 0) {
-                            val percent = (readTotal * 100 / total).toInt()
+                        val percent = if (total > 0) (readTotal * 100 / total).toInt() else -1
+                        // Solo al cambiar el porcentaje (antes, un post a la UI
+                        // por cada bloque de 16 KB: miles por descarga).
+                        if (percent >= 0 && percent != lastPercent) {
+                            lastPercent = percent
                             runOnUiThread {
                                 detail.text = "$percent%"
                                 progress.isIndeterminate = false
@@ -131,7 +152,14 @@ class UpdateActivity : AppCompatActivity() {
                 }
             }
             connection.disconnect()
-            if (sha256.isNotBlank() && sha256 != sha256Of(target)) {
+            // Descarga cortada (la red se cae a mitad): no se instala a medias.
+            if (total > 0 && readTotal != total) {
+                Log.w(TAG, "descarga incompleta: $readTotal de $total bytes")
+                target.delete()
+                showError()
+                return
+            }
+            if (sha256.isNotBlank() && !sha256.equals(sha256Of(target), ignoreCase = true)) {
                 Log.w(TAG, "sha256 no coincide; se descarta la descarga")
                 target.delete()
                 showError()
@@ -189,6 +217,7 @@ class UpdateActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "UpdateActivity"
+        private val downloading = java.util.concurrent.atomic.AtomicBoolean(false)
         private const val APK_NAME = "dmujeres-update.apk"
         const val EXTRA_URL = "update_url"
         const val EXTRA_SHA256 = "update_sha256"

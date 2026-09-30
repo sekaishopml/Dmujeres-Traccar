@@ -15,102 +15,192 @@
  */
 package org.traccar.client
 
-import androidx.appcompat.app.AppCompatActivity
-import android.widget.ArrayAdapter
+import android.content.Context
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
-import android.widget.ListView
-import java.text.DateFormat
-import java.util.*
+import android.os.Handler
+import android.os.Looper
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.preference.PreferenceManager
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.LinkedList
+import java.util.Locale
 
+/**
+ * Consola del equipo (2.2): estado de un vistazo (tarjeta de color y seis
+ * indicadores que se refrescan cada 5 s) y la actividad reciente como línea de
+ * tiempo. Sustituye a la lista de texto heredada del cliente Traccar.
+ */
 class StatusActivity : AppCompatActivity() {
 
-    private var adapter: ArrayAdapter<String>? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val ticker = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed) return
+            refresh()
+            handler.postDelayed(this, REFRESH_MS)
+        }
+    }
+    private val onMessages: () -> Unit = { handler.post { renderMessages() } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Nuevo diseño: logo arriba, estado actual y los últimos movimientos
-        // desde el tope (antes era una lista pelada y el contenido se veía abajo).
         setContentView(R.layout.activity_status)
-        // Ítem propio con color explícito: el teléfono en modo oscuro pintaba
-        // el texto blanco de simple_list_item_1 sobre el fondo blanco de la app.
-        adapter = ArrayAdapter(this, R.layout.item_console, R.id.console_text, messages)
-        val listView = findViewById<ListView>(android.R.id.list)
-        listView.adapter = adapter
-        adapter?.let { adapters.add(it) }
+        findViewById<View>(R.id.console_back).setOnClickListener { finish() }
+        findViewById<TextView>(R.id.console_subtitle).text =
+            getString(R.string.console_subtitle_fmt, BuildConfig.VERSION_NAME)
+        findViewById<View>(R.id.console_clear).setOnClickListener { clearMessages() }
+        tile(R.id.tile_gps, R.drawable.ds_ic_location, R.string.console_gps)
+        tile(R.id.tile_fix, R.drawable.ds_ic_clock, R.string.console_last_fix)
+        tile(R.id.tile_net, R.drawable.ds_ic_signal, R.string.console_network)
+        tile(R.id.tile_pending, R.drawable.ds_ic_queue, R.string.console_pending)
+        tile(R.id.tile_battery, R.drawable.ds_ic_battery, R.string.console_battery)
+        tile(R.id.tile_sync, R.drawable.ds_ic_cloud, R.string.console_sync)
     }
 
     override fun onResume() {
         super.onResume()
-        updateState()
+        listeners.add(onMessages)
+        renderMessages()
+        handler.removeCallbacks(ticker)
+        handler.post(ticker)
     }
 
-    /** Estado actual del equipo, con el mismo criterio del home. */
-    private fun updateState() {
-        val state = findViewById<android.widget.TextView>(R.id.status_state) ?: return
+    override fun onPause() {
+        super.onPause()
+        listeners.remove(onMessages)
+        handler.removeCallbacks(ticker)
+    }
+
+    private fun tile(id: Int, icon: Int, label: Int) {
+        val view = findViewById<View>(id) ?: return
+        view.findViewById<ImageView>(R.id.tile_icon).setImageResource(icon)
+        view.findViewById<TextView>(R.id.tile_label).setText(label)
+    }
+
+    private fun setTile(id: Int, value: String, colorRes: Int = R.color.text_primary) {
+        val view = findViewById<View>(id) ?: return
+        view.findViewById<TextView>(R.id.tile_value).apply {
+            text = value
+            setTextColor(getColor(colorRes))
+        }
+    }
+
+    /** Estado con el mismo criterio del home, más los indicadores. */
+    private fun refresh() {
         val open = DmujeresApi.isJourneyOpen(this)
         val running = TrackingService.isRunning
-        val locationOn = runCatching {
-            (getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager)
+        val gpsOn = runCatching {
+            (getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager)
                 .isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)
         }.getOrDefault(true)
+        val failing = ConnectionState.isFailing()
         val (bg, label) = when {
-            !locationOn -> R.drawable.bg_pill_red to getString(R.string.pill_location_off)
-            !open -> R.drawable.bg_pill_gray to getString(R.string.pill_disabled)
-            !running || ConnectionState.isFailing() -> R.drawable.bg_pill_orange to getString(R.string.pill_no_connection)
-            else -> R.drawable.bg_pill_green to getString(R.string.pill_online)
+            !gpsOn -> R.drawable.ds_status_off to getString(R.string.pill_location_off)
+            !open -> R.drawable.ds_status_idle to getString(R.string.pill_disabled)
+            !running || failing -> R.drawable.ds_status_warn to getString(R.string.pill_no_connection)
+            else -> R.drawable.ds_status_ok to getString(R.string.pill_online)
         }
-        state.setBackgroundResource(bg)
-        state.text = label
-    }
-
-    override fun onDestroy() {
-        adapters.remove(adapter)
-        super.onDestroy()
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        val inflater = menuInflater
-        inflater.inflate(R.menu.status, menu)
-        return super.onCreateOptionsMenu(menu)
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == R.id.clear) {
-            clearMessages()
-            return true
+        findViewById<View>(R.id.status_card).setBackgroundResource(bg)
+        findViewById<TextView>(R.id.status_state).text = label
+        findViewById<TextView>(R.id.status_journey).text = if (open) {
+            getString(R.string.console_journey_open_fmt, DmujeresApi.journeyStartedAtLabel(this))
+        } else {
+            getString(R.string.console_journey_closed)
         }
-        return super.onOptionsItemSelected(item)
+
+        setTile(R.id.tile_gps, getString(if (gpsOn) R.string.console_on else R.string.console_off),
+            if (gpsOn) R.color.ok else R.color.primary)
+        val lastFix = PreferenceManager.getDefaultSharedPreferences(this).getLong(PositionProvider.KEY_LAST_FIX_AT, 0L)
+        setTile(R.id.tile_fix, ago(lastFix))
+        setTile(R.id.tile_net, getString(if (failing) R.string.console_offline else R.string.console_online),
+            if (failing) R.color.warn else R.color.ok)
+        val battery = readBatteryStatus(this)
+        setTile(R.id.tile_battery, "${battery.level.toInt()}%" + if (battery.charging) " ⚡" else "",
+            if (battery.level <= 15 && !battery.charging) R.color.primary else R.color.text_primary)
+        val outbox = JourneyOutbox.size(this)
+        setTile(R.id.tile_sync,
+            if (outbox == 0) getString(R.string.console_synced) else getString(R.string.console_pending_events_fmt, outbox),
+            if (outbox == 0) R.color.ok else R.color.warn)
+        Thread {
+            val pending = runCatching { DatabaseHelper(this).countPositions() }.getOrDefault(0)
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) setTile(R.id.tile_pending, pending.toString())
+            }
+        }.start()
+    }
+
+    private fun ago(at: Long): String {
+        if (at <= 0L) return getString(R.string.console_never)
+        val seconds = ((System.currentTimeMillis() - at) / 1000).coerceAtLeast(0)
+        return when {
+            seconds < 60 -> getString(R.string.console_seconds_fmt, seconds.toInt())
+            seconds < 3600 -> getString(R.string.console_minutes_fmt, (seconds / 60).toInt())
+            else -> getString(R.string.console_hours_fmt, (seconds / 3600).toInt())
+        }
+    }
+
+    private fun renderMessages() {
+        if (isFinishing || isDestroyed) return
+        val list = findViewById<LinearLayout>(R.id.console_list) ?: return
+        list.removeAllViews()
+        val snapshot = synchronized(messages) { messages.toList() }
+        val inflater = LayoutInflater.from(this)
+        if (snapshot.isEmpty()) {
+            val empty = inflater.inflate(R.layout.item_console, list, false)
+            empty.findViewById<TextView>(R.id.console_time).visibility = View.GONE
+            empty.findViewById<TextView>(R.id.console_text).apply {
+                setText(R.string.console_empty)
+                setTextColor(getColor(R.color.text_tertiary))
+            }
+            list.addView(empty)
+            return
+        }
+        snapshot.forEachIndexed { index, entry ->
+            if (index > 0) {
+                list.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
+                    setBackgroundColor(getColor(R.color.line))
+                })
+            }
+            val row = inflater.inflate(R.layout.item_console, list, false)
+            val cut = entry.indexOf(" - ")
+            row.findViewById<TextView>(R.id.console_time).text = if (cut > 0) entry.substring(0, cut) else ""
+            row.findViewById<TextView>(R.id.console_text).text = if (cut > 0) entry.substring(cut + 3) else entry
+            list.addView(row)
+        }
     }
 
     companion object {
-        private const val LIMIT = 20
+        private const val REFRESH_MS = 5_000L
+        private const val LIMIT = 30
         private const val PREFS = "statusConsole"
         private const val KEY = "messages"
         private val messages = LinkedList<String>()
-        private val adapters: MutableSet<ArrayAdapter<String>> = HashSet()
+        private val listeners: MutableSet<() -> Unit> = java.util.Collections.synchronizedSet(HashSet())
 
         /** Contexto de aplicación para persistir la consola entre arranques. */
-        private var appContext: android.content.Context? = null
+        private var appContext: Context? = null
 
-        /** Se llama una vez desde la app: carga lo guardado y queda listo para
-         *  guardar cada mensaje (antes la consola se vaciaba al reiniciar y
-         *  parecía que "no mostraba nada"). */
-        fun attach(context: android.content.Context) {
+        /** Se llama una vez desde la app: carga lo guardado. */
+        fun attach(context: Context) {
             appContext = context.applicationContext
             load()
         }
 
         private fun load() {
             val context = appContext ?: return
-            val raw = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-                .getString(KEY, null) ?: return
+            val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null) ?: return
             runCatching {
                 val array = org.json.JSONArray(raw)
-                messages.clear()
-                for (index in 0 until array.length()) {
-                    messages.add(array.getString(index))
+                synchronized(messages) {
+                    messages.clear()
+                    for (index in 0 until array.length()) messages.add(array.getString(index))
                 }
             }
         }
@@ -119,35 +209,35 @@ class StatusActivity : AppCompatActivity() {
             val context = appContext ?: return
             runCatching {
                 val array = org.json.JSONArray()
-                messages.forEach { array.put(it) }
-                context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-                    .edit().putString(KEY, array.toString()).apply()
+                synchronized(messages) { messages.forEach { array.put(it) } }
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
             }
         }
 
-        private fun notifyAdapters() {
-            for (adapter in adapters) {
-                adapter.notifyDataSetChanged()
-            }
+        private fun notifyListeners() {
+            val copy = synchronized(listeners) { listeners.toList() }
+            copy.forEach { runCatching { it() } }
         }
 
+        /**
+         * Lo llaman el servicio y la captura desde cualquier hilo: la lista se
+         * sincroniza y la pantalla se repinta en el hilo principal (antes el
+         * adaptador se tocaba desde hilos de fondo y podía cerrar la app).
+         */
         fun addMessage(originalMessage: String) {
-            var message = originalMessage
-            val format = DateFormat.getTimeInstance(DateFormat.MEDIUM)
-            message = format.format(Date()) + " - " + message
-            // Lo más reciente va arriba (la consola abre por el último evento).
-            messages.addFirst(message)
-            while (messages.size > LIMIT) {
-                messages.removeLast()
+            val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            synchronized(messages) {
+                messages.addFirst("$time - $originalMessage")
+                while (messages.size > LIMIT) messages.removeLast()
             }
             persist()
-            notifyAdapters()
+            notifyListeners()
         }
 
         fun clearMessages() {
-            messages.clear()
+            synchronized(messages) { messages.clear() }
             persist()
-            notifyAdapters()
+            notifyListeners()
         }
     }
 }

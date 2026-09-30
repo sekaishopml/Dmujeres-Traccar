@@ -36,6 +36,7 @@ import java.lang.RuntimeException
 class TrackingService : Service() {
 
     private var trackingController: TrackingController? = null
+    private var powerReceiver: android.content.BroadcastReceiver? = null
 
     override fun onCreate() {
         val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
@@ -58,6 +59,10 @@ class TrackingService : Service() {
             // La alarma de rescate vive aunque el proceso muera: se rearma en
             // cada arranque del servicio (Doze congela el Handler, no la alarma).
             org.traccar.client.recovery.DozeAlarmReceiver.schedule(this)
+            // Apagado del teléfono con su causa (batería o manual) para el panel.
+            powerReceiver = runCatching { PowerEvents.register(this) }.getOrNull()
+            PowerEvents.flush(this)
+            DmujeresApi.flushJourneyEvents(this)
         } catch (e: RuntimeException) {
             Log.w(TAG, e)
             sharedPreferences.edit().putBoolean(Prefs.STATUS, false).apply()
@@ -113,6 +118,8 @@ class TrackingService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        powerReceiver?.let { runCatching { unregisterReceiver(it) } }
+        powerReceiver = null
         controllerRef = null
         ServiceHeartbeat.stop()
         // Sin servicio no hay rescate que pedir: se cancela (el próximo

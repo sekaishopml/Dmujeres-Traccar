@@ -439,6 +439,12 @@ export async function atenderJornada(req, res, ctx) {
   if (accion !== 'start' && accion !== 'stop') return responderSinCuerpo(res, 400);
 
   const ahora = Date.now();
+  // Hora real del toque (epoch ms) si la app la manda y es creíble: hasta 72 h
+  // atrás (aviso encolado sin señal) y 2 min adelante (reloj del teléfono).
+  const atCrudo = numeroFinito(cuerpo.at);
+  const instante = atCrudo !== null && atCrudo >= ahora - 72 * 3_600_000 && atCrudo <= ahora + 120_000
+    ? Math.min(atCrudo, ahora)
+    : ahora;
   const bateria = numeroAttr(dispositivo.atributos, 'mobile.battery', -1);
   try {
     if (accion === 'start') {
@@ -457,6 +463,7 @@ export async function atenderJornada(req, res, ctx) {
           origen: 'movil.journey',
         },
         parcheDispositivo: parche,
+        inicioEn: new Date(instante),
       });
     } else {
       let jornadaId = entero(cuerpo.journeyId, 0);
@@ -467,7 +474,7 @@ export async function atenderJornada(req, res, ctx) {
       await ctx.almacen.cerrarJornada({
         dispositivoId: dispositivo.id,
         journeyId: jornadaId,
-        finEn: new Date(ahora),
+        finEn: new Date(instante),
         bateriaFin: bateria >= 0 && bateria <= 100 ? bateria : null,
         parcheDispositivo: {
           'mobile.journeyId': 0,
@@ -481,6 +488,50 @@ export async function atenderJornada(req, res, ctx) {
     return responderSinCuerpo(res, 503);
   }
   return responderJson(res, 200, { ok: true });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/mobile/v1/power
+// ---------------------------------------------------------------------------
+// Apagado y encendido del teléfono: {deviceId, event:'shutdown'|'boot',
+// cause:'battery'|'manual'|null, at (epoch ms), battery (0-100)}. La app lo
+// intenta enviar al apagarse y, si no alcanza, al volver a encender.
+
+export async function atenderEnergia(req, res, ctx) {
+  if (!ctx.configuracion.canalMovilActivo) return responderSinCuerpo(res, 404);
+  if (!(await autorizacionMovil(req, ctx))) return responderSinCuerpo(res, 401);
+  const lectura = await leerJson(req, LIMITE_JSON);
+  if (!lectura.ok) return responderSinCuerpo(res, lectura.motivo === 'grande' ? 413 : 400);
+  const cuerpo = objeto(lectura.datos);
+  const identificador = cuerpo ? texto(cuerpo.deviceId) : null;
+  if (!identificador) return responderSinCuerpo(res, 400);
+  const dispositivo = await buscarOFallar(ctx, res, identificador, 404);
+  if (!dispositivo) return;
+  const evento = texto(cuerpo.event);
+  if (evento !== 'shutdown' && evento !== 'boot') return responderSinCuerpo(res, 400);
+  const ahora = Date.now();
+  const at = numeroFinito(cuerpo.at);
+  if (at === null || at < ahora - 7 * 86_400_000 || at > ahora + 120_000) return responderSinCuerpo(res, 400);
+  const causaCruda = texto(cuerpo.cause);
+  const causa = causaCruda === 'battery' || causaCruda === 'manual' ? causaCruda : null;
+  const bateria = numeroFinito(cuerpo.battery);
+  try {
+    await ctx.almacen.registrarEventoEnergia({
+      dispositivoId: dispositivo.id,
+      tipo: evento === 'shutdown' ? 'mobilePowerOff' : 'mobilePowerOn',
+      ocurridoEn: new Date(Math.min(at, ahora)),
+      atributos: {
+        clave: `${evento}-${Math.trunc(at)}`,
+        cause: causa,
+        battery: bateria !== null && bateria >= 0 && bateria <= 100 ? bateria : null,
+        mobileSeverity: evento === 'shutdown' ? 'warning' : 'info',
+      },
+    });
+  } catch (error) {
+    ctx.log.error(`movil/power: fallo al registrar: ${error.message}`);
+    return responderSinCuerpo(res, 503);
+  }
+  return responderSinCuerpo(res, 204);
 }
 
 // ---------------------------------------------------------------------------

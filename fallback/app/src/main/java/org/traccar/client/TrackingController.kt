@@ -361,6 +361,9 @@ class TrackingController(private val context: Context) :
                 "(lat=${position.latitude} lon=${position.longitude} v=${position.speed} kn)")
             return
         }
+        // Última batería vista: si el teléfono muere sin avisar, al encender
+        // se sabe que fue por batería.
+        runCatching { PowerEvents.noteBattery(context, position.battery.toInt()) }
         // La velocidad reportada (nudos) alimenta el detector de giros.
         MotionMonitor.lastSpeedKnots = position.speed
         // Desplazamiento desde el último fix aceptado (el GPS manda sobre el
@@ -422,6 +425,10 @@ class TrackingController(private val context: Context) :
         }
     }
 
+    /** Última subida disparada por un fix nuevo (ahorro con batería baja). */
+    @Volatile
+    private var lastWriteKickMs = 0L
+
     /** Distancia (m) entre dos coordenadas, para la velocidad implícita. */
     private fun legMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val result = FloatArray(1)
@@ -473,6 +480,9 @@ class TrackingController(private val context: Context) :
     /** La cola confirmó eventos: si estábamos en rescate, se cierra. */
     override fun onQueueFlowing(confirmed: Int) {
         ConnectionState.noteSuccess(System.currentTimeMillis())
+        // Hay red y servidor: buen momento para los avisos de jornada pendientes.
+        runCatching { DmujeresApi.flushJourneyEvents(context) }
+        runCatching { PowerEvents.flush(context) }
         val before = machine.state
         machine.onRecovered(System.currentTimeMillis(), queueFlowing = true)
         if (machine.state != before) {
@@ -537,7 +547,14 @@ class TrackingController(private val context: Context) :
         lastStoredFix = candidate
         databaseHelper.insertPositionAsync(position, object : DatabaseHandler<Unit?> {
             override fun onComplete(success: Boolean, result: Unit?) {
-                if (success) {
+                if (success && UploadThrottle.shouldKick(
+                        nowMs = System.currentTimeMillis(),
+                        lastKickMs = lastWriteKickMs,
+                        batteryPct = position.battery,
+                        charging = position.charging,
+                    )
+                ) {
+                    lastWriteKickMs = System.currentTimeMillis()
                     uploadQueue?.kick(isOnline)
                 }
             }

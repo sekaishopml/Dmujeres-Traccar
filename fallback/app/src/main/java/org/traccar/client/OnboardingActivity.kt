@@ -93,11 +93,33 @@ class OnboardingActivity : AppCompatActivity() {
 
     // ── Paso 1: bienvenida ──────────────────────────────────────────────────
 
+    /** Avance del asistente: barras y rótulo "PASO N DE 3". */
+    private fun markStep(number: Int, labelRes: Int) {
+        listOf(R.id.step_bar_1, R.id.step_bar_2, R.id.step_bar_3).forEachIndexed { index, id ->
+            findViewById<View>(id)?.setBackgroundResource(
+                if (index < number) R.drawable.ds_step_on else R.drawable.ds_step_off,
+            )
+        }
+        findViewById<TextView>(R.id.step_label)?.text =
+            getString(R.string.onboarding_step_fmt, number, getString(labelRes))
+    }
+
+    private fun bindFeature(view: View, id: Int, iconRes: Int, titleRes: Int, textRes: Int) {
+        val row = view.findViewById<View>(id) ?: return
+        row.findViewById<android.widget.ImageView>(R.id.feature_icon)?.setImageResource(iconRes)
+        row.findViewById<TextView>(R.id.feature_title)?.setText(titleRes)
+        row.findViewById<TextView>(R.id.feature_text)?.setText(textRes)
+    }
+
     private fun showWelcome() {
         step = STEP_WELCOME
+        markStep(1, R.string.onboarding_step_welcome)
         container.removeAllViews()
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_welcome, container, false)
         container.addView(view)
+        bindFeature(view, R.id.welcome_step1, R.drawable.ds_ic_shield, R.string.welcome_feature_login_title, R.string.welcome_feature_login_text)
+        bindFeature(view, R.id.welcome_step2, R.drawable.ds_ic_pin, R.string.welcome_feature_perms_title, R.string.welcome_feature_perms_text)
+        bindFeature(view, R.id.welcome_step3, R.drawable.ds_ic_route, R.string.welcome_feature_ready_title, R.string.welcome_feature_ready_text)
         primary.text = getString(R.string.onboarding_continue)
         // Entrada escalonada: fade + desplazamiento corto + zoom mínimo (sin blur).
         listOf(
@@ -115,6 +137,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     private fun showLogin() {
         step = STEP_LOGIN
+        markStep(2, R.string.onboarding_step_login)
         container.removeAllViews()
         container.addView(LayoutInflater.from(this).inflate(R.layout.onboarding_step_login, container, false))
         primary.text = getString(R.string.login_button)
@@ -173,6 +196,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     private fun showPermissions() {
         step = STEP_PERMISSIONS
+        markStep(3, R.string.onboarding_step_perms)
         container.removeAllViews()
         val view = LayoutInflater.from(this).inflate(R.layout.onboarding_step_permissions, container, false)
         container.addView(view)
@@ -183,24 +207,49 @@ class OnboardingActivity : AppCompatActivity() {
             SoftEntrance.transition(container)
         }
 
-        addRow(rows, R.string.perm_location, isGranted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+        var total = 0
+        var done = 0
+        fun row(icon: Int, title: Int, why: Int, granted: Boolean?, required: Boolean, actionLabel: Int, action: () -> Unit) {
+            total += 1
+            if (granted == true) done += 1
+            addRow(rows, icon, title, why, granted, required, actionLabel, action)
+        }
+        row(R.drawable.ds_ic_location, R.string.perm_location, R.string.perm_location_why,
+            isGranted(Manifest.permission.ACCESS_FINE_LOCATION), true, R.string.onboarding_perms_allow) {
             requestPermissions(
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
                 REQUEST_LOCATION,
             )
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            addRow(rows, R.string.perm_background, isGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
-                requestBackground()
+            row(R.drawable.ds_ic_pin, R.string.perm_background, R.string.perm_background_why,
+                isGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION), true, R.string.onboarding_perms_allow) {
+                // Sin ubicación precisa Android no ofrece "todo el tiempo".
+                if (!isGranted(Manifest.permission.ACCESS_FINE_LOCATION)) {
+                    requestPermissions(
+                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                        REQUEST_LOCATION,
+                    )
+                } else {
+                    requestBackground()
+                }
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            addRow(rows, R.string.perm_notifications, isGranted(Manifest.permission.POST_NOTIFICATIONS)) {
+            row(R.drawable.ds_ic_bell, R.string.perm_notifications, R.string.perm_notifications_why,
+                isGranted(Manifest.permission.POST_NOTIFICATIONS), true, R.string.onboarding_perms_allow) {
                 requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
             }
         }
-        addRow(rows, R.string.perm_battery, ignoringBatteryOptimizations()) { requestBattery() }
-        addRow(rows, R.string.perm_autostart, false) { openAutostart() }
+        row(R.drawable.ds_ic_battery, R.string.perm_battery, R.string.perm_battery_why,
+            ignoringBatteryOptimizations(), false, R.string.onboarding_perms_allow) { requestBattery() }
+        // El inicio automático del fabricante no se puede consultar: queda
+        // como recomendado, con botón para abrir su ajuste (no cuenta en el total).
+        addRow(rows, R.drawable.ds_ic_power, R.string.perm_autostart, R.string.perm_autostart_why,
+            null, false, R.string.perm_autostart_open) { openAutostart() }
+
+        view.findViewById<android.widget.ProgressBar>(R.id.perms_progress)?.progress = if (total > 0) done * 100 / total else 0
+        view.findViewById<TextView>(R.id.perms_count)?.text = getString(R.string.onboarding_perms_count_fmt, done, total)
 
         primary.text = if (requiredGranted()) {
             getString(R.string.onboarding_finish)
@@ -209,13 +258,36 @@ class OnboardingActivity : AppCompatActivity() {
         }
     }
 
-    private fun addRow(rows: LinearLayout, titleRes: Int, granted: Boolean, action: () -> Unit) {
+    /**
+     * Fila de permiso: ícono, título con etiqueta (obligatorio/recomendado),
+     * motivo en una línea y, según el estado real, el botón o el visto verde.
+     * [granted] null = estado que el sistema no deja consultar (autoinicio).
+     */
+    private fun addRow(
+        rows: LinearLayout,
+        iconRes: Int,
+        titleRes: Int,
+        whyRes: Int,
+        granted: Boolean?,
+        required: Boolean,
+        actionLabelRes: Int,
+        action: () -> Unit,
+    ) {
         val row = LayoutInflater.from(this).inflate(R.layout.onboarding_permission_row, rows, false)
+        row.findViewById<android.widget.ImageView>(R.id.row_icon).setImageResource(iconRes)
         row.findViewById<TextView>(R.id.row_title).setText(titleRes)
-        row.findViewById<TextView>(R.id.row_status).setText(
-            if (granted) R.string.onboarding_perms_ok else R.string.onboarding_perms_pending,
-        )
-        row.findViewById<Button>(R.id.row_action).setOnClickListener { action() }
+        row.findViewById<TextView>(R.id.row_badge).setText(if (required) R.string.perm_required else R.string.perm_recommended)
+        row.findViewById<TextView>(R.id.row_status).setText(whyRes)
+        val button = row.findViewById<Button>(R.id.row_action)
+        val done = row.findViewById<android.widget.ImageView>(R.id.row_done)
+        if (granted == true) {
+            button.visibility = View.GONE
+            done.visibility = View.VISIBLE
+            row.findViewById<android.widget.ImageView>(R.id.row_icon).setBackgroundResource(R.drawable.ds_icon_ok)
+        } else {
+            button.setText(actionLabelRes)
+            button.setOnClickListener { action() }
+        }
         rows.addView(row)
     }
 
@@ -303,7 +375,12 @@ class OnboardingActivity : AppCompatActivity() {
         } else {
             ContextCompat.startForegroundService(this, Intent(this, TrackingService::class.java))
         }
-        startActivity(Intent(this, MainActivity::class.java))
+        // Si se llegó desde la pantalla principal (faltaba un permiso), se
+        // vuelve a ELLA: antes se abría una segunda copia encima.
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
         finish()
     }
 
