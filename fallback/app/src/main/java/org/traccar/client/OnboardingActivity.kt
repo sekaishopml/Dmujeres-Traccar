@@ -44,6 +44,7 @@ class OnboardingActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_onboarding)
+        Responsivo.raiz(this)?.let { Responsivo.centrarHijos(it) }
 
         container = findViewById(R.id.step_container)
         primary = findViewById(R.id.btn_primary)
@@ -65,7 +66,8 @@ class OnboardingActivity : AppCompatActivity() {
         }
         // El menú de depuración puede abrir directamente un paso del asistente
         // para revisar el diseño sin recorrerlo entero.
-        when (intent.getStringExtra(EXTRA_STEP)) {
+        // Al girar la tablet se vuelve al mismo paso.
+        when (savedInstanceState?.getString(KEY_STEP) ?: intent.getStringExtra(EXTRA_STEP)) {
             STEP_LOGIN -> showLogin()
             STEP_PERMISSIONS -> showPermissions()
             else -> showWelcome()
@@ -75,6 +77,11 @@ class OnboardingActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (step == STEP_PERMISSIONS) showPermissions()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(KEY_STEP, step)
     }
 
     /**
@@ -412,6 +419,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     companion object {
         private const val EXTRA_STEP = "step"
+        private const val KEY_STEP = "onboarding_step"
         private const val REQUEST_LOCATION = 100
         private const val REQUEST_BACKGROUND = 101
         private const val REQUEST_NOTIFICATIONS = 102

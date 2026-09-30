@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity() {
         // configuración es interna y el menú de depuración se abre con
         // 5 toques en la versión (ya no existe el panel de ajustes de Traccar).
         setContentView(R.layout.activity_locked_home)
+        adaptarATablet()
         wireLockedHome()
         // Apertura en frío: consulta SIEMPRE (OtaPolicy.shouldCheck con
         // coldStart). El freno persistido de 60 s no puede dejar a ciegas al
@@ -498,6 +499,27 @@ class MainActivity : AppCompatActivity() {
      * Tarjeta del cronograma: resumen de hoy (cuántas actividades y la
      * siguiente o la última) y la hora de la última sincronización.
      */
+    /**
+     * Tablet: el contenido se centra con ancho máximo (una columna en
+     * vertical, dos en horizontal con layout-sw600dp-land); el pie marino
+     * conserva su fondo a todo el ancho y el banner flotante se alinea con él.
+     */
+    private fun adaptarATablet() {
+        if (!Responsivo.esTablet(this)) return
+        val horizontal = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val ancho = if (horizontal) Responsivo.ANCHO_DOS_COLUMNAS_DP else Responsivo.ANCHO_COLUMNA_DP
+        val columnas = Responsivo.raiz(this)?.getChildAt(0) as? android.view.ViewGroup ?: return
+        Responsivo.centrarHijos(columnas, ancho)
+        val extra = Responsivo.margenLateralPx(this, ancho)
+        findViewById<View>(R.id.update_banner)?.let { banner ->
+            (banner.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { lp ->
+                lp.marginStart += extra
+                lp.marginEnd += extra
+                banner.layoutParams = lp
+            }
+        }
+    }
+
     private fun refreshCronograma() {
         val resumen = findViewById<TextView>(R.id.crono_resumen) ?: return
         val zona = java.util.TimeZone.getTimeZone("America/Guayaquil")

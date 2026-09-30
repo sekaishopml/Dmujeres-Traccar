@@ -37,6 +37,7 @@ class LoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
+        Responsivo.raiz(this)?.let { Responsivo.centrar(it) }
 
         findViewById<TextView>(R.id.version_label).text =
             getString(R.string.version_format, BuildConfig.VERSION_NAME)

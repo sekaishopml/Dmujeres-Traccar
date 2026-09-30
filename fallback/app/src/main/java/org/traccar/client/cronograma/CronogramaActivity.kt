@@ -49,10 +49,16 @@ class CronogramaActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_cronograma)
+        org.traccar.client.Responsivo.raiz(this)?.let {
+            org.traccar.client.Responsivo.centrarHijos(it, org.traccar.client.Responsivo.ANCHO_PANEL_DP)
+        }
         dia = Calendar.getInstance(zona)
+        // Al girar la tablet se conserva el día y la vista (mes o día).
+        savedInstanceState?.getLong(KEY_DIA, 0L)?.takeIf { it > 0 }?.let { dia.timeInMillis = it }
         mes = primeroDelMes(dia)
         // Con jornada abierta lo útil es el día en curso; sin jornada, el mes.
-        enMes = !DmujeresApi.isJourneyOpen(this)
+        enMes = savedInstanceState?.getBoolean(KEY_EN_MES) ?: !DmujeresApi.isJourneyOpen(this)
+        savedInstanceState?.getLong(KEY_MES, 0L)?.takeIf { it > 0 }?.let { mes.timeInMillis = it }
 
         findViewById<View>(R.id.crono_back).setOnClickListener { finish() }
         findViewById<View>(R.id.crono_prev).setOnClickListener { mover(-1) }
@@ -70,6 +76,13 @@ class CronogramaActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refrescarDelServidor()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_EN_MES, enMes)
+        outState.putLong(KEY_DIA, dia.timeInMillis)
+        outState.putLong(KEY_MES, mes.timeInMillis)
     }
 
     // ── Navegación ─────────────────────────────────────────────────────────
@@ -521,4 +534,10 @@ class CronogramaActivity : AppCompatActivity() {
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val KEY_EN_MES = "crono_en_mes"
+        const val KEY_DIA = "crono_dia"
+        const val KEY_MES = "crono_mes"
+    }
 }

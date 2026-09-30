@@ -36,6 +36,7 @@ class UpdateActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_update)
+        Responsivo.raiz(this)?.let { Responsivo.centrar(it) }
         progress = findViewById(R.id.update_progress)
         status = findViewById(R.id.update_status)
         detail = findViewById(R.id.update_detail)

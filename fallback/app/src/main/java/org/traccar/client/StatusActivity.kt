@@ -51,6 +51,7 @@ class StatusActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_status)
+        Responsivo.raiz(this)?.let { Responsivo.centrarHijos(it, Responsivo.ANCHO_PANEL_DP) }
         findViewById<View>(R.id.console_back).setOnClickListener { finish() }
         findViewById<TextView>(R.id.console_subtitle).text =
             getString(R.string.console_subtitle_fmt, BuildConfig.VERSION_NAME)
