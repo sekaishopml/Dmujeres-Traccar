@@ -179,3 +179,12 @@
 @media (prefers-reduced-motion: reduce) {
   .circulo-carga { animation-duration: 2.4s; }
 }
+
+/* Notificaciones: contador que baja, panel que se despliega y campana. */
+@keyframes contador { from { transform: translateY(-110%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes desplegar { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes aparecer { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes campana {
+  0%, 100% { transform: rotate(0); } 15% { transform: rotate(14deg); } 30% { transform: rotate(-12deg); }
+  45% { transform: rotate(8deg); } 60% { transform: rotate(-5deg); } 75% { transform: rotate(2deg); }
+}

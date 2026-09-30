@@ -998,4 +998,49 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
   @media (prefers-reduced-motion: reduce) {
     & .replay-panel, & .replay-timeline, & .replay-timeline .replay-bateria { transition-duration: 1ms; }
   }
+  /* Etiquetas de inicio y fin: píldora sólida del color del extremo, con la
+     palabra en versalita y la hora en cifras tabulares. Se leen sobre satélite
+     y sobre calles sin el borde fino de antes. */
+  & .marcador-extremo { width: 16px; height: 16px; }
+  & .extremo-etiqueta {
+    font-size: 11.5px; font-weight: 600; letter-spacing: .01em; line-height: 1;
+    color: #fff; border: 0; border-radius: 999px; padding: 5px 9px 5px 8px;
+    box-shadow: 0 2px 8px rgba(4, 18, 31, .35); font-variant-numeric: tabular-nums;
+  }
+  & .marcador-extremo.inicio .extremo-etiqueta { background: #15803d; border: 0; }
+  & .marcador-extremo.fin .extremo-etiqueta { background: #c81e1e; border: 0; }
+  & .marcador-extremo.jornada-inicio .extremo-etiqueta { background: #6a1b9a; color: #fff; border: 0; }
+  & .marcador-extremo.jornada-fin .extremo-etiqueta { background: #37474f; color: #fff; border: 0; }
+  & .marcador-extremo.etiqueta-derecha .extremo-etiqueta { left: 20px; }
+  & .marcador-extremo.etiqueta-izquierda .extremo-etiqueta { right: 20px; border: 0; }
+  & .marcador-extremo.etiqueta-arriba .extremo-etiqueta { bottom: 21px; }
+  & .marcador-extremo.etiqueta-abajo .extremo-etiqueta { top: 21px; }
+  & .marcador-extremo.inicio .extremo-punto { background: #15803d; }
+  & .marcador-extremo.fin .extremo-punto { background: #c81e1e; }
+  /* La gráfica anula el zoom de la interfaz (--zoom-ui, 85 % en escritorio):
+     Chart.js calcula la posición del cursor sin contar un zoom heredado y el
+     valor mostrado no coincidía con el punto bajo el mouse. Las alturas se
+     multiplican por el mismo factor para que se vea del mismo tamaño. */
+  & .replay-timeline .replay-bateria { zoom: calc(1 / var(--zoom-ui)); height: calc(36px * var(--zoom-ui)); }
+  & .replay-timeline:has(.replay-linea.ampliada) .replay-bateria { height: calc(150px * var(--zoom-ui)); }
+  & .bateria-etiqueta, & .bateria-parada-detalle { font-size: calc(11.5px * var(--zoom-ui)); }
+  /* Paradas sobre la gráfica ampliada: franja tenue; la señalada, en magenta. */
+  & .bateria-parada {
+    position: absolute; pointer-events: none; border-radius: 3px;
+    background: color-mix(in srgb, var(--color-detenido) 14%, transparent);
+    border-inline: 1px solid color-mix(in srgb, var(--color-detenido) 45%, transparent);
+    animation: dmj-aparecer 260ms ease;
+  }
+  & .bateria-parada.activa {
+    background: color-mix(in srgb, var(--color-marca) 16%, transparent);
+    border-inline-color: var(--color-marca);
+  }
+  & .bateria-parada.fija { box-shadow: inset 0 2px 0 var(--color-marca); }
+  & .bateria-parada-detalle {
+    position: absolute; transform: translate(-50%, calc(-100% - 6px)); white-space: nowrap; pointer-events: none;
+    padding: 3px 9px; border-radius: 7px; background: var(--color-marca); color: #fff; box-shadow: var(--shadow-flotante);
+    font-variant-numeric: tabular-nums;
+  }
+  & .bateria-parada-detalle strong { color: #fff; }
+  & .bateria-parada-detalle em { font-style: normal; opacity: .8; }
 }

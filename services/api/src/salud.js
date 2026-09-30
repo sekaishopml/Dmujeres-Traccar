@@ -4,6 +4,8 @@
 // atributos. Si un campo aún no lo reporta la app, viaja como null (nunca se
 // inventa). El estado nunca es mudo: siempre trae causa en español.
 
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { consultar } from './db.js';
 import { respuestaJson } from './http.js';
 import { servicioNoDisponible } from './errores.js';
@@ -59,6 +61,18 @@ async function servicioTrackingDisponible(ctx) {
   }
 }
 
+// Versión de la app Android publicada (manifiesto OTA). Informativa: si no se
+// puede leer se devuelve null.
+async function versionAppPublicada() {
+  try {
+    const ruta = join(process.env.DMJ_OTA_DIR || '/home/DMujeres-Tracking/ota', 'latest.json');
+    const manifiesto = JSON.parse(await readFile(ruta, 'utf8'));
+    return typeof manifiesto.version === 'string' ? manifiesto.version : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function version(ctx) {
   let versionEsquema = 'desconocida';
   try {
@@ -76,6 +90,7 @@ export async function version(ctx) {
     version: ctx.entorno.version,
     versionApi: 'v1',
     versionEsquema,
+    versionApp: await versionAppPublicada(),
     commit: ctx.entorno.commit,
     construidoEn: ctx.entorno.construidoEn,
   });

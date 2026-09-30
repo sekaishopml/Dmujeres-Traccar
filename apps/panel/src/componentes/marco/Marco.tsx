@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BatteryWarning, ChevronDown, ChevronLeft, LogOut, Menu, Moon, Search, SignalLow, Sun, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, LogOut, Menu, Moon, Search, Sun, X } from 'lucide-react';
 import { useSesion } from '@/lib/sesion';
-import { alNoAutorizado } from '@/lib/api';
+import { alNoAutorizado, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { PantallaCarga } from '@/componentes/ui/PantallaCarga';
 import { useTema } from '@/lib/tema';
@@ -14,6 +14,7 @@ import { CLAVE_FLOTA, traerFlota } from '@/dominio/datos';
 import { claveEstado } from '@/dominio/estado';
 import { hace } from '@/dominio/formatoBase';
 import { Logo } from './Logo';
+import { Notificaciones } from './Notificaciones';
 import { GRUPOS, paginaDeRuta } from './navegacion';
 
 const ID_ACCIONES = 'marco-acciones-pagina';
@@ -179,6 +180,7 @@ export default function Marco() {
           </nav>
 
           <div className="flex-none border-t border-borde px-3 py-2.5">
+            <Versiones plegado={plegado} />
             <button
               type="button"
               onClick={salir}
@@ -210,7 +212,7 @@ export default function Marco() {
           <div id={ID_ACCIONES} className="order-last flex w-full flex-wrap items-center gap-2 empty:hidden xl:order-none xl:w-auto [&_input]:w-auto [&_select]:w-auto [&_select]:max-w-56" />
           <div className="flex items-center gap-2">
             <BuscadorPersonas />
-            <Avisos />
+            <Notificaciones />
             <MenuCuenta
               nombre={nombre}
               correo={usuario.correo ?? ''}
@@ -394,78 +396,25 @@ function BuscadorPersonas() {
 
 // Avisos: personas en jornada sin señal y equipos con batería baja, tomados
 // del estado real de la flota (nada se inventa ni se guarda).
-function Avisos() {
-  const navegar = useNavigate();
-  const flota = useFlota();
-  const [abierto, setAbierto] = useState(false);
-  const caja = useRef<HTMLDivElement>(null);
 
-  useCerrarAlClicFuera(caja, abierto, () => setAbierto(false));
-
-  const avisos = useMemo(() => {
-    const lista: { id: string; nombre: string; texto: string; tipo: 'senal' | 'bateria' }[] = [];
-    for (const d of flota.data?.datos ?? []) {
-      if (!d.habilitado) continue;
-      const clave = claveEstado(d);
-      if (d.jornadaActiva && clave === 'sinSenal') {
-        lista.push({ id: `${d.idPublico}-s`, nombre: d.nombre, texto: `Sin señal · último reporte ${hace(d.ultimaConexion)}`, tipo: 'senal' });
-      }
-      if (d.bateriaPct != null && d.bateriaPct <= 15 && !d.cargando) {
-        lista.push({ id: `${d.idPublico}-b`, nombre: d.nombre, texto: `Batería en ${Math.round(d.bateriaPct)}%`, tipo: 'bateria' });
-      }
-    }
-    return lista.map((a) => ({ ...a, idPublico: a.id.slice(0, -2) }));
-  }, [flota.data]);
-
+// Versiones del panel y de la app Android publicada, sobre "Cerrar sesión".
+function Versiones({ plegado }: { plegado: boolean }) {
+  const version = useQuery({
+    queryKey: ['sistema', 'version'],
+    queryFn: () => api.get<{ versionApp?: string | null }>('/api/v1/version', { redirigir401: false }),
+    staleTime: 10 * 60_000,
+  });
+  const app = version.data?.versionApp;
   return (
-    <div ref={caja} className="relative">
-      <button
-        type="button"
-        onClick={() => setAbierto((v) => !v)}
-        aria-label="Avisos"
-        title="Avisos"
-        className="relative grid size-10 cursor-pointer place-items-center rounded-full border border-borde text-texto-2 transition-colors hover:bg-fondo hover:text-marino-900"
-      >
-        <Bell className="size-[18px]" />
-        {avisos.length > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-marca px-1 text-[10px] font-bold text-white ring-2 ring-superficie">
-            {avisos.length}
-          </span>
-        )}
-      </button>
-      {abierto && (
-        <div className="absolute top-12 right-0 z-50 w-[min(360px,calc(100vw-32px))] animate-entrar rounded-tarjeta border border-borde bg-superficie shadow-flotante">
-          <p className="border-b border-borde px-4 py-3 font-display text-[14px] font-semibold text-marino-900">Requieren atención</p>
-          <ul className="max-h-96 overflow-y-auto p-2">
-            {avisos.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAbierto(false);
-                    navegar(`/unidad/${a.idPublico}`);
-                  }}
-                  className="flex w-full cursor-pointer items-start gap-3 rounded-control px-2 py-2.5 text-left hover:bg-fondo"
-                >
-                  <span
-                    className={cn(
-                      'grid size-8 flex-none place-items-center rounded-full',
-                      a.tipo === 'senal' ? 'bg-sin-senal-suave text-sin-senal' : 'bg-peligro-suave text-peligro',
-                    )}
-                  >
-                    {a.tipo === 'senal' ? <SignalLow className="size-4" /> : <BatteryWarning className="size-4" />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-semibold text-marino-900">{a.nombre}</span>
-                    <span className="block text-[12px] text-texto-2">{a.texto}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-            {avisos.length === 0 && <li className="px-2 py-8 text-center text-[12.5px] text-texto-3">Todo en orden.</li>}
-          </ul>
-        </div>
+    <p
+      className={cn(
+        'mb-1.5 flex items-center gap-1.5 overflow-hidden px-4 text-[11px] whitespace-nowrap text-texto-3 transition-opacity duration-150',
+        plegado && 'lg:opacity-0',
       )}
-    </div>
+      title={`Panel v${__VERSION_PANEL__}${app ? ` · App v${app}` : ''}`}
+    >
+      <span className="rounded-md bg-fondo px-1.5 py-0.5 font-medium">Panel v{__VERSION_PANEL__}</span>
+      {app && <span className="rounded-md bg-fondo px-1.5 py-0.5 font-medium">App v{app}</span>}
+    </p>
   );
 }

@@ -29,7 +29,7 @@ export const GRUPOS: { titulo: string; enlaces: Enlace[] }[] = [
     enlaces: [
       { ruta: '/', descripcion: 'Resumen de la jornada de hoy en toda la operación.', texto: 'Inicio', icono: LayoutDashboard, exacto: true },
       { ruta: '/en-vivo', descripcion: 'Dónde está cada persona ahora y qué hizo en el día.', texto: 'Seguimiento', icono: MapPinned },
-      { ruta: '/replay', descripcion: 'Revive el recorrido del día paso a paso, con sus paradas y cortes de señal.', texto: 'Repetición de ruta', icono: Route },
+      { ruta: '/replay', descripcion: 'Reconstrucción auditada del recorrido: trayectos, paradas e interrupciones de señal.', texto: 'Repetición de ruta', icono: Route },
       { ruta: '/historial', descripcion: 'Jornadas por día: inicio, cierre, duración y cortes.', texto: 'Historial', icono: History },
       { ruta: '/bateria', descripcion: 'Nivel de batería, cargas y equipos en riesgo de apagarse.', texto: 'Batería', icono: BatteryMedium },
       { ruta: '/reportes', descripcion: 'Viajes, paradas y distancias por persona y periodo.', texto: 'Reportes', icono: ChartColumn },
@@ -48,7 +48,7 @@ export const GRUPOS: { titulo: string; enlaces: Enlace[] }[] = [
 
 export function paginaDeRuta(ruta: string): { texto: string; grupo: string; descripcion: string } {
   if (ruta.startsWith('/unidad/'))
-    return { texto: 'Expediente', grupo: 'Operación', descripcion: 'Ficha de la persona, su equipo y su bitácora.' };
+    return { texto: 'Expediente', grupo: 'Operación', descripcion: 'Expediente de auditoría: equipo, hitos de la jornada y registro de eventos.' };
   for (const grupo of GRUPOS) {
     for (const enlace of grupo.enlaces) {
       if (enlace.exacto ? ruta === enlace.ruta : ruta.startsWith(enlace.ruta) && enlace.ruta !== '/') {

@@ -23,7 +23,6 @@ import { AccionesPagina } from '@/componentes/marco/Marco';
 import { Avatar } from '@/componentes/ui/Avatar';
 import { claseBoton } from '@/componentes/ui/Boton';
 import { Tarjeta, CabeceraTarjeta } from '@/componentes/ui/Tarjeta';
-import { Cifra } from '@/componentes/ui/Cifra';
 import { ChipEstado } from '@/componentes/ui/ChipEstado';
 import { Entrada } from '@/componentes/ui/Campo';
 import { Segmentado } from '@/componentes/ui/Segmentado';
@@ -36,6 +35,29 @@ import type { PuntoMapa } from '@/componentes/expediente/MapaLugar';
 
 const REFRESCO_MS = 10_000;
 
+
+// Hito del día en la franja de la ficha: etiqueta pequeña y valor en cifras.
+function Hito({
+  etiqueta,
+  valor,
+  icono: Icono,
+  tono,
+}: {
+  etiqueta: string;
+  valor: string;
+  icono: typeof Play;
+  tono?: string;
+}) {
+  return (
+    <div className="px-5 py-3">
+      <dt className="flex items-center gap-1.5 text-[11.5px] text-texto-2">
+        <Icono className="size-3.5 text-texto-3" />
+        {etiqueta}
+      </dt>
+      <dd className={`mt-0.5 font-display text-[17px] leading-tight font-semibold text-marino-900 cifras ${tono ?? ''}`}>{valor}</dd>
+    </div>
+  );
+}
 
 function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
   return (
@@ -204,75 +226,82 @@ export default function Detalle() {
     <div className="space-y-5">
       {acciones}
 
-      <Tarjeta className="p-5">
-        <div className="flex flex-wrap items-center gap-5">
-          <Avatar nombre={dispositivo.nombre} estado={claveEstado(dispositivo)} tamano="xl" />
+      <Tarjeta className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-4 px-5 py-4">
+          <Avatar nombre={dispositivo.nombre} estado={claveEstado(dispositivo)} tamano="lg" />
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="truncate font-display text-[22px] font-semibold text-marino-900">{dispositivo.nombre}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="truncate font-display text-[19px] leading-tight font-semibold text-marino-900">
+                {dispositivo.nombre}
+              </h2>
               <ChipEstado equipo={dispositivo} />
-            </div>
-            <p className="mt-0.5 text-[13px] text-texto-2">{dispositivo.identificadorUnico}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link to="/en-vivo" className={claseBoton('secundario')}>
-              <ArrowLeft className="size-4" /> Volver
-            </Link>
-            <Link to={enlaceReplay} className={claseBoton('principal')}>
-              <Route className="size-4" /> Ver replay del día
-            </Link>
-          </div>
-        </div>
-        <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4 border-t border-borde pt-4 sm:grid-cols-3 lg:grid-cols-5">
-          <Dato etiqueta="Versión de la app">{dispositivo.versionApp ?? GUION}</Dato>
-          <Dato etiqueta="Último reporte">
-            {dispositivo.ultimaConexion ? `${fechaHora(dispositivo.ultimaConexion)} · ${hace(dispositivo.ultimaConexion)}` : GUION}
-          </Dato>
-          <Dato etiqueta="Batería">
-            <span className="inline-flex items-center gap-2">
-              {dispositivo.bateriaPct != null && (
-                <span className="h-1.5 w-12 overflow-hidden rounded-full bg-marino-100">
-                  <span
-                    className={`block h-full rounded-full ${CLASE_FONDO_NIVEL[nivel]}`}
-                    style={{ width: `${Math.max(0, Math.min(100, dispositivo.bateriaPct))}%` }}
-                  />
+              {dispositivo.jornadaActiva && (
+                <span className="rounded-full bg-movimiento-suave px-2 py-0.5 text-[11px] font-semibold text-movimiento">
+                  En jornada
                 </span>
               )}
-              {bateria(dispositivo.bateriaPct)}
-              {dispositivo.cargando && <BatteryCharging className="size-4 text-movimiento" aria-label="Cargando" />}
-            </span>
-          </Dato>
-          <Dato etiqueta="Jornada activa">{siNo(dispositivo.jornadaActiva)}</Dato>
-          <Dato etiqueta="Cuenta activa">{siNo(dispositivo.habilitado)}</Dato>
+              {!dispositivo.habilitado && (
+                <span className="rounded-full bg-deshabilitado-suave px-2 py-0.5 text-[11px] font-semibold text-deshabilitado">
+                  Cuenta dada de baja
+                </span>
+              )}
+            </div>
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-texto-2">
+              <span className="font-mono text-texto-3">{dispositivo.identificadorUnico}</span>
+              <span>App {dispositivo.versionApp ?? GUION}</span>
+              <span title={dispositivo.ultimaConexion ? fechaHora(dispositivo.ultimaConexion) : undefined}>
+                Último reporte {dispositivo.ultimaConexion ? hace(dispositivo.ultimaConexion) : GUION}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                {dispositivo.bateriaPct != null && (
+                  <span className="h-1.5 w-10 overflow-hidden rounded-full bg-marino-100">
+                    <span
+                      className={`block h-full rounded-full ${CLASE_FONDO_NIVEL[nivel]}`}
+                      style={{ width: `${Math.max(0, Math.min(100, dispositivo.bateriaPct))}%` }}
+                    />
+                  </span>
+                )}
+                {bateria(dispositivo.bateriaPct)}
+                {dispositivo.cargando && <BatteryCharging className="size-3.5 text-movimiento" aria-label="Cargando" />}
+              </span>
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link to="/en-vivo" className={claseBoton('fantasma', 'sm')}>
+              <ArrowLeft className="size-4" /> Volver
+            </Link>
+            <Link to={enlaceReplay} className={claseBoton('principal', 'sm')}>
+              <Route className="size-4" /> Repetición de ruta
+            </Link>
+          </div>
+        </div>
+        <div className="border-t border-borde bg-fondo/60 px-5 pt-2.5 pb-1 text-[11px] font-semibold tracking-[0.06em] text-texto-3 uppercase">
+          Hitos del {fecha(`${dia}T12:00:00`)}
+          {esHoy && ' · hoy'}
+        </div>
+        <dl className="grid grid-cols-2 divide-borde bg-fondo/60 sm:grid-cols-3 sm:divide-x xl:grid-cols-6">
+          <Hito etiqueta="Inició jornada" icono={Play} valor={hora(resumen.inicioJornada?.instante)} />
+          <Hito etiqueta="Primera salida" icono={ArrowUpRight} valor={hora(resumen.primeraSalida?.instante)} tono="text-movimiento" />
+          <Hito etiqueta="Primera llegada" icono={MapPin} valor={hora(resumen.primeraLlegada?.instante)} tono="text-detenido" />
+          <Hito
+            etiqueta="Finalizó jornada"
+            icono={Flag}
+            valor={resumen.finJornada ? hora(resumen.finJornada.instante) : resumen.inicioJornada ? 'En curso' : GUION}
+          />
+          <Hito
+            etiqueta="Sin registro"
+            icono={TimerOff}
+            valor={resumen.cortes > 0 ? duracion(resumen.sinRegistroS) : GUION}
+            tono={resumen.sinRegistroS > 0 ? 'text-sin-senal' : undefined}
+          />
+          <Hito
+            etiqueta="Cortes / sin batería"
+            icono={TriangleAlert}
+            valor={`${resumen.cortes} / ${resumen.sinBateria}`}
+            tono={resumen.sinBateria > 0 ? 'text-peligro' : undefined}
+          />
         </dl>
       </Tarjeta>
-
-      <div>
-        <p className="mb-3 text-[13px] font-semibold text-marino-900">
-          Hitos del {fecha(`${dia}T12:00:00`)}
-          {esHoy && ' (hoy)'}
-        </p>
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-3 2xl:grid-cols-6">
-          <Cifra etiqueta="Inició jornada" valor={hora(resumen.inicioJornada?.instante)} icono={Play} tono="marino" />
-          <Cifra etiqueta="Primera salida" valor={hora(resumen.primeraSalida?.instante)} icono={ArrowUpRight} tono="movimiento" />
-          <Cifra etiqueta="Primera llegada" valor={hora(resumen.primeraLlegada?.instante)} icono={MapPin} tono="detenido" />
-          <Cifra etiqueta="Finalizó jornada" valor={hora(resumen.finJornada?.instante)} icono={Flag} tono="marino" />
-          <Cifra
-            etiqueta="Tiempo sin registro"
-            valor={resumen.cortes > 0 ? duracion(resumen.sinRegistroS) : GUION}
-            icono={TimerOff}
-            tono="sinSenal"
-            resaltar={resumen.sinRegistroS > 0}
-          />
-          <Cifra
-            etiqueta="Cortes / sin batería"
-            valor={`${resumen.cortes} / ${resumen.sinBateria}`}
-            icono={TriangleAlert}
-            tono="peligro"
-            resaltar={resumen.sinBateria > 0}
-          />
-        </div>
-      </div>
 
       {fallos.map((f) => (
         <ErrorCarga

@@ -841,7 +841,9 @@ export function segmentosDeRecorrido(
         tipo: tramo.metodo === 'MATCHED' ? 'matched' : 'estimated',
         // Solo presentación: el trazado ajustado a vía y el estimado se
         // redondean; el GPS registrado y los huecos rectos quedan crudos.
-        coordenadas: suavizarTrazado(trazado.map(([lon, lat]) => [lon, lat] as [number, number])),
+        // Sin suavizar: el marcador del reproductor recorre este mismo
+        // trazado, y con el redondeo se salía de la línea en las esquinas.
+        coordenadas: trazado.map(([lon, lat]) => [lon, lat] as [number, number]),
         instante: milisegundos(tramo.desde),
       });
     }
@@ -1327,12 +1329,60 @@ export function indiceCercaDeInstante(posiciones: Posicion[], instante: number):
 // formal, salto de más de 5 min o par cubierto por un tramo reconstruido)
 // devuelve el último fix conocido: una interpolación recta inventaría un
 // desplazamiento entre dos lecturas.
+// Punto del trazado de un tramo en proporción al tiempo transcurrido, medido
+// por distancia acumulada (velocidad pareja dentro del tramo).
+function puntoSobreTrazado(tramo: TramoReconstruido, instante: number): { latitud: number; longitud: number } | null {
+  const puntos = tramo.trazado.filter(
+    (par): par is [number, number] => Array.isArray(par) && Number.isFinite(par[0]) && Number.isFinite(par[1]),
+  );
+  if (puntos.length < 2) return null;
+  const inicio = milisegundos(tramo.desde);
+  const fin = milisegundos(tramo.hasta);
+  const fraccion = fin > inicio ? Math.min(Math.max((instante - inicio) / (fin - inicio), 0), 1) : 0;
+  const largos: number[] = [];
+  let total = 0;
+  for (let i = 1; i < puntos.length; i += 1) {
+    const largo = distanciaKm(
+      { latitud: puntos[i - 1][1], longitud: puntos[i - 1][0] },
+      { latitud: puntos[i][1], longitud: puntos[i][0] },
+    );
+    largos.push(largo);
+    total += largo;
+  }
+  if (!(total > 0)) return { latitud: puntos[0][1], longitud: puntos[0][0] };
+  let objetivo = fraccion * total;
+  for (let i = 0; i < largos.length; i += 1) {
+    if (objetivo <= largos[i] || i === largos.length - 1) {
+      const t = largos[i] > 0 ? Math.min(objetivo / largos[i], 1) : 0;
+      const [lonA, latA] = puntos[i];
+      const [lonB, latB] = puntos[i + 1];
+      return { latitud: latA + (latB - latA) * t, longitud: lonA + (lonB - lonA) * t };
+    }
+    objetivo -= largos[i];
+  }
+  return null;
+}
+
 export function puntoEnInstante(
   posiciones: Posicion[],
   huecos: Hueco[],
   instante: number,
   reconstruidos: TramoReconstruido[] = [],
 ): { latitud: number; longitud: number } | null {
+  // Dentro de un tramo reconstruido (ajustado a calles o estimado) el marcador
+  // avanza sobre su trazado, que es lo que se dibuja: interpolar recto entre
+  // los fixes crudos lo sacaba de la línea.
+  const tramo = reconstruidos.find(
+    (t) =>
+      Array.isArray(t.trazado) &&
+      t.trazado.length >= 2 &&
+      milisegundos(t.desde) <= instante &&
+      instante <= milisegundos(t.hasta),
+  );
+  if (tramo) {
+    const enTrazado = puntoSobreTrazado(tramo, instante);
+    if (enTrazado) return enTrazado;
+  }
   const indice = indicePorInstante(posiciones, instante);
   const actual = posiciones[indice];
   if (!actual) return null;
@@ -1341,10 +1391,7 @@ export function puntoEnInstante(
   const desde = milisegundos(actual.registradoEn);
   const hasta = milisegundos(siguiente.registradoEn);
   const esHueco = huecos.some((hueco) => hueco.desde === actual.registradoEn && hueco.hasta === siguiente.registradoEn);
-  const esReconstruido = reconstruidos.some(
-    (tramo) => tramo.desde === actual.registradoEn && tramo.hasta === siguiente.registradoEn,
-  );
-  if (esHueco || esReconstruido || hasta - desde > ANTIGUEDAD_SIN_SENAL_MS || !(hasta > desde)) {
+  if (esHueco || hasta - desde > ANTIGUEDAD_SIN_SENAL_MS || !(hasta > desde)) {
     return { latitud: actual.latitud, longitud: actual.longitud };
   }
   const fraccion = Math.min(Math.max((instante - desde) / (hasta - desde), 0), 1);

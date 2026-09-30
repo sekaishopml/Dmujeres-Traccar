@@ -35,6 +35,7 @@ import type { EstadoUnidad, Parada, TramoReconstruido } from '@/dominio/replay';
 // solo se registran escala, línea, punto y relleno.
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Filler);
 
+const SIN_PARADAS: Parada[] = [];
 const VELOCIDADES = [0.25, 0.5, 1, 2, 4, 8];
 
 // El marcador se mueve en cada frame (rAF), pero la interfaz (gráfico, slider,
@@ -122,11 +123,13 @@ interface Props {
   dispositivo: Dispositivo | null;
   // Fin del rango consultado (ISO): referencia del estado del último fix.
   finRango?: string;
+  paradas?: Parada[];
   children: ReactNode;
 }
 
 interface Reproductor {
   finRangoMs: number | null;
+  paradas: Parada[];
   posiciones: Posicion[];
   huecos: Hueco[];
   reconstruidos: TramoReconstruido[];
@@ -171,7 +174,7 @@ const ContextoReproductor = createContext<Reproductor | null>(null);
 // lógica. La superficie de selección es la capa de acierto de línea que agrega
 // Replay sobre la ruta; el reproductor se engancha a ella y resuelve el fix más
 // cercano con posiciones, que ya tiene en memoria.
-export default function ReproductorReplay({ mapa, posiciones, huecos, reconstruidos, dispositivo, finRango, children }: Props) {
+export default function ReproductorReplay({ mapa, posiciones, huecos, reconstruidos, dispositivo, finRango, paradas = SIN_PARADAS, children }: Props) {
   const finRangoMs = finRango ? milisegundos(finRango) : null;
   const [indice, setIndice] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
@@ -525,6 +528,7 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
     reconstruidos,
     dispositivo,
     finRangoMs,
+    paradas,
     indice: indiceAcotado,
     punto,
     reproduciendo,
@@ -587,23 +591,28 @@ function useDireccion(
 // un segundo dataset con un único punto no nulo en la posición actual, que se
 // mueve con la reproducción. Sin porcentajes en las posiciones no se dibuja.
 function GraficoBateria({ ampliada }: { ampliada: boolean }) {
-  const { posiciones, indice, pausar, mover } = useReproductor();
+  const { posiciones, paradas, indice, pausar, mover } = useReproductor();
   const [bajoCursor, setBajoCursor] = useState<{ indice: number; x: number } | null>(null);
+  // Parada fijada con clic en la gráfica ampliada (otro clic la suelta).
+  const [paradaFija, setParadaFija] = useState<number | null>(null);
+  const [bandas, setBandas] = useState<{ izquierda: number; ancho: number; arriba: number; alto: number }[]>([]);
+  const grafico = useRef<ChartJS<'line'> | null>(null);
   const serie = useMemo(() => serieBateria(posiciones), [posiciones]);
+  const instantes = useMemo(() => posiciones.map((p) => milisegundos(p.registradoEn)), [posiciones]);
   const hayBateria = useMemo(() => serie.some((valor) => valor != null), [serie]);
   const tema = useTema((e) => e.tema);
-  const datos = useMemo<ChartData<'line'>>(() => {
+  useEffect(() => setParadaFija(null), [paradas]);
+
+  // Eje X en tiempo real: una parada de horas ocupa su ancho verdadero.
+  const datos = useMemo<ChartData<'line', { x: number; y: number | null }[]>>(() => {
     const linea = colorToken('marino-600');
     const relleno = tema === 'oscuro' ? 'rgba(147, 176, 214, .12)' : 'rgba(10, 37, 64, .1)';
     const indicePunto = indiceBateriaConocida(serie, indice);
-    // Navy apagado en vez del azul anterior: el gráfico es contexto del
-    // recorrido y no debe leerse como una barra azul junto al slider ni
-    // competir con los colores de estado del marcador y la leyenda.
+    const punto = instantes[indicePunto];
     return {
-      labels: serie.map((_, posicion) => posicion),
       datasets: [
         {
-          data: serie,
+          data: serie.map((valor, i) => ({ x: instantes[i], y: valor })),
           borderColor: linea,
           backgroundColor: relleno,
           borderWidth: 1.5,
@@ -612,7 +621,7 @@ function GraficoBateria({ ampliada }: { ampliada: boolean }) {
           spanGaps: true,
         },
         {
-          data: serie.map((valor, posicion) => (posicion === indicePunto ? valor : null)),
+          data: punto != null ? [{ x: punto, y: serie[indicePunto] }] : [],
           borderColor: linea,
           backgroundColor: linea,
           pointRadius: 3,
@@ -621,46 +630,106 @@ function GraficoBateria({ ampliada }: { ampliada: boolean }) {
         },
       ],
     };
-  }, [serie, indice, tema]);
-  // Clic en el gráfico = saltar a ese instante, igual que arrastrar el slider:
-  // pausa y mueve el reproductor. El cursor cambia solo sobre la serie.
+  }, [serie, instantes, indice, tema]);
+
+  const paradaEnIndice = useCallback(
+    (i: number) => {
+      const t = instantes[i];
+      if (t == null) return null;
+      const encontrada = paradas.findIndex((p) => milisegundos(p.inicio) <= t && t <= milisegundos(p.fin));
+      return encontrada >= 0 ? encontrada : null;
+    },
+    [instantes, paradas],
+  );
+
+  // Bandas de parada en píxeles del lienzo; se recalculan tras cada maquetado
+  // (incluida la animación de ampliar) con un plugin propio.
+  const pluginBandas = useMemo(
+    () => ({
+      id: 'bandasParadas',
+      afterLayout: (chart: ChartJS) => {
+        const escala = chart.scales.x;
+        const area = chart.chartArea;
+        if (!escala || !area) return;
+        const nuevas = paradas.map((p) => {
+          const izquierda = Math.max(escala.getPixelForValue(milisegundos(p.inicio)), area.left);
+          const derecha = Math.min(escala.getPixelForValue(milisegundos(p.fin)), area.right);
+          return { izquierda, ancho: Math.max(derecha - izquierda, 3), arriba: area.top, alto: area.bottom - area.top };
+        });
+        setBandas((previas) => (JSON.stringify(previas) === JSON.stringify(nuevas) ? previas : nuevas));
+      },
+    }),
+    [paradas],
+  );
+
   const opciones = useMemo<ChartOptions<'line'>>(
     () => ({
       ...OPCIONES_BATERIA,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      parsing: false,
       onClick: (_evento, elementos) => {
-        const posicion = elementos[0]?.index;
-        if (posicion == null) return;
+        const elemento = elementos.find((e) => e.datasetIndex === 0);
+        if (!elemento) return;
+        if (ampliada) {
+          const parada = paradaEnIndice(elemento.index);
+          setParadaFija((actual) => (parada == null || actual === parada ? null : parada));
+        }
         pausar();
-        mover(posicion);
+        mover(elemento.index);
       },
       onHover: (evento, elementos) => {
         const destino = evento.native?.target as HTMLElement | null;
-        if (destino) destino.style.cursor = elementos.length > 0 ? 'pointer' : '';
-        const elemento = elementos[0];
+        const elemento = elementos.find((e) => e.datasetIndex === 0);
+        if (destino) destino.style.cursor = elemento ? 'pointer' : '';
         setBajoCursor(elemento ? { indice: elemento.index, x: elemento.element.x } : null);
       },
-      scales: ampliada
-        ? {
-            x: { display: false },
-            y: {
+      scales: {
+        x: {
+          type: 'linear',
+          display: false,
+          min: instantes[0],
+          max: instantes[instantes.length - 1],
+        },
+        y: ampliada
+          ? {
               display: true,
               min: 0,
               max: 100,
               ticks: { stepSize: 50, callback: (v) => `${v}%`, font: { size: 10 }, color: colorToken('texto-3') },
               grid: { color: colorToken('borde') },
               border: { display: false },
-            },
-          }
-        : OPCIONES_BATERIA.scales,
+            }
+          : { display: false, min: 0, max: 100 },
+      },
     }),
-    [mover, pausar, ampliada],
+    [mover, pausar, ampliada, instantes, paradaEnIndice],
   );
   if (!hayBateria) return null;
   const bajo = bajoCursor ? posiciones[bajoCursor.indice] : null;
   const valorBajo = bajoCursor ? serie[bajoCursor.indice] : null;
+  const paradaBajo = ampliada && bajoCursor ? paradaEnIndice(bajoCursor.indice) : null;
+  const paradaMostrada = paradaFija ?? paradaBajo;
+  const detalle = paradaMostrada != null ? paradas[paradaMostrada] : null;
+  const banda = paradaMostrada != null ? bandas[paradaMostrada] : null;
   return (
     <div className="replay-bateria" onMouseLeave={() => setBajoCursor(null)}>
-      <Line data={datos} options={opciones} />
+      <Line ref={grafico} data={datos} options={opciones} plugins={[pluginBandas]} />
+      {ampliada &&
+        bandas.map((b, i) => (
+          <span
+            key={i}
+            className={`bateria-parada${paradaMostrada === i ? ' activa' : ''}${paradaFija === i ? ' fija' : ''}`}
+            style={{ left: b.izquierda, width: b.ancho, top: b.arriba, height: b.alto }}
+            aria-hidden="true"
+          />
+        ))}
+      {detalle && banda && (
+        <span className="bateria-parada-detalle" style={{ left: banda.izquierda + banda.ancho / 2, top: banda.arriba }}>
+          <strong>Parada {paradaMostrada! + 1}</strong> · {horaCorta(detalle.inicio)} – {horaCorta(detalle.fin)} ·{' '}
+          {duracion(detalle.duracionMin * 60)}
+          {paradaFija != null && <em> · fijada</em>}
+        </span>
+      )}
       {bajo && valorBajo != null && bajoCursor && (
         <span className="bateria-etiqueta" style={{ left: bajoCursor.x }} role="status">
           <strong>{Math.round(valorBajo)}%</strong> · {horaCorta(bajo.registradoEn)}
