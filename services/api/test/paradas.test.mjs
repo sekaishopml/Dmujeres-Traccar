@@ -1,0 +1,89 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { detectarParadas } from '../src/paradas.js';
+
+const p = (hora, latitud, longitud, precisionM = 15) => ({
+  registradoEn: `2026-09-30T${hora}Z`,
+  latitud,
+  longitud,
+  precisionM,
+});
+
+// mantilla 29/09 (hora local +5): caminata con velocidad 0 reportada y una
+// parada real ~21:00-21:03 (02:00-02:03 UTC).
+const mantilla = [
+  p('01:59:11', -2.24108, -79.91612),
+  p('01:59:17', -2.24115, -79.91635),
+  p('01:59:28', -2.24119, -79.91661),
+  p('02:00:12', -2.24124, -79.91791),
+  p('02:00:23', -2.24135, -79.91804),
+  p('02:00:29', -2.24151, -79.91796),
+  p('02:01:41', -2.24164, -79.9179),
+  p('02:03:04', -2.24195, -79.91784, 25),
+  p('02:03:15', -2.24217, -79.91791, 28),
+  p('02:03:20', -2.24218, -79.91749, 20),
+  p('02:03:26', -2.24213, -79.91718),
+  p('02:03:32', -2.24207, -79.91682, 24),
+];
+
+test('mantilla: detecta la parada corta de 21:00 a 21:03 aunque la velocidad sea 0 siempre', () => {
+  const paradas = detectarParadas(mantilla);
+  assert.equal(paradas.length, 1);
+  assert.equal(paradas[0].inicio.toISOString().slice(11, 16), '02:00');
+  assert.ok(paradas[0].segundos >= 150 && paradas[0].segundos <= 200, `duró ${paradas[0].segundos} s`);
+});
+
+test('Fernando: fixes cada 2 min moviéndose cientos de metros no forman parada', () => {
+  const puntos = [];
+  let lat = -2.2;
+  for (let k = 0; k < 20; k += 1) {
+    lat += 0.003; // ~330 m por fix
+    const t = new Date(Date.UTC(2026, 8, 29, 22, 0, 0) + k * 121_000).toISOString();
+    puntos.push({ registradoEn: t, latitud: lat, longitud: -79.9, precisionM: 20 });
+  }
+  assert.equal(detectarParadas(puntos).length, 0);
+});
+
+test('Fernando: horas de ubicación aproximada (100 m) en la misma coordenada no son una parada', () => {
+  const puntos = [];
+  for (let k = 0; k < 30; k += 1) {
+    const t = new Date(Date.UTC(2026, 8, 29, 15, 40, 0) + k * 600_000).toISOString();
+    puntos.push({ registradoEn: t, latitud: -2.17, longitud: -79.88, precisionM: 100 });
+  }
+  assert.equal(detectarParadas(puntos).length, 0);
+});
+
+test('una estancia de horas con deriva de GPS es una sola parada', () => {
+  const puntos = [];
+  for (let k = 0; k < 40; k += 1) {
+    const t = new Date(Date.UTC(2026, 8, 29, 13, 0, 0) + k * 120_000).toISOString();
+    const deriva = (k % 5) * 0.00008; // hasta ~35 m
+    puntos.push({ registradoEn: t, latitud: -2.24283 + deriva, longitud: -79.91493 - deriva, precisionM: 15 + (k % 3) * 10 });
+  }
+  const paradas = detectarParadas(puntos);
+  assert.equal(paradas.length, 1);
+  assert.ok(paradas[0].segundos >= 39 * 120 - 1);
+});
+
+test('un hueco de más de 30 min parte la estancia aunque vuelva al mismo sitio', () => {
+  const paradas = detectarParadas([
+    p('10:00:00', -2.2, -79.9),
+    p('10:05:00', -2.2, -79.9),
+    p('11:00:00', -2.2, -79.9),
+    p('11:05:00', -2.2, -79.9),
+  ]);
+  assert.equal(paradas.length, 2);
+});
+
+test('un fix de deriva suelto no parte una estancia en dos', () => {
+  const paradas = detectarParadas([
+    p('10:00:00', -2.2, -79.9),
+    p('10:10:00', -2.2, -79.9),
+    p('10:20:00', -2.2, -79.9),
+    p('10:21:00', -2.2008, -79.9), // ~90 m, deriva
+    p('10:22:00', -2.2, -79.9),
+    p('10:40:00', -2.2, -79.9),
+  ]);
+  assert.equal(paradas.length, 1);
+  assert.equal(paradas[0].segundos, 40 * 60);
+});

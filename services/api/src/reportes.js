@@ -3,11 +3,13 @@
 // no se calcula en la plataforma nueva).
 
 import { consultar } from './db.js';
+import { datosInvalidos } from './errores.js';
 import { iso } from './dto.js';
 import { precalentar, resolucionEnCache } from './geocodigo.js';
 import { leerOrden, leerPaginacion, leerRango, respuestaJson } from './http.js';
 import { permisoDe } from './flota.js';
-import { ORDEN_PARADAS, ORDEN_VIAJES, sqlSegmentos } from './segmentos.js';
+import { LAT_MAX_OP, LAT_MIN_OP, LON_MAX_OP, LON_MIN_OP, ORDEN_VIAJES, sqlSegmentos } from './segmentos.js';
+import { detectarParadas } from './paradas.js';
 
 const DURACION_MAXIMA_DIAS = 92;
 
@@ -132,37 +134,93 @@ export async function listarViajes(ctx) {
   });
 }
 
-export async function listarParadas(ctx) {
-  const { pagina, tamano, desplazamiento } = leerPaginacion(ctx.url);
-  const orden = leerOrden(ctx.url, ORDEN_PARADAS, 's.inicio DESC');
-  const { valores } = parametrosSegmentos(ctx, {
-    pagina,
-    tamano,
-    desplazamiento,
-    dispositivoId: await resolverDispositivoId(ctx),
-  });
+// Paradas por permanencia (paradas.js) sobre los fixes crudos del rango, con
+// los mismos filtros de permiso y equipo que los segmentos.
+async function paradasDelRango(ctx, dispositivoId) {
+  const { valores, rango } = parametrosSegmentos(ctx, { dispositivoId });
   const { rows } = await consultar(
     ctx.pool,
-    `WITH tramos AS (${sqlSegmentos()})
-     SELECT s.*, count(*) OVER() AS total_filas
-     FROM tramos s
-     WHERE s.tipo = 'parada'
-     ORDER BY ${orden.sql}, s.dispositivo_id
-     LIMIT $5 OFFSET $6`,
+    `SELECT p.id, p.id_publico, p.dispositivo_id, p.registrado_en, p.latitud, p.longitud, p.precision_m
+     FROM tracking.dmt_posicion p
+     JOIN tracking.dmt_dispositivo d ON d.id = p.dispositivo_id
+     WHERE d.habilitado
+       AND p.registrado_en >= $2 AND p.registrado_en < $3
+       AND p.latitud BETWEEN ${LAT_MIN_OP} AND ${LAT_MAX_OP}
+       AND p.longitud BETWEEN ${LON_MIN_OP} AND ${LON_MAX_OP}
+       AND ($1::bigint IS NULL OR EXISTS (
+             SELECT 1 FROM operations.dmt_asignacion a
+             WHERE a.dispositivo_id = d.id AND a.usuario_id = $1 AND a.activa
+               AND a.desde_en <= now() AND (a.hasta_en IS NULL OR a.hasta_en > now())))
+       AND ($4::bigint IS NULL OR p.dispositivo_id = $4)
+     ORDER BY p.dispositivo_id, p.registrado_en`,
     valores,
     { signal: ctx.signal, timeoutMs: 20000 },
   );
+  const porEquipo = new Map();
+  for (const fila of rows) {
+    const id = Number(fila.dispositivo_id);
+    if (!porEquipo.has(id)) porEquipo.set(id, []);
+    porEquipo.get(id).push({
+      id: fila.id,
+      idPublico: fila.id_publico,
+      registradoEn: fila.registrado_en,
+      latitud: Number(fila.latitud),
+      longitud: Number(fila.longitud),
+      precisionM: fila.precision_m === null ? null : Number(fila.precision_m),
+    });
+  }
+  const filas = [];
+  for (const [dispositivoId, puntos] of porEquipo) {
+    for (const parada of detectarParadas(puntos)) {
+      const primero = puntos.find((pt) => new Date(pt.registradoEn).getTime() === parada.inicio.getTime());
+      filas.push({
+        id: primero?.id ?? 0,
+        id_publico: primero?.idPublico ?? null,
+        dispositivo_id: dispositivoId,
+        inicio: parada.inicio,
+        fin: parada.fin,
+        segundos: parada.segundos,
+        lat_inicio: parada.latitud,
+        lon_inicio: parada.longitud,
+        lat_rep: parada.latitud,
+        lon_rep: parada.longitud,
+        precision_rep: parada.precisionM,
+        fragmentos: 1,
+      });
+    }
+  }
+  return { filas, rango };
+}
+
+const ORDEN_PARADAS_JS = {
+  inicio: (f) => f.inicio.getTime(),
+  fin: (f) => f.fin.getTime(),
+  duracionMin: (f) => f.segundos,
+  dispositivoId: (f) => f.dispositivo_id,
+};
+
+export async function listarParadas(ctx) {
+  const { pagina, tamano, desplazamiento } = leerPaginacion(ctx.url);
+  // Mismo contrato que leerOrden: sin orden, inicio descendente; "-campo"
+  // descendente y "campo" ascendente.
+  const valor = ctx.url.searchParams.get('orden');
+  const ascendente = valor != null && !valor.startsWith('-');
+  const clave = ORDEN_PARADAS_JS[(valor ?? 'inicio').replace(/^-/, '')];
+  if (!clave) throw datosInvalidos(`El campo de orden ${valor} no es válido.`);
+  const { filas } = await paradasDelRango(ctx, await resolverDispositivoId(ctx));
+  filas.sort((a, b) => (ascendente ? clave(a) - clave(b) : clave(b) - clave(a)) || a.dispositivo_id - b.dispositivo_id);
   respuestaJson(ctx.res, 200, {
-    datos: rows.map(aParada),
-    total: rows.length > 0 ? Number(rows[0].total_filas) : 0,
+    datos: filas.slice(desplazamiento, desplazamiento + tamano).map(aParada),
+    total: filas.length,
     pagina,
     tamano,
   });
 }
 
 export async function obtenerResumen(ctx) {
+  const dispositivoIdResumen = await resolverDispositivoId(ctx);
   const { valores, rango } = parametrosSegmentos(ctx, {
-    dispositivoId: await resolverDispositivoId(ctx),
+    dispositivoId: dispositivoIdResumen,
   });
   const { rows } = await consultar(
     ctx.pool,
@@ -209,6 +267,10 @@ export async function obtenerResumen(ctx) {
     valores,
     { signal: ctx.signal, timeoutMs: 20000 },
   );
+  // Paradas por permanencia, igual que /reports/stops.
+  const { filas: paradasJs } = await paradasDelRango(ctx, dispositivoIdResumen);
+  const paradasPorEquipo = new Map();
+  for (const f of paradasJs) paradasPorEquipo.set(f.dispositivo_id, (paradasPorEquipo.get(f.dispositivo_id) ?? 0) + 1);
   const porDispositivo = rows.map((fila) => ({
     dispositivoId: Number(fila.dispositivo_id),
     idPublico: fila.id_publico,
@@ -216,7 +278,7 @@ export async function obtenerResumen(ctx) {
     distanciaKm: redondear(fila.distancia_km, 3),
     duracionMin: redondear(Number(fila.duracion_s) / 60, 1),
     viajes: Number(fila.viajes),
-    paradas: Number(fila.paradas),
+    paradas: paradasPorEquipo.get(Number(fila.dispositivo_id)) ?? 0,
     ultimaPosicionEn: iso(fila.ultima_posicion),
   }));
   respuestaJson(ctx.res, 200, {
@@ -227,7 +289,7 @@ export async function obtenerResumen(ctx) {
     distanciaTotalKm: redondear(rows.reduce((total, fila) => total + Number(fila.distancia_km), 0), 3),
     duracionTotalMin: redondear(rows.reduce((total, fila) => total + Number(fila.duracion_s), 0) / 60, 1),
     viajes: rows.reduce((total, fila) => total + Number(fila.viajes), 0),
-    paradas: rows.reduce((total, fila) => total + Number(fila.paradas), 0),
+    paradas: porDispositivo.reduce((total, fila) => total + fila.paradas, 0),
     porDispositivo,
   });
 }

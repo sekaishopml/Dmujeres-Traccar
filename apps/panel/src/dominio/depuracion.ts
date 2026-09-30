@@ -13,7 +13,7 @@
 // estancia sobre su centro. Hora, batería y velocidad de cada fix se conservan.
 import type { Posicion } from '@contratos';
 
-const RADIO_ESTANCIA_M = 45;
+const RADIO_ESTANCIA_M = 60; // igual que services/api/src/paradas.js
 const DURACION_ESTANCIA_MS = 2 * 60_000;
 // Precisión a partir de la cual un fix no puede sacar a nadie de una estancia.
 const PRECISION_DUDOSA_M = 80;
