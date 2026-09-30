@@ -1,20 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, LoaderCircle, MapPinned, Route, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { useSesion } from '@/lib/sesion';
 import { Logo } from '@/componentes/marco/Logo';
 import { Boton } from '@/componentes/ui/Boton';
 import { Campo, Casilla, Entrada } from '@/componentes/ui/Campo';
 
-const PUNTOS = [
-  { icono: MapPinned, texto: 'Flota en vivo con estado real de cada equipo.' },
-  { icono: Route, texto: 'Recorridos auditables: lo que no se registró se muestra como hueco, nunca inventado.' },
-  { icono: ShieldCheck, texto: 'Jornadas, paradas y batería en un solo lugar.' },
-];
-
-// Acceso: panel de marca marino a la izquierda, formulario a la derecha. En
-// móvil queda solo el formulario con el logotipo. La sesión es una cookie
-// HttpOnly; aquí no se guarda ninguna credencial (solo el usuario, si se pide).
+// Acceso: una tarjeta centrada con el logotipo de DMujeres y el formulario,
+// sin adornos. La sesión es una cookie HttpOnly; aquí no se guarda ninguna
+// credencial (solo el usuario, si se pide).
 export default function Login() {
   const { usuario, entrar } = useSesion();
   const navegar = useNavigate();
@@ -45,50 +39,14 @@ export default function Login() {
   }
 
   return (
-    <div className="grid min-h-full lg:grid-cols-[minmax(420px,5fr)_7fr]">
-      <aside className="relative hidden overflow-hidden bg-tinta px-12 py-10 text-[#c5d6ea] lg:flex lg:flex-col">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(90% 60% at 100% 100%, rgb(235 0 69 / 0.30), transparent 60%), radial-gradient(70% 50% at 0% 0%, rgb(44 95 153 / 0.45), transparent 60%)',
-          }}
-        />
-        <svg aria-hidden="true" className="pointer-events-none absolute right-0 bottom-0 h-[70%] w-[90%] opacity-[0.12]" viewBox="0 0 400 300" fill="none">
-          <path d="M10 280 C 80 250, 90 170, 160 170 S 250 220, 290 140 S 360 40, 395 20" stroke="white" strokeWidth="3" strokeDasharray="1 0" />
-          <path d="M10 280 C 80 250, 90 170, 160 170" stroke="#ff5c8a" strokeWidth="3" />
-          <circle cx="160" cy="170" r="7" fill="#ff5c8a" />
-          <circle cx="290" cy="140" r="5" fill="white" />
-          <circle cx="395" cy="20" r="5" fill="white" />
-        </svg>
-        <Logo claro className="relative h-12 self-start" />
-        <div className="relative mt-auto mb-auto max-w-md">
-          <h1 className="font-display text-[34px] leading-[1.15] font-semibold text-white">
-            Cada recorrido,
-            <br />
-            tal como ocurrió.
-          </h1>
-          <div className="mt-5 h-1 w-12 rounded-full bg-marca" />
-          <ul className="mt-8 space-y-4">
-            {PUNTOS.map(({ icono: Icono, texto }) => (
-              <li key={texto} className="flex gap-3 text-[14px] leading-relaxed">
-                <span className="grid size-8 flex-none place-items-center rounded-lg bg-white/8 text-marca-claro">
-                  <Icono className="size-4" />
-                </span>
-                <span className="pt-1">{texto}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <p className="relative text-[12px] text-[#5a86bb]">© {new Date().getFullYear()} DMujeres · Plataforma de flota</p>
-      </aside>
-
-      <main className="flex items-center justify-center bg-fondo px-5 py-10">
-        <form onSubmit={alEnviar} className="w-full max-w-[400px] animate-entrar">
-          <Logo className="mb-10 h-11 lg:hidden" />
-          <h2 className="text-[26px] font-semibold">Bienvenida de nuevo</h2>
-          <p className="mt-1 mb-8 text-[13.5px] text-texto-2">Ingresa con tu usuario del panel.</p>
+    <main className="flex min-h-full flex-col items-center justify-center bg-fondo px-4 py-10">
+      <form
+        onSubmit={alEnviar}
+        className="w-full max-w-[380px] animate-entrar rounded-2xl border border-borde bg-superficie px-7 pt-9 pb-8 shadow-[0_8px_30px_rgb(11_37_69/0.08)]"
+      >
+        <Logo className="mx-auto mb-8 h-12" />
+        <h1 className="text-center text-[20px] font-semibold text-marino-900">Iniciar sesión</h1>
+        <p className="mt-1 mb-7 text-center text-[13px] text-texto-2">Ingresa con tu usuario del panel.</p>
 
           <div className="space-y-4">
             <Campo etiqueta="Usuario o correo">
@@ -109,7 +67,7 @@ export default function Login() {
                   onChange={(e) => setClave(e.target.value)}
                   autoComplete="current-password"
                   required
-                  className="h-11 pr-11"
+                  className="h-11 pr-11 [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
                 />
                 <button
                   type="button"
@@ -134,8 +92,8 @@ export default function Login() {
             {enviando && <LoaderCircle className="size-4 animate-spin" />}
             {enviando ? 'Entrando…' : 'Entrar'}
           </Boton>
-        </form>
-      </main>
-    </div>
+      </form>
+      <p className="mt-6 text-[12px] text-texto-3">© {new Date().getFullYear()} DMujeres</p>
+    </main>
   );
 }

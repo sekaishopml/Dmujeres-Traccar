@@ -9,3 +9,6 @@
 - Cronograma y consola: ancho de panel. Asistente, login, depuración y actualización: columna.
 - Giro sin perder estado: el cronograma guarda vista (mes/día), día y mes; el asistente guarda el paso.
 - No verificado en dispositivo: el único emulador del servidor es Android 2.3 ARM sin KVM.
+
+## Panel 1.8.1 — login sencillo
+- `paginas/Login.tsx`: se quitó el panel de marca con lemas; ahora una tarjeta centrada con el logotipo de DMujeres, "Iniciar sesión", usuario, clave, recordar y Entrar; © abajo. Se oculta el ojo nativo de Edge (`::-ms-reveal`) que duplicaba el botón de ver clave.
