@@ -35,7 +35,9 @@ import {
 } from '@/dominio/datos';
 import { claveEstado, colorEstado } from '@/dominio/estado';
 import { bateria, hace, hora, velocidad, GUION } from '@/dominio/formatoBase';
-import { fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
+import { fechaHoyLocal, finDeDia, inicioDeDia, sumarDias } from '@/dominio/rango';
+import { TIPOS, traerCronograma } from '@/dominio/cronograma';
+import { api } from '@/lib/api';
 import { mensajeError } from '@/dominio/errores';
 import { construirBitacora, resumenBitacora } from '@/dominio/bitacora';
 import { urlExpediente, urlReplay } from '@/dominio/enlaces';
@@ -365,7 +367,27 @@ function FichaPersona({
   const hasta = finDeDia(hoy);
   const id = equipo.idPublico;
   const opciones = { staleTime: CACHE_AUDITORIA_MS, retry: 0 } as const;
-  const jornadas = useQuery({ queryKey: ['jornadas', id, hoy], queryFn: () => traerJornadas(id, desde, hasta), ...opciones });
+  // Jornadas de los últimos 7 días: una jornada abierta antes de hoy (sin
+  // finalizar) es la de hoy y debe verse desde que empezó.
+  const desdeJornadas = inicioDeDia(sumarDias(hoy, -7));
+  const jornadas = useQuery({
+    queryKey: ['jornadas', id, 'ficha', hoy],
+    queryFn: () => traerJornadas(id, desdeJornadas, hasta),
+    ...opciones,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const version = useQuery({
+    queryKey: ['sistema', 'version'],
+    queryFn: () => api.get<{ versionApp?: string | null }>('/api/v1/version', { redirigir401: false }),
+    staleTime: 10 * 60_000,
+  });
+  const actividades = useQuery({
+    queryKey: ['cronograma', hoy, hoy, id],
+    queryFn: () => traerCronograma(hoy, hoy, id),
+    staleTime: 60_000,
+    retry: 0,
+  });
   const replay = useQuery({ queryKey: ['replay', id, hoy, hoy], queryFn: () => traerReplay(id, desde, hasta), ...opciones });
   const paradas = useQuery({ queryKey: ['paradas', id, hoy, hoy], queryFn: () => traerParadas(id, desde, hasta), ...opciones });
   const muestras = useQuery({ queryKey: ['bateria', id, hoy], queryFn: () => traerBateriaEquipo(id, desde, hasta), ...opciones });
@@ -385,13 +407,48 @@ function FichaPersona({
   );
   const cargando = jornadas.isPending || replay.isPending || paradas.isPending;
 
-  const hitos: { etiqueta: string; valor: string; alerta?: boolean }[] = [
-    { etiqueta: 'Inició jornada', valor: hora(resumen.inicioJornada?.instante) },
-    { etiqueta: 'Primera salida', valor: hora(resumen.primeraSalida?.instante) },
-    { etiqueta: 'Primera llegada', valor: hora(resumen.primeraLlegada?.instante) },
-    { etiqueta: 'Cortes', valor: String(resumen.cortes), alerta: resumen.sinBateria > 0 },
-    { etiqueta: 'Finalizó', valor: resumen.finJornada ? hora(resumen.finJornada.instante) : equipo.jornadaActiva ? 'En curso' : GUION },
+  // Jornada del día: la abierta (aunque haya empezado antes) o la última que
+  // empezó hoy. El tiempo corre mientras está abierta y se congela al cerrar.
+  const jornada = useMemo(() => {
+    const lista = [...(jornadas.data?.jornadas ?? [])].sort((a, b) => b.inicioEn.localeCompare(a.inicioEn));
+    return lista.find((j) => !j.finEn) ?? lista.find((j) => j.inicioEn >= desde) ?? null;
+  }, [jornadas.data, desde]);
+  const ahora = useReloj(jornada && !jornada.finEn ? 1000 : null);
+  const inicioMs = jornada ? new Date(jornada.inicioEn).getTime() : null;
+  const finMs = jornada?.finEn ? new Date(jornada.finEn).getTime() : ahora;
+  const tiempoJornada = inicioMs != null && finMs > inicioMs ? reloj((finMs - inicioMs) / 1000) : GUION;
+  // Primera salida tras iniciar la jornada (deja su primera parada).
+  const salida = (replay.data?.posiciones ?? []).length
+    ? resumen.primeraSalida && inicioMs != null && new Date(resumen.primeraSalida.instante).getTime() >= inicioMs - 60_000
+      ? resumen.primeraSalida
+      : null
+    : null;
+  const diaInicio = jornada ? fechaLocalDe(jornada.inicioEn) : null;
+
+  const hitos: { etiqueta: string; valor: string; detalle?: string; vivo?: boolean }[] = [
+    {
+      etiqueta: 'Inició jornada',
+      valor: jornada ? hora(jornada.inicioEn) : GUION,
+      detalle: diaInicio && diaInicio !== hoy ? `el ${diaInicio.slice(8, 10)}/${diaInicio.slice(5, 7)}` : undefined,
+    },
+    { etiqueta: 'Primera salida', valor: salida ? hora(salida.instante) : GUION },
+    { etiqueta: 'Tiempo de jornada', valor: tiempoJornada, vivo: Boolean(jornada && !jornada.finEn) },
+    { etiqueta: 'Finalizó', valor: jornada?.finEn ? hora(jornada.finEn) : jornada ? 'En curso' : GUION },
   ];
+
+  // Actividad en curso: la última del cronograma de hoy cuya hora ya pasó.
+  const actividad = useMemo(() => {
+    const ahoraHM = new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+    return [...(actividades.data?.datos ?? [])].filter((a) => a.hora <= ahoraHM).sort((a, b) => b.hora.localeCompare(a.hora))[0] ?? null;
+  }, [actividades.data]);
+
+  const publicada = version.data?.versionApp ?? null;
+  const estadoApp =
+    !equipo.versionApp || !publicada
+      ? null
+      : compararVersiones(equipo.versionApp, publicada) >= 0
+        ? { texto: 'Última versión', clase: 'bg-movimiento-suave text-movimiento' }
+        : { texto: `Desactualizada (hay ${publicada})`, clase: 'bg-sin-senal-suave text-sin-senal' };
 
   return (
     <div className="absolute inset-x-3 bottom-3 z-[6] animate-entrar rounded-tarjeta border border-borde bg-superficie shadow-flotante md:inset-x-4 md:bottom-4">
@@ -415,7 +472,10 @@ function FichaPersona({
           </span>
           <span>
             <span className="block text-texto-3">App</span>
-            <span className="font-semibold text-marino-900">{equipo.versionApp ?? GUION}</span>
+            <span className="flex items-center gap-1.5">
+              <span className="font-semibold text-marino-900">{equipo.versionApp ?? GUION}</span>
+              {estadoApp && <span className={cn('rounded-full px-1.5 text-[10.5px] font-semibold', estadoApp.clase)}>{estadoApp.texto}</span>}
+            </span>
           </span>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -424,24 +484,34 @@ function FichaPersona({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-borde bg-borde sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-borde bg-borde sm:grid-cols-4">
         {hitos.map((h) => (
           <div key={h.etiqueta} className="bg-superficie px-5 py-2.5">
-            <p className="text-[11.5px] text-texto-3">{h.etiqueta}</p>
-            <p className={cn('font-display text-[15px] font-semibold cifras', h.alerta ? 'text-peligro' : 'text-marino-900')}>
-              {cargando ? '…' : h.valor}
+            <p className="flex items-center gap-1.5 text-[11.5px] text-texto-3">
+              {h.vivo && <span className="size-1.5 animate-pulse rounded-full bg-movimiento motion-reduce:animate-none" />}
+              {h.etiqueta}
+            </p>
+            <p className="font-display text-[15px] font-semibold text-marino-900 cifras">
+              {cargando && !jornadas.data ? '…' : h.valor}
+              {h.detalle && <span className="ml-1 text-[12px] font-normal text-texto-3">{h.detalle}</span>}
             </p>
           </div>
         ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 px-5 py-3">
-        <p className="mr-auto text-[12px] text-texto-2">
-          {resumen.sinRegistroS > 0
-            ? `Hoy estuvo ${Math.round(resumen.sinRegistroS / 60)} min sin registro${resumen.sinBateria ? `, ${resumen.sinBateria} vez por batería agotada` : ''}.`
-            : cargando
-              ? 'Leyendo la bitácora de hoy…'
-              : 'Hoy no tiene cortes de registro.'}
+        <p className="mr-auto min-w-0 truncate text-[12.5px] text-texto-2">
+          {actividad ? (
+            <>
+              <span className="text-texto-3">Actividad en curso: </span>
+              <b className="font-semibold text-marino-900">{TIPOS[actividad.tipo]?.etiqueta ?? actividad.tipo}</b>
+              {actividad.lugar ? ` · ${actividad.lugar}` : ''} <span className="text-texto-3 cifras">desde las {actividad.hora}</span>
+            </>
+          ) : actividades.isPending ? (
+            'Leyendo el cronograma…'
+          ) : (
+            <span className="text-texto-3">Sin actividad cargada en el cronograma.</span>
+          )}
         </p>
         <Link to={urlExpediente(equipo.idPublico, hoy)} className={claseBoton('secundario', 'sm')}>
           <FileText className="size-3.5" />
@@ -454,4 +524,39 @@ function FichaPersona({
       </div>
     </div>
   );
+}
+
+// Reloj que avanza cada `pasoMs` (null = detenido): el tiempo de jornada
+// en curso sube solo y se congela al finalizar.
+function useReloj(pasoMs: number | null): number {
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    if (pasoMs == null) return;
+    setAhora(Date.now());
+    const t = window.setInterval(() => setAhora(Date.now()), pasoMs);
+    return () => window.clearInterval(t);
+  }, [pasoMs]);
+  return ahora;
+}
+
+function reloj(segundos: number): string {
+  const total = Math.max(0, Math.floor(segundos));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sg = total % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(sg).padStart(2, '0')}`;
+}
+
+function fechaLocalDe(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil' }).format(new Date(iso));
+}
+
+function compararVersiones(a: string, b: string): number {
+  const pa = a.split('.').map((x) => Number.parseInt(x, 10) || 0);
+  const pb = b.split('.').map((x) => Number.parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
 }

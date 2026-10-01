@@ -1,7 +1,6 @@
 /* Inicio: listas con desplazamiento al estilo de la marca y entrada suave de
    arriba hacia abajo (cada fila con un pequeño retraso). */
 .inicio-lista {
-  max-height: 300px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--color-marino-300) transparent;
@@ -29,3 +28,9 @@
   animation-delay: calc(var(--orden, 0) * 35ms);
 }
 @media (prefers-reduced-motion: reduce) { .inicio-fila { animation: none; } }
+/* Desplazamiento interno con la barra de la marca (tabla de Inicio). */
+.inicio-scroll { scrollbar-width: thin; scrollbar-color: var(--color-marino-300) transparent; }
+.inicio-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.inicio-scroll::-webkit-scrollbar-thumb { background: var(--color-marino-300); border-radius: 999px; }
+/* En pantallas chicas las tarjetas no tienen alto fijo: la lista se limita. */
+@media (max-width: 1023px) { .inicio-lista { max-height: 300px; } }
