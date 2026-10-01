@@ -21,6 +21,15 @@ const PICO_MIN_M = 60;
 const PICO_VELOCIDAD_KMH = 90;
 // Velocidad reportada con la que una lectura del borde ya es movimiento.
 const VELOCIDAD_BORDE_KMH = 5;
+// Núcleo de la estancia (igual que RADIO_NUCLEO_M y MIN_FIXES_BORDE de
+// services/api/src/paradas.js): salir o llegar caminando despacio queda dentro
+// de los 60 m y la caminata se llevaba al centro. Manzaba 30/09 20:41: 100 m
+// a pie quedaban como una recta entre dos paradas, con flechas que al
+// elegirlas devolvían a la parada. Si en un extremo hay al menos
+// MIN_FIXES_BORDE lecturas seguidas a más de RADIO_NUCLEO_M del centro, son la
+// llegada o la salida y conservan su coordenada.
+const RADIO_NUCLEO_M = 30;
+const MIN_FIXES_BORDE = 3;
 
 export interface Estancia {
   inicio: string;
@@ -44,6 +53,26 @@ function mediana(valores: number[]): number {
   const orden = [...valores].sort((x, y) => x - y);
   const medio = Math.floor(orden.length / 2);
   return orden.length % 2 ? orden[medio] : (orden[medio - 1] + orden[medio]) / 2;
+}
+
+// Lecturas repetidas en el mismo segundo (la app a veces envía dos): se
+// queda la primera. Con dos puntos iguales, "siguiente punto" no avanzaba.
+function sinRepetidos(posiciones: Posicion[]): Posicion[] {
+  return posiciones.filter(
+    (p, i) => i === 0 || Math.floor(ms(p.registradoEn) / 1000) !== Math.floor(ms(posiciones[i - 1].registradoEn) / 1000),
+  );
+}
+
+function recortarNucleo(posiciones: Posicion[], desde: number, hasta: number): [number, number] {
+  const c = centro(posiciones.slice(desde, hasta + 1));
+  const fuera = (k: number) => metros(c, posiciones[k]) > RADIO_NUCLEO_M;
+  let k = desde;
+  while (k < hasta && fuera(k)) k += 1;
+  const inicio = k - desde >= MIN_FIXES_BORDE ? k : desde;
+  k = hasta;
+  while (k > inicio && fuera(k)) k -= 1;
+  const fin = hasta - k >= MIN_FIXES_BORDE ? k : hasta;
+  return [inicio, fin];
 }
 
 function quitarPicos(posiciones: Posicion[]): Posicion[] {
@@ -105,7 +134,7 @@ function fundirEstancias(posiciones: Posicion[], grupos: [number, number][]): [n
 }
 
 export function depurarRecorrido(originales: Posicion[]): { posiciones: Posicion[]; estancias: Estancia[] } {
-  const posiciones = quitarPicos(originales);
+  const posiciones = quitarPicos(sinRepetidos(originales));
   const salida = posiciones.map((p) => ({ ...p }));
   const grupos: [number, number][] = [];
   let i = 0;
@@ -129,8 +158,9 @@ export function depurarRecorrido(originales: Posicion[]): { posiciones: Posicion
     // Los bordes del grupo pueden ser el vehículo frenando o arrancando dentro
     // del radio (Manzaba 19:07:35 a 36 km/h): esas lecturas no son estancia y,
     // llevadas al centro, fingían una llegada recta.
-    let desde = i;
-    let hasta = j - 1;
+    // Primero el núcleo (sobre la estancia entera, así cuentan todas las
+    // lecturas de la llegada o la salida) y después los bordes en movimiento.
+    let [desde, hasta] = j - 1 > i ? recortarNucleo(salida, i, j - 1) : [i, j - 1];
     while (desde < hasta && (salida[desde].velocidadKmh ?? 0) >= VELOCIDAD_BORDE_KMH) desde += 1;
     while (hasta > desde && (salida[hasta].velocidadKmh ?? 0) >= VELOCIDAD_BORDE_KMH) hasta -= 1;
     if (hasta > desde && ms(salida[hasta].registradoEn) - ms(salida[desde].registradoEn) >= DURACION_ESTANCIA_MS) {

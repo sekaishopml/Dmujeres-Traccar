@@ -13,6 +13,14 @@ import ReproductorReplay, {
 } from '@/componentes/replay/ReproductorReplay';
 import FiltroReplay from '@/componentes/replay/FiltroReplay';
 import { flechasDeLineas, lineasDeRecorrido, sinPicos } from '@/componentes/replay/flechas';
+import {
+  COLOR_HORA_TARDE,
+  COLOR_HORA_TEMPRANO,
+  COLOR_POR_HORA,
+  fraccionDelDia,
+  recortarEnParadas,
+  suavizarCaminata,
+} from '@/componentes/replay/trazo';
 import { depurarRecorrido } from '@/dominio/depuracion';
 import { traerFlota, traerJornadas, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from '@/dominio/datos';
 import { esNoEncontrado, mensajeError } from '@/dominio/errores';
@@ -109,29 +117,21 @@ const ID_FLECHA = 'dir-ruta';
 const MIN_PARADA_MS = 3 * 60_000;
 const REFRESCO_VIVO_MS = 15_000;
 const REFRESCO_VIVO_PARADAS_MS = 60_000;
-// Flecha de sentido registrada como imagen del mapa (capa replay-flechas):
-// disco azul marino con borde blanco y punta de flecha blanca hacia el norte;
-// la capa la gira con el rumbo de cada fix.
+// Punta de flecha blanca hacia el norte, registrada como imagen del mapa. El
+// disco de color (según la hora) lo dibuja la capa replay-flechas-disco debajo;
+// la capa replay-flechas gira la punta con el rumbo de cada tramo.
 function imagenDireccion(nucleo: string): ImageData | null {
   const lienzo = document.createElement('canvas');
   lienzo.width = LADO_FLECHA;
   lienzo.height = LADO_FLECHA;
   const contexto = lienzo.getContext('2d');
-  // Sin contexto 2D no hay imagen; la capa de dirección se omite.
   if (!contexto) return null;
   const c = LADO_FLECHA / 2;
   contexto.beginPath();
-  contexto.arc(c, c, c - 3, 0, Math.PI * 2);
-  contexto.fillStyle = COLOR_RUTA;
-  contexto.fill();
-  contexto.lineWidth = 5;
-  contexto.strokeStyle = COLOR_BORDE;
-  contexto.stroke();
-  contexto.beginPath();
-  contexto.moveTo(c, 13);
-  contexto.lineTo(c + 14, 44);
+  contexto.moveTo(c, 14);
+  contexto.lineTo(c + 13, 44);
   contexto.lineTo(c, 36);
-  contexto.lineTo(c - 14, 44);
+  contexto.lineTo(c - 13, 44);
   contexto.closePath();
   contexto.fillStyle = nucleo;
   contexto.fill();
@@ -471,7 +471,10 @@ export default function Replay() {
       // dibuja.
       const dentroDeParada = (desde: number, hasta: number) =>
         ventanasParada.some(([inicio, fin]) => desde >= inicio && hasta <= fin && desde < fin);
-      return segmentosDeRecorrido(posiciones, huecos, reconstruidos).flatMap((segmento) => {
+      // Solo para dibujar: la caminata suavizada (sin "fideo") y, después, la
+      // línea recortada en el borde de cada parada.
+      const trazables = suavizarCaminata(posiciones, paradas);
+      const crudos = segmentosDeRecorrido(trazables, huecos, reconstruidos).flatMap((segmento) => {
         const t = segmento.instante ?? 0;
         // Dentro de una parada todo trazo es deriva del GPS (bajo techo salta
         // 100-200 m): no se dibuja línea ni flechas, la parada se ve con su
@@ -487,17 +490,48 @@ export default function Replay() {
         const dLon = (b[0] - a[0]) * 111320 * Math.cos(((a[1] + b[1]) / 2) * (Math.PI / 180));
         return [Math.hypot(dLat, dLon) >= 40 ? { ...segmento, modo: 'vehiculo' as const } : segmento];
       });
+      const siguiente = new Map(trazables.slice(0, -1).map((p, i) => [milisegundos(p.registradoEn), milisegundos(trazables[i + 1].registradoEn)]));
+      return recortarEnParadas(crudos, paradas, (segmento) => {
+        const t = segmento.instante ?? 0;
+        return (segmento.tipo === 'ruta' ? siguiente.get(t) : finTramo.get(t)) ?? t;
+      });
     },
     [posiciones, huecos, reconstruidos, paradas],
   );
-  const coleccion = useMemo(() => aColeccion(segmentos), [segmentos]);
+  // Hora del día de cada trazo (0 = primer fix, 1 = último): da el tono.
+  const [primerMs, ultimoMs] = useMemo(
+    () =>
+      posiciones.length > 0
+        ? [milisegundos(posiciones[0].registradoEn), milisegundos(posiciones[posiciones.length - 1].registradoEn)]
+        : [0, 0],
+    [posiciones],
+  );
+  const coleccion = useMemo(() => {
+    const base = aColeccion(segmentos);
+    return {
+      ...base,
+      features: base.features.map((f) => ({
+        ...f,
+        properties: { ...f.properties, f: fraccionDelDia(Number(f.properties?.instante ?? ultimoMs), primerMs, ultimoMs) },
+      })),
+    };
+  }, [segmentos, primerMs, ultimoMs]);
   // Flechas de sentido sobre la línea dibujada, con zoom progresivo y la hora
   // de paso de cada una (ver flechas.ts). La línea pasa por todos los fixes,
   // también los aproximados (antena/wifi): el servidor no los usa para el
   // ajuste a calles, pero el recorrido se ve continuo y el globo del punto
   // avisa "Ubicación aproximada ±N m".
   const lineas = useMemo(() => lineasDeRecorrido(posiciones, segmentos, reconstruidos), [posiciones, segmentos, reconstruidos]);
-  const direccion = useMemo(() => flechasDeLineas(lineas), [lineas]);
+  const direccion = useMemo(() => {
+    const base = flechasDeLineas(lineas);
+    return {
+      ...base,
+      features: base.features.map((f) => ({
+        ...f,
+        properties: { ...f.properties, f: fraccionDelDia(Number(f.properties?.t), primerMs, ultimoMs) },
+      })),
+    };
+  }, [lineas, primerMs, ultimoMs]);
   // Halos de parada (círculo sutil por insignia) y nube de fixes quietos: la
   // dispersión real sin líneas que la unan.
   const halos = useMemo(() => halosDeParadas(posiciones, paradas), [posiciones, paradas]);
@@ -570,7 +604,7 @@ export default function Replay() {
         id: 'replay-borde',
         type: 'line',
         source: 'replay-recorrido',
-        filter: ['all', trazo, noQuieto, ['!=', ['get', 'modo'], 'caminata']] as never,
+        filter: ['all', trazo, noQuieto] as never,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': COLOR_BORDE,
@@ -586,7 +620,7 @@ export default function Replay() {
         filter: ['all', ['in', ['get', 'tipo'], ['literal', ['ruta', 'matched']]], noQuieto, ['!=', ['get', 'modo'], 'caminata']] as never,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': COLOR_RUTA,
+          'line-color': COLOR_POR_HORA as never,
           'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3, 14, 5, 17, 7.5],
         },
       });
@@ -598,9 +632,11 @@ export default function Replay() {
         source: 'replay-recorrido',
         filter: ['all', ['==', ['get', 'tipo'], 'ruta'], ['==', ['get', 'modo'], 'caminata']] as never,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
+        // A pie, un poco más fina que en vehículo pero con borde blanco: se
+        // lee como recorrido y no como un hilo suelto.
         paint: {
-          'line-color': COLOR_RUTA,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.6, 16, 3],
+          'line-color': COLOR_POR_HORA as never,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.4, 14, 3.8, 17, 5.5],
         },
       });
     }
@@ -612,7 +648,7 @@ export default function Replay() {
         filter: ['==', ['get', 'tipo'], 'estimated'],
         layout: { 'line-join': 'round' },
         paint: {
-          'line-color': COLOR_RUTA,
+          'line-color': COLOR_POR_HORA as never,
           'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.2, 16, 4],
           'line-dasharray': [1.2, 1.2],
         },
@@ -647,9 +683,24 @@ export default function Replay() {
     // Versión anterior: círculos huecos de ubicación aproximada (se retiran).
     if (mapa.getLayer('replay-aproximado')) mapa.removeLayer('replay-aproximado');
     // Flechas de sentido: punta blanca con filo del color de su línea.
+    // Disco del color de su hora (capa de círculos) y punta blanca encima.
     if (mapa.hasImage(ID_FLECHA)) mapa.removeImage(ID_FLECHA);
     const imagenFlecha = imagenDireccion(NUCLEO_FLECHA);
     if (imagenFlecha) mapa.addImage(ID_FLECHA, imagenFlecha, { pixelRatio: PIXEL_RATIO_FLECHA });
+    if (!mapa.getLayer('replay-flechas-disco')) {
+      mapa.addLayer({
+        id: 'replay-flechas-disco',
+        type: 'circle',
+        source: 'replay-flechas',
+        filter: ['<=', ['get', 'n'], ['zoom']] as never,
+        paint: {
+          'circle-color': COLOR_POR_HORA as never,
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 6, 15, 7.5, 18, 9.5],
+          'circle-stroke-color': COLOR_BORDE,
+          'circle-stroke-width': 1.5,
+        },
+      });
+    }
     // Capas de flechas de versiones anteriores (chevrones a lo largo de la
     // línea) se reemplazan por la flecha por fix.
     if (mapa.getLayer('replay-flechas') && mapa.getLayoutProperty('replay-flechas', 'symbol-placement') === 'line') {
@@ -853,6 +904,13 @@ export default function Replay() {
             el set de capas sin "Mapa" (Satélite inicial) y el zoom abajo a la
             derecha, con el selector pegado al top bar. */}
         <MapaRaster clase="mapa" alListo={setMapa} capas={CAPAS_REPLAY} capaInicial={CAPA_INICIAL_REPLAY} zoomAbajoDerecha selectorPegado />
+        {hayRecorrido && (
+          <div className="replay-leyenda-hora" title="El trazo y sus flechas van de claro (más temprano) a oscuro (más tarde)">
+            <span>{horaCorta(posiciones[0].registradoEn)}</span>
+            <i style={{ background: `linear-gradient(90deg, ${COLOR_HORA_TEMPRANO}, ${COLOR_HORA_TARDE})` }} />
+            <span>{horaCorta(posiciones[posiciones.length - 1].registradoEn)}</span>
+          </div>
+        )}
         {/* Insignias de parada sobre el mapa, dentro del proveedor del
             reproductor: comparten selección con la lista y llevan el mapa a la
             parada con un vuelo suave al pulsarlas. No pintan nada en el DOM. */}

@@ -15,6 +15,16 @@
 }
 
 .replay-pantalla {
+  /* Leyenda del color por hora: claro = más temprano, oscuro = más tarde. */
+  & .replay-leyenda-hora {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3;
+    display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+    border-radius: 999px; background: var(--color-superficie, #fff);
+    box-shadow: 0 4px 14px rgb(11 37 69 / 0.14);
+    font-size: 11.5px; font-weight: 600; color: var(--color-marino-900, #0b2545);
+    font-variant-numeric: tabular-nums; pointer-events: auto;
+  }
+  & .replay-leyenda-hora i { display: block; width: 88px; height: 6px; border-radius: 999px; }
 
   /* ── Marca ──────────────────────────────────────────────────────────────
      Azul marino oscuro para la estructura (lateral, títulos), azul marino

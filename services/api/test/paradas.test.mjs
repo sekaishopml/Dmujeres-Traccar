@@ -129,3 +129,15 @@ test('una salida real de más de 2 min a más de 200 m sí parte la estancia', (
   const largas = paradas.filter((x) => x.segundos >= 20 * 60);
   assert.equal(largas.length, 2);
 });
+
+test('Manzaba 20:41: salir caminando despacio no queda dentro de la parada', () => {
+  const puntos = [
+    ...quieto(0, 10, -2.22742, -79.88846),
+    // Sale a pie hacia el oeste, ~4 km/h (11 m cada 10 s): los 5 pasos quedan
+    // dentro de 60 m, los 3 últimos fuera del núcleo de 30 m.
+    ...[1, 2, 3, 4, 5].map((n) => p(hm(10, n * 10), -2.2274, -79.88846 - n * 0.0001, 3)),
+  ];
+  const [parada] = detectarParadas(puntos);
+  assert.ok(parada, 'hay parada');
+  assert.ok(parada.fin.getTime() <= Date.parse('2026-09-30T15:10:20Z'), `la parada no se come la salida (${parada.fin.toISOString()})`);
+});

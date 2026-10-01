@@ -60,3 +60,14 @@ Lo que falta es ajuste de captura, higiene de jornada y que el panel vea los pro
 | 5 | Tramos de metro y causa de los huecos (sección 2) | Propuesto |
 | 6 | Una OTA por día como máximo, primero a un equipo de prueba (`ota/rollout.json`) | Proceso |
 | 7 | Revisar en persona la app de Alejandro (2.1.73) | Operación |
+
+## 5. Manzaba 20:41: línea falsa entre paradas, "fideo" y saltos de "siguiente punto" (panel 1.13.0)
+
+| Síntoma | Causa | Arreglo |
+|---|---|---|
+| Recta larga con flechas entre la parada del edificio y la de Mi Comisariato. Al elegir cualquier flecha volvía a la parada y "siguiente punto" saltaba 60 m. | Salió caminando despacio (unos 100 m a 4–5 km/h). Esos pasos quedaban dentro del radio de 60 m de las dos paradas y se movían a sus centros, así que la caminata quedaba en dos puntos. | **Núcleo de parada** (servidor `paradas.js` y panel `dominio/depuracion.ts`): si en un extremo hay al menos 3 puntos seguidos a más de 30 m del centro, son llegada o salida y conservan su coordenada. Ahora "siguiente punto" avanza de 1 a 10 m por paso en esa caminata. |
+| Puntos repetidos | La app a veces envía dos puntos en el mismo segundo. | El panel deja uno por segundo (`sinRepetidos`). |
+| Línea vertical que cruzaba el círculo de la parada | El ajuste a calles terminaba en el callejón de atrás del edificio. | La línea se recorta en el borde de la parada, a 25 m del centro (`componentes/replay/trazo.ts`, `recortarEnParadas`). |
+| "Fideo": trazo a pie fino y ondulado, flechas de pasadas distintas mezcladas | El GPS a pie oscila de 5 a 15 m, y la caminata se dibujaba como un hilo fino. | La caminata se suaviza para dibujar (promedio con sus 2 vecinas, sin tocar los datos) y se dibuja más gruesa, con borde blanco. **El color va según la hora:** claro temprano y oscuro tarde, en las líneas y en el disco de las flechas, con una leyenda en el mapa. Las pasadas de la mañana y de la noche por la misma calle se distinguen. |
+
+Pruebas: `services/api/test/paradas.test.mjs` incluye "salir caminando despacio no queda dentro de la parada". Pasan 28 de 28.

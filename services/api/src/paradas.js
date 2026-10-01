@@ -22,6 +22,9 @@ export const RADIO_M = 60;
 export const MIN_PARADA_S = 120;
 export const PRECISION_BUENA_M = 80;
 export const MAX_HUECO_S = 30 * 60;
+// Núcleo de la parada: los extremos más lejos que esto del centro se recortan.
+export const RADIO_NUCLEO_M = 30;
+export const MIN_FIXES_BORDE = 3;
 
 function metros(a, b) {
   const dLat = (b.latitud - a.latitud) * 111320;
@@ -68,16 +71,31 @@ export function detectarParadas(puntos) {
       }
       j += 1;
     }
-    const segundos = (ms(puntos[ultimo]) - ms(puntos[i])) / 1000;
-    if (segundos >= MIN_PARADA_S && buenos.length >= 2) {
+    // Bordes: llegar o salir caminando despacio queda dentro del radio de 60 m
+    // y se contaba como parada (Manzaba 30/09 20:41: 100 m a pie entre dos
+    // paradas desaparecían). Los fixes de los extremos a más de RADIO_NUCLEO_M
+    // del centro son la llegada o la salida, no la estancia.
+    // Solo se recorta un borde con al menos MIN_FIXES_BORDE fixes fuera del
+    // núcleo: uno suelto es deriva o muestreo ralo (mantilla 29/09 21:03).
+    const fuera = (k) => !bueno(puntos[k]) || metros(centro, puntos[k]) > RADIO_NUCLEO_M;
+    let primero = i;
+    let k = i;
+    while (k < ultimo && fuera(k)) k += 1;
+    if (puntos.slice(i, k).filter(bueno).length >= MIN_FIXES_BORDE) primero = k;
+    k = ultimo;
+    while (k > primero && fuera(k)) k -= 1;
+    if (puntos.slice(k + 1, ultimo + 1).filter(bueno).length >= MIN_FIXES_BORDE) ultimo = k;
+    const nucleo = puntos.slice(primero, ultimo + 1).filter(bueno);
+    const segundos = (ms(puntos[ultimo]) - ms(puntos[primero])) / 1000;
+    if (segundos >= MIN_PARADA_S && nucleo.length >= 2) {
       paradas.push({
-        inicio: new Date(ms(puntos[i])),
+        inicio: new Date(ms(puntos[primero])),
         fin: new Date(ms(puntos[ultimo])),
         segundos,
         latitud: centro.latitud,
         longitud: centro.longitud,
-        precisionM: mediana(buenos.map((x) => x.precisionM ?? 0)),
-        fixes: buenos.length,
+        precisionM: mediana(nucleo.map((x) => x.precisionM ?? 0)),
+        fixes: nucleo.length,
       });
       i = ultimo + 1;
     } else {
