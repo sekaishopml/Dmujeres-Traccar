@@ -393,6 +393,8 @@ async function contarAdministradoresActivos(cliente) {
 }
 
 async function sincronizarGrupos(cliente, usuarioId, grupos) {
+  // Una persona pertenece a un solo grupo.
+  if (grupos.length > 1) throw datosInvalidos('Una persona solo puede estar en un grupo.');
   await cliente.query('DELETE FROM iam.dmt_usuario_grupo WHERE usuario_id = $1', [Number(usuarioId)]);
   for (const grupo of grupos) {
     await cliente.query(

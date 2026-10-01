@@ -167,8 +167,10 @@ function comoArreglo<T>(respuesta: T[] | { datos?: T[] } | null | undefined): T[
 }
 
 export async function traerUsuariosPlataforma(opciones?: OpcionesPeticion): Promise<UsuarioPlataforma[]> {
+  // tamano 200 (máximo del API): por defecto son 25 y con 50 personas el
+  // panel solo veía la mitad (lista de usuarios y diálogo de grupos).
   const respuesta = await api.get<UsuarioPlataforma[] | { datos: UsuarioPlataforma[] }>(
-    '/api/v1/usuarios',
+    `/api/v1/usuarios${consulta({ tamano: 200 })}`,
     opciones,
   );
   return comoArreglo(respuesta);
@@ -176,7 +178,7 @@ export async function traerUsuariosPlataforma(opciones?: OpcionesPeticion): Prom
 
 export async function traerGrupos(opciones?: OpcionesPeticion): Promise<GrupoPlataforma[]> {
   const respuesta = await api.get<GrupoPlataforma[] | { datos: GrupoPlataforma[] }>(
-    '/api/v1/grupos',
+    `/api/v1/grupos${consulta({ tamano: 200 })}`,
     opciones,
   );
   return comoArreglo(respuesta);

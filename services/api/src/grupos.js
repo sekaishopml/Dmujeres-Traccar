@@ -256,7 +256,7 @@ export async function reemplazarMiembros(ctx) {
     let personas = [];
     if (usuarioIds.length > 0) {
       const { rows } = await cliente.query(
-        `SELECT id, id_publico, nombre_usuario FROM iam.dmt_usuario
+        `SELECT id, id_publico, nombre_usuario, nombre, habilitado FROM iam.dmt_usuario
           WHERE id_publico::text = ANY($1) OR id::text = ANY($1) OR nombre_usuario = ANY($1)`,
         [usuarioIds],
       );
@@ -275,6 +275,25 @@ export async function reemplazarMiembros(ctx) {
         if (vistos.has(String(fila.id))) continue;
         vistos.add(String(fila.id));
         personas.push(fila);
+      }
+    }
+    // Reglas del grupo: una persona pertenece a un solo grupo y una cuenta
+    // dada de baja no se suma. Si alguna no cumple, no se cambia nada.
+    const debaja = personas.filter((p) => !p.habilitado).map((p) => p.nombre);
+    if (debaja.length > 0) throw conflicto(`Está dada de baja: ${debaja.join(', ')}. Reactívala antes de sumarla.`);
+    if (personas.length > 0) {
+      const { rows: enOtro } = await cliente.query(
+        `SELECT u.nombre, g.nombre AS grupo
+           FROM iam.dmt_usuario_grupo ug
+           JOIN iam.dmt_usuario u ON u.id = ug.usuario_id
+           JOIN iam.dmt_grupo g ON g.id = ug.grupo_id
+          WHERE ug.usuario_id = ANY($1::bigint[]) AND ug.grupo_id <> $2`,
+        [personas.map((p) => p.id), grupo.id],
+      );
+      if (enOtro.length > 0) {
+        throw conflicto(
+          `Ya pertenece a otro grupo: ${enOtro.map((f) => `${f.nombre} (${f.grupo})`).join(', ')}. Quítala de ese grupo primero.`,
+        );
       }
     }
     await cliente.query('DELETE FROM iam.dmt_usuario_grupo WHERE grupo_id = $1', [grupo.id]);

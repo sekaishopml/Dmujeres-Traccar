@@ -194,16 +194,26 @@ function ListaMiembros({
 
   // Orden fijo al abrir (no salta al marcar): primero quienes ya están en el
   // grupo, luego las personas disponibles y al final las dadas de baja.
-  const { enGrupo, disponibles } = useMemo(() => {
+  const { enGrupo, disponibles, ocultas } = useMemo(() => {
     const porNombre = (a: UsuarioPlataforma, b: UsuarioPlataforma) =>
       Number(a.habilitado === false) - Number(b.habilitado === false) ||
       (a.nombre || a.usuario || '').localeCompare(b.nombre || b.usuario || '', 'es');
     const dentro = new Set(iniciales);
+    // Disponibles: personas activas que no están en otro grupo (una persona
+    // pertenece a un solo grupo; el servidor también lo exige). Las cuentas de
+    // administración no son personas de campo.
+    const enOtroGrupo = (u: UsuarioPlataforma) =>
+      (u.grupos ?? []).some((g) => String(g.id) !== String(grupo.id));
+    const fuera = usuarios.filter((u) => !dentro.has(claveUsuario(u)));
     return {
       enGrupo: usuarios.filter((u) => dentro.has(claveUsuario(u))).sort(porNombre),
-      disponibles: usuarios.filter((u) => !dentro.has(claveUsuario(u))).sort(porNombre),
+      disponibles: fuera.filter((u) => u.habilitado !== false && !u.administrador && !enOtroGrupo(u)).sort(porNombre),
+      ocultas: {
+        otroGrupo: fuera.filter((u) => u.habilitado !== false && enOtroGrupo(u)).length,
+        deBaja: fuera.filter((u) => u.habilitado === false).length,
+      },
     };
-  }, [usuarios, iniciales]);
+  }, [usuarios, iniciales, grupo]);
 
   function alternar(clave: string) {
     setElegidos((actuales) => (actuales.includes(clave) ? actuales.filter((otro) => otro !== clave) : [...actuales, clave]));
@@ -256,12 +266,26 @@ function ListaMiembros({
               <div className="flex flex-col gap-2.5">{enGrupo.map(fila)}</div>
             )}
           </fieldset>
-          {disponibles.length > 0 && (
-            <fieldset>
-              <legend className="mb-2 text-[12px] font-semibold text-marino-900">Disponibles para sumar ({disponibles.length})</legend>
+          <fieldset>
+            <legend className="mb-2 text-[12px] font-semibold text-marino-900">Disponibles para sumar ({disponibles.length})</legend>
+            {disponibles.length === 0 ? (
+              <p className="text-[13px] text-texto-3">No hay personas libres para sumar.</p>
+            ) : (
               <div className="flex flex-col gap-2.5">{disponibles.map(fila)}</div>
-            </fieldset>
-          )}
+            )}
+            {(ocultas.otroGrupo > 0 || ocultas.deBaja > 0) && (
+              <p className="mt-3 text-[12px] text-texto-3">
+                No se muestran{' '}
+                {[
+                  ocultas.otroGrupo > 0 && `${ocultas.otroGrupo} ${ocultas.otroGrupo === 1 ? 'persona que ya está' : 'personas que ya están'} en otro grupo`,
+                  ocultas.deBaja > 0 && `${ocultas.deBaja} ${ocultas.deBaja === 1 ? 'dada' : 'dadas'} de baja`,
+                ]
+                  .filter(Boolean)
+                  .join(' ni ')}
+                . Cada persona pertenece a un solo grupo.
+              </p>
+            )}
+          </fieldset>
         </div>
       )}
       {error != null && <AvisoError>{mensajeError(error)}</AvisoError>}

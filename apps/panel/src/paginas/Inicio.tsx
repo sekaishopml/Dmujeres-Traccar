@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -30,6 +30,16 @@ const REFRESCO_MS = 15_000;
 const REFRESCO_DIA_MS = 60_000;
 const BATERIA_BAJA_PCT = 15;
 const JORNADA_LARGA_H = 16;
+// Personas en jornada que se nombran arriba; el resto, en la tabla filtrada.
+const MAX_EN_JORNADA = 8;
+
+type FiltroPersonas = 'todas' | 'jornada' | 'revisar' | 'senal';
+const FILTROS: { valor: FiltroPersonas; etiqueta: string }[] = [
+  { valor: 'todas', etiqueta: 'Todas' },
+  { valor: 'jornada', etiqueta: 'En jornada' },
+  { valor: 'revisar', etiqueta: 'Para revisar' },
+  { valor: 'senal', etiqueta: 'Sin señal' },
+];
 
 const PUNTO_ESTADO: Record<string, string> = {
   enLinea: 'bg-movimiento',
@@ -230,7 +240,7 @@ export default function Inicio() {
 
   // Personas: primero quien está en jornada, después quien requiere revisión,
   // y por nombre.
-  const filas = useMemo(
+  const ordenadas = useMemo(
     () =>
       [...equipos].sort(
         (a, b) =>
@@ -240,6 +250,25 @@ export default function Inicio() {
       ),
     [equipos, enRevision],
   );
+  // Con 50 personas la tabla se filtra y se busca: no crece sin límite.
+  const [filtro, setFiltro] = useState<FiltroPersonas>('todas');
+  const [busqueda, setBusqueda] = useState('');
+  const cuentaFiltro: Record<FiltroPersonas, number> = {
+    todas: equipos.length,
+    jornada: equipos.filter((e) => e.jornadaActiva).length,
+    revisar: enRevision.size,
+    senal: equipos.filter((e) => ['sinSenal', 'desconocido'].includes(claveEstado(e))).length,
+  };
+  const filas = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase();
+    return ordenadas.filter((e) => {
+      if (texto && !e.nombre.toLowerCase().includes(texto) && !e.identificadorUnico.toLowerCase().includes(texto)) return false;
+      if (filtro === 'jornada') return e.jornadaActiva;
+      if (filtro === 'revisar') return enRevision.has(e.id);
+      if (filtro === 'senal') return ['sinSenal', 'desconocido'].includes(claveEstado(e));
+      return true;
+    });
+  }, [ordenadas, busqueda, filtro, enRevision]);
 
 
   const actualizado = flota.dataUpdatedAt ? hace(new Date(flota.dataUpdatedAt).toISOString()) : null;
@@ -265,20 +294,53 @@ export default function Inicio() {
           {/* Lo que importa hoy: quién está en jornada y qué pasó (eventos de la
               app + actividades subidas al cronograma). */}
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-            <EnJornada personas={equipos.filter((e) => e.jornadaActiva)} total={equipos.length} jornadas={jornadaPorPersona} hoy={hoy} />
+            <EnJornada
+              personas={equipos.filter((e) => e.jornadaActiva)}
+              total={equipos.length}
+              jornadas={jornadaPorPersona}
+              hoy={hoy}
+              alVerTodas={() => {
+                setFiltro('jornada');
+                document.getElementById('tabla-personas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+            />
             <ContadorEventos eventos={eventos.data ?? null} />
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <Tarjeta className="min-w-0 overflow-hidden">
-              <div className="flex items-baseline justify-between px-4 pt-3.5 pb-2.5">
-                <h2 className="text-[15px] font-semibold">Personas · hoy</h2>
-                <span className="text-[12px] text-texto-3">{equipos.length} activas</span>
+            <Tarjeta className="min-w-0 overflow-hidden" id="tabla-personas">
+              <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5 pb-2.5">
+                <h2 className="mr-auto text-[15px] font-semibold">Personas · hoy</h2>
+                <div className="flex flex-wrap gap-1" role="group" aria-label="Filtrar personas">
+                  {FILTROS.map((f) => (
+                    <button
+                      key={f.valor}
+                      type="button"
+                      onClick={() => setFiltro(f.valor)}
+                      aria-pressed={filtro === f.valor}
+                      className={cn(
+                        'inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium transition-colors',
+                        filtro === f.valor ? 'border-tinta-2 bg-tinta-2 text-white' : 'border-borde text-texto-2 hover:border-marino-300 hover:text-marino-900',
+                      )}
+                    >
+                      {f.etiqueta}
+                      <span className={cn('cifras', filtro === f.valor ? 'text-white/80' : 'text-texto-3')}>{cuentaFiltro[f.valor]}</span>
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="search"
+                  value={busqueda}
+                  onChange={(ev) => setBusqueda(ev.target.value)}
+                  placeholder="Buscar persona"
+                  aria-label="Buscar persona"
+                  className="h-7 w-40 rounded-full border border-borde bg-superficie px-3 text-[12px] focus-visible:border-marca focus-visible:outline-none"
+                />
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-auto" style={{ maxHeight: 'min(620px, calc(100vh - 260px))' }}>
                 <table className="w-full min-w-[820px] text-[13px]">
-                  <thead>
-                    <tr className="border-y border-borde bg-marino-50/60 text-left text-[10.5px] font-semibold tracking-[0.06em] text-texto-3 uppercase">
+                  <thead className="sticky top-0 z-[2]">
+                    <tr className="border-y border-borde bg-marino-50 text-left text-[10.5px] font-semibold tracking-[0.06em] text-texto-3 uppercase">
                       <th className="px-4 py-2">Persona</th>
                       <th className="px-3 py-2">Estado</th>
                       <th className="px-3 py-2">Jornada</th>
@@ -290,6 +352,13 @@ export default function Inicio() {
                     </tr>
                   </thead>
                   <tbody>
+                    {filas.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-6 text-center text-[12.5px] text-texto-3">
+                          Nadie coincide con el filtro.
+                        </td>
+                      </tr>
+                    )}
                     {filas.map((e) => (
                       <FilaPersona
                         key={e.id}
@@ -518,11 +587,13 @@ function EnJornada({
   total,
   jornadas,
   hoy,
+  alVerTodas,
 }: {
   personas: Dispositivo[];
   total: number;
   jornadas: Map<string, { inicioEn: string; finEn: string | null }>;
   hoy: string;
+  alVerTodas: () => void;
 }) {
   const visibles = [...personas].sort((a, b) =>
     (jornadas.get(a.idPublico)?.inicioEn ?? '').localeCompare(jornadas.get(b.idPublico)?.inicioEn ?? ''),
@@ -543,11 +614,11 @@ function EnJornada({
       {visibles.length === 0 ? (
         <p className="mt-3 text-[12.5px] text-texto-2">Nadie ha iniciado jornada.</p>
       ) : (
-        <ul className="inicio-lista mt-3 flex flex-wrap gap-1.5" style={{ maxHeight: 132 }}>
-          {visibles.map((p, i) => {
+        <ul className="mt-3 flex flex-wrap gap-1.5">
+          {visibles.slice(0, MAX_EN_JORNADA).map((p) => {
             const j = jornadas.get(p.idPublico);
             return (
-              <li key={p.id} style={{ '--orden': i } as CSSProperties}>
+              <li key={p.id}>
                 <Link
                   to={`/replay${consulta({ dispositivo: p.idPublico, desde: hoy, hasta: hoy })}`}
                   className="inline-flex items-center gap-1.5 rounded-full border border-borde bg-fondo/60 py-0.5 pr-2.5 pl-0.5 text-[12px] transition-colors hover:border-marca/40 hover:bg-marca-suave"
@@ -560,6 +631,17 @@ function EnJornada({
               </li>
             );
           })}
+          {visibles.length > MAX_EN_JORNADA && (
+            <li>
+              <button
+                type="button"
+                onClick={alVerTodas}
+                className="inline-flex h-[30px] cursor-pointer items-center rounded-full border border-dashed border-marino-300 px-3 text-[12px] font-semibold text-marino-800 hover:border-marca hover:text-marca"
+              >
+                +{visibles.length - MAX_EN_JORNADA} más · ver en la tabla
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </Tarjeta>

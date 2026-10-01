@@ -160,5 +160,9 @@ export function configAppDe(atributos) {
 }
 
 export async function obtenerEsquema(ctx) {
-  respuestaJson(ctx.res, 200, { datos: ESQUEMA_CONFIG_APP });
+  // Cada clave lleva su valor por defecto: el panel muestra el valor vigente
+  // (el de la persona o, si no tiene, este).
+  respuestaJson(ctx.res, 200, {
+    datos: ESQUEMA_CONFIG_APP.map((entrada) => ({ ...entrada, porDefecto: CONFIG_POR_DEFECTO[entrada.clave] ?? null })),
+  });
 }

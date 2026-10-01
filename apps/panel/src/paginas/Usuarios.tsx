@@ -27,7 +27,7 @@ import {
 import { AccionesPagina } from '@/componentes/marco/Marco';
 import { Avatar } from '@/componentes/ui/Avatar';
 import { Boton, BotonIcono } from '@/componentes/ui/Boton';
-import { Campo, Casilla, Entrada, Selector } from '@/componentes/ui/Campo';
+import { Campo, Entrada, Selector } from '@/componentes/ui/Campo';
 import { Insignia } from '@/componentes/ui/ChipEstado';
 import { Dialogo } from '@/componentes/ui/Dialogo';
 import { Cargando, ErrorCarga, Vacio } from '@/componentes/ui/Estados';
@@ -117,12 +117,16 @@ function DialogoCuenta({
   const [nombre, setNombre] = useState(usuario?.nombre ?? '');
   const [telefono, setTelefono] = useState(usuario?.telefono ?? '');
   const [cargo, setCargo] = useState(usuario?.cargo ?? '');
-  const [grupoIds, setGrupoIds] = useState<string[]>(() => (usuario?.grupos ?? []).map((grupo) => String(grupo.id)));
+  // Los grupos de la persona vienen con id numérico y el selector usa el id
+  // público: se traducen con la lista de grupos (antes salía "Sin grupo" y al
+  // guardar se la sacaba del grupo).
+  const [grupoIds, setGrupoIds] = useState<string[]>(() =>
+    (usuario?.grupos ?? []).flatMap((g) => {
+      const grupo = grupos.find((x) => String(x.id) === String(g.id) || String(x.idPublico) === String(g.id));
+      return grupo ? [idTextoGrupo(grupo)] : [];
+    }),
+  );
   const [validacion, setValidacion] = useState('');
-
-  function alternarGrupo(id: string) {
-    setGrupoIds((actuales) => (actuales.includes(id) ? actuales.filter((otro) => otro !== id) : [...actuales, id]));
-  }
 
   function enviar() {
     if (!usuario && !cuenta.trim()) return setValidacion('Escribe el nombre con el que la persona va a entrar.');
@@ -223,23 +227,31 @@ function DialogoCuenta({
         </Campo>
       </div>
       <fieldset>
-        <legend className="mb-1.5 text-[12px] font-semibold text-marino-900">Grupos</legend>
+        <legend className="mb-1.5 text-[12px] font-semibold text-marino-900">Grupo</legend>
         {gruposError != null && (
           <p className="text-[12.5px] text-texto-3">No se pudieron cargar los grupos; puedes guardar sin cambiarlos.</p>
         )}
         {grupos.length === 0 && gruposError == null && (
           <p className="text-[12.5px] text-texto-3">Todavía no hay grupos creados.</p>
         )}
-        <div className="flex flex-col gap-2">
-          {grupos.map((grupo) => (
-            <Casilla
-              key={idTextoGrupo(grupo)}
-              etiqueta={grupo.nombre}
-              checked={grupoIds.includes(idTextoGrupo(grupo))}
-              onChange={() => alternarGrupo(idTextoGrupo(grupo))}
-            />
-          ))}
-        </div>
+        {grupos.length > 0 && (
+          <>
+            {/* Una persona pertenece a un solo grupo (el servidor también lo exige). */}
+            <Selector
+              aria-label="Grupo"
+              value={grupoIds[0] ?? ''}
+              onChange={(evento) => setGrupoIds(evento.target.value ? [evento.target.value] : [])}
+            >
+              <option value="">Sin grupo</option>
+              {grupos.map((grupo) => (
+                <option key={idTextoGrupo(grupo)} value={idTextoGrupo(grupo)}>
+                  {grupo.nombre}
+                </option>
+              ))}
+            </Selector>
+            <p className="mt-1 text-[11.5px] text-texto-3">Cada persona pertenece a un solo grupo.</p>
+          </>
+        )}
       </fieldset>
       {validacion !== '' ? (
         <AvisoError>{validacion}</AvisoError>
@@ -248,6 +260,47 @@ function DialogoCuenta({
       ) : null}
     </DialogoFormulario>
   );
+}
+
+// Valor de un ajuste como lo lee una persona (Activado, Alta, 10 s…).
+const TEXTOS_AJUSTE: Record<string, string> = {
+  high: 'Alta',
+  medium: 'Media',
+  low: 'Baja',
+  drop_oldest: 'Borrar lo más viejo',
+  drop_newest: 'No guardar lo nuevo',
+};
+const UNIDAD_AJUSTE: Record<string, string> = {
+  intervalSeconds: 's',
+  min_interval_seconds: 's',
+  ackTimeoutSeconds: 's',
+  distanceMeters: 'm',
+  angleDegrees: '°',
+  l1_max_update_delay_ms: 'ms',
+};
+function valorLegible(valor: ValorAjuste | null | undefined, clave: string): string {
+  if (valor == null || valor === '') return GUION;
+  if (typeof valor === 'boolean') return valor ? 'Activado' : 'Desactivado';
+  if (typeof valor === 'number') return UNIDAD_AJUSTE[clave] ? `${valor} ${UNIDAD_AJUSTE[clave]}` : String(valor);
+  return TEXTOS_AJUSTE[valor] ?? valor;
+}
+
+// Clave del esquema de la app -> clave del equipo (mobile.*).
+const CLAVE_EQUIPO: Record<string, string> = {
+  intervalSeconds: 'mobile.intervalSeconds',
+  min_interval_seconds: 'mobile.minIntervalSeconds',
+  distanceMeters: 'mobile.distanceMeters',
+  angleDegrees: 'mobile.angleDegrees',
+  accuracy: 'mobile.accuracy',
+  bufferEnabled: 'mobile.bufferEnabled',
+  bufferMax: 'mobile.bufferMax',
+  bufferPolicy: 'mobile.bufferPolicy',
+  ackTimeoutSeconds: 'mobile.ackTimeoutSeconds',
+  maxRetries: 'mobile.maxRetries',
+};
+function valorEquipo(config: Record<string, unknown> | null, clave: string): ValorAjuste {
+  const valor = config?.[CLAVE_EQUIPO[clave] ?? ''];
+  return typeof valor === 'number' || typeof valor === 'boolean' || typeof valor === 'string' ? valor : null;
 }
 
 function textoDesdeAjuste(valor: unknown): string {
@@ -266,6 +319,7 @@ function DialogoAjustes({
   error,
   alGuardar,
   alCerrar,
+  configEquipo,
 }: {
   usuario: UsuarioPlataforma;
   esquema: EntradaEsquemaAjustes[];
@@ -275,6 +329,9 @@ function DialogoAjustes({
   error: unknown;
   alGuardar: (ajustes: Record<string, ValorAjuste>) => void;
   alCerrar: () => void;
+  // Configuración propia del equipo de la persona: si fija un valor, ese manda
+  // (mismo orden que el servidor en /api/mobile/v1/config).
+  configEquipo: Record<string, unknown> | null;
 }) {
   const [valores, setValores] = useState<Record<string, string>>(() => {
     const iniciales: Record<string, string> = {};
@@ -296,7 +353,7 @@ function DialogoAjustes({
         ajustes[entrada.clave] = null;
         continue;
       }
-      if (entrada.tipo === 'numero') {
+      if (entrada.tipo === 'numero' || entrada.tipo === 'entero') {
         const numero = Number(texto);
         if (!Number.isFinite(numero)) return setValidacion(`“${entrada.etiqueta}” debe ser un número.`);
         if (entrada.min !== undefined && numero < entrada.min) {
@@ -304,6 +361,9 @@ function DialogoAjustes({
         }
         if (entrada.max !== undefined && numero > entrada.max) {
           return setValidacion(`“${entrada.etiqueta}” no puede ser mayor de ${entrada.max}.`);
+        }
+        if (entrada.tipo === 'entero' && !Number.isInteger(numero)) {
+          return setValidacion(`“${entrada.etiqueta}” debe ser un número entero.`);
         }
         ajustes[entrada.clave] = numero;
       } else if (entrada.tipo === 'booleano') {
@@ -345,7 +405,7 @@ function DialogoAjustes({
     <DialogoFormulario
       id="form-ajustes"
       titulo={titulo}
-      descripcion="Solo se guarda lo que cambies. Un campo vacío deja ese ajuste sin definir."
+      descripcion="Cada ajuste muestra el valor que rige hoy. Un campo vacío usa el valor por defecto del sistema."
       alCerrar={alCerrar}
       alEnviar={enviar}
       guardando={guardando}
@@ -355,26 +415,49 @@ function DialogoAjustes({
         <Campo
           key={entrada.clave}
           etiqueta={entrada.etiqueta}
-          ayuda={entrada.descripcion !== '' ? entrada.descripcion : undefined}
+          ayuda={
+            <>
+              {(() => {
+                const delEquipo = valorEquipo(configEquipo, entrada.clave);
+                const dePersona = usuario.configApp?.[entrada.clave] ?? null;
+                const valor = delEquipo ?? dePersona ?? entrada.porDefecto ?? null;
+                const origen =
+                  delEquipo != null
+                    ? ' · lo fija el equipo en Configuración (manda sobre este ajuste)'
+                    : dePersona != null
+                      ? ' · definido para esta persona'
+                      : ' · por defecto del sistema';
+                return (
+                  <span className="block font-medium text-marino-900">
+                    Rige hoy: {valorLegible(valor, entrada.clave)}
+                    <span className={delEquipo != null ? 'font-normal text-sin-senal' : 'font-normal text-texto-3'}>{origen}</span>
+                  </span>
+                );
+              })()}
+              {entrada.descripcion !== '' && <span className="block">{entrada.descripcion}</span>}
+            </>
+          }
         >
-          {entrada.tipo === 'numero' ? (
+          {entrada.tipo === 'numero' || entrada.tipo === 'entero' ? (
             <Entrada
               type="number"
               step="any"
               min={entrada.min}
               max={entrada.max}
               value={valores[entrada.clave] ?? ''}
+              placeholder={entrada.porDefecto != null ? `Por defecto: ${entrada.porDefecto}` : undefined}
               onChange={(evento) => cambiar(entrada.clave, evento.target.value)}
             />
           ) : entrada.tipo === 'booleano' ? (
             <Selector value={valores[entrada.clave] ?? ''} onChange={(evento) => cambiar(entrada.clave, evento.target.value)}>
-              <option value="">Sin definir</option>
+              <option value="">Por defecto ({valorLegible(entrada.porDefecto ?? null, entrada.clave)})</option>
               <option value="true">Activado</option>
               <option value="false">Desactivado</option>
             </Selector>
           ) : (
             <Entrada
               type="text"
+              placeholder={entrada.porDefecto != null ? `Por defecto: ${valorLegible(entrada.porDefecto, entrada.clave)}` : undefined}
               value={valores[entrada.clave] ?? ''}
               onChange={(evento) => cambiar(entrada.clave, evento.target.value)}
             />
@@ -671,7 +754,9 @@ export default function Usuarios() {
         />
       )}
 
-      {modal?.modo === 'editar' && (
+      {/* Se abre cuando ya llegaron los grupos: así el selector arranca con el
+          grupo actual de la persona y no con "Sin grupo". */}
+      {modal?.modo === 'editar' && !grupos.isPending && (
         <DialogoCuenta
           usuario={modal.usuario}
           grupos={listaGrupos}
@@ -711,6 +796,9 @@ export default function Usuarios() {
           error={guardarAjustes.error}
           alGuardar={(ajustes) => guardarAjustes.mutate({ usuario: modal.usuario, ajustes })}
           alCerrar={cerrarModal}
+          configEquipo={
+            listaEquipos.find((d) => (modal.usuario.dispositivoIds ?? []).map(String).includes(String(d.idPublico)))?.configuracion ?? null
+          }
         />
       )}
     </div>

@@ -125,7 +125,7 @@ export interface MiembrosGrupo {
   usuarioIds: (number | string)[];
 }
 
-export type TipoAjuste = 'numero' | 'booleano' | 'texto';
+export type TipoAjuste = 'numero' | 'entero' | 'booleano' | 'texto';
 
 export interface EntradaEsquemaAjustes {
   clave: string;
@@ -134,4 +134,6 @@ export interface EntradaEsquemaAjustes {
   tipo: TipoAjuste;
   min?: number;
   max?: number;
+  /** Valor que rige si la persona no tiene uno propio (el del canal móvil). */
+  porDefecto?: number | boolean | string | null;
 }

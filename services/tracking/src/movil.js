@@ -403,20 +403,43 @@ export async function atenderConfig(req, res, ctx) {
   const dispositivo = await buscarOFallar(ctx, res, identificador, 404);
   if (!dispositivo) return;
   const attrs = dispositivo.atributos;
+  // Orden de la configuración (la app vuelve a pedir /config cada 10 min, así
+  // que este es el valor que rige): 1) el del equipo (Configuración del
+  // panel), 2) el de la persona asignada (ajustes en Usuarios), 3) el valor
+  // por defecto del sistema. Antes faltaba el paso 2 y los ajustes de la
+  // persona se perdían en el siguiente /config.
+  let persona = {};
+  try {
+    const { rows } = await ctx.almacen.pool.query(
+      `SELECT u.atributos->'configApp' AS config
+         FROM operations.dmt_asignacion a
+         JOIN iam.dmt_usuario u ON u.id = a.usuario_id
+        WHERE a.dispositivo_id = $1 AND a.activa
+          AND a.desde_en <= now() AND (a.hasta_en IS NULL OR a.hasta_en > now())
+          AND u.habilitado AND NOT u.administrador
+        ORDER BY a.desde_en DESC
+        LIMIT 1`,
+      [dispositivo.id],
+    );
+    persona = filtrarConfigApp(rows[0]?.config);
+  } catch (error) {
+    ctx.log.warn(`movil/config: no se pudo leer la configuración de la persona: ${error.message}`);
+  }
+  const base = { ...CONFIG_MOVIL_POR_DEFECTO, ...persona };
   return responderJson(res, 200, {
-    intervalSeconds: numeroAttr(attrs, 'mobile.intervalSeconds', 10),
-    bufferMax: numeroAttr(attrs, 'mobile.bufferMax', 5000),
-    bufferPolicy: textoAttr(attrs, 'mobile.bufferPolicy', 'drop_oldest'),
-    ackTimeoutSeconds: numeroAttr(attrs, 'mobile.ackTimeoutSeconds', 15),
-    maxRetries: numeroAttr(attrs, 'mobile.maxRetries', 30),
-    distanceMeters: numeroAttr(attrs, 'mobile.distanceMeters', 10),
-    angleDegrees: numeroAttr(attrs, 'mobile.angleDegrees', 15),
-    accuracy: textoAttr(attrs, 'mobile.accuracy', 'high'),
-    bufferEnabled: booleanoAttr(attrs, 'mobile.bufferEnabled', true),
-    l1_pending_intent_enabled: booleanoAttr(attrs, 'mobile.l1PendingIntentEnabled', false),
-    store_all_enabled: booleanoAttr(attrs, 'mobile.storeAllEnabled', false),
-    l1_max_update_delay_ms: numeroAttr(attrs, 'mobile.l1MaxUpdateDelayMs', 60000),
-    min_interval_seconds: numeroAttr(attrs, 'mobile.minIntervalSeconds', 10),
+    intervalSeconds: numeroAttr(attrs, 'mobile.intervalSeconds', base.intervalSeconds),
+    bufferMax: numeroAttr(attrs, 'mobile.bufferMax', base.bufferMax),
+    bufferPolicy: textoAttr(attrs, 'mobile.bufferPolicy', base.bufferPolicy),
+    ackTimeoutSeconds: numeroAttr(attrs, 'mobile.ackTimeoutSeconds', base.ackTimeoutSeconds),
+    maxRetries: numeroAttr(attrs, 'mobile.maxRetries', base.maxRetries),
+    distanceMeters: numeroAttr(attrs, 'mobile.distanceMeters', base.distanceMeters),
+    angleDegrees: numeroAttr(attrs, 'mobile.angleDegrees', base.angleDegrees),
+    accuracy: textoAttr(attrs, 'mobile.accuracy', base.accuracy),
+    bufferEnabled: booleanoAttr(attrs, 'mobile.bufferEnabled', base.bufferEnabled),
+    l1_pending_intent_enabled: booleanoAttr(attrs, 'mobile.l1PendingIntentEnabled', base.l1_pending_intent_enabled),
+    store_all_enabled: booleanoAttr(attrs, 'mobile.storeAllEnabled', base.store_all_enabled),
+    l1_max_update_delay_ms: numeroAttr(attrs, 'mobile.l1MaxUpdateDelayMs', base.l1_max_update_delay_ms),
+    min_interval_seconds: numeroAttr(attrs, 'mobile.minIntervalSeconds', base.min_interval_seconds),
   });
 }
 
