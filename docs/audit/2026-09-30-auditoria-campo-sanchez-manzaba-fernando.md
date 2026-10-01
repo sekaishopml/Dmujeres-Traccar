@@ -71,3 +71,15 @@ Lo que falta es ajuste de captura, higiene de jornada y que el panel vea los pro
 | "Fideo": trazo a pie fino y ondulado, flechas de pasadas distintas mezcladas | El GPS a pie oscila de 5 a 15 m, y la caminata se dibujaba como un hilo fino. | La caminata se suaviza para dibujar (promedio con sus 2 vecinas, sin tocar los datos) y se dibuja más gruesa, con borde blanco. **El color va según la hora:** claro temprano y oscuro tarde, en las líneas y en el disco de las flechas, con una leyenda en el mapa. Las pasadas de la mañana y de la noche por la misma calle se distinguen. |
 
 Pruebas: `services/api/test/paradas.test.mjs` incluye "salir caminando despacio no queda dentro de la parada". Pasan 28 de 28.
+
+## 6. Paradas unidas a la línea, paradas partidas en un mismo lugar y nuevo Inicio (panel 1.15.0)
+
+- **Sanchez Pilay 17:16, "sobrante" detrás de la primera flecha.** El ajuste a calles (17:15:29–17:20) empezaba dentro de la parada y pegaba a la calle los minutos en que seguía quieta. Ahora los tramos ajustados se cortan en el primer punto al salir (y en el último al llegar), y la línea se une **desde el centro de la parada** con el punto donde empieza o termina (`cortarTramosEnParadas`, `conectarParadas` en `componentes/replay/trazo.ts`). Toda línea empieza con una flecha a 14 m, visible a cualquier zoom.
+- **Fernando, varias paradas en el mismo lugar.** Sin jornada, su teléfono manda un punto cada 5–10 min y casi todos de antena (100 m de error). Ahora un punto aproximado cercano también confirma que sigue en la parada (`ultimoVisto` en `paradas.js`). Su noche del 30/09 pasó de 6 paradas a 3, incluida su salida real de 20:25.
+- **Ficha desplegable de parada** (desde, hasta, duración y dirección) y área de toque más grande en las insignias.
+- **Inicio rediseñado**, compacto y orientado a la operación:
+  - Arriba: en jornada ahora, recorrido de hoy (km, trayectos y paradas), actividades de hoy y cuántas hay para revisar, más una barra de estados de la flota.
+  - Una fila por persona: estado, jornada (desde cuándo está abierta), km y paradas, actividades con las nuevas, batería y versión de la app (marcada si está desactualizada).
+  - **Para revisar:** sin señal, batería baja, puntos sin enviar, app desactualizada y **jornada abierta hace más de 16 h**. El 01/10 marca a Alejandro (abierta desde el 26/09, 102 h) y a mantilla (25 h).
+  - **Últimas actividades** del cronograma.
+- Ícono de pestaña y logo del menú plegado: labios en negro (blanco en modo nocturno).

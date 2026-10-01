@@ -55,19 +55,27 @@ export function detectarParadas(puntos) {
     const buenos = [puntos[i]];
     let centro = { latitud: puntos[i].latitud, longitud: puntos[i].longitud };
     let ultimo = i;
+    // Último fix (bueno o aproximado cercano) que confirma que sigue ahí: el
+    // hueco se mide desde él. Sin jornada la app manda un fix cada 5-10 min y
+    // casi todos de antena (Fernando 30/09, 17:51-23:27 en el mismo sitio
+    // quedaba en 4 paradas porque entre dos fixes buenos pasaban > 30 min).
+    let ultimoVisto = i;
     let j = i + 1;
     while (j < puntos.length) {
       const p = puntos[j];
-      if ((ms(p) - ms(puntos[ultimo])) / 1000 > MAX_HUECO_S) break;
+      if ((ms(p) - ms(puntos[ultimoVisto])) / 1000 > MAX_HUECO_S) break;
       const d = metros(centro, p);
       if (bueno(p)) {
         if (d > RADIO_M) break;
         buenos.push(p);
         centro = { latitud: mediana(buenos.map((x) => x.latitud)), longitud: mediana(buenos.map((x) => x.longitud)) };
         ultimo = j;
+        ultimoVisto = j;
       } else if (d > RADIO_M + Math.min(p.precisionM ?? 0, 150)) {
         // Un fix aproximado lejísimos sí indica que se fue.
         break;
+      } else {
+        ultimoVisto = j;
       }
       j += 1;
     }

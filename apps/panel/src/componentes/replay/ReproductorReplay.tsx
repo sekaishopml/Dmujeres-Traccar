@@ -1164,6 +1164,69 @@ export function InsigniasParadas({ mapa, paradas }: { mapa: TipoMapa | null; par
     }
   }, [paradas, paradaSeleccionada]);
 
+  // Ficha desplegable de la parada elegida (desde, hasta, duración y
+  // dirección), con apertura suave sobre la insignia. Se cierra al elegir un
+  // punto u otra parada.
+  const fichaParada = useRef<Popup | null>(null);
+  useEffect(() => {
+    const parada = paradaSeleccionada != null ? paradas[paradaSeleccionada] : undefined;
+    if (!mapa || !parada || paradaSeleccionada == null) {
+      fichaParada.current?.remove();
+      fichaParada.current = null;
+      return;
+    }
+    const contenido = document.createElement('div');
+    contenido.className = 'ficha-parada';
+    const titulo = document.createElement('p');
+    titulo.className = 'ficha-parada-titulo';
+    titulo.textContent = `Parada ${paradaSeleccionada + 1} · ${duracion(parada.duracionMin * 60)}`;
+    const fila = (etiqueta: string, valor: string) => {
+      const p = document.createElement('p');
+      const e = document.createElement('span');
+      e.textContent = etiqueta;
+      const v = document.createElement('strong');
+      v.textContent = valor;
+      p.append(e, v);
+      return { p, v };
+    };
+    const desde = fila('Desde', horaCorta(parada.inicio));
+    const hasta = fila('Hasta', horaCorta(parada.fin));
+    const direccion = fila('Dirección', parada.direccion || 'Buscando…');
+    direccion.p.className = 'ficha-parada-direccion';
+    contenido.append(titulo, desde.p, hasta.p, direccion.p);
+    let vigente = true;
+    if (!parada.direccion) {
+      traerDireccion(parada.latitud, parada.longitud, parada.precisionM ?? null)
+        .then((r) => {
+          if (vigente) direccion.v.textContent = r.direccion || GUION;
+        })
+        .catch(() => {
+          if (vigente) direccion.v.textContent = GUION;
+        });
+    }
+    fichaParada.current?.remove();
+    fichaParada.current = new Popup({
+      anchor: 'bottom',
+      offset: 18,
+      closeButton: false,
+      closeOnClick: false,
+      maxWidth: '260px',
+      className: 'replay-globo replay-ficha-parada',
+    })
+      .setLngLat([parada.longitud, parada.latitud])
+      .setDOMContent(contenido)
+      .addTo(mapa);
+    return () => {
+      vigente = false;
+    };
+  }, [mapa, paradas, paradaSeleccionada]);
+  useEffect(
+    () => () => {
+      fichaParada.current?.remove();
+    },
+    [],
+  );
+
   return null;
 }
 

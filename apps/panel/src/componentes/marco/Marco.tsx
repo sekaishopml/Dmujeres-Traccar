@@ -138,7 +138,7 @@ export default function Marco() {
                 plegado && 'lg:opacity-100',
               )}
             >
-              <Logo simbolo className="size-11" />
+              <Logo simbolo className="size-9" />
             </div>
             <button
               type="button"

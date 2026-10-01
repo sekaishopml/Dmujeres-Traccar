@@ -15,16 +15,6 @@
 }
 
 .replay-pantalla {
-  /* Leyenda del color por hora: claro = más temprano, oscuro = más tarde. */
-  & .replay-leyenda-hora {
-    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3;
-    display: flex; align-items: center; gap: 8px; padding: 5px 10px;
-    border-radius: 999px; background: var(--color-superficie, #fff);
-    box-shadow: 0 4px 14px rgb(11 37 69 / 0.14);
-    font-size: 11.5px; font-weight: 600; color: var(--color-marino-900, #0b2545);
-    font-variant-numeric: tabular-nums; pointer-events: auto;
-  }
-  & .replay-leyenda-hora i { display: block; width: 88px; height: 6px; border-radius: 999px; }
 
   /* ── Marca ──────────────────────────────────────────────────────────────
      Azul marino oscuro para la estructura (lateral, títulos), azul marino
@@ -762,6 +752,8 @@ table.tabla thead th { position: sticky; top: 0; z-index: 1; }
    ya la muestran el halo y la nube de puntos quietos; la insignia solo
    rotula sin tapar el corredor. */
 .marcador-parada { position: absolute; width: 22px; height: 22px; cursor: pointer; }
+/* Área de toque mayor que la insignia: con poco zoom se elige sin puntería. */
+.marcador-parada::before { content: ''; position: absolute; inset: -12px; border-radius: 50%; }
 .parada-insignia {
   position: absolute; inset: 0; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -1193,3 +1185,24 @@ button.velocidad-activa { background: var(--navy); border-color: var(--navy); co
 .replay-globo .globo-fix p { display: flex; justify-content: space-between; gap: 14px; margin: 0; }
 .replay-globo .globo-fix span { color: rgb(255 255 255 / 0.7); }
 .replay-globo .globo-fix strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Ficha desplegable de la parada elegida: se abre hacia arriba con un
+   despliegue suave (escala vertical + fundido). */
+.replay-ficha-parada .maplibregl-popup-content {
+  min-width: 190px;
+  transform-origin: bottom center;
+  animation: ficha-parada-abrir 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.replay-ficha-parada .ficha-parada p { display: flex; justify-content: space-between; gap: 14px; margin: 0; }
+.replay-ficha-parada .ficha-parada span { color: rgb(255 255 255 / 0.7); }
+.replay-ficha-parada .ficha-parada strong { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.replay-ficha-parada .ficha-parada-titulo { font-weight: 700; margin-bottom: 4px !important; }
+.replay-ficha-parada .ficha-parada-direccion { flex-direction: column; gap: 1px !important; margin-top: 4px !important; }
+.replay-ficha-parada .ficha-parada-direccion strong { text-align: left; font-weight: 500; line-height: 1.3; }
+@keyframes ficha-parada-abrir {
+  from { opacity: 0; transform: translateY(6px) scaleY(0.6); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .replay-ficha-parada .maplibregl-popup-content { animation: none; }
+}

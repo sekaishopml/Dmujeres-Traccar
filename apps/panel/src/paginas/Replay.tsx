@@ -14,12 +14,9 @@ import ReproductorReplay, {
 import FiltroReplay from '@/componentes/replay/FiltroReplay';
 import { flechasDeLineas, lineasDeRecorrido, sinPicos } from '@/componentes/replay/flechas';
 import {
-  COLOR_HORA_TARDE,
-  COLOR_HORA_TEMPRANO,
   COLOR_POR_HORA,
   fraccionDelDia,
-  recortarEnParadas,
-  suavizarCaminata,
+  segmentosParaDibujar,
 } from '@/componentes/replay/trazo';
 import { depurarRecorrido } from '@/dominio/depuracion';
 import { traerFlota, traerJornadas, traerParadas, traerReplay, CACHE_AUDITORIA_MS, CLAVE_FLOTA, equiposHabilitados } from '@/dominio/datos';
@@ -35,7 +32,6 @@ import {
   milisegundos,
   normalizarReconstruidos,
   puntosQuietos,
-  segmentosDeRecorrido,
 } from '@/dominio/replay';
 import type { Parada, TramoReconstruido } from '@/dominio/replay';
 import { fechaHoyLocal, finDeDia, inicioDeDia } from '@/dominio/rango';
@@ -463,39 +459,7 @@ export default function Replay() {
   // (su dispersión se muestra como halo + nube de puntos) para no tejer el
   // espagueti de la deriva parada.
   const segmentos = useMemo(
-    () => {
-      const ventanasParada = paradas.map((p) => [milisegundos(p.inicio), milisegundos(p.fin)] as const);
-      const finTramo = new Map(reconstruidos.map((tramo) => [milisegundos(tramo.desde), milisegundos(tramo.hasta)]));
-      // Un par GPS que empieza antes del último fix de la parada termina dentro
-      // de ella; el par que sale de la parada (empieza en su último fix) sí se
-      // dibuja.
-      const dentroDeParada = (desde: number, hasta: number) =>
-        ventanasParada.some(([inicio, fin]) => desde >= inicio && hasta <= fin && desde < fin);
-      // Solo para dibujar: la caminata suavizada (sin "fideo") y, después, la
-      // línea recortada en el borde de cada parada.
-      const trazables = suavizarCaminata(posiciones, paradas);
-      const crudos = segmentosDeRecorrido(trazables, huecos, reconstruidos).flatMap((segmento) => {
-        const t = segmento.instante ?? 0;
-        // Dentro de una parada todo trazo es deriva del GPS (bajo techo salta
-        // 100-200 m): no se dibuja línea ni flechas, la parada se ve con su
-        // halo y la nube de fixes. Antes tejía una telaraña con flechas.
-        if (segmento.tipo === 'matched' && dentroDeParada(t, finTramo.get(t) ?? Infinity)) return [];
-        if (segmento.tipo === 'ruta' && dentroDeParada(t, t)) return [{ ...segmento, modo: 'quieto' as const }];
-        // Los fixes de antena llegan con velocidad 0 aunque la persona avance, y
-        // el par quedaba "quieto" (sin línea): la ruta se veía cortada. Un par
-        // quieto que se desplazó 40 m o más fuera de una parada es movimiento.
-        if (segmento.tipo !== 'ruta' || segmento.modo !== 'quieto' || segmento.coordenadas.length < 2) return [segmento];
-        const [a, b] = [segmento.coordenadas[0], segmento.coordenadas[segmento.coordenadas.length - 1]];
-        const dLat = (b[1] - a[1]) * 111320;
-        const dLon = (b[0] - a[0]) * 111320 * Math.cos(((a[1] + b[1]) / 2) * (Math.PI / 180));
-        return [Math.hypot(dLat, dLon) >= 40 ? { ...segmento, modo: 'vehiculo' as const } : segmento];
-      });
-      const siguiente = new Map(trazables.slice(0, -1).map((p, i) => [milisegundos(p.registradoEn), milisegundos(trazables[i + 1].registradoEn)]));
-      return recortarEnParadas(crudos, paradas, (segmento) => {
-        const t = segmento.instante ?? 0;
-        return (segmento.tipo === 'ruta' ? siguiente.get(t) : finTramo.get(t)) ?? t;
-      });
-    },
+    () => segmentosParaDibujar(posiciones, huecos, reconstruidos, paradas),
     [posiciones, huecos, reconstruidos, paradas],
   );
   // Hora del día de cada trazo (0 = primer fix, 1 = último): da el tono.
@@ -904,13 +868,6 @@ export default function Replay() {
             el set de capas sin "Mapa" (Satélite inicial) y el zoom abajo a la
             derecha, con el selector pegado al top bar. */}
         <MapaRaster clase="mapa" alListo={setMapa} capas={CAPAS_REPLAY} capaInicial={CAPA_INICIAL_REPLAY} zoomAbajoDerecha selectorPegado />
-        {hayRecorrido && (
-          <div className="replay-leyenda-hora" title="El trazo y sus flechas van de claro (más temprano) a oscuro (más tarde)">
-            <span>{horaCorta(posiciones[0].registradoEn)}</span>
-            <i style={{ background: `linear-gradient(90deg, ${COLOR_HORA_TEMPRANO}, ${COLOR_HORA_TARDE})` }} />
-            <span>{horaCorta(posiciones[posiciones.length - 1].registradoEn)}</span>
-          </div>
-        )}
         {/* Insignias de parada sobre el mapa, dentro del proveedor del
             reproductor: comparten selección con la lista y llevan el mapa a la
             parada con un vuelo suave al pulsarlas. No pintan nada en el DOM. */}

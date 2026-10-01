@@ -25,6 +25,7 @@ export function esPreciso(posicion: Posicion): boolean {
 }
 
 const PASO_M = 10;
+const INICIO_FLECHA_M = 14;
 const NIVEL_MIN = 12;
 const NIVEL_MAX = 19;
 // Media base del rumbo, a lo largo del trazo: suaviza los quiebres cortos.
@@ -155,7 +156,10 @@ export function lineasDeRecorrido(
   for (const segmento of dibujados) {
     const inicio = segmento.instante;
     if (inicio == null) continue;
-    const fin = segmento.tipo === 'matched' ? finReconstruido.get(inicio) : siguienteFix.get(inicio);
+    // Una conexión con su parada no empieza en un fix: dura 1 s, lo justo para
+    // ordenarse y unirse con el trazo vecino.
+    const fin =
+      segmento.tipo === 'matched' ? finReconstruido.get(inicio) : siguienteFix.get(inicio) ?? inicio + 1000;
     if (fin == null || fin < inicio) continue;
     const vertices =
       segmento.tipo === 'matched'
@@ -250,17 +254,19 @@ export function flechasDeLineas(lineas: Vertice[][]): FeatureCollection<Point> {
       const b = linea[k + 1];
       return { lon: a.lon + (b.lon - a.lon) * f, lat: a.lat + (b.lat - a.lat) * f, t: a.t + (b.t - a.t) * f };
     };
-    // La primera flecha va a media distancia del inicio: el arranque de la
-    // línea también tiene flecha y se puede elegir.
-    for (let m = 0; m * PASO_M + PASO_M / 2 <= total; m += 1) {
-      const s = m * PASO_M + PASO_M / 2;
+    // Toda línea empieza con una flecha, visible a cualquier zoom: la primera
+    // va a INICIO_FLECHA_M del arranque (fuera de la insignia de la parada) y
+    // no deja una colita de línea sin sentido detrás.
+    const inicioFlecha = Math.min(INICIO_FLECHA_M, total / 2);
+    for (let m = 0; inicioFlecha + m * PASO_M <= total; m += 1) {
+      const s = inicioFlecha + m * PASO_M;
       const aqui = puntoEn(s);
       const atras = puntoEn(Math.max(s - MEDIA_BASE_M, 0));
       const adelante = puntoEn(Math.min(s + MEDIA_BASE_M, total));
       if (distanciaM(atras, adelante) < 1) continue;
       features.push({
         type: 'Feature',
-        properties: { t: Math.round(aqui.t), r: Math.round(rumbo(atras, adelante)), n: nivelDe(m + 1) },
+        properties: { t: Math.round(aqui.t), r: Math.round(rumbo(atras, adelante)), n: m === 0 ? NIVEL_MIN : nivelDe(m) },
         geometry: { type: 'Point', coordinates: [aqui.lon, aqui.lat] },
       });
     }
