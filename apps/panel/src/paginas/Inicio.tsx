@@ -30,8 +30,6 @@ const REFRESCO_MS = 15_000;
 const REFRESCO_DIA_MS = 60_000;
 const BATERIA_BAJA_PCT = 15;
 const JORNADA_LARGA_H = 16;
-// Personas en jornada que se nombran arriba; el resto, en la tabla filtrada.
-const MAX_EN_JORNADA = 10;
 
 type FiltroPersonas = 'todas' | 'jornada' | 'revisar' | 'senal';
 const FILTROS: { valor: FiltroPersonas; etiqueta: string }[] = [
@@ -573,6 +571,23 @@ function EnJornada({
   const visibles = [...personas].sort((a, b) =>
     (jornadas.get(a.idPublico)?.inicioEn ?? '').localeCompare(jornadas.get(b.idPublico)?.inicioEn ?? ''),
   );
+  // Cómo están quienes trabajan ahora.
+  const partes = [
+    { clave: 'enLinea', texto: 'en ruta', clase: 'bg-movimiento', n: personas.filter((p) => claveEstado(p) === 'enLinea').length },
+    { clave: 'detenido', texto: 'detenidas', clase: 'bg-detenido', n: personas.filter((p) => claveEstado(p) === 'detenido').length },
+    {
+      clave: 'sinSenal',
+      texto: 'sin señal',
+      clase: 'bg-sin-senal',
+      n: personas.filter((p) => ['sinSenal', 'desconocido'].includes(claveEstado(p))).length,
+    },
+  ];
+  const sinIniciar = total - personas.length;
+  // Primera entrada de hoy (jornadas que empezaron hoy).
+  const entradasHoy = visibles
+    .map((p) => jornadas.get(p.idPublico)?.inicioEn)
+    .filter((v): v is string => Boolean(v) && fechaLocal(v!) === hoy)
+    .sort();
   return (
     <Tarjeta className="flex flex-col p-4">
       <div className="flex items-center gap-2">
@@ -581,42 +596,62 @@ function EnJornada({
           <span className={cn('relative size-2.5 rounded-full', personas.length > 0 ? 'bg-movimiento' : 'bg-deshabilitado')} />
         </span>
         <h2 className="text-[13px] font-semibold text-texto-2">En jornada ahora</h2>
+        {entradasHoy.length > 0 && (
+          <span className="ml-auto text-[11.5px] text-texto-3 cifras">Primera entrada {hora(entradasHoy[0])}</span>
+        )}
       </div>
-      <p className="mt-1 font-display text-marino-900 cifras">
-        <span className="inicio-aparecer text-[34px] leading-none font-semibold">{personas.length}</span>
-        <span className="ml-1.5 text-[14px] text-texto-3">de {total}</span>
-      </p>
-      {visibles.length === 0 ? (
-        <p className="mt-auto text-[12.5px] text-texto-2">Nadie ha iniciado jornada.</p>
-      ) : (
-        <div className="mt-auto flex items-center pt-2">
-          <ul className="flex -space-x-2">
-            {visibles.slice(0, MAX_EN_JORNADA).map((p) => {
-              const j = jornadas.get(p.idPublico);
-              const texto = `${p.nombre}${j ? ` · desde ${inicioJornada(j.inicioEn, hoy).replace(/^Ayer/, 'ayer')}` : ''}`;
-              return (
-                <li key={p.id}>
-                  <Link
-                    to={`/replay${consulta({ dispositivo: p.idPublico, desde: hoy, hasta: hoy })}`}
-                    title={`${texto}. Ver su recorrido de hoy.`}
-                    aria-label={texto}
-                    className="block rounded-full ring-2 ring-superficie transition-transform hover:z-10 hover:-translate-y-0.5"
-                  >
-                    <Avatar nombre={p.nombre} tamano="sm" />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-          <button
-            type="button"
-            onClick={alVerTodas}
-            className="ml-3 cursor-pointer text-[12px] font-semibold text-marino-800 hover:text-marca"
-          >
-            {visibles.length > MAX_EN_JORNADA ? `+${visibles.length - MAX_EN_JORNADA} · ` : ''}Ver quiénes
-          </button>
+      <div className="mt-1 flex items-end gap-3">
+        <p className="font-display leading-none text-marino-900 cifras">
+          <span className="inicio-aparecer text-[34px] font-semibold">{personas.length}</span>
+          <span className="ml-1 text-[14px] text-texto-3">de {total}</span>
+        </p>
+        {visibles.length > 0 && (
+          <div className="mb-0.5 ml-auto flex items-center">
+            <ul className="flex -space-x-2">
+              {visibles.slice(0, 6).map((p) => {
+                const j = jornadas.get(p.idPublico);
+                const texto = `${p.nombre}${j ? ` · desde ${inicioJornada(j.inicioEn, hoy).replace(/^Ayer/, 'ayer')}` : ''}`;
+                return (
+                  <li key={p.id}>
+                    <Link
+                      to={`/replay${consulta({ dispositivo: p.idPublico, desde: hoy, hasta: hoy })}`}
+                      title={`${texto}. Ver su recorrido de hoy.`}
+                      aria-label={texto}
+                      className="block rounded-full ring-2 ring-superficie transition-transform hover:z-10 hover:-translate-y-0.5"
+                    >
+                      <Avatar nombre={p.nombre} tamano="sm" />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <button type="button" onClick={alVerTodas} className="ml-2 cursor-pointer text-[12px] font-semibold text-marino-800 hover:text-marca">
+              {visibles.length > 6 ? `+${visibles.length - 6}` : 'Ver'}
+            </button>
+          </div>
+        )}
+      </div>
+      {/* Barra de toda la plantilla: quienes trabajan, por estado, y quienes faltan. */}
+      <div className="mt-auto pt-2">
+        <div className="flex h-2 overflow-hidden rounded-full bg-fondo" aria-hidden="true">
+          {total > 0 &&
+            partes.map((p) =>
+              p.n > 0 ? <span key={p.clave} className={cn('transition-[width] duration-500', p.clase)} style={{ width: `${(p.n / total) * 100}%` }} /> : null,
+            )}
         </div>
-      )}
+        <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-texto-2">
+          {partes.map((p) => (
+            <span key={p.clave} className="inline-flex items-center gap-1">
+              <span className={cn('size-1.5 rounded-full', p.clase)} />
+              <b className="font-semibold text-marino-900 cifras">{p.n}</b> {p.texto}
+            </span>
+          ))}
+          <span className="inline-flex items-center gap-1 text-texto-3">
+            <span className="size-1.5 rounded-full bg-borde" />
+            <b className="font-semibold cifras">{sinIniciar}</b> sin iniciar
+          </span>
+        </p>
+      </div>
     </Tarjeta>
   );
 }
@@ -654,7 +689,8 @@ function ParaRevisar({ revisar }: { revisar: Revision[] }) {
   );
 }
 
-// Un solo contador: eventos de la app + actividades subidas, con su desglose.
+// Un solo contador con su ritmo: eventos por hora del día, el último evento y
+// el desglose (inicios, cierres, actividades subidas y alertas).
 function ContadorEventos({ eventos }: { eventos: RespuestaEventos | null }) {
   const partes: { categoria: CategoriaEvento; texto: string }[] = [
     { categoria: 'inicio_jornada', texto: 'Inicios' },
@@ -662,21 +698,66 @@ function ContadorEventos({ eventos }: { eventos: RespuestaEventos | null }) {
     { categoria: 'actividad', texto: 'Actividades' },
     { categoria: 'alerta', texto: 'Alertas' },
   ];
+  const horaActual = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Guayaquil', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+  const porHora = useMemo(() => {
+    const cuenta = Array.from({ length: 24 }, () => ({ total: 0, alerta: 0 }));
+    for (const e of eventos?.datos ?? []) {
+      const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Guayaquil', hour: '2-digit', hourCycle: 'h23' }).format(new Date(e.en)));
+      cuenta[h].total += 1;
+      if (e.categoria === 'alerta') cuenta[h].alerta += 1;
+    }
+    return cuenta;
+  }, [eventos]);
+  const maximo = Math.max(1, ...porHora.map((h) => h.total));
+  const ultimo = eventos?.datos[0];
   return (
     <Tarjeta className="flex flex-col p-4">
-      <h2 className="text-[13px] font-semibold text-texto-2">Eventos de hoy</h2>
-      {eventos == null ? (
-        <Esqueleto className="mt-2 h-10 w-20" />
-      ) : (
-        <p key={eventos.total} className="inicio-aparecer mt-1 font-display text-[34px] leading-none font-semibold text-marino-900 cifras">
-          {eventos.total}
-        </p>
-      )}
+      <div className="flex items-center gap-2">
+        <h2 className="text-[13px] font-semibold text-texto-2">Eventos de hoy</h2>
+        {ultimo && (
+          <span className="ml-auto min-w-0 truncate text-[11.5px] text-texto-3">
+            Último {hora(ultimo.en)} · <b className="font-semibold text-marino-900">{ultimo.nombre}</b> {ultimo.texto.toLowerCase()}
+          </span>
+        )}
+      </div>
+      <div className="mt-1 flex items-end gap-3">
+        {eventos == null ? (
+          <Esqueleto className="h-8 w-14" />
+        ) : (
+          <p key={eventos.total} className="inicio-aparecer font-display text-[34px] leading-none font-semibold text-marino-900 cifras">
+            {eventos.total}
+          </p>
+        )}
+        {/* Eventos por hora (00 a 23); la hora actual resaltada. */}
+        <div className="flex flex-1 flex-col">
+        <div className="flex h-8 items-end gap-[2px]" role="img" aria-label="Eventos por hora de hoy">
+          {porHora.map((h, i) => (
+            <span
+              key={i}
+              title={`${String(i).padStart(2, '0')}:00 · ${h.total} ${h.total === 1 ? 'evento' : 'eventos'}`}
+              className={cn(
+                'flex-1 rounded-t-[2px] transition-[height] duration-500',
+                h.alerta > 0 ? 'bg-peligro' : i === horaActual ? 'bg-marca' : h.total > 0 ? 'bg-marino-700' : 'bg-fondo',
+                i > horaActual && 'opacity-40',
+              )}
+              style={{ height: h.total > 0 ? `${Math.max(14, (h.total / maximo) * 100)}%` : '3px' }}
+            />
+          ))}
+        </div>
+        <div className="mt-0.5 flex justify-between text-[9.5px] text-texto-3 cifras" aria-hidden="true">
+          <span>00</span>
+          <span>06</span>
+          <span>12</span>
+          <span>18</span>
+          <span>23</span>
+        </div>
+        </div>
+      </div>
       <dl className="mt-auto grid grid-cols-4 gap-x-2 pt-2">
         {partes.map((p) => {
           const n = eventos?.conteo[p.categoria] ?? null;
           return (
-            <div key={p.categoria} className="border-l-2 border-borde pl-2.5">
+            <div key={p.categoria} className="border-l-2 border-borde pl-2">
               <dt className="flex items-center gap-1 truncate text-[10.5px] text-texto-3">
                 <span className={cn('size-1.5 rounded-full', COLOR_EVENTO[p.categoria])} />
                 {p.texto}
