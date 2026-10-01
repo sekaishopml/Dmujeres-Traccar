@@ -54,3 +54,33 @@ class HoraInterpretarTest {
         assertNull(HoraCronograma.siguiente(dia, "16:10") { it.hora })
     }
 }
+
+class HoraNaturalTest {
+    private fun leer(texto: String, pm: Boolean? = null, despuesDe: String? = null) =
+        HoraCronograma.interpretarNatural(texto, pm, despuesDe?.let { HoraCronograma.aMinutos(it) })?.hora24
+
+    @Test
+    fun deduceElAmPmDeUnaJornada() {
+        assertEquals("08:00", leer("8"))
+        assertEquals("11:30", leer("1130"))
+        assertEquals("12:00", leer("12"))
+        assertEquals("15:00", leer("3"))
+        assertEquals("17:45", leer("5:45"))
+        assertEquals("14:30", leer("14:30"))
+    }
+
+    @Test
+    fun hastaQuedaDespuesDelInicio() {
+        assertEquals("14:00", leer("2", despuesDe = "11:00"))
+        assertEquals("09:00", leer("9", despuesDe = "08:00"))
+        assertEquals("12:00", leer("12", despuesDe = "08:00"))
+        assertEquals("21:00", leer("9", despuesDe = "20:00"))
+    }
+
+    @Test
+    fun loTocadoAManoManda() {
+        assertEquals("19:00", leer("7", pm = true))
+        assertEquals("03:00", leer("3", pm = false))
+        assertEquals("02:00", leer("2", pm = false, despuesDe = "11:00"))
+    }
+}

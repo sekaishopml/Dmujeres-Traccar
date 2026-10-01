@@ -62,7 +62,7 @@ export async function listarEventos(ctx) {
     ),
     consultar(
       ctx.pool,
-      `SELECT a.tipo, a.lugar, a.hora, a.con_jornada, a.registrado_en AS en, d.id_publico, d.nombre
+      `SELECT a.tipo, a.lugar, a.hora, a.hora_fin, a.con_jornada, a.registrado_en AS en, d.id_publico, d.nombre
          FROM operations.dmt_actividad a
          JOIN tracking.dmt_dispositivo d ON d.id = a.dispositivo_id
         WHERE NOT a.eliminada
@@ -86,7 +86,7 @@ export async function listarEventos(ctx) {
     })),
     ...actividades.rows.map((f) => ({
       categoria: 'actividad',
-      texto: `Subió ${(ETIQUETA_ACTIVIDAD[f.tipo] ?? f.tipo).toLowerCase()} de las ${f.hora}`,
+      texto: `Subió ${(ETIQUETA_ACTIVIDAD[f.tipo] ?? f.tipo).toLowerCase()} ${f.hora_fin ? `de ${f.hora} a ${f.hora_fin}` : `de las ${f.hora}`}`,
       detalle: [f.lugar, f.con_jornada ? null : 'sin jornada'].filter(Boolean).join(' · ') || null,
       en: iso(f.en),
       dispositivoId: f.id_publico,

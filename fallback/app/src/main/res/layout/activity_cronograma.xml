@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Cronograma de actividades: mes (calendario) o día (lista por hora), sin
-     scroll general; solo la lista del día se desplaza dentro de su tarjeta. -->
+<!-- Cronograma de actividades. Abre en HOY: semana arriba y la lista del día
+     (actividades, huecos sin registrar y la hora actual). El ícono de
+     calendario cambia al mes. Sin scroll general; solo la lista se desplaza. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -14,7 +15,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="4dp"
-        android:paddingEnd="12dp">
+        android:paddingEnd="6dp">
 
         <ImageButton
             android:id="@+id/crono_back"
@@ -47,6 +48,15 @@
                 android:textColor="#B3FFFFFF"
                 android:textSize="11.5sp" />
         </LinearLayout>
+
+        <!-- Día ⇄ mes -->
+        <ImageButton
+            android:id="@+id/crono_modo"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/crono_ver_mes_desc"
+            android:src="@drawable/ds_ic_calendar" />
     </LinearLayout>
 
 
@@ -88,19 +98,64 @@
             android:src="@drawable/ds_ic_back" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/crono_modo"
-        android:layout_width="wrap_content"
+    <!-- Semana (vista día): L M M J V S D con punto si hay actividades. -->
+    <LinearLayout
+        android:id="@+id/crono_semana"
+        android:layout_width="match_parent"
+        android:layout_height="62dp"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp" />
+
+    <!-- Día elegido: "Hoy · miércoles 1 de octubre" y resumen. -->
+    <LinearLayout
+        android:id="@+id/crono_dia_cab"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
-        android:background="?attr/selectableItemBackground"
-        android:paddingStart="10dp"
-        android:paddingTop="2dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="6dp"
-        android:textColor="@color/primary"
-        android:textSize="12sp"
-        android:textStyle="bold" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/crono_dia_titulo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/crono_dia_resumen"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12.5sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/crono_ir_hoy"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:background="@drawable/ds_button_outline"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="@string/crono_ir_hoy"
+            android:textColor="@color/primary"
+            android:textSize="12.5sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -152,8 +207,10 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp" />
+                    android:paddingStart="12dp"
+                    android:paddingTop="4dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="12dp" />
             </ScrollView>
         </LinearLayout>
     </FrameLayout>

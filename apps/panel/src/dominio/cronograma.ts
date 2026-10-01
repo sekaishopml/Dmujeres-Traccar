@@ -32,6 +32,8 @@ export interface Actividad {
     detenida: boolean;
     paradaDesde: string | null;
     paradaHasta: string | null;
+    // Con rango declarado: qué parte del horario cubre esa parada (0–100).
+    coberturaPct?: number | null;
     direccion: string | null;
   } | null;
 }

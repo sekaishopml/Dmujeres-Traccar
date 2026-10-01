@@ -389,15 +389,35 @@ function FragmentoCelda({ actividad: a, color, almuerzo }: { actividad?: Activid
   );
 }
 
+// Cuándo se cargó respecto de lo declarado: antes (planificada), mientras
+// ocurría o después de que terminó (registro tardío, con cuánto después).
+// Ecuador continental: UTC-5 todo el año.
+const MARGEN_CARGA_MS = 15 * 60_000;
+// Más de una hora después se marca como aviso, igual que sin jornada.
+function momentoDeCarga(a: Actividad): { texto: string; tardia: boolean } | null {
+  const inicio = Date.parse(`${a.fecha}T${a.hora}:00-05:00`);
+  const fin = Date.parse(`${a.fecha}T${a.horaFin ?? a.hora}:00-05:00`);
+  const en = Date.parse(a.registro.en);
+  if (Number.isNaN(inicio) || Number.isNaN(fin) || Number.isNaN(en)) return null;
+  if (en < inicio - MARGEN_CARGA_MS) return { texto: 'planificada', tardia: false };
+  if (en <= fin + MARGEN_CARGA_MS) return null;
+  const minutos = Math.round((en - fin) / 60_000);
+  const tarde = minutos < 60 ? `${minutos} min` : minutos < 1440 ? `${Math.floor(minutos / 60)} h ${minutos % 60} min` : `${Math.floor(minutos / 1440)} d`;
+  return { texto: `${tarde} después`, tardia: minutos > 60 };
+}
+
 // Auditoría en una línea dentro de la celda; el detalle completo va en el
 // título (al pasar el mouse) y en el enlace a la ruta.
 function AuditoriaCorta({ actividad: a }: { actividad: Actividad }) {
   const eh = a.enHora;
   const direccion = useDireccionFaltante(eh?.latitud ?? null, eh?.longitud ?? null, eh?.direccion ?? null);
+  const cobertura = eh?.detenida && eh.coberturaPct != null ? ` (${eh.coberturaPct} % del horario)` : '';
   const texto = !eh
     ? 'Sin recorrido a esa hora'
-    : `${eh.detenida ? 'Detenida' : 'En camino'}${eh.detenida && eh.paradaDesde && eh.paradaHasta ? ` ${hora(eh.paradaDesde)}–${hora(eh.paradaHasta)}` : ''}${direccion ? ` · ${direccion}` : ''}`;
-  const carga = `Cargada ${hora(a.registro.en)}${diaDe(a.registro.en) !== a.fecha ? ` del ${etiquetaDia(diaDe(a.registro.en))}` : ''}${a.registro.conJornada ? ' con jornada' : ' sin jornada'}`;
+    : `${eh.detenida ? 'Detenida' : 'En camino'}${eh.detenida && eh.paradaDesde && eh.paradaHasta ? ` ${hora(eh.paradaDesde)}–${hora(eh.paradaHasta)}${cobertura}` : ''}${direccion ? ` · ${direccion}` : ''}`;
+  const momento = momentoDeCarga(a);
+  const carga = `Cargada ${hora(a.registro.en)}${diaDe(a.registro.en) !== a.fecha ? ` del ${etiquetaDia(diaDe(a.registro.en))}` : ''}${a.registro.conJornada ? ' con jornada' : ' sin jornada'}${momento ? ` · ${momento.texto}` : ''}`;
+  const aviso = !a.registro.conJornada || momento?.tardia === true;
   return (
     <div className="mt-1 space-y-0.5 text-[10.5px] leading-tight">
       <p className="flex items-start gap-1 text-texto-3" title={texto}>
@@ -409,8 +429,8 @@ function AuditoriaCorta({ actividad: a }: { actividad: Actividad }) {
           </Link>
         )}
       </p>
-      <p className={cn('flex items-center gap-1', a.registro.conJornada ? 'text-texto-3' : 'text-sin-senal')} title={carga}>
-        {!a.registro.conJornada && <TriangleAlert className="size-3 flex-none" />}
+      <p className={cn('flex items-center gap-1', aviso ? 'text-sin-senal' : 'text-texto-3')} title={carga}>
+        {aviso && <TriangleAlert className="size-3 flex-none" />}
         {carga}
       </p>
     </div>

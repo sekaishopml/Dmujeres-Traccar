@@ -47,6 +47,12 @@
             android:theme="@style/AppTheme" />
 
         <activity
+            android:name=".cronograma.ActividadActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme"
+            android:windowSoftInputMode="stateHidden|adjustResize" />
+
+        <activity
             android:name=".SplashActivity"
             android:exported="false"
             android:theme="@style/AppTheme" />

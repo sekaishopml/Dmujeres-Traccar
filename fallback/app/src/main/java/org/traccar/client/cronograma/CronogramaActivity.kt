@@ -2,37 +2,32 @@ package org.traccar.client.cronograma
 
 import android.graphics.Typeface
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
-import android.widget.ArrayAdapter
-import android.widget.AutoCompleteTextView
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
 import org.traccar.client.DmujeresApi
-import org.traccar.client.PositionProvider
 import org.traccar.client.R
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
-import java.util.UUID
 
 /**
  * Cronograma de actividades (reemplaza el Excel de "ruta semanal").
  *
- * - Sin jornada abre el MES; con jornada iniciada abre el DÍA de hoy. Se puede
- *   ir hacia atrás y adelante por mes o por día.
- * - Cada actividad: hora, tipo (visita, almuerzo, permiso médico, vacaciones,
- *   permiso, novedad), lugar y nota. La ubicación solo se adjunta si la
- *   jornada está iniciada y la actividad es de hoy: cargada más tarde (p. ej.
- *   desde la casa) no describiría el lugar declarado. El servidor vuelve a
- *   comprobarlo.
+ * - Abre siempre en HOY: la semana arriba (punto = hay actividades) y la
+ *   lista del día con las actividades, los huecos sin registrar (desde el
+ *   inicio de jornada hasta ahora) y la marca de la hora actual. La actividad
+ *   en curso tiene "Terminé" para cerrarla a la hora real.
+ * - El ícono de calendario cambia al mes; tocar un día vuelve a la lista.
+ * - Agregar o editar abre ActividadActivity (pantalla completa).
  * - Todo se guarda al instante en el teléfono y se sube al haber conexión.
  */
 class CronogramaActivity : AppCompatActivity() {
@@ -41,9 +36,19 @@ class CronogramaActivity : AppCompatActivity() {
     private val iso = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = zona }
     private val es = Locale("es", "EC")
 
-    private var enMes = true
+    private var enMes = false
     private lateinit var dia: Calendar
     private lateinit var mes: Calendar
+
+    /** Al volver a la pantalla, si se estaba en hoy y cambió la fecha, sigue en hoy. */
+    private var seguirHoy = true
+    private val reloj = Handler(Looper.getMainLooper())
+    private val alMinuto = object : Runnable {
+        override fun run() {
+            if (!enMes && fechaDe(dia) == hoy()) pintar()
+            reloj.postDelayed(this, 60_000L)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,26 +60,44 @@ class CronogramaActivity : AppCompatActivity() {
         // Al girar la tablet se conserva el día y la vista (mes o día).
         savedInstanceState?.getLong(KEY_DIA, 0L)?.takeIf { it > 0 }?.let { dia.timeInMillis = it }
         mes = primeroDelMes(dia)
-        // Con jornada abierta lo útil es el día en curso; sin jornada, el mes.
-        enMes = savedInstanceState?.getBoolean(KEY_EN_MES) ?: !DmujeresApi.isJourneyOpen(this)
+        enMes = savedInstanceState?.getBoolean(KEY_EN_MES) ?: false
         savedInstanceState?.getLong(KEY_MES, 0L)?.takeIf { it > 0 }?.let { mes.timeInMillis = it }
 
         findViewById<View>(R.id.crono_back).setOnClickListener { finish() }
         findViewById<View>(R.id.crono_prev).setOnClickListener { mover(-1) }
         findViewById<View>(R.id.crono_next).setOnClickListener { mover(1) }
-        findViewById<View>(R.id.crono_modo).setOnClickListener {
-            enMes = !enMes
-            if (enMes) mes = primeroDelMes(dia)
+        findViewById<View>(R.id.crono_modo).setOnClickListener { cambiarModo() }
+        findViewById<View>(R.id.crono_titulo).setOnClickListener { cambiarModo() }
+        findViewById<View>(R.id.crono_ir_hoy).setOnClickListener {
+            dia = Calendar.getInstance(zona)
+            mes = primeroDelMes(dia)
             pintar()
+            refrescarDelServidor()
         }
-        findViewById<View>(R.id.crono_agregar).setOnClickListener { abrirFormulario(null) }
+        findViewById<View>(R.id.crono_agregar).setOnClickListener {
+            // Desde el mes se agrega al día elegido y se vuelve a su lista.
+            enMes = false
+            ActividadActivity.abrir(this, fechaDe(dia))
+        }
         cabeceraSemana()
         pintar()
     }
 
     override fun onResume() {
         super.onResume()
+        if (seguirHoy && fechaDe(dia) != hoy()) {
+            dia = Calendar.getInstance(zona)
+            mes = primeroDelMes(dia)
+        }
+        pintar()
         refrescarDelServidor()
+        reloj.postDelayed(alMinuto, 60_000L)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        seguirHoy = fechaDe(dia) == hoy()
+        reloj.removeCallbacks(alMinuto)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -82,6 +105,13 @@ class CronogramaActivity : AppCompatActivity() {
         outState.putBoolean(KEY_EN_MES, enMes)
         outState.putLong(KEY_DIA, dia.timeInMillis)
         outState.putLong(KEY_MES, mes.timeInMillis)
+    }
+
+    private fun cambiarModo() {
+        enMes = !enMes
+        mes = primeroDelMes(dia)
+        pintar()
+        refrescarDelServidor()
     }
 
     // ── Navegación ─────────────────────────────────────────────────────────
@@ -95,11 +125,10 @@ class CronogramaActivity : AppCompatActivity() {
             mes.add(Calendar.MONTH, paso)
             refrescarDelServidor()
         } else {
-            dia.add(Calendar.DAY_OF_MONTH, paso)
-            if (dia.get(Calendar.MONTH) != mes.get(Calendar.MONTH) || dia.get(Calendar.YEAR) != mes.get(Calendar.YEAR)) {
-                mes = primeroDelMes(dia)
-                refrescarDelServidor()
-            }
+            // En la vista día las flechas pasan de semana (mismo día de la semana).
+            dia.add(Calendar.DAY_OF_MONTH, 7 * paso)
+            mes = primeroDelMes(dia)
+            refrescarDelServidor()
         }
         pintar()
     }
@@ -107,10 +136,17 @@ class CronogramaActivity : AppCompatActivity() {
     private fun fechaDe(c: Calendar): String = iso.format(c.time)
     private fun hoy(): String = iso.format(Calendar.getInstance(zona).time)
 
+    private fun lunesDe(c: Calendar): Calendar = (c.clone() as Calendar).apply {
+        add(Calendar.DAY_OF_MONTH, -((get(Calendar.DAY_OF_WEEK) + 5) % 7))
+    }
+
+    /** Trae el mes elegido y la semana visible (puede tocar dos meses). */
     private fun refrescarDelServidor() {
-        val desde = fechaDe(mes)
         val fin = (mes.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH)) }
-        val hasta = fechaDe(fin)
+        val lunes = lunesDe(dia)
+        val domingo = (lunes.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 6) }
+        val desde = minOf(fechaDe(mes), fechaDe(lunes))
+        val hasta = maxOf(fechaDe(fin), fechaDe(domingo))
         Actividades.sincronizar(this) {
             Actividades.actualizar(this, desde, hasta) { ok ->
                 runOnUiThread {
@@ -143,16 +179,16 @@ class CronogramaActivity : AppCompatActivity() {
 
     private fun pintar() {
         val titulo = findViewById<TextView>(R.id.crono_titulo)
-        val modo = findViewById<TextView>(R.id.crono_modo)
         findViewById<View>(R.id.crono_mes).visibility = if (enMes) View.VISIBLE else View.GONE
         findViewById<View>(R.id.crono_dia).visibility = if (enMes) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.crono_semana).visibility = if (enMes) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.crono_dia_cab).visibility = if (enMes) View.GONE else View.VISIBLE
         if (enMes) {
             titulo.text = formato("LLLL 'de' yyyy", mes)
-            modo.text = getString(R.string.crono_ver_dia_fmt, formato("d 'de' MMMM", dia).lowercase())
             pintarMes()
         } else {
-            titulo.text = formato("EEEE d 'de' MMMM", dia)
-            modo.text = getString(R.string.crono_ver_mes)
+            titulo.text = formato("LLLL yyyy", dia)
+            pintarSemana()
             pintarDia()
         }
         estadoSincronizacion(true)
@@ -232,8 +268,10 @@ class CronogramaActivity : AppCompatActivity() {
                 val c = cursor.clone() as Calendar
                 celda.setOnClickListener {
                     dia = c
+                    mes = primeroDelMes(c)
                     enMes = false
                     pintar()
+                    refrescarDelServidor()
                 }
                 fila.addView(celda)
                 cursor.add(Calendar.DAY_OF_MONTH, 1)
@@ -242,69 +280,223 @@ class CronogramaActivity : AppCompatActivity() {
         }
     }
 
+    /** Tira L–D de la semana del día elegido; tocar un día lo abre. */
+    private fun pintarSemana() {
+        val tira = findViewById<LinearLayout>(R.id.crono_semana)
+        tira.removeAllViews()
+        val lunes = lunesDe(dia)
+        val domingo = (lunes.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 6) }
+        val conActividad = Actividades.fechasConActividad(this, fechaDe(lunes), fechaDe(domingo))
+        val hoy = hoy()
+        val elegido = fechaDe(dia)
+        val cursor = lunes.clone() as Calendar
+        listOf("L", "M", "M", "J", "V", "S", "D").forEach { letra ->
+            val fecha = fechaDe(cursor)
+            val celda = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
+                    setMargins(dp(2), dp(4), dp(2), dp(4))
+                }
+                setBackgroundResource(R.drawable.ds_celda_dia)
+                isSelected = fecha == elegido
+            }
+            celda.addView(TextView(this).apply {
+                text = letra
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(getColor(if (fecha == elegido) R.color.primary else R.color.text_tertiary))
+            })
+            celda.addView(TextView(this).apply {
+                text = cursor.get(Calendar.DAY_OF_MONTH).toString()
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTypeface(typeface, Typeface.BOLD)
+                when {
+                    fecha == hoy && fecha == elegido -> {
+                        setBackgroundResource(R.drawable.ds_hoy)
+                        setTextColor(getColor(R.color.white))
+                    }
+                    fecha == hoy -> {
+                        setBackgroundResource(R.drawable.ds_hoy_borde)
+                        setTextColor(getColor(R.color.primary))
+                    }
+                    else -> setTextColor(getColor(R.color.text_primary))
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
+            })
+            celda.addView(View(this).apply {
+                setBackgroundResource(R.drawable.ds_punto)
+                visibility = if (fecha in conActividad) View.VISIBLE else View.INVISIBLE
+                layoutParams = LinearLayout.LayoutParams(dp(5), dp(5)).apply { topMargin = dp(2) }
+            })
+            val c = cursor.clone() as Calendar
+            celda.setOnClickListener {
+                dia = c
+                mes = primeroDelMes(c)
+                pintar()
+            }
+            tira.addView(celda)
+            cursor.add(Calendar.DAY_OF_MONTH, 1)
+        }
+    }
+
+    private fun minutosAhora(): Int {
+        val c = Calendar.getInstance(zona)
+        return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE)
+    }
+
+    /** Inicio de jornada de hoy en minutos (si la jornada de hoy ya empezó). */
+    private fun inicioJornadaHoy(): Int? {
+        val en = PreferenceManager.getDefaultSharedPreferences(this).getLong(DmujeresApi.KEY_JOURNEY_STARTED_AT, 0L)
+        if (en <= 0L) return null
+        val c = Calendar.getInstance(zona).apply { timeInMillis = en }
+        if (fechaDe(c) != hoy()) return null
+        return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE)
+    }
+
+    private fun etiquetaDia(): String {
+        val fecha = fechaDe(dia)
+        val texto = formato("EEEE d 'de' MMMM", dia)
+        val ayer = Calendar.getInstance(zona).apply { add(Calendar.DAY_OF_MONTH, -1) }
+        val manana = Calendar.getInstance(zona).apply { add(Calendar.DAY_OF_MONTH, 1) }
+        val prefijo = when (fecha) {
+            hoy() -> getString(R.string.crono_hoy)
+            fechaDe(ayer) -> getString(R.string.crono_ayer)
+            fechaDe(manana) -> getString(R.string.crono_manana)
+            else -> return texto
+        }
+        return "$prefijo · ${texto.lowercase(es)}"
+    }
+
+    /** Elemento de la lista del día: actividad, hueco sin registrar o la hora actual. */
+    private sealed class Fila(val minuto: Int, val orden: Int) {
+        class DeActividad(val a: Actividad, minuto: Int) : Fila(minuto, 1)
+        class Hueco(val tramo: AgendaDia.Tramo) : Fila(tramo.inicio, 0)
+        class Ahora(minuto: Int) : Fila(minuto, 2)
+    }
+
     private fun pintarDia() {
         val lista = findViewById<LinearLayout>(R.id.crono_lista)
         lista.removeAllViews()
-        val delDia = Actividades.delDia(this, fechaDe(dia))
-        if (delDia.isEmpty()) {
+        val fecha = fechaDe(dia)
+        val hoy = hoy()
+        val esHoy = fecha == hoy
+        val delDia = Actividades.delDia(this, fecha)
+        val ahora = minutosAhora()
+        val ahoraTexto = HoraCronograma.deMinutos(ahora)
+        val enCurso = if (esHoy) HoraCronograma.enCurso(delDia, ahoraTexto, { it.hora }, { it.horaFin }) else null
+
+        findViewById<TextView>(R.id.crono_dia_titulo).text = etiquetaDia()
+        findViewById<View>(R.id.crono_ir_hoy).visibility = if (esHoy) View.GONE else View.VISIBLE
+        val conFin = delDia.mapNotNull { a ->
+            a.horaFin?.let { AgendaDia.Tramo(HoraCronograma.aMinutos(a.hora), HoraCronograma.aMinutos(it)) }
+        }
+        val total = HoraCronograma.duracion(AgendaDia.cubiertos(conFin))
+        findViewById<TextView>(R.id.crono_dia_resumen).text = when (delDia.size) {
+            0 -> getString(R.string.crono_vacio)
+            1 -> getString(R.string.crono_resumen_dia_uno_fmt, total)
+            else -> getString(R.string.crono_resumen_dia_fmt, delDia.size, total)
+        }
+
+        // Huecos sin registrar: hoy, desde el inicio de jornada hasta ahora;
+        // días pasados, entre actividades; días futuros, ninguno (se planifica).
+        val tramos = AgendaDia.tramosDelDia(delDia, { it.hora }, { it.horaFin })
+        val huecos = when {
+            esHoy -> AgendaDia.huecos(tramos, inicioJornadaHoy(), ahora)
+            fecha < hoy -> AgendaDia.huecos(tramos, null, null)
+            else -> emptyList()
+        }
+        val filas = mutableListOf<Fila>()
+        delDia.forEach { filas += Fila.DeActividad(it, HoraCronograma.aMinutos(it.hora)) }
+        huecos.forEach { filas += Fila.Hueco(it) }
+        if (esHoy && enCurso == null) filas += Fila.Ahora(ahora)
+        val orden = filas.sortedWith(compareBy({ if (it is Fila.Ahora) it.minuto + 0.5 else it.minuto.toDouble() }, { it.orden }))
+
+        if (delDia.isEmpty() && huecos.isEmpty()) {
             lista.addView(TextView(this).apply {
                 setText(R.string.crono_vacio)
                 setTextColor(getColor(R.color.text_tertiary))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                setPadding(0, dp(18), 0, dp(8))
+                setPadding(dp(4), dp(18), 0, dp(8))
             })
-            // Atajos: marcar el día entero sin escribir nada.
-            lista.addView(TextView(this).apply {
-                setText(R.string.crono_todo_dia)
-                setTextColor(getColor(R.color.text_secondary))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setPadding(0, dp(4), 0, dp(6))
-            })
-            val atajos = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 0, 0, dp(14))
-            }
-            listOf(TipoActividad.VACACIONES, TipoActividad.PERMISO_MEDICO, TipoActividad.PERMISO).forEach { tipo ->
-                atajos.addView(chip(tipo.etiqueta, false) {
-                    Actividades.guardar(this, nueva(tipo, "08:00", "17:00", null, null))
-                    pintar()
-                })
-            }
-            lista.addView(atajos)
-            return
         }
-        delDia.forEachIndexed { i, a ->
-            if (i > 0) {
-                lista.addView(View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
-                    setBackgroundColor(getColor(R.color.line))
-                })
+        orden.forEach { f ->
+            when (f) {
+                is Fila.DeActividad -> lista.addView(filaActividad(f.a, f.a == enCurso, esHoy, ahora, fecha < hoy))
+                is Fila.Hueco -> lista.addView(filaHueco(f.tramo))
+                is Fila.Ahora -> lista.addView(filaAhora(ahoraTexto))
             }
-            lista.addView(filaActividad(a))
         }
+        if (delDia.isEmpty()) atajosTodoElDia(lista)
     }
 
-    private fun filaActividad(a: Actividad): View {
+    /** Atajos: marcar el día entero sin escribir nada. */
+    private fun atajosTodoElDia(lista: LinearLayout) {
+        lista.addView(TextView(this).apply {
+            setText(R.string.crono_todo_dia)
+            setTextColor(getColor(R.color.text_secondary))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(dp(4), dp(16), 0, dp(6))
+        })
+        val atajos = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(14))
+        }
+        listOf(TipoActividad.VACACIONES, TipoActividad.PERMISO_MEDICO, TipoActividad.PERMISO).forEach { tipo ->
+            atajos.addView(chip(tipo.etiqueta, false) {
+                Actividades.guardar(
+                    this,
+                    Actividades.nueva(this, fechaDe(dia), hoy(), tipo, ActividadActivity.INICIO_DIA, ActividadActivity.FIN_DIA, null, null),
+                )
+                pintar()
+            })
+        }
+        lista.addView(atajos)
+    }
+
+    private fun columnaHora(inicio: String, fin: String?, apagada: Boolean): TextView = TextView(this).apply {
+        val principal = HoraCronograma.legible(inicio)
+        val texto = android.text.SpannableStringBuilder(principal)
+        if (fin != null) {
+            val desde = texto.length
+            texto.append("\n").append(HoraCronograma.legible(fin))
+            texto.setSpan(android.text.style.RelativeSizeSpan(0.85f), desde, texto.length, 0)
+            texto.setSpan(android.text.style.ForegroundColorSpan(getColor(R.color.text_tertiary)), desde, texto.length, 0)
+        }
+        text = texto
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(getColor(if (apagada) R.color.text_tertiary else R.color.text_primary))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+        setLineSpacing(0f, 1.15f)
+        layoutParams = LinearLayout.LayoutParams(dp(76), LinearLayout.LayoutParams.WRAP_CONTENT)
+    }
+
+    private fun filaActividad(a: Actividad, enCurso: Boolean, esHoy: Boolean, ahora: Int, diaPasado: Boolean): View {
+        val fin = a.horaFin?.let { HoraCronograma.aMinutos(it) }
+        val terminada = diaPasado || (esHoy && fin != null && fin <= ahora)
         val fila = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(10), 0, dp(10))
+            setPadding(dp(4), dp(12), dp(4), dp(12))
             setBackgroundResource(android.R.drawable.list_selector_background)
-            setOnClickListener { abrirFormulario(a) }
+            setOnClickListener { ActividadActivity.abrir(this@CronogramaActivity, a.fecha, a) }
         }
-        // De tal hora a tal hora, en 12 h (inicio arriba, fin debajo).
-        fila.addView(TextView(this).apply {
-            text = if (a.horaFin != null) "${HoraCronograma.legible(a.hora)}\n${HoraCronograma.legible(a.horaFin)}" else HoraCronograma.legible(a.hora)
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(getColor(R.color.text_primary))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setLineSpacing(0f, 1.1f)
-            layoutParams = LinearLayout.LayoutParams(dp(78), LinearLayout.LayoutParams.WRAP_CONTENT)
+        fila.addView(columnaHora(a.hora, a.horaFin, terminada))
+        val (color, fondo) = colorTipo(a.tipo)
+        // Barra de color del tipo, a lo alto de la fila.
+        fila.addView(View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(2).toFloat()
+                setColor(getColor(color))
+            }
+            alpha = if (terminada) 0.45f else 1f
+            layoutParams = LinearLayout.LayoutParams(dp(3), LinearLayout.LayoutParams.MATCH_PARENT).apply { marginEnd = dp(10) }
         })
         val texto = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val (color, fondo) = colorTipo(a.tipo)
         val cabecera = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -349,7 +541,103 @@ class CronogramaActivity : AppCompatActivity() {
                 setPadding(0, dp(3), 0, 0)
             })
         }
+        if (enCurso) texto.addView(enCursoConTermine(a, ahora))
         fila.addView(texto)
+        return fila
+    }
+
+    /** "En curso · termina 10:00 a. m." y "Terminé" para cerrarla a la hora real. */
+    private fun enCursoConTermine(a: Actividad, ahora: Int): View {
+        val fila = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        fila.addView(TextView(this).apply {
+            text = a.horaFin?.let { getString(R.string.crono_en_curso_fmt, HoraCronograma.legible(it)) } ?: getString(R.string.crono_en_curso)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(getColor(R.color.primary))
+            setBackgroundResource(R.drawable.ds_chip_magenta)
+            setPadding(dp(8), dp(3), dp(8), dp(3))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) }
+        })
+        if (ahora > HoraCronograma.aMinutos(a.hora)) {
+            fila.addView(TextView(this).apply {
+                setText(R.string.crono_terminar_ahora)
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(getColor(R.color.primary))
+                setBackgroundResource(R.drawable.ds_button_outline)
+                setPadding(dp(14), 0, dp(14), 0)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34))
+                setOnClickListener {
+                    val fin = HoraCronograma.deMinutos(minutosAhora())
+                    if (HoraCronograma.aMinutos(fin) <= HoraCronograma.aMinutos(a.hora)) return@setOnClickListener
+                    Actividades.guardar(this@CronogramaActivity, a.copy(horaFin = fin))
+                    Toast.makeText(
+                        this@CronogramaActivity,
+                        getString(R.string.crono_terminada_fmt, a.tipo.etiqueta, HoraCronograma.legible(fin)),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    pintar()
+                    Actividades.sincronizar(this@CronogramaActivity) { runOnUiThread { if (!isFinishing && !isDestroyed) pintar() } }
+                }
+            })
+        }
+        return fila
+    }
+
+    /** Hueco sin registrar: tocarlo abre el formulario con esas horas. */
+    private fun filaHueco(t: AgendaDia.Tramo): View {
+        val inicio = HoraCronograma.deMinutos(t.inicio)
+        val fin = HoraCronograma.deMinutos(t.fin)
+        val fila = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.ds_hueco)
+            setPadding(dp(4), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            }
+            setOnClickListener { ActividadActivity.abrir(this@CronogramaActivity, fechaDe(dia), null, inicio, fin) }
+        }
+        fila.addView(columnaHora(inicio, fin, true))
+        fila.addView(TextView(this).apply {
+            text = getString(R.string.crono_sin_registrar_fmt, HoraCronograma.duracion(t.minutos))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+            setTextColor(getColor(R.color.text_secondary))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        fila.addView(TextView(this).apply {
+            setText(R.string.crono_agregar_corto)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(getColor(R.color.primary))
+        })
+        return fila
+    }
+
+    /** Línea de la hora actual entre lo que ya pasó y lo que viene. */
+    private fun filaAhora(hora: String): View {
+        val fila = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(6), 0, dp(6))
+        }
+        fila.addView(TextView(this).apply {
+            text = getString(R.string.crono_ahora_fmt, HoraCronograma.legible(hora))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(getColor(R.color.primary))
+            setPadding(dp(4), 0, dp(8), 0)
+        })
+        fila.addView(View(this).apply {
+            setBackgroundColor(getColor(R.color.primary))
+            layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
+        })
         return fila
     }
 
@@ -360,192 +648,6 @@ class CronogramaActivity : AppCompatActivity() {
         TipoActividad.VACACIONES -> R.color.ok to R.drawable.ds_chip_ok
         TipoActividad.PERMISO -> R.color.navy_700 to R.drawable.ds_chip_neutral
         TipoActividad.NOVEDAD -> R.color.primary to R.drawable.ds_chip_magenta
-    }
-
-    // ── Ubicación ──────────────────────────────────────────────────────────
-
-    /** Último fix de la captura si es reciente (≤ 5 min). */
-    private fun ubicacionActual(): Triple<Double, Double, Float>? {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val at = prefs.getLong(PositionProvider.KEY_LAST_FIX_AT, 0L)
-        if (at <= 0L || System.currentTimeMillis() - at > 5 * 60_000L) return null
-        val lat = prefs.getString(PositionProvider.KEY_LAST_FIX_LAT, null)?.toDoubleOrNull() ?: return null
-        val lon = prefs.getString(PositionProvider.KEY_LAST_FIX_LON, null)?.toDoubleOrNull() ?: return null
-        return Triple(lat, lon, prefs.getFloat(PositionProvider.KEY_LAST_FIX_ACC, -1f))
-    }
-
-    // ── Formulario ─────────────────────────────────────────────────────────
-
-
-    private fun nueva(tipo: TipoActividad, hora: String, horaFin: String?, lugar: String?, nota: String?): Actividad {
-        val fecha = fechaDe(dia)
-        val conUbicacion = DmujeresApi.isJourneyOpen(this) && fecha == hoy()
-        val ubic = if (conUbicacion) ubicacionActual() else null
-        return Actividad(
-            clientId = UUID.randomUUID().toString(),
-            fecha = fecha,
-            hora = hora,
-            horaFin = horaFin,
-            tipo = tipo,
-            lugar = lugar,
-            nota = nota,
-            registradoEn = System.currentTimeMillis(),
-            lat = ubic?.first,
-            lon = ubic?.second,
-            precision = ubic?.third?.takeIf { it >= 0 },
-        )
-    }
-
-    private fun abrirFormulario(existente: Actividad?) {
-        if (enMes) {
-            // Desde el mes se agrega al día seleccionado (hoy por defecto).
-            enMes = false
-            pintar()
-        }
-        val vista = LayoutInflater.from(this).inflate(R.layout.dialog_actividad, null)
-        val titulo = vista.findViewById<TextView>(R.id.act_titulo)
-        val campoDesde = CampoHora(vista, R.id.act_desde, R.id.act_desde_am, R.id.act_desde_pm)
-        val campoHasta = CampoHora(vista, R.id.act_hasta, R.id.act_hasta_am, R.id.act_hasta_pm)
-        val lugar = vista.findViewById<AutoCompleteTextView>(R.id.act_lugar)
-        val lugarLabel = vista.findViewById<TextView>(R.id.act_lugar_label)
-        val nota = vista.findViewById<EditText>(R.id.act_nota)
-        val notaLabel = vista.findViewById<TextView>(R.id.act_nota_label)
-        val error = vista.findViewById<TextView>(R.id.act_error)
-
-        titulo.setText(if (existente == null) R.string.crono_nueva else R.string.crono_editar)
-        // Nueva: desde la hora actual (modificable) hasta una hora después.
-        val inicio = existente?.hora ?: horaActual()
-        campoDesde.poner(inicio)
-        campoHasta.poner(existente?.horaFin ?: HoraCronograma.sumar(inicio, 60))
-        lugar.setText(existente?.lugar.orEmpty())
-        nota.setText(existente?.nota.orEmpty())
-        lugar.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, Actividades.lugaresFrecuentes(this)))
-
-        var tipo = existente?.tipo ?: TipoActividad.VISITA
-        val chips = mutableMapOf<TipoActividad, TextView>()
-        fun aplicarTipo() {
-            chips.forEach { (t, v) ->
-                v.isSelected = t == tipo
-                v.setTextColor(getColor(if (t == tipo) R.color.white else R.color.text_primary))
-            }
-            val conLugar = tipo == TipoActividad.VISITA || tipo == TipoActividad.NOVEDAD
-            lugarLabel.visibility = if (conLugar) View.VISIBLE else View.GONE
-            lugar.visibility = lugarLabel.visibility
-            notaLabel.setText(if (tipo == TipoActividad.NOVEDAD) R.string.crono_nota_obligatoria else R.string.crono_nota)
-        }
-        val fila1 = vista.findViewById<LinearLayout>(R.id.act_tipos_1)
-        val fila2 = vista.findViewById<LinearLayout>(R.id.act_tipos_2)
-        TipoActividad.entries.forEachIndexed { i, t ->
-            val v = chip(t.etiqueta, t == tipo) {
-                tipo = t
-                aplicarTipo()
-            }
-            chips[t] = v
-            (if (i < 3) fila1 else fila2).addView(v)
-        }
-        aplicarTipo()
-
-        val builder = AlertDialog.Builder(this)
-            .setView(vista)
-            .setPositiveButton(R.string.crono_guardar, null)
-            .setNegativeButton(R.string.crono_cancelar, null)
-        if (existente != null) {
-            builder.setNeutralButton(R.string.crono_eliminar) { _, _ ->
-                AlertDialog.Builder(this)
-                    .setMessage(R.string.crono_confirmar_eliminar)
-                    .setPositiveButton(R.string.crono_eliminar) { _, _ ->
-                        Actividades.eliminar(this, existente)
-                        pintar()
-                    }
-                    .setNegativeButton(R.string.crono_cancelar, null)
-                    .show()
-            }
-        }
-        val dialogo = builder.create()
-        dialogo.setOnShowListener {
-            dialogo.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val textoLugar = lugar.text.toString().trim().takeIf { it.isNotEmpty() && lugar.visibility == View.VISIBLE }
-                val textoNota = nota.text.toString().trim().takeIf { it.isNotEmpty() }
-                val falta = when {
-                    tipo == TipoActividad.VISITA && textoLugar == null -> R.string.crono_error_lugar
-                    tipo == TipoActividad.NOVEDAD && textoNota == null -> R.string.crono_error_nota
-                    else -> null
-                }
-                if (falta != null) {
-                    error.setText(falta)
-                    error.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                val desde = campoDesde.leer()
-                val hasta = campoHasta.leer()
-                if (desde == null || hasta == null) {
-                    error.setText(R.string.crono_error_hora)
-                    error.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                if (HoraCronograma.aMinutos(hasta) <= HoraCronograma.aMinutos(desde)) {
-                    error.setText(R.string.crono_error_rango)
-                    error.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                val guardada = existente?.copy(
-                    hora = desde,
-                    horaFin = hasta,
-                    tipo = tipo,
-                    lugar = textoLugar,
-                    nota = textoNota,
-                ) ?: nueva(tipo, desde, hasta, textoLugar, textoNota)
-                Actividades.guardar(this, guardada)
-                dialogo.dismiss()
-                pintar()
-                Actividades.sincronizar(this) { runOnUiThread { if (!isFinishing && !isDestroyed) pintar() } }
-            }
-        }
-        dialogo.show()
-    }
-
-    /** Hora actual exacta "HH:mm" (zona de Ecuador). */
-    private fun horaActual(): String {
-        val c = Calendar.getInstance(zona)
-        return String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
-    }
-
-    /**
-     * Campo de hora con AM/PM: se escribe la hora y se elige AM o PM. Si se
-     * escribe en 24 h ("14:30") se corrige solo a "02:30" con PM al salir del
-     * campo. Devuelve la hora en 24 h para guardar.
-     */
-    private inner class CampoHora(vista: View, idTexto: Int, idAm: Int, idPm: Int) {
-        private val texto = vista.findViewById<EditText>(idTexto)
-        private val am = vista.findViewById<TextView>(idAm)
-        private val pm = vista.findViewById<TextView>(idPm)
-        private var esPm = false
-
-        init {
-            am.setOnClickListener { elegir(false) }
-            pm.setOnClickListener { elegir(true) }
-            texto.setOnFocusChangeListener { _, conFoco -> if (!conFoco) normalizar() }
-        }
-
-        private fun elegir(valor: Boolean) {
-            esPm = valor
-            am.isSelected = !valor
-            pm.isSelected = valor
-            am.setTextColor(getColor(if (!valor) R.color.white else R.color.text_primary))
-            pm.setTextColor(getColor(if (valor) R.color.white else R.color.text_primary))
-        }
-
-        fun poner(hora24: String) {
-            texto.setText(HoraCronograma.a12(hora24))
-            elegir(HoraCronograma.esPm(hora24))
-        }
-
-        private fun normalizar() {
-            val lectura = HoraCronograma.interpretar(texto.text.toString(), esPm) ?: return
-            poner(lectura.hora24)
-        }
-
-        fun leer(): String? = HoraCronograma.interpretar(texto.text.toString(), esPm)?.hora24
     }
 
     private fun chip(texto: String, seleccionado: Boolean, alTocar: () -> Unit): TextView = TextView(this).apply {

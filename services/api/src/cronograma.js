@@ -1,8 +1,9 @@
 // Cronograma de actividades para el panel: lo que cada persona declaró en la
 // app (operations.dmt_actividad) junto con lo que dice su recorrido a esa
 // hora, para auditar lo declarado contra lo registrado:
-//  - `enHora`: el fix más cercano a la hora declarada (±20 min) y, si a esa
-//    hora estaba detenida, la parada (por permanencia, paradas.js).
+//  - `enHora`: el fix más cercano a la hora declarada (±20 min) y, si estaba
+//    detenida, la parada (por permanencia, paradas.js). Con rango declarado
+//    se toma la parada que más comparte con él y qué parte cubre.
 //  - `registro`: cuándo se cargó y, solo si fue con jornada iniciada, dónde.
 // Las direcciones salen de la caché del geocodificador; si falta se precalienta
 // y el panel las pide por /geocode/reverse.
@@ -30,6 +31,26 @@ function direccion(lat, lon, precision) {
   const r = resolucionEnCache(lat, lon, precision);
   if (!r) precalentar(lat, lon, precision);
   return r?.direccion ?? null;
+}
+
+// Parada que respalda una actividad declarada (t = inicio, tFin = fin, ms):
+//  - con rango ("de 9:00 a 11:00"), la que más tiempo comparte con él, y qué
+//    parte del horario cubre (coberturaPct);
+//  - sin rango (antes de la app 2.4.1), o si ninguna lo toca, la que toque
+//    la hora de inicio con ±5 min (la hora va redondeada al minuto).
+export function paradaDeActividad(paradas, t, tFin) {
+  if (tFin !== null && tFin > t) {
+    const solape = (s) => Math.min(s.fin.getTime(), tFin) - Math.max(s.inicio.getTime(), t);
+    const porRango = paradas.filter((s) => solape(s) > 0).sort((a, b) => solape(b) - solape(a))[0] ?? null;
+    if (porRango) {
+      return { parada: porRango, porRango: true, coberturaPct: Math.round((solape(porRango) / (tFin - t)) * 100) };
+    }
+  }
+  const cerca = (s) => Math.max(0, s.inicio.getTime() - t, t - s.fin.getTime());
+  const parada = paradas
+    .filter((s) => cerca(s) <= MARGEN_PARADA_MS)
+    .sort((a, b) => cerca(a) - cerca(b))[0] ?? null;
+  return { parada, porRango: false, coberturaPct: null };
 }
 
 export async function listarCronograma(ctx) {
@@ -100,20 +121,18 @@ export async function listarCronograma(ctx) {
         cercano = p;
       }
     }
-    // La hora declarada va redondeada al minuto: se acepta la parada que toque
-    // la ventana de ±5 min (la más cercana a la hora).
-    const cerca = (s) => Math.max(0, s.inicio.getTime() - t, t - s.fin.getTime());
-    const parada = (paradasPorEquipo.get(id) ?? [])
-      .filter((s) => cerca(s) <= MARGEN_PARADA_MS)
-      .sort((a, b) => cerca(a) - cerca(b))[0] ?? null;
-    const enHora = cercano && mejor <= VENTANA_HORA_MS
+    const tFin = f.hora_fin ? instanteDeclarado(f.fecha, f.hora_fin) : null;
+    const { parada, porRango, coberturaPct } = paradaDeActividad(paradasPorEquipo.get(id) ?? [], t, tFin);
+    const conFix = cercano !== null && mejor <= VENTANA_HORA_MS;
+    const enHora = conFix || porRango
       ? {
           latitud: parada ? parada.latitud : cercano.latitud,
           longitud: parada ? parada.longitud : cercano.longitud,
-          desfaseMin: Math.round(mejor / 60_000),
+          desfaseMin: conFix ? Math.round(mejor / 60_000) : Math.round(Math.abs(parada.inicio.getTime() - t) / 60_000),
           detenida: parada !== null,
           paradaDesde: parada ? parada.inicio.toISOString() : null,
           paradaHasta: parada ? parada.fin.toISOString() : null,
+          coberturaPct,
           direccion: parada
             ? direccion(parada.latitud, parada.longitud, parada.precisionM)
             : direccion(cercano.latitud, cercano.longitud, cercano.precisionM),

@@ -5,7 +5,12 @@ import androidx.preference.PreferenceManager
 import org.json.JSONArray
 import org.json.JSONObject
 import org.traccar.client.DmujeresApi
+import org.traccar.client.PositionProvider
 import org.traccar.client.StatusActivity
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Tipos de actividad del cronograma (mismos códigos que el servidor). */
 enum class TipoActividad(val codigo: String, val etiqueta: String) {
@@ -99,6 +104,10 @@ object Actividades {
     fun delMes(context: Context, mes: String): List<Actividad> =
         todas(context).filter { it.fecha.startsWith(mes) && !it.eliminada }
 
+    /** Fechas con actividades entre [desde] y [hasta] (para los puntos de la semana). */
+    fun fechasConActividad(context: Context, desde: String, hasta: String): Set<String> =
+        todas(context).filter { !it.eliminada && it.fecha >= desde && it.fecha <= hasta }.map { it.fecha }.toSet()
+
     fun pendientes(context: Context): Int = todas(context).count { it.pendiente }
 
     /** Última vez que el teléfono quedó al día con el servidor (0 = nunca). */
@@ -111,21 +120,56 @@ object Actividades {
     }
 
     /**
-     * Hora sugerida para una actividad nueva del día: continúa después de la
-     * última cargada (+30 min) aunque esté en el futuro; así, si ya se planificó
-     * algo a las 17:00, la siguiente sale a las 17:30 y no a la hora actual,
-     * que la dejaba desordenada. Sin actividades, la hora actual redondeada.
+     * Actividad nueva. La ubicación solo se adjunta si la jornada está
+     * iniciada y la actividad es de hoy: es "dónde se cargó" (el panel la
+     * muestra así y el servidor lo vuelve a comprobar).
      */
-    fun horaSugerida(delDia: List<Actividad>, horaActual: String): String {
-        val ultima = delDia.maxOfOrNull { it.hora } ?: return horaActual
-        return HoraCronograma.sumar(ultima, 30)
+    fun nueva(
+        context: Context,
+        fecha: String,
+        hoy: String,
+        tipo: TipoActividad,
+        hora: String,
+        horaFin: String?,
+        lugar: String?,
+        nota: String?,
+    ): Actividad {
+        val ubic = if (DmujeresApi.isJourneyOpen(context) && fecha == hoy) ubicacionReciente(context) else null
+        return Actividad(
+            clientId = UUID.randomUUID().toString(),
+            fecha = fecha,
+            hora = hora,
+            horaFin = horaFin,
+            tipo = tipo,
+            lugar = lugar,
+            nota = nota,
+            registradoEn = System.currentTimeMillis(),
+            lat = ubic?.first,
+            lon = ubic?.second,
+            precision = ubic?.third?.takeIf { it >= 0 },
+        )
+    }
+
+    /** Último fix de la captura si es reciente (≤ 5 min). */
+    private fun ubicacionReciente(context: Context): Triple<Double, Double, Float>? {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val at = prefs.getLong(PositionProvider.KEY_LAST_FIX_AT, 0L)
+        if (at <= 0L || System.currentTimeMillis() - at > 5 * 60_000L) return null
+        val lat = prefs.getString(PositionProvider.KEY_LAST_FIX_LAT, null)?.toDoubleOrNull() ?: return null
+        val lon = prefs.getString(PositionProvider.KEY_LAST_FIX_LON, null)?.toDoubleOrNull() ?: return null
+        return Triple(lat, lon, prefs.getFloat(PositionProvider.KEY_LAST_FIX_ACC, -1f))
     }
 
     /** Alta o edición: queda guardada y pendiente de subir. */
     @Synchronized
-    fun guardar(context: Context, actividad: Actividad) {
-        val lista = todas(context).filter { it.clientId != actividad.clientId }.toMutableList()
-        lista.add(actividad.copy(pendiente = true))
+    fun guardar(context: Context, actividad: Actividad) = guardarVarias(context, listOf(actividad))
+
+    /** Varias de una vez (la actividad y las vecinas que se acomodaron). */
+    @Synchronized
+    fun guardarVarias(context: Context, actividades: List<Actividad>) {
+        val ids = actividades.map { it.clientId }.toSet()
+        val lista = todas(context).filter { it.clientId !in ids }.toMutableList()
+        actividades.forEach { lista.add(it.copy(pendiente = true)) }
         guardarTodas(context, lista)
         sincronizar(context)
     }
@@ -145,33 +189,44 @@ object Actividades {
             .sortedByDescending { it.value }
             .mapNotNull { e -> todas(context).firstOrNull { it.lugar?.trim()?.lowercase() == e.key }?.lugar?.trim() }
 
-    @Volatile
-    private var sincronizando = false
+    private val sincronizando = AtomicBoolean(false)
+    private val alTerminarSubida = CopyOnWriteArrayList<() -> Unit>()
 
-    /** Sube lo pendiente en orden; se reintenta al abrir, al guardar y con el latido. */
+    /** Momento en que se subió cada actividad (para no perderla al mezclar con el servidor). */
+    private val subidasRecientes = ConcurrentHashMap<String, Long>()
+
+    /**
+     * Sube lo pendiente en orden; se reintenta al abrir, al guardar y con el
+     * latido. Si ya hay una subida en curso, [alTerminar] espera a que acabe
+     * (antes se llamaba enseguida y la pantalla se quedaba en "Por enviar").
+     * Lo que se guarde mientras sube también se sube en la misma pasada.
+     */
     fun sincronizar(context: Context, alTerminar: (() -> Unit)? = null) {
-        if (sincronizando) {
-            // Ya hay una subida en curso: se sigue con lo que pidió quien llama.
-            alTerminar?.invoke()
-            return
-        }
+        alTerminar?.let { alTerminarSubida.add(it) }
+        if (!sincronizando.compareAndSet(false, true)) return
         val app = context.applicationContext
-        sincronizando = true
         Thread {
             try {
                 var todoSubido = true
-                for (a in todas(app).filter { it.pendiente }) {
-                    if (!DmujeresApi.postActividad(app, a.aJson())) {
-                        todoSubido = false
-                        break
+                var vueltas = 0
+                while (todoSubido && vueltas++ < 5) {
+                    val pendientes = todas(app).filter { it.pendiente }
+                    if (pendientes.isEmpty()) break
+                    for (a in pendientes) {
+                        if (!DmujeresApi.postActividad(app, a.aJson())) {
+                            todoSubido = false
+                            break
+                        }
+                        marcarSubida(app, a)
+                        StatusActivity.addMessage("Cronograma: ${a.tipo.etiqueta.lowercase()} de las ${a.hora} sincronizada")
                     }
-                    marcarSubida(app, a)
-                    StatusActivity.addMessage("Cronograma: ${a.tipo.etiqueta.lowercase()} de las ${a.hora} sincronizada")
                 }
                 if (todoSubido && pendientes(app) == 0) marcarSincronizado(app)
             } finally {
-                sincronizando = false
-                alTerminar?.invoke()
+                sincronizando.set(false)
+                val esperando = alTerminarSubida.toList()
+                alTerminarSubida.removeAll(esperando.toSet())
+                esperando.forEach { it() }
             }
         }.start()
     }
@@ -187,6 +242,7 @@ object Actividades {
                 else -> it.copy(pendiente = false)
             }
         }
+        subidasRecientes[subida.clientId] = System.currentTimeMillis()
         guardarTodas(context, lista)
     }
 
@@ -198,15 +254,22 @@ object Actividades {
     fun actualizar(context: Context, desde: String, hasta: String, alTerminar: (Boolean) -> Unit) {
         val app = context.applicationContext
         Thread {
+            val consultadoEn = System.currentTimeMillis()
             val remoto = DmujeresApi.fetchActividades(app, desde, hasta)
             if (remoto != null) {
                 synchronized(this) {
                     val locales = todas(app)
                     val pendientes = locales.filter { it.pendiente }.associateBy { it.clientId }
+                    // Subidas (altas, ediciones o bajas) mientras se consultaba:
+                    // la respuesta todavía no las trae, manda lo del teléfono.
+                    val recientes = subidasRecientes.filterValues { it >= consultadoEn }.keys
                     val fuera = locales.filter { it.fecha < desde || it.fecha > hasta || it.pendiente }
                     val delServidor = List(remoto.length()) { Actividad.deJson(remoto.getJSONObject(it)) }
-                        .filter { it.clientId !in pendientes }
-                    guardarTodas(app, fuera + delServidor)
+                        .filter { it.clientId !in pendientes && it.clientId !in recientes }
+                    val recienSubidas = locales.filter {
+                        it.clientId in recientes && !it.pendiente && it.fecha >= desde && it.fecha <= hasta
+                    }
+                    guardarTodas(app, fuera + delServidor + recienSubidas)
                 }
                 if (pendientes(app) == 0) marcarSincronizado(app)
             }
