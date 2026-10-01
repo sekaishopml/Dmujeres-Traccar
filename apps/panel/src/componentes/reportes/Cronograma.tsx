@@ -373,6 +373,7 @@ function FragmentoCelda({ actividad: a, color, almuerzo }: { actividad?: Activid
         style={{ background: fondo ?? fondoHora }}
       >
         {a.hora}
+        {a.horaFin && <span className="block text-[10.5px] font-normal text-texto-3">a {a.horaFin}</span>}
       </td>
       <td className="border border-borde px-2 py-1.5 align-top" style={{ background: fondo }}>
         <div className="flex flex-wrap items-center gap-1">
@@ -511,7 +512,7 @@ function exportarCsv(datos: Actividad[], desde: string, hasta: string) {
     ...datos.map((a) => [
       a.fecha,
       a.nombre,
-      a.hora,
+      a.horaFin ? `${a.hora}–${a.horaFin}` : a.hora,
       TIPOS[a.tipo].etiqueta,
       a.lugar,
       a.nota,

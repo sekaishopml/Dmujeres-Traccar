@@ -13,6 +13,8 @@ export interface Actividad {
   nombre: string;
   fecha: string;
   hora: string;
+  // Hora de fin (app 2.4.1+); null en actividades anteriores.
+  horaFin?: string | null;
   tipo: TipoActividad;
   lugar: string | null;
   nota: string | null;

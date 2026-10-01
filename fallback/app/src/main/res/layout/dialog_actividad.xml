@@ -8,42 +8,149 @@
     android:paddingEnd="20dp"
     android:paddingBottom="6dp">
 
+    <TextView
+        android:id="@+id/act_titulo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_primary"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <!-- De tal hora a tal hora: se escribe la hora (acepta 24 h) y se elige
+         AM o PM. Desde arranca en la hora actual; Hasta, una hora después. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
+        android:layout_marginTop="14dp"
+        android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/act_titulo"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="@color/text_primary"
-            android:textSize="17sp"
-            android:textStyle="bold" />
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/act_hora"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:background="@drawable/ds_field"
-            android:fontFamily="monospace"
-            android:gravity="center"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:textColor="@color/text_primary"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/crono_desde"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/act_desde"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/ds_field"
+                android:digits="0123456789:."
+                android:gravity="center"
+                android:hint="@string/crono_hora_hint"
+                android:importantForAutofill="no"
+                android:inputType="time"
+                android:maxLength="5"
+                android:selectAllOnFocus="true"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="34dp"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/act_desde_am"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/ds_chip_tipo"
+                    android:gravity="center"
+                    android:text="AM"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/act_desde_pm"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/ds_chip_tipo"
+                    android:gravity="center"
+                    android:text="PM"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="12dp"
+            android:layout_height="1dp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/crono_hasta"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/act_hasta"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/ds_field"
+                android:digits="0123456789:."
+                android:gravity="center"
+                android:hint="@string/crono_hora_hint"
+                android:importantForAutofill="no"
+                android:inputType="time"
+                android:maxLength="5"
+                android:selectAllOnFocus="true"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="34dp"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/act_hasta_am"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/ds_chip_tipo"
+                    android:gravity="center"
+                    android:text="AM"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/act_hasta_pm"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/ds_chip_tipo"
+                    android:gravity="center"
+                    android:text="PM"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
-
-    <!-- Ajuste rápido de la hora, sin abrir el reloj. -->
-    <LinearLayout
-        android:id="@+id/act_ajustes"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:orientation="horizontal" />
 
     <TextView
         android:layout_width="wrap_content"

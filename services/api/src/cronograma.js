@@ -45,7 +45,7 @@ export async function listarCronograma(ctx) {
   const { rows } = await consultar(
     ctx.pool,
     `SELECT a.id_publico, a.dispositivo_id, d.id_publico AS dispositivo_publico, d.nombre,
-            to_char(a.fecha, 'YYYY-MM-DD') AS fecha, a.hora, a.tipo, a.lugar, a.nota,
+            to_char(a.fecha, 'YYYY-MM-DD') AS fecha, a.hora, a.hora_fin, a.tipo, a.lugar, a.nota,
             a.registrado_en, a.con_jornada, a.latitud, a.longitud, a.precision_m
        FROM operations.dmt_actividad a
        JOIN tracking.dmt_dispositivo d ON d.id = a.dispositivo_id
@@ -127,6 +127,7 @@ export async function listarCronograma(ctx) {
       nombre: f.nombre,
       fecha: f.fecha,
       hora: f.hora,
+      horaFin: f.hora_fin ?? null,
       tipo: f.tipo,
       lugar: f.lugar,
       nota: f.nota,

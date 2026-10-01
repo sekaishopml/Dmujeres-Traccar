@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pantalla principal (2.3.3): logo y estado arriba, indicadores del día y,
+<!-- Pantalla principal (2.4.1): logo y estado arriba, indicadores del día y,
      debajo de ellos, Iniciar/Finalizar jornada y Actualizar; el pie marino lleva el cronograma
      de actividades con su sincronización y la versión al fondo. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -21,18 +21,11 @@
         android:paddingTop="4dp"
         android:paddingEnd="14dp">
 
+    <!-- Consola arriba a la derecha; el bloque logo + estado + indicadores +
+         botones queda centrado en vertical entre dos espacios flexibles. -->
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-
-        <ImageView
-            android:layout_width="170dp"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="84dp"
-            android:adjustViewBounds="true"
-            android:contentDescription="@string/app_logo"
-            android:src="@drawable/logo_banner" />
+        android:layout_height="40dp">
 
         <ImageButton
             android:id="@+id/console_button"
@@ -44,11 +37,24 @@
             android:src="@drawable/ic_console" />
     </FrameLayout>
 
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <ImageView
+        android:layout_width="170dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:adjustViewBounds="true"
+        android:contentDescription="@string/app_logo"
+        android:src="@drawable/logo_banner" />
+
     <LinearLayout
         android:id="@+id/status_pill"
         android:layout_width="match_parent"
         android:layout_height="44dp"
-        android:layout_marginTop="72dp"
+        android:layout_marginTop="40dp"
         android:background="@drawable/bg_pill_red"
         android:gravity="center"
         android:orientation="horizontal"

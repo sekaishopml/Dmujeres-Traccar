@@ -1,6 +1,5 @@
 package org.traccar.client.cronograma
 
-import android.app.TimePickerDialog
 import android.graphics.Typeface
 import android.os.Bundle
 import android.util.TypedValue
@@ -267,7 +266,7 @@ class CronogramaActivity : AppCompatActivity() {
             }
             listOf(TipoActividad.VACACIONES, TipoActividad.PERMISO_MEDICO, TipoActividad.PERMISO).forEach { tipo ->
                 atajos.addView(chip(tipo.etiqueta, false) {
-                    Actividades.guardar(this, nueva(tipo, "08:00", null, null))
+                    Actividades.guardar(this, nueva(tipo, "08:00", "17:00", null, null))
                     pintar()
                 })
             }
@@ -292,12 +291,14 @@ class CronogramaActivity : AppCompatActivity() {
             setBackgroundResource(android.R.drawable.list_selector_background)
             setOnClickListener { abrirFormulario(a) }
         }
+        // De tal hora a tal hora, en 12 h (inicio arriba, fin debajo).
         fila.addView(TextView(this).apply {
-            text = a.hora
-            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            text = if (a.horaFin != null) "${HoraCronograma.legible(a.hora)}\n${HoraCronograma.legible(a.horaFin)}" else HoraCronograma.legible(a.hora)
+            setTypeface(typeface, Typeface.BOLD)
             setTextColor(getColor(R.color.text_primary))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            layoutParams = LinearLayout.LayoutParams(dp(52), LinearLayout.LayoutParams.WRAP_CONTENT)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setLineSpacing(0f, 1.1f)
+            layoutParams = LinearLayout.LayoutParams(dp(78), LinearLayout.LayoutParams.WRAP_CONTENT)
         })
         val texto = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -375,13 +376,8 @@ class CronogramaActivity : AppCompatActivity() {
 
     // ── Formulario ─────────────────────────────────────────────────────────
 
-    private fun horaActualRedondeada(): String {
-        val c = Calendar.getInstance(zona)
-        val min = c.get(Calendar.MINUTE) / 5 * 5
-        return String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), min)
-    }
 
-    private fun nueva(tipo: TipoActividad, hora: String, lugar: String?, nota: String?): Actividad {
+    private fun nueva(tipo: TipoActividad, hora: String, horaFin: String?, lugar: String?, nota: String?): Actividad {
         val fecha = fechaDe(dia)
         val conUbicacion = DmujeresApi.isJourneyOpen(this) && fecha == hoy()
         val ubic = if (conUbicacion) ubicacionActual() else null
@@ -389,6 +385,7 @@ class CronogramaActivity : AppCompatActivity() {
             clientId = UUID.randomUUID().toString(),
             fecha = fecha,
             hora = hora,
+            horaFin = horaFin,
             tipo = tipo,
             lugar = lugar,
             nota = nota,
@@ -407,7 +404,8 @@ class CronogramaActivity : AppCompatActivity() {
         }
         val vista = LayoutInflater.from(this).inflate(R.layout.dialog_actividad, null)
         val titulo = vista.findViewById<TextView>(R.id.act_titulo)
-        val hora = vista.findViewById<TextView>(R.id.act_hora)
+        val campoDesde = CampoHora(vista, R.id.act_desde, R.id.act_desde_am, R.id.act_desde_pm)
+        val campoHasta = CampoHora(vista, R.id.act_hasta, R.id.act_hasta_am, R.id.act_hasta_pm)
         val lugar = vista.findViewById<AutoCompleteTextView>(R.id.act_lugar)
         val lugarLabel = vista.findViewById<TextView>(R.id.act_lugar_label)
         val nota = vista.findViewById<EditText>(R.id.act_nota)
@@ -415,18 +413,10 @@ class CronogramaActivity : AppCompatActivity() {
         val error = vista.findViewById<TextView>(R.id.act_error)
 
         titulo.setText(if (existente == null) R.string.crono_nueva else R.string.crono_editar)
-        val delDia = Actividades.delDia(this, fechaDe(dia))
-        val ocupadas = delDia.filter { it.clientId != existente?.clientId }.map { it.hora }.toSet()
-        // La nueva continúa después de la última del día (aunque sea futura) y
-        // nunca repite una hora ya usada.
-        hora.text = existente?.hora
-            ?: HoraCronograma.libreDesde(Actividades.horaSugerida(delDia, horaActualRedondeada()), ocupadas)
-        val ajustes = vista.findViewById<LinearLayout>(R.id.act_ajustes)
-        listOf(-15 to "−15 min", 15 to "+15 min", 30 to "+30 min", 60 to "+1 h").forEach { (minutos, texto) ->
-            ajustes.addView(chip(texto, false) {
-                hora.text = HoraCronograma.sumar(hora.text.toString(), minutos)
-            })
-        }
+        // Nueva: desde la hora actual (modificable) hasta una hora después.
+        val inicio = existente?.hora ?: horaActual()
+        campoDesde.poner(inicio)
+        campoHasta.poner(existente?.horaFin ?: HoraCronograma.sumar(inicio, 60))
         lugar.setText(existente?.lugar.orEmpty())
         nota.setText(existente?.nota.orEmpty())
         lugar.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, Actividades.lugaresFrecuentes(this)))
@@ -454,13 +444,6 @@ class CronogramaActivity : AppCompatActivity() {
             (if (i < 3) fila1 else fila2).addView(v)
         }
         aplicarTipo()
-
-        hora.setOnClickListener {
-            val partes = hora.text.split(":").map { it.toIntOrNull() ?: 0 }
-            TimePickerDialog(this, { _, hh, mm ->
-                hora.text = String.format(Locale.US, "%02d:%02d", hh, mm)
-            }, partes.getOrElse(0) { 8 }, partes.getOrElse(1) { 0 }, true).show()
-        }
 
         val builder = AlertDialog.Builder(this)
             .setView(vista)
@@ -493,22 +476,25 @@ class CronogramaActivity : AppCompatActivity() {
                     error.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
-                // Hora repetida: se corre a la siguiente libre y se avisa; el
-                // segundo toque guarda (así el cronograma no se amontona).
-                val elegida = hora.text.toString()
-                if (elegida in ocupadas) {
-                    val libre = HoraCronograma.libreDesde(elegida, ocupadas)
-                    hora.text = libre
-                    error.text = getString(R.string.crono_hora_ocupada_fmt, elegida, libre)
+                val desde = campoDesde.leer()
+                val hasta = campoHasta.leer()
+                if (desde == null || hasta == null) {
+                    error.setText(R.string.crono_error_hora)
+                    error.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
+                if (HoraCronograma.aMinutos(hasta) <= HoraCronograma.aMinutos(desde)) {
+                    error.setText(R.string.crono_error_rango)
                     error.visibility = View.VISIBLE
                     return@setOnClickListener
                 }
                 val guardada = existente?.copy(
-                    hora = hora.text.toString(),
+                    hora = desde,
+                    horaFin = hasta,
                     tipo = tipo,
                     lugar = textoLugar,
                     nota = textoNota,
-                ) ?: nueva(tipo, hora.text.toString(), textoLugar, textoNota)
+                ) ?: nueva(tipo, desde, hasta, textoLugar, textoNota)
                 Actividades.guardar(this, guardada)
                 dialogo.dismiss()
                 pintar()
@@ -516,6 +502,50 @@ class CronogramaActivity : AppCompatActivity() {
             }
         }
         dialogo.show()
+    }
+
+    /** Hora actual exacta "HH:mm" (zona de Ecuador). */
+    private fun horaActual(): String {
+        val c = Calendar.getInstance(zona)
+        return String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
+    }
+
+    /**
+     * Campo de hora con AM/PM: se escribe la hora y se elige AM o PM. Si se
+     * escribe en 24 h ("14:30") se corrige solo a "02:30" con PM al salir del
+     * campo. Devuelve la hora en 24 h para guardar.
+     */
+    private inner class CampoHora(vista: View, idTexto: Int, idAm: Int, idPm: Int) {
+        private val texto = vista.findViewById<EditText>(idTexto)
+        private val am = vista.findViewById<TextView>(idAm)
+        private val pm = vista.findViewById<TextView>(idPm)
+        private var esPm = false
+
+        init {
+            am.setOnClickListener { elegir(false) }
+            pm.setOnClickListener { elegir(true) }
+            texto.setOnFocusChangeListener { _, conFoco -> if (!conFoco) normalizar() }
+        }
+
+        private fun elegir(valor: Boolean) {
+            esPm = valor
+            am.isSelected = !valor
+            pm.isSelected = valor
+            am.setTextColor(getColor(if (!valor) R.color.white else R.color.text_primary))
+            pm.setTextColor(getColor(if (valor) R.color.white else R.color.text_primary))
+        }
+
+        fun poner(hora24: String) {
+            texto.setText(HoraCronograma.a12(hora24))
+            elegir(HoraCronograma.esPm(hora24))
+        }
+
+        private fun normalizar() {
+            val lectura = HoraCronograma.interpretar(texto.text.toString(), esPm) ?: return
+            poner(lectura.hora24)
+        }
+
+        fun leer(): String? = HoraCronograma.interpretar(texto.text.toString(), esPm)?.hora24
     }
 
     private fun chip(texto: String, seleccionado: Boolean, alTocar: () -> Unit): TextView = TextView(this).apply {

@@ -25,6 +25,8 @@ data class Actividad(
     val clientId: String,
     val fecha: String,
     val hora: String,
+    /** Hora de fin "HH:mm" (opcional: actividades de antes de la 2.4.1 no la tienen). */
+    val horaFin: String? = null,
     val tipo: TipoActividad,
     val lugar: String?,
     val nota: String?,
@@ -37,7 +39,7 @@ data class Actividad(
     val eliminada: Boolean = false,
 ) {
     fun aJson(): JSONObject = JSONObject()
-        .put("clientId", clientId).put("fecha", fecha).put("hora", hora).put("tipo", tipo.codigo)
+        .put("clientId", clientId).put("fecha", fecha).put("hora", hora).put("horaFin", horaFin ?: JSONObject.NULL).put("tipo", tipo.codigo)
         .put("lugar", lugar ?: JSONObject.NULL).put("nota", nota ?: JSONObject.NULL)
         .put("at", registradoEn).put("lat", lat ?: JSONObject.NULL).put("lon", lon ?: JSONObject.NULL)
         .put("accuracy", precision?.toDouble() ?: JSONObject.NULL)
@@ -48,6 +50,7 @@ data class Actividad(
             clientId = o.getString("clientId"),
             fecha = o.getString("fecha"),
             hora = o.getString("hora"),
+            horaFin = o.optString("horaFin").takeIf { !o.isNull("horaFin") && it.matches(Regex("\\d{2}:\\d{2}")) },
             tipo = TipoActividad.de(o.optString("tipo")),
             lugar = o.optString("lugar").takeIf { !o.isNull("lugar") && it.isNotBlank() },
             nota = o.optString("nota").takeIf { !o.isNull("nota") && it.isNotBlank() },

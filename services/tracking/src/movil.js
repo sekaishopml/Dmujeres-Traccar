@@ -547,6 +547,7 @@ export async function atenderActividadesConsulta(req, res, ctx) {
         clientId: f.cliente_id,
         fecha: f.fecha,
         hora: f.hora,
+        horaFin: f.hora_fin ?? null,
         tipo: f.tipo,
         lugar: f.lugar,
         nota: f.nota,
@@ -578,6 +579,10 @@ export async function atenderActividad(req, res, ctx) {
   if (!clienteId || !FECHA_RE.test(fecha ?? '') || !HORA_RE.test(hora ?? '') || !TIPOS_ACTIVIDAD.has(tipo)) {
     return responderSinCuerpo(res, 400);
   }
+  // Hora de fin opcional ("de 09:00 a 11:30"); inválida o igual a la de
+  // inicio se ignora.
+  const horaFinCruda = texto(cuerpo.horaFin);
+  const horaFin = horaFinCruda && HORA_RE.test(horaFinCruda) && horaFinCruda !== hora ? horaFinCruda : null;
   const lugar = recortar(cuerpo.lugar, 200);
   const nota = recortar(cuerpo.nota, 500);
   if (tipo === 'novedad' && !nota) return responderSinCuerpo(res, 400);
@@ -591,6 +596,7 @@ export async function atenderActividad(req, res, ctx) {
       clienteId,
       fecha,
       hora,
+      horaFin,
       tipo,
       lugar,
       nota,

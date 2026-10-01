@@ -394,5 +394,14 @@ Se registrará el cierre en el panel.</string>
   <string name="crono_home_total_fmt">Hoy %1$d actividades registradas</string>
   <string name="crono_sync_at_fmt">Sincronizado a las %1$s</string>
   <string name="crono_sync_nunca">Aún sin sincronizar</string>
+  <string name="crono_desde">Desde</string>
+  <string name="crono_hasta">Hasta</string>
+  <string name="crono_hora_hint">00:00</string>
+  <string name="crono_error_hora">Escribe una hora válida, por ejemplo 9:30 o 14:30.</string>
+  <string name="crono_error_rango">La hora de fin debe ser después de la de inicio.</string>
+  <string name="crono_home_en_curso_fmt">En curso: %1$s · hasta %2$s</string>
+  <string name="crono_home_en_curso_sin_fin_fmt">En curso: %1$s · desde %2$s</string>
+  <string name="crono_home_siguiente_hora_fmt">Siguiente: %1$s · %2$s</string>
+  <string name="crono_home_terminado_fmt">Hoy %1$d actividades · todas terminadas</string>
   <string name="crono_hora_ocupada_fmt">Ya hay una actividad a las %1$s: se cambió a las %2$s. Toca Guardar para confirmar.</string>
 </resources>

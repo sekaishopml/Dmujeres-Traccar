@@ -527,14 +527,19 @@ class MainActivity : AppCompatActivity() {
         val hoy = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply { timeZone = zona }.format(ahora.time)
         val horaActual = String.format(java.util.Locale.US, "%02d:%02d", ahora.get(java.util.Calendar.HOUR_OF_DAY), ahora.get(java.util.Calendar.MINUTE))
         val delDia = org.traccar.client.cronograma.Actividades.delDia(this, hoy)
-        val siguiente = delDia.firstOrNull { it.hora >= horaActual }
+        // Lo que está pasando ahora y, si no hay nada en curso, lo que sigue.
+        val hc = org.traccar.client.cronograma.HoraCronograma
+        val enCurso = hc.enCurso(delDia, horaActual, { it.hora }, { it.horaFin })
+        val siguiente = hc.siguiente(delDia, horaActual) { it.hora }
+        fun nombre(a: org.traccar.client.cronograma.Actividad) =
+            a.tipo.etiqueta + (a.lugar?.let { " · $it" } ?: "")
         resumen.text = when {
             delDia.isEmpty() -> getString(R.string.crono_home_vacio)
-            siguiente != null -> getString(
-                R.string.crono_home_siguiente_fmt, delDia.size, siguiente.hora,
-                siguiente.lugar ?: siguiente.tipo.etiqueta,
-            )
-            else -> getString(R.string.crono_home_total_fmt, delDia.size)
+            enCurso != null && enCurso.horaFin != null ->
+                getString(R.string.crono_home_en_curso_fmt, nombre(enCurso), hc.legible(enCurso.horaFin))
+            enCurso != null -> getString(R.string.crono_home_en_curso_sin_fin_fmt, nombre(enCurso), hc.legible(enCurso.hora))
+            siguiente != null -> getString(R.string.crono_home_siguiente_hora_fmt, hc.legible(siguiente.hora), nombre(siguiente))
+            else -> getString(R.string.crono_home_terminado_fmt, delDia.size)
         }
         val pendientes = org.traccar.client.cronograma.Actividades.pendientes(this)
         val sync = org.traccar.client.cronograma.Actividades.sincronizadoEn(this)
