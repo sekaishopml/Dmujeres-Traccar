@@ -15,6 +15,7 @@ import { mensajeError } from '@/dominio/errores';
 import Persona from '@/componentes/reportes/Persona';
 import { TarjetaDato, TarjetaServicio } from '@/componentes/sistema/TarjetaServicio';
 import type { EstadoServicio } from '@/componentes/sistema/TarjetaServicio';
+import HistorialSalud from '@/componentes/sistema/HistorialSalud';
 
 // Sondeo de salud: suficiente para detectar caídas sin castigar al servidor.
 const INTERVALO_MS = 15_000;
@@ -193,6 +194,8 @@ export default function Sistema() {
           </Tabla>
         )}
       </Tarjeta>
+
+      <HistorialSalud />
     </div>
   );
 }

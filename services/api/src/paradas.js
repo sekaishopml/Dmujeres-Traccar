@@ -84,7 +84,7 @@ export function detectarParadas(puntos) {
       i += 1;
     }
   }
-  return fusionar(paradas);
+  return fusionar(paradas, puntos);
 }
 
 // Un fix de deriva suelto fuera del radio partía una estancia en dos
@@ -92,15 +92,53 @@ export function detectarParadas(puntos) {
 // sitio con menos de MAX_PAUSA_FUSION_S entre ellas son una sola.
 export const MAX_PAUSA_FUSION_S = 180;
 
-function fusionar(paradas) {
+// Estancia larga dentro de un edificio (Manzaba 30/09, 10:09-20:41): la
+// deriva del GPS bajo techo saca fixes a 70-100 m y la estancia quedaba en 5
+// paradas con una telaraña de líneas entre ellas. Dos paradas seguidas son la
+// misma estancia si:
+//  - las separa como mucho MAX_PAUSA_ESTANCIA_S,
+//  - sus centros están a <= RADIO_FUSION_M, y
+//  - en la pausa no se alejó más de EXCURSION_MAX_M del centro durante
+//    MIN_PARADA_S seguidos (un salto suelto del GPS no es una salida).
+// Una visita real a otro sitio no se pierde: si la persona se quedó >= 2 min a
+// más de RADIO_FUSION_M, eso es otra parada y corta la cadena.
+export const MAX_PAUSA_ESTANCIA_S = 15 * 60;
+export const RADIO_FUSION_M = 100;
+export const EXCURSION_MAX_M = 200;
+
+// ¿Hubo una salida real en la pausa? Solo si los fixes buenos se mantienen
+// a más de EXCURSION_MAX_M del centro durante MIN_PARADA_S seguidos: bajo
+// techo el GPS salta 200 m y vuelve en segundos (Manzaba 10:36, 22 → 244 →
+// 22 m en 33 s) y eso no es una salida.
+function salidaSostenida(puntos, centro, desdeMs, hastaMs) {
+  let fueraDesde = null;
+  for (const p of puntos) {
+    const t = ms(p);
+    if (t <= desdeMs || !bueno(p)) continue;
+    if (t >= hastaMs) break;
+    if (metros(centro, p) > EXCURSION_MAX_M) {
+      if (fueraDesde === null) fueraDesde = t;
+      if ((t - fueraDesde) / 1000 >= MIN_PARADA_S) return true;
+    } else {
+      fueraDesde = null;
+    }
+  }
+  return false;
+}
+
+function mismaEstancia(previa, parada, puntos) {
+  const pausaS = (parada.inicio.getTime() - previa.fin.getTime()) / 1000;
+  const distancia = metros(previa, parada);
+  if (pausaS <= MAX_PAUSA_FUSION_S && distancia <= RADIO_M) return true;
+  if (pausaS > MAX_PAUSA_ESTANCIA_S || distancia > RADIO_FUSION_M) return false;
+  return !salidaSostenida(puntos ?? [], previa, previa.fin.getTime(), parada.inicio.getTime());
+}
+
+function fusionar(paradas, puntos) {
   const salida = [];
   for (const parada of paradas) {
     const previa = salida[salida.length - 1];
-    if (
-      previa &&
-      (parada.inicio.getTime() - previa.fin.getTime()) / 1000 <= MAX_PAUSA_FUSION_S &&
-      metros(previa, parada) <= RADIO_M
-    ) {
+    if (previa && mismaEstancia(previa, parada, puntos)) {
       const fixes = previa.fixes + parada.fixes;
       previa.latitud = (previa.latitud * previa.fixes + parada.latitud * parada.fixes) / fixes;
       previa.longitud = (previa.longitud * previa.fixes + parada.longitud * parada.fixes) / fixes;

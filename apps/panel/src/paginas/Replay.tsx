@@ -464,18 +464,28 @@ export default function Replay() {
   // espagueti de la deriva parada.
   const segmentos = useMemo(
     () => {
-      // Los fixes de antena llegan con velocidad 0 aunque la persona avance, y
-      // el par quedaba "quieto" (sin línea): la ruta se veía cortada. Un par
-      // quieto que se desplazó 40 m o más fuera de una parada es movimiento.
       const ventanasParada = paradas.map((p) => [milisegundos(p.inicio), milisegundos(p.fin)] as const);
-      return segmentosDeRecorrido(posiciones, huecos, reconstruidos).map((segmento) => {
-        if (segmento.tipo !== 'ruta' || segmento.modo !== 'quieto' || segmento.coordenadas.length < 2) return segmento;
+      const finTramo = new Map(reconstruidos.map((tramo) => [milisegundos(tramo.desde), milisegundos(tramo.hasta)]));
+      // Un par GPS que empieza antes del último fix de la parada termina dentro
+      // de ella; el par que sale de la parada (empieza en su último fix) sí se
+      // dibuja.
+      const dentroDeParada = (desde: number, hasta: number) =>
+        ventanasParada.some(([inicio, fin]) => desde >= inicio && hasta <= fin && desde < fin);
+      return segmentosDeRecorrido(posiciones, huecos, reconstruidos).flatMap((segmento) => {
+        const t = segmento.instante ?? 0;
+        // Dentro de una parada todo trazo es deriva del GPS (bajo techo salta
+        // 100-200 m): no se dibuja línea ni flechas, la parada se ve con su
+        // halo y la nube de fixes. Antes tejía una telaraña con flechas.
+        if (segmento.tipo === 'matched' && dentroDeParada(t, finTramo.get(t) ?? Infinity)) return [];
+        if (segmento.tipo === 'ruta' && dentroDeParada(t, t)) return [{ ...segmento, modo: 'quieto' as const }];
+        // Los fixes de antena llegan con velocidad 0 aunque la persona avance, y
+        // el par quedaba "quieto" (sin línea): la ruta se veía cortada. Un par
+        // quieto que se desplazó 40 m o más fuera de una parada es movimiento.
+        if (segmento.tipo !== 'ruta' || segmento.modo !== 'quieto' || segmento.coordenadas.length < 2) return [segmento];
         const [a, b] = [segmento.coordenadas[0], segmento.coordenadas[segmento.coordenadas.length - 1]];
         const dLat = (b[1] - a[1]) * 111320;
         const dLon = (b[0] - a[0]) * 111320 * Math.cos(((a[1] + b[1]) / 2) * (Math.PI / 180));
-        const t = segmento.instante ?? 0;
-        const enParada = ventanasParada.some(([desde, hasta]) => t >= desde && t < hasta);
-        return Math.hypot(dLat, dLon) >= 40 && !enParada ? { ...segmento, modo: 'vehiculo' as const } : segmento;
+        return [Math.hypot(dLat, dLon) >= 40 ? { ...segmento, modo: 'vehiculo' as const } : segmento];
       });
     },
     [posiciones, huecos, reconstruidos, paradas],

@@ -7,6 +7,7 @@
 import { createHash, timingSafeEqual, randomBytes, pbkdf2Sync } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { filaSalud } from './salud.js';
 
 const LIMITE_JSON = 64 * 1024;
 const LIMITE_DIAGNOSTICO = 10_000;
@@ -699,6 +700,8 @@ export async function atenderDiagnosticos(req, res, ctx) {
       dispositivoId: dispositivo.id,
       parcheDispositivo: parche,
       bateria,
+      // Historial: cada diagnóstico queda como fila (salud.js).
+      salud: filaSalud(datos, agenteCliente(req), ahora),
     });
   } catch (error) {
     ctx.log.error(`movil/diagnostics: fallo al guardar diagnostico: ${error.message}`);

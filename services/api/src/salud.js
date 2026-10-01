@@ -312,3 +312,75 @@ export async function listarSalud(ctx) {
   const ahoraMs = Date.now();
   respuestaJson(ctx.res, 200, { datos: rows.map((fila) => aSaludDispositivo(fila, ahoraMs)) });
 }
+
+// GET /api/v1/salud/historial?horas=24 -> {horas, datos:[...]}: resumen por
+// equipo del historial de diagnósticos (telemetry.dmt_salud_dispositivo, uno
+// cada 10 min por equipo). Sirve para ver si un equipo falla seguido (GPS
+// atrasado, cola sin enviar, recuperaciones) y con qué teléfono. Las
+// recuperaciones se cuentan por arranque del teléfono (sesion_id): el
+// contador de la app se reinicia al reiniciar el equipo.
+export async function historialSalud(ctx) {
+  const pedidas = Number(ctx.url.searchParams.get('horas') ?? 24);
+  const horas = Number.isFinite(pedidas) ? Math.min(Math.max(Math.trunc(pedidas), 1), 168) : 24;
+  const { rows } = await consultar(
+    ctx.pool,
+    `WITH h AS (
+       SELECT s.*, d.id_publico AS dispositivo_publico, d.nombre
+         FROM telemetry.dmt_salud_dispositivo s
+         JOIN tracking.dmt_dispositivo d ON d.id = s.dispositivo_id
+        WHERE s.registrado_en > now() - ($2::int * interval '1 hour')
+          AND ${PREDICADO_PERMISO}
+     ), recuperaciones AS (
+       SELECT dispositivo_id,
+              sum(maximo - minimo)::int AS recuperaciones
+         FROM (SELECT dispositivo_id, sesion_id,
+                      max(recuperacion::int) AS maximo, min(recuperacion::int) AS minimo
+                 FROM h WHERE recuperacion ~ '^[0-9]+$'
+                GROUP BY dispositivo_id, sesion_id) por_arranque
+        GROUP BY dispositivo_id
+     ), ultimo AS (
+       SELECT DISTINCT ON (dispositivo_id) dispositivo_id, fabricante, modelo, version_android,
+              version_app, estado_salud, registrado_en
+         FROM h ORDER BY dispositivo_id, registrado_en DESC
+     )
+     SELECT h.dispositivo_publico, h.nombre, count(*)::int AS reportes,
+            count(*) FILTER (WHERE h.estado_salud = 'ok')::int AS ok,
+            count(*) FILTER (WHERE h.estado_salud = 'gps_atrasado')::int AS gps_atrasado,
+            count(*) FILTER (WHERE h.estado_salud = 'cola_pendiente')::int AS cola_pendiente,
+            count(*) FILTER (WHERE h.estado_salud NOT IN ('ok', 'gps_atrasado', 'cola_pendiente'))::int AS otros_problemas,
+            max(h.cola_salida)::int AS cola_maxima,
+            u.fabricante, u.modelo, u.version_android, u.version_app, u.estado_salud AS ultimo_estado,
+            u.registrado_en AS ultimo_reporte, r.recuperaciones
+       FROM h
+       JOIN ultimo u ON u.dispositivo_id = h.dispositivo_id
+       LEFT JOIN recuperaciones r ON r.dispositivo_id = h.dispositivo_id
+      GROUP BY h.dispositivo_publico, h.nombre, u.fabricante, u.modelo, u.version_android, u.version_app,
+               u.estado_salud, u.registrado_en, r.recuperaciones
+      ORDER BY h.nombre`,
+    [permisoDe(ctx.usuario), horas],
+    { signal: ctx.signal, timeoutMs: 15000 },
+  );
+  respuestaJson(ctx.res, 200, {
+    horas,
+    datos: rows.map((f) => ({
+      dispositivoId: f.dispositivo_publico,
+      nombre: f.nombre,
+      reportes: f.reportes,
+      ok: f.ok,
+      gpsAtrasado: f.gps_atrasado,
+      colaPendiente: f.cola_pendiente,
+      otrosProblemas: f.otros_problemas,
+      colaMaxima: f.cola_maxima,
+      recuperaciones: f.recuperaciones ?? null,
+      // "Infinix" + "Infinix X6876" no se repite; "Samsung" + "SM-A175F" sí se une.
+      telefono:
+        f.modelo && f.fabricante && !f.modelo.toLowerCase().startsWith(f.fabricante.toLowerCase())
+          ? `${f.fabricante} ${f.modelo}`
+          : f.modelo ?? f.fabricante ?? null,
+      versionAndroid: f.version_android,
+      versionApp: f.version_app,
+      ultimoEstado: f.ultimo_estado,
+      ultimoReporte: f.ultimo_reporte instanceof Date ? f.ultimo_reporte.toISOString() : f.ultimo_reporte,
+    })),
+  });
+}

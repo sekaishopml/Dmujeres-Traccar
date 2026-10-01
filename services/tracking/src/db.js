@@ -719,7 +719,7 @@ export class Almacen {
     }
   }
 
-  async registrarDiagnostico({ dispositivoId, parcheDispositivo, bateria }) {
+  async registrarDiagnostico({ dispositivoId, parcheDispositivo, bateria, salud }) {
     const conexion = await this.#pool.connect();
     try {
       await conexion.query('BEGIN');
@@ -735,6 +735,33 @@ export class Almacen {
             bateria.cargando,
             bateria.registradoEn,
             JSON.stringify({ origen: 'movil.diagnostics' }),
+          ],
+        );
+      }
+      if (salud) {
+        await conexion.query(
+          `INSERT INTO telemetry.dmt_salud_dispositivo (
+             dispositivo_id, fabricante, modelo, version_android, version_app,
+             estado_salud, primer_plano, movimiento, cola_salida, ultimo_fix_en,
+             continuidad, recuperacion, sesion_id, tipo_evento, registrado_en, atributos
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)`,
+          [
+            dispositivoId,
+            salud.fabricante,
+            salud.modelo,
+            salud.versionAndroid,
+            salud.versionApp,
+            salud.estadoSalud,
+            salud.primerPlano,
+            salud.movimiento,
+            salud.colaSalida,
+            salud.ultimoFixEn,
+            salud.continuidad,
+            salud.recuperacion,
+            salud.sesionId,
+            salud.tipoEvento,
+            salud.registradoEn,
+            JSON.stringify(salud.atributos ?? {}),
           ],
         );
       }

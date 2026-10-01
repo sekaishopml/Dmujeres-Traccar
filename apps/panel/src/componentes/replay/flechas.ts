@@ -196,6 +196,30 @@ export function puntoEnLineas(lineas: Vertice[][], t: number): [number, number] 
   return null;
 }
 
+// Punto de la línea más cercano al fix, buscando solo en los tramos que la
+// persona recorrió cerca de esa hora (±2 min). Es lo que se muestra al elegir
+// un fix: repartir la hora a lo largo del trazado se equivocaba cuando la
+// persona estuvo quieta y luego caminó de ida y vuelta (Manzaba 30/09 09:29:10
+// quedaba ~35 m corrido). Si el fix queda a más de 40 m de la línea, null.
+const VENTANA_PROYECCION_MS = 2 * 60_000;
+const MAX_DISTANCIA_PROYECCION_M = 40;
+
+export function puntoCercanoEnLineas(lineas: Vertice[][], t: number, lon: number, lat: number): [number, number] | null {
+  const fix: Vertice = { lon, lat, t };
+  let mejor: { punto: [number, number]; d: number } | null = null;
+  for (const linea of lineas) {
+    if (t < linea[0].t - VENTANA_PROYECCION_MS || t > linea[linea.length - 1].t + VENTANA_PROYECCION_MS) continue;
+    for (let k = 0; k < linea.length - 1; k += 1) {
+      const a = linea[k];
+      const b = linea[k + 1];
+      if (t < a.t - VENTANA_PROYECCION_MS || t > b.t + VENTANA_PROYECCION_MS) continue;
+      const { f, d } = proyectar(fix, a, b);
+      if (!mejor || d < mejor.d) mejor = { punto: [a.lon + (b.lon - a.lon) * f, a.lat + (b.lat - a.lat) * f], d };
+    }
+  }
+  return mejor && mejor.d <= MAX_DISTANCIA_PROYECCION_M ? mejor.punto : null;
+}
+
 // Nivel de la flecha número m (a m·PASO_M metros del inicio de su línea).
 // Anidados: a zoom 12 una cada 1,28 km; cada nivel duplica la cantidad hasta
 // una cada 10 m a zoom 19. Lo que se ve a un zoom sigue al acercar.

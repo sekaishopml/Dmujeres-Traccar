@@ -102,6 +102,25 @@ export function esPrecisoParaTrazo(posicion) {
   return precision == null || precision <= PRECISION_MAX_TRAZO_M;
 }
 
+// A pie no se ajusta a vía: el matcher pegaba la caminata alternando entre
+// calzadas paralelas de una avenida (Manzaba 30/09 09:52-09:57, zigzag de
+// 30-50 m) y el GPS crudo a pie sigue la acera mejor. Una ventana es a pie si
+// su avance entre extremos es menor a VELOCIDAD_A_PIE_KMH.
+export const VELOCIDAD_A_PIE_KMH = 8;
+
+export function esVentanaAPie(ventana) {
+  try {
+    if (!Array.isArray(ventana) || ventana.length < 2) return false;
+    const primero = ventana[0];
+    const ultimo = ventana[ventana.length - 1];
+    const segundos = (instanteMs(ultimo) - instanteMs(primero)) / 1000;
+    if (!(segundos > 0)) return false;
+    return (distanciaM(primero, ultimo) / segundos) * 3.6 < VELOCIDAD_A_PIE_KMH;
+  } catch {
+    return false;
+  }
+}
+
 const cache = new Map();
 
 function claveRuta(a, b) {
@@ -810,7 +829,8 @@ export async function reconstruirTramos(todas, signal) {
     );
     ventanas = ventanas.filter(
       (ventana) =>
-        !clavesCandidatas.has(`${ventana[0].registradoEn}|${ventana[ventana.length - 1].registradoEn}`),
+        !clavesCandidatas.has(`${ventana[0].registradoEn}|${ventana[ventana.length - 1].registradoEn}`)
+        && !esVentanaAPie(ventana),
     );
     for (let i = 0; i < ventanas.length; i += TANDA_DENSAS) {
       if (Date.now() - inicio > PRESUPUESTO_MS) break;

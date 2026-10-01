@@ -64,6 +64,7 @@ export const DEFINICIONES = [
   { metodo: 'GET', ruta: '/api/v1/ready', publica: true, manejar: salud.disponibilidad },
   { metodo: 'GET', ruta: '/api/v1/version', publica: true, manejar: salud.version },
   { metodo: 'GET', ruta: '/api/v1/salud', manejar: salud.listarSalud },
+  { metodo: 'GET', ruta: '/api/v1/salud/historial', manejar: salud.historialSalud },
 ];
 
 export function prepararRutas() {

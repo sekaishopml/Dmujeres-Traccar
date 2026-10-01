@@ -87,3 +87,45 @@ test('un fix de deriva suelto no parte una estancia en dos', () => {
   assert.equal(paradas.length, 1);
   assert.equal(paradas[0].segundos, 40 * 60);
 });
+
+// Manzaba 30/09: estancia en un edificio con la deriva del GPS bajo techo.
+// Dos tramos quietos en el mismo sitio separados por 10 min en los que el GPS
+// salta a ~240 m y vuelve en segundos: es una sola estancia.
+const quieto = (desdeMin, hastaMin, lat, lon) => {
+  const lista = [];
+  for (let m = desdeMin; m <= hastaMin; m += 1) {
+    const hh = String(15 + Math.floor(m / 60)).padStart(2, '0');
+    const mm = String(m % 60).padStart(2, '0');
+    lista.push(p(`${hh}:${mm}:00`, lat + (m % 3) * 0.00002, lon, 10));
+  }
+  return lista;
+};
+const hm = (m, s = 0) => `${String(15 + Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+test('Manzaba: saltos sueltos del GPS bajo techo no parten la estancia', () => {
+  const puntos = [
+    ...quieto(0, 20, -2.22724, -79.88854),
+    // Pausa de 10 min: dos saltos de ~240 m que vuelven en segundos.
+    p(hm(24, 0), -2.22724, -79.8863, 18),
+    p(hm(24, 20), -2.22724, -79.88854, 12),
+    p(hm(27, 0), -2.2275, -79.8870, 12),
+    p(hm(27, 30), -2.22724, -79.88854, 12),
+    ...quieto(31, 60, -2.22742, -79.88846),
+  ];
+  const paradas = detectarParadas(puntos);
+  assert.equal(paradas.length, 1);
+  assert.equal(paradas[0].inicio.toISOString(), '2026-09-30T15:00:00.000Z');
+  assert.equal(paradas[0].fin.toISOString(), '2026-09-30T16:00:00.000Z');
+});
+
+test('una salida real de más de 2 min a más de 200 m sí parte la estancia', () => {
+  const puntos = [
+    ...quieto(0, 20, -2.22724, -79.88854),
+    // 4 min a ~300 m (fixes cada 30 s) y regresa.
+    ...[0, 30, 60, 90, 120, 150, 180, 210, 240].map((s) => p(hm(23 + Math.floor(s / 60), s % 60), -2.22724, -79.88584, 8)),
+    ...quieto(31, 60, -2.22742, -79.88846),
+  ];
+  const paradas = detectarParadas(puntos);
+  const largas = paradas.filter((x) => x.segundos >= 20 * 60);
+  assert.equal(largas.length, 2);
+});

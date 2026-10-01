@@ -11,7 +11,7 @@ import type { Dispositivo, Hueco, Posicion } from '@contratos';
 import { bateria, duracion, fecha, GUION, velocidad } from '@/dominio/formatoBase';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import Icono from './Icono';
-import { esPreciso, puntoEnLineas } from './flechas';
+import { esPreciso, puntoCercanoEnLineas, puntoEnLineas } from './flechas';
 import type { Vertice } from './flechas';
 import { colorToken, useTema } from '@/lib/tema';
 import { traerDireccion } from '@/dominio/datos';
@@ -228,13 +228,25 @@ export default function ReproductorReplay({ mapa, posiciones, huecos, reconstrui
   const [puntoClic, setPuntoClic] = useState<[number, number] | null>(null);
   // Dónde se dibuja el fix i: sobre el trazado a su hora; si su hora no cae en
   // ninguna línea (parada, deriva quieta), en su coordenada registrada.
+  // Dónde se muestra el fix i:
+  //  1. Dentro de una parada, en su centro (donde está la insignia): la
+  //     deriva del GPS bajo techo no es un lugar distinto.
+  //  2. Si no, en el punto de la línea más cercano a su GPS real.
+  //  3. Si la línea queda lejos, en su hora sobre la línea o, sin línea, en
+  //     su coordenada registrada.
   const enLinea = useCallback(
     (i: number): [number, number] | null => {
       const fix = posiciones[i];
       if (!fix) return null;
-      return puntoEnLineas(lineas, milisegundos(fix.registradoEn)) ?? [fix.longitud, fix.latitud];
+      const t = milisegundos(fix.registradoEn);
+      const parada = paradas.find((p) => t >= milisegundos(p.inicio) && t <= milisegundos(p.fin));
+      if (parada) return [parada.longitud, parada.latitud];
+      return (
+        puntoCercanoEnLineas(lineas, t, fix.longitud, fix.latitud) ??
+        puntoEnLineas(lineas, t) ?? [fix.longitud, fix.latitud]
+      );
     },
-    [posiciones, lineas],
+    [posiciones, lineas, paradas],
   );
   // El primer punto del recorrido queda seleccionado por defecto: la ficha
   // abre con el detalle del arranque y el mapa lo refleja con su aro, sin
