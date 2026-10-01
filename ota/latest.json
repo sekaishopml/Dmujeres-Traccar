@@ -2,6 +2,6 @@
   "version": "2.4.1",
   "versionCode": 302,
   "url": "http://68.168.20.219:999/DMujeres-Tracking-2.4.1.apk",
-  "notes": "Cronograma: de tal hora a tal hora con AM/PM (acepta 24 h), sin reloj ni botones de minutos; pantalla principal muestra la actividad en curso y la siguiente; logo y contenido centrados",
+  "notes": "Cronograma: de tal hora a tal hora con AM/PM (acepta 24 h), sin reloj; pantalla principal muestra la actividad en curso y la siguiente; logo centrado",
   "sha256": "4b468570f4f61d73e9116f642bd4169cba77dce492c090a17b7b0d28f7600a59"
 }
