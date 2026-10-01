@@ -16,6 +16,7 @@ import { hace } from '@/dominio/formatoBase';
 import { Logo } from './Logo';
 import { Notificaciones } from './Notificaciones';
 import { GRUPOS, paginaDeRuta } from './navegacion';
+import { aplicarAvisoPestana } from './avisoPestana';
 import {
   CLAVE_NOVEDADES_CRONOGRAMA,
   REFRESCO_NOVEDADES_MS,
@@ -61,6 +62,11 @@ export default function Marco() {
     retry: false,
   });
   const avisos: Record<string, number> = { '/reportes': novedades.data?.total ?? 0 };
+  // El mismo número en la pestaña del navegador (título e ícono).
+  const totalAvisos = novedades.data?.total ?? 0;
+  useEffect(() => {
+    void aplicarAvisoPestana(totalAvisos);
+  }, [totalAvisos]);
 
   useEffect(() => {
     alNoAutorizado(() => navegar('/login', { replace: true }));
