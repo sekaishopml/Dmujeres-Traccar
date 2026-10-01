@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Map as MapaMaplibre, NavigationControl, ScaleControl, setWorkerUrl } from 'maplibre-gl';
 import type { MapOptions } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -20,7 +20,7 @@ const tilesGoogle = (lyrs: string) =>
   SUFIJOS_GOOGLE.map((host) => `https://${host}.google.com/vt/lyrs=${lyrs}&x={x}&y={y}&z={z}`);
 
 export const CAPAS_MAPA = [
-  { id: 'google-mapa', nombre: 'Mapa', tiles: tilesGoogle('m'), attribution: '© Google' },
+  { id: 'google-mapa', nombre: 'GMaps', tiles: tilesGoogle('m'), attribution: '© Google' },
   { id: 'google-satelite', nombre: 'Satélite', tiles: tilesGoogle('s'), attribution: '© Google' },
   { id: 'google-hibrido', nombre: 'Híbrido', tiles: tilesGoogle('y'), attribution: '© Google' },
   {
@@ -32,10 +32,10 @@ export const CAPAS_MAPA = [
 ] as const;
 
 export type IdCapa = (typeof CAPAS_MAPA)[number]['id'];
-// Replay ofrece las mismas cuatro capas que Seguimiento (con Google Maps al
-// frente) pero abre en Satélite, que es como se revisa un recorrido.
+// Replay ofrece las mismas cuatro capas que Seguimiento y abre en GMaps: las
+// calles con nombre se leen mejor para auditar el recorrido.
 export const CAPAS_REPLAY = CAPAS_MAPA.map((capa) => capa.id);
-export const CAPA_INICIAL_REPLAY: IdCapa = 'google-satelite';
+export const CAPA_INICIAL_REPLAY: IdCapa = 'google-mapa';
 // Orden completo del panel; constante para que la prop por defecto no cambie
 // de identidad en cada render y memo() siga evitando repintados.
 const IDS_CAPAS: readonly IdCapa[] = CAPAS_MAPA.map((capa) => capa.id);
@@ -237,6 +237,13 @@ export default memo(function MapaRaster({
   // Selector en el orden del panel, restringido al set vigente. El estilo
   // define siempre las cuatro capas; aquí solo se ofrecen las pedidas.
   const definiciones = useMemo(() => CAPAS_MAPA.filter((capa) => capas.includes(capa.id)), [capas]);
+  // Píldora que se desliza bajo la capa activa (posición y ancho del botón).
+  const botonesCapa = useRef(new Map<IdCapa, HTMLButtonElement>());
+  const [pildora, setPildora] = useState<{ x: number; ancho: number } | null>(null);
+  useLayoutEffect(() => {
+    const boton = botonesCapa.current.get(capaActiva);
+    if (boton) setPildora({ x: boton.offsetLeft, ancho: boton.offsetWidth });
+  }, [capaActiva, definiciones]);
 
   return (
     <div className={cn('relative overflow-hidden bg-marino-100', clase)}>
@@ -256,21 +263,33 @@ export default memo(function MapaRaster({
         role="group"
         aria-label="Capa del mapa"
         className={cn(
-          'absolute z-[5] flex border-borde bg-superficie/95 p-0.5 shadow-flotante backdrop-blur',
+          'absolute z-[5] flex border-borde bg-superficie/95 p-0.5 shadow-flotante backdrop-blur [isolation:isolate]',
           selectorPegado
             ? 'top-0 right-0 rounded-bl-control border-b border-l'
             : cn('top-3 rounded-control border', selectorIzquierda ? 'left-3' : 'right-3'),
         )}
       >
+        {pildora && (
+          <span
+            aria-hidden="true"
+            className="absolute top-0.5 bottom-0.5 left-0 rounded-[6px] bg-tinta-2 shadow-sm transition-[transform,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+            style={{ width: pildora.ancho, transform: `translateX(${pildora.x}px)` }}
+          />
+        )}
         {definiciones.map((capa) => (
           <button
             key={capa.id}
+            ref={(nodo) => {
+              if (nodo) botonesCapa.current.set(capa.id, nodo);
+              else botonesCapa.current.delete(capa.id);
+            }}
             type="button"
             onClick={() => cambiarCapa(capa.id)}
             aria-pressed={capa.id === capaActiva}
             className={cn(
-              'h-7 cursor-pointer rounded-[6px] px-2.5 text-[12px] font-medium whitespace-nowrap transition-colors',
-              capa.id === capaActiva ? 'bg-tinta-2 text-white' : 'text-texto-2 hover:text-marino-900',
+              'relative h-7 cursor-pointer rounded-[6px] px-2.5 text-[12px] font-medium whitespace-nowrap transition-colors duration-300',
+              capa.id === capaActiva ? 'text-white' : 'text-texto-2 hover:text-marino-900',
+              !pildora && capa.id === capaActiva && 'bg-tinta-2',
             )}
           >
             {capa.nombre}

@@ -106,7 +106,8 @@ export function aDispositivo(fila, usuario) {
     identificadorUnico: fila.identificador,
     habilitado: fila.habilitado === true,
     estado: estadoDto(fila),
-    ultimaConexion: iso(fila.ultima_conexion_en),
+    // Última respuesta del teléfono (punto GPS o diagnóstico), la misma que decide el estado.
+    ultimaConexion: iso(fila.ultimo_contacto ?? fila.ultima_conexion_en),
     versionApp: fila.version_app ?? null,
     jornadaActiva: fila.jornada_activa === true,
     bateriaPct: numeroONulo(fila.bateria_pct),

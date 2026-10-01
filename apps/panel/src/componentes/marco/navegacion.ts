@@ -30,7 +30,7 @@ export const GRUPOS: { titulo: string; enlaces: Enlace[] }[] = [
       { ruta: '/', descripcion: 'Resumen de la jornada de hoy en toda la operación.', texto: 'Inicio', icono: LayoutDashboard, exacto: true },
       { ruta: '/en-vivo', descripcion: 'Dónde está cada persona ahora y qué hizo en el día.', texto: 'Seguimiento', icono: MapPinned },
       { ruta: '/replay', descripcion: 'Reconstrucción auditada del recorrido: trayectos, paradas e interrupciones de señal.', texto: 'Repetición de ruta', icono: Route },
-      { ruta: '/historial', descripcion: 'Jornadas por día: inicio, cierre, duración y cortes.', texto: 'Historial', icono: History },
+      { ruta: '/historial', descripcion: 'Quién trabajó cada día: entrada, salida, horas y jornadas sin cerrar.', texto: 'Asistencia', icono: History },
       { ruta: '/bateria', descripcion: 'Nivel de batería, cargas y equipos en riesgo de apagarse.', texto: 'Batería', icono: BatteryMedium },
       { ruta: '/reportes', descripcion: 'Cronograma de actividades declarado por cada persona y auditado contra su recorrido.', texto: 'Reportes', icono: ChartColumn },
     ],

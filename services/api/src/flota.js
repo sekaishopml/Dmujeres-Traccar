@@ -13,12 +13,20 @@ export const SELECT_DISPOSITIVO = `
          CASE
            WHEN NOT d.habilitado THEN 'DESHABILITADO'
            WHEN d.atributos ? 'mobile.journeyId' AND NOT ja.activa THEN 'DESHABILITADO'
-           WHEN d.ultima_conexion_en IS NULL
-                OR d.ultima_conexion_en < now() - interval '5 minutes' THEN 'SIN_SENAL'
-           WHEN pa.precision_m > 80 THEN 'SENAL_DEBIL'
-           WHEN pa.velocidad_kmh IS NULL OR pa.velocidad_kmh < 1.852 THEN 'DETENIDO'
-           ELSE 'EN_LINEA'
+           -- Contacto = la última respuesta del teléfono por cualquier vía:
+           -- un punto GPS o el diagnóstico que la app manda cada 10 min aunque
+           -- esté quieta. Quieta en un edificio, almorzando o con el teléfono
+           -- en el casillero sigue respondiendo: es DETENIDO, no sin señal.
+           --  - sin respuesta > 60 min (o nunca): SIN_SENAL (fuera de línea);
+           --  - sin respuesta > 15 min (los reintentos fallan): SENAL_DEBIL;
+           --  - responde: EN_LINEA si su último punto (< 3 min) tiene
+           --    velocidad; si no, DETENIDO.
+           WHEN ct.contacto IS NULL OR ct.contacto < now() - interval '60 minutes' THEN 'SIN_SENAL'
+           WHEN ct.contacto < now() - interval '15 minutes' THEN 'SENAL_DEBIL'
+           WHEN pa.registrado_en > now() - interval '3 minutes' AND pa.velocidad_kmh >= 1.852 THEN 'EN_LINEA'
+           ELSE 'DETENIDO'
          END AS estado,
+         ct.contacto AS ultimo_contacto,
          d.ultima_conexion_en,
          pa.atributos->>'motion' AS movimiento,
          d.atributos->>'mobile.appVersion' AS version_app,
@@ -42,6 +50,13 @@ export const SELECT_DISPOSITIVO = `
          count(*) OVER() AS total_filas
   FROM tracking.dmt_dispositivo d
   LEFT JOIN tracking.dmt_posicion_actual pa ON pa.dispositivo_id = d.id
+  LEFT JOIN LATERAL (
+    SELECT GREATEST(
+      d.ultima_conexion_en,
+      CASE WHEN d.atributos->>'lastDiagnosticsAt' ~ '^[0-9]{12,14}$'
+           THEN to_timestamp((d.atributos->>'lastDiagnosticsAt')::bigint / 1000.0) END
+    ) AS contacto
+  ) ct ON TRUE
   LEFT JOIN LATERAL (
     SELECT EXISTS (
       SELECT 1 FROM operations.dmt_jornada j

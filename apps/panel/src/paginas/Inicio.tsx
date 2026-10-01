@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Map as MapaIcono, Route } from 'lucide-react';
@@ -8,7 +8,8 @@ import { api, consulta } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { Avatar } from '@/componentes/ui/Avatar';
 import { Tarjeta } from '@/componentes/ui/Tarjeta';
-import { Cargando, ErrorCarga } from '@/componentes/ui/Estados';
+import { ErrorCarga, Esqueleto } from '@/componentes/ui/Estados';
+import '@/componentes/inicio/inicio.css';
 import { claseBoton } from '@/componentes/ui/Boton';
 import { AccionesPagina } from '@/componentes/marco/Marco';
 import { bateria, duracion, hace, hora, GUION } from '@/dominio/formatoBase';
@@ -27,7 +28,6 @@ import { CLAVE_NOVEDADES_CRONOGRAMA, REFRESCO_NOVEDADES_MS, traerNovedadesCronog
 
 const REFRESCO_MS = 15_000;
 const REFRESCO_DIA_MS = 60_000;
-const MINUTOS_SIN_SENAL = 5;
 const BATERIA_BAJA_PCT = 15;
 const JORNADA_LARGA_H = 16;
 
@@ -39,11 +39,6 @@ const PUNTO_ESTADO: Record<string, string> = {
   deshabilitado: 'bg-deshabilitado',
 };
 
-function minutosDesde(valor: string | null): number | null {
-  if (!valor) return null;
-  const diferencia = Date.now() - new Date(valor).getTime();
-  return Number.isFinite(diferencia) ? diferencia / 60_000 : null;
-}
 
 // "2.4.0" > "2.1.73": compara por partes numéricas.
 function compararVersion(a: string, b: string): number {
@@ -69,10 +64,6 @@ function fechaLocal(iso: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guayaquil' }).format(new Date(iso));
 }
 
-function km(valor: number | null | undefined): string {
-  if (valor == null || !Number.isFinite(valor)) return GUION;
-  return `${valor.toLocaleString('es-EC', { maximumFractionDigits: valor < 10 ? 1 : 0 })} km`;
-}
 
 interface Revision {
   equipo: Dispositivo;
@@ -184,9 +175,12 @@ export default function Inicio() {
       const motivos: string[] = [];
       let grave = false;
       const clave = claveEstado(e);
-      const minutos = minutosDesde(e.ultimaConexion);
-      if ((clave === 'sinSenal' || clave === 'desconocido') && (minutos == null || minutos > MINUTOS_SIN_SENAL)) {
-        motivos.push(e.ultimaConexion ? `Sin señal desde las ${hora(e.ultimaConexion)}` : 'Nunca ha reportado');
+      // El servidor ya decide: señal débil = más de 15 min sin responder,
+      // sin señal = más de 60 min (ver flota.js).
+      if (clave === 'sinSenal' || clave === 'desconocido') {
+        motivos.push(
+          e.ultimaConexion ? `${etiquetaEstado(e)}: no responde desde las ${hora(e.ultimaConexion)}` : 'Nunca ha respondido',
+        );
         grave = grave || e.jornadaActiva;
       }
       if (e.bateriaPct != null && e.bateriaPct <= BATERIA_BAJA_PCT && !e.cargando) {
@@ -225,11 +219,23 @@ export default function Inicio() {
   );
 
   const ultimasActividades = useMemo(
-    () => [...(actividades.data?.datos ?? [])].sort((a, b) => b.registro.en.localeCompare(a.registro.en)).slice(0, 6),
+    () => [...(actividades.data?.datos ?? [])].sort((a, b) => b.registro.en.localeCompare(a.registro.en)).slice(0, 30),
     [actividades.data],
   );
 
   const enJornada = equipos.filter((e) => e.jornadaActiva).length;
+  // Horas en jornada dentro del día de hoy (las abiertas desde ayer cuentan
+  // desde las 00:00).
+  const horasJornadaHoy = useMemo(() => {
+    const desdeHoy = new Date(inicioDeDia(hoy)).getTime();
+    let ms = 0;
+    for (const j of jornadaPorPersona.values()) {
+      const a = Math.max(new Date(j.inicioEn).getTime(), desdeHoy);
+      const b = j.finEn ? new Date(j.finEn).getTime() : Date.now();
+      if (b > a) ms += b - a;
+    }
+    return ms / 3_600_000;
+  }, [jornadaPorPersona, hoy]);
   const totalNuevas = novedades.data?.total ?? 0;
   const actualizado = flota.dataUpdatedAt ? hace(new Date(flota.dataUpdatedAt).toISOString()) : null;
 
@@ -246,7 +252,7 @@ export default function Inicio() {
         </Link>
       </AccionesPagina>
 
-      {flota.isPending && <Cargando />}
+      {flota.isPending && <InicioEsqueleto />}
       {flota.error && <ErrorCarga mensaje={mensajeError(flota.error)} alReintentar={() => void flota.refetch()} />}
 
       {flota.data && (
@@ -256,13 +262,13 @@ export default function Inicio() {
             <div className="grid grid-cols-2 divide-borde md:grid-cols-4 md:divide-x">
               <Cifra etiqueta="En jornada ahora" valor={`${enJornada}`} detalle={`de ${equipos.length} personas`} />
               <Cifra
-                etiqueta="Recorrido de hoy"
-                valor={resumen.data ? km(resumen.data.distanciaTotalKm) : GUION}
-                detalle={resumen.data ? `${resumen.data.viajes} trayectos · ${resumen.data.paradas} paradas` : 'Calculando…'}
+                etiqueta="Horas en jornada hoy"
+                valor={jornadas.data ? `${horasJornadaHoy.toLocaleString('es-EC', { maximumFractionDigits: 1 })} h` : null}
+                detalle={resumen.data ? `${resumen.data.paradas} paradas registradas` : null}
               />
               <Cifra
                 etiqueta="Actividades de hoy"
-                valor={actividades.data ? `${actividades.data.datos.length}` : GUION}
+                valor={actividades.data ? `${actividades.data.datos.length}` : null}
                 detalle={
                   totalNuevas > 0 ? (
                     <Link to="/reportes" className="font-semibold text-marca hover:underline">
@@ -299,7 +305,7 @@ export default function Inicio() {
                       <th className="px-4 py-2">Persona</th>
                       <th className="px-3 py-2">Estado</th>
                       <th className="px-3 py-2">Jornada</th>
-                      <th className="px-3 py-2 text-right">Recorrido</th>
+                      <th className="px-3 py-2 text-right">Paradas hoy</th>
                       <th className="px-3 py-2 text-right">Actividades</th>
                       <th className="px-3 py-2">Batería</th>
                       <th className="px-3 py-2">App</th>
@@ -333,9 +339,9 @@ export default function Inicio() {
                 {revisar.length === 0 ? (
                   <p className="px-4 pb-4 text-[12.5px] text-texto-2">Nada pendiente: todos reportan y con batería.</p>
                 ) : (
-                  <ul className="divide-y divide-borde/70 pb-1">
-                    {revisar.map(({ equipo, motivos, grave }) => (
-                      <li key={equipo.id}>
+                  <ul className="inicio-lista divide-y divide-borde/70 pb-1">
+                    {revisar.map(({ equipo, motivos, grave }, i) => (
+                      <li key={equipo.id} style={{ '--orden': i } as CSSProperties}>
                         <Link
                           to={`/unidad/${equipo.idPublico}`}
                           className="flex items-start gap-2.5 px-4 py-2 transition-colors hover:bg-fondo"
@@ -359,12 +365,14 @@ export default function Inicio() {
                     Ver cronograma
                   </Link>
                 </div>
-                {ultimasActividades.length === 0 ? (
+                {actividades.isPending ? (
+                  <ListaEsqueleto />
+                ) : ultimasActividades.length === 0 ? (
                   <p className="px-4 pb-4 text-[12.5px] text-texto-2">Nadie cargó actividades hoy.</p>
                 ) : (
-                  <ul className="divide-y divide-borde/70 pb-1">
-                    {ultimasActividades.map((a) => (
-                      <li key={a.id} className="flex items-start gap-3 px-4 py-2">
+                  <ul className="inicio-lista divide-y divide-borde/70 pb-1">
+                    {ultimasActividades.map((a, i) => (
+                      <li key={a.id} className="flex items-start gap-3 px-4 py-2" style={{ '--orden': i } as CSSProperties}>
                         <span className="w-10 flex-none pt-px text-[12px] font-semibold text-marino-900 cifras">{a.hora}</span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] text-marino-900">
@@ -395,17 +403,22 @@ function Cifra({
   alerta = false,
 }: {
   etiqueta: string;
-  valor: string;
-  detalle: ReactNode;
+  // null = todavía cargando: se muestra un esqueleto.
+  valor: string | null;
+  detalle: ReactNode | null;
   alerta?: boolean;
 }) {
   return (
     <div className="px-4 py-3">
       <p className="text-[11px] font-medium tracking-[0.04em] text-texto-3 uppercase">{etiqueta}</p>
-      <p className={cn('mt-0.5 font-display text-[22px] leading-tight font-semibold cifras', alerta ? 'text-peligro' : 'text-marino-900')}>
-        {valor}
-      </p>
-      <p className="mt-0.5 truncate text-[12px] text-texto-2">{detalle}</p>
+      {valor == null ? (
+        <Esqueleto className="mt-1.5 h-6 w-16" />
+      ) : (
+        <p className={cn('inicio-aparecer mt-0.5 font-display text-[22px] leading-tight font-semibold cifras', alerta ? 'text-peligro' : 'text-marino-900')}>
+          {valor}
+        </p>
+      )}
+      {detalle == null ? <Esqueleto className="mt-1.5 h-3 w-28" /> : <p className="mt-0.5 truncate text-[12px] text-texto-2">{detalle}</p>}
     </div>
   );
 }
@@ -419,10 +432,20 @@ function BarraEstados({
   total: number;
 }) {
   const partes = [
-    { clave: 'enLinea', n: estados.enLinea, texto: 'en movimiento' },
-    { clave: 'detenido', n: estados.detenido, texto: 'detenidas' },
-    { clave: 'sinSenal', n: estados.sinSenal, texto: 'sin señal' },
-    { clave: 'deshabilitado', n: estados.deshabilitado, texto: 'fuera de jornada' },
+    { clave: 'enLinea', n: estados.enLinea, texto: 'en movimiento', ayuda: 'Responde y su último punto (de hace menos de 3 min) tiene velocidad.' },
+    {
+      clave: 'detenido',
+      n: estados.detenido,
+      texto: 'detenidas',
+      ayuda: 'Responde (punto GPS o diagnóstico en los últimos 15 min) pero no avanza: en un edificio, almorzando o con el teléfono guardado.',
+    },
+    {
+      clave: 'sinSenal',
+      n: estados.sinSenal,
+      texto: 'sin señal',
+      ayuda: 'Señal débil: más de 15 min sin responder a los reintentos. Sin señal: más de 60 min o nunca respondió.',
+    },
+    { clave: 'deshabilitado', n: estados.deshabilitado, texto: 'fuera de jornada', ayuda: 'Sin jornada abierta o dada de baja.' },
   ];
   return (
     <div className="border-t border-borde px-4 py-2.5">
@@ -432,7 +455,7 @@ function BarraEstados({
       </div>
       <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-texto-2">
         {partes.map((p) => (
-          <span key={p.clave} className="inline-flex items-center gap-1.5">
+          <span key={p.clave} className="inline-flex cursor-help items-center gap-1.5" title={p.ayuda}>
             <span className={cn('size-2 rounded-full', PUNTO_ESTADO[p.clave])} />
             <b className="font-semibold text-marino-900 cifras">{p.n}</b> {p.texto}
           </span>
@@ -498,13 +521,10 @@ function FilaPersona({
         )}
       </td>
       <td className="px-3 py-2 text-right whitespace-nowrap cifras">
-        {recorrido && recorrido.distanciaKm > 0 ? (
-          <>
-            <span className="text-marino-900">{km(recorrido.distanciaKm)}</span>
-            <span className="block text-[11px] text-texto-3">{recorrido.paradas} paradas</span>
-          </>
+        {recorrido && recorrido.paradas > 0 ? (
+          <span className="text-marino-900">{recorrido.paradas}</span>
         ) : (
-          <span className="text-texto-3">{GUION}</span>
+          <span className="text-texto-3">{recorrido ? 0 : GUION}</span>
         )}
       </td>
       <td className="px-3 py-2 text-right whitespace-nowrap cifras">
@@ -559,5 +579,53 @@ function FilaPersona({
         </div>
       </td>
     </tr>
+  );
+}
+
+function ListaEsqueleto({ filas = 3 }: { filas?: number }) {
+  return (
+    <div className="space-y-3 px-4 pt-1 pb-4" aria-hidden="true">
+      {Array.from({ length: filas }, (_, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <Esqueleto className="size-2 rounded-full" />
+          <div className="flex-1 space-y-1.5">
+            <Esqueleto className="h-3 w-1/2" />
+            <Esqueleto className="h-2.5 w-3/4" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Esqueleto de toda la página mientras llega la flota: la misma forma que el
+// tablero, sin saltos al cargar.
+function InicioEsqueleto() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Cargando inicio">
+      <Tarjeta className="grid grid-cols-2 gap-4 p-4 md:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="space-y-2">
+            <Esqueleto className="h-2.5 w-24" />
+            <Esqueleto className="h-6 w-14" />
+            <Esqueleto className="h-2.5 w-28" />
+          </div>
+        ))}
+      </Tarjeta>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <Tarjeta className="space-y-3 p-4">
+          {Array.from({ length: 7 }, (_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Esqueleto className="size-8 rounded-full" />
+              <Esqueleto className="h-3 w-32" />
+              <Esqueleto className="ml-auto h-3 w-48" />
+            </div>
+          ))}
+        </Tarjeta>
+        <Tarjeta>
+          <ListaEsqueleto filas={5} />
+        </Tarjeta>
+      </div>
+    </div>
   );
 }

@@ -83,3 +83,19 @@ Pruebas: `services/api/test/paradas.test.mjs` incluye "salir caminando despacio 
   - **Para revisar:** sin señal, batería baja, puntos sin enviar, app desactualizada y **jornada abierta hace más de 16 h**. El 01/10 marca a Alejandro (abierta desde el 26/09, 102 h) y a mantilla (25 h).
   - **Últimas actividades** del cronograma.
 - Ícono de pestaña y logo del menú plegado: labios en negro (blanco en modo nocturno).
+
+## 7. Definición de estados: detenido frente a sin señal (API, 01/10)
+
+Antes: "Sin señal" si no llegaba un punto GPS en 5 min. Una persona quieta en un edificio, almorzando o con el teléfono en el casillero quedaba "Sin señal", porque quieta la app guarda un punto cada 5 min, aunque el teléfono siguiera respondiendo.
+
+Ahora (`services/api/src/flota.js`, `SELECT_DISPOSITIVO`), con **contacto** = la última respuesta del teléfono por cualquier vía (punto GPS o el diagnóstico que la app manda cada 10 min aunque esté quieta):
+
+| Estado | Regla |
+|---|---|
+| En movimiento | Responde y su último punto (de hace menos de 3 min) tiene velocidad. |
+| Detenido | Responde (contacto en los últimos 15 min) y no avanza. |
+| Señal débil | Más de 15 min sin responder a los reintentos, pero respondió en la última hora. |
+| Sin señal (fuera de línea) | Más de 60 min sin respuesta, o nunca respondió. |
+| Fuera de jornada | Sin jornada abierta o dado de baja. |
+
+`ultimaConexion` del API pasa a ser ese contacto, así "hace X min" coincide con el estado. La marca de consulta de OTA no cuenta como contacto: tenía la misma hora en varios equipos porque la escribió un proceso masivo.
