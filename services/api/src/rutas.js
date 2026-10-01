@@ -4,6 +4,7 @@ import * as auth from './auth.js';
 import * as bateria from './bateria.js';
 import * as config from './config.js';
 import * as cronograma from './cronograma.js';
+import * as eventos from './eventos.js';
 import * as cuentas from './cuentas.js';
 import * as esquema from './esquema.js';
 import * as flota from './flota.js';
@@ -58,6 +59,7 @@ export const DEFINICIONES = [
   { metodo: 'GET', ruta: '/api/v1/config', manejar: config.obtenerConfiguracion },
   { metodo: 'GET', ruta: '/api/v1/geocode/reverse', manejar: geocodigo.obtenerDireccion },
   { metodo: 'GET', ruta: '/api/v1/cronograma', manejar: cronograma.listarCronograma },
+  { metodo: 'GET', ruta: '/api/v1/eventos', manejar: eventos.listarEventos },
   { metodo: 'GET', ruta: '/api/v1/cronograma/novedades', manejar: cronograma.novedadesCronograma },
   { metodo: 'POST', ruta: '/api/v1/cronograma/visto', manejar: cronograma.marcarCronogramaVisto },
   { metodo: 'GET', ruta: '/api/v1/health', publica: true, manejar: salud.salud },

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Map as MapaIcono, Route } from 'lucide-react';
@@ -17,7 +17,7 @@ import { traerFlota, traerJornadasFlota, traerSalud, CLAVE_FLOTA, equiposHabilit
 import { mensajeError } from '@/dominio/errores';
 import { etiquetaEstado, claveEstado } from '@/dominio/estado';
 import { finDeDia, fechaHoyLocal, inicioDeDia, sumarDias } from '@/dominio/rango';
-import { TIPOS, traerCronograma } from '@/dominio/cronograma';
+import { traerCronograma } from '@/dominio/cronograma';
 import { CLAVE_NOVEDADES_CRONOGRAMA, REFRESCO_NOVEDADES_MS, traerNovedadesCronograma } from '@/componentes/reportes/novedades';
 
 // Inicio: tablero de operación del día, compacto y con datos que sirven para
@@ -65,6 +65,30 @@ function fechaLocal(iso: string): string {
 }
 
 
+type CategoriaEvento = 'inicio_jornada' | 'fin_jornada' | 'actividad' | 'alerta' | 'recuperacion';
+interface EventoDia {
+  categoria: CategoriaEvento;
+  texto: string;
+  detalle: string | null;
+  en: string;
+  dispositivoId: string;
+  nombre: string;
+}
+interface RespuestaEventos {
+  total: number;
+  conteo: Record<CategoriaEvento, number>;
+  datos: EventoDia[];
+}
+
+// Color de severidad de cada categoría en la línea de tiempo.
+const COLOR_EVENTO: Record<CategoriaEvento, string> = {
+  inicio_jornada: 'bg-movimiento',
+  fin_jornada: 'bg-deshabilitado',
+  actividad: 'bg-marino-700',
+  alerta: 'bg-peligro',
+  recuperacion: 'bg-detenido',
+};
+
 interface Revision {
   equipo: Dispositivo;
   motivos: string[];
@@ -108,6 +132,16 @@ export default function Inicio() {
     refetchInterval: REFRESCO_NOVEDADES_MS,
     retry: false,
   });
+  // Eventos de hoy: se refrescan seguido, es lo que más cambia.
+  const eventos = useQuery({
+    queryKey: ['inicio', 'eventos', hoy],
+    queryFn: () =>
+      api.get<RespuestaEventos>(`/api/v1/eventos${consulta({ desde: inicioDeDia(hoy), hasta: finDeDia(hoy) })}`, {
+        redirigir401: false,
+      }),
+    refetchInterval: () => (document.hidden ? false : REFRESCO_MS * 2),
+    retry: false,
+  });
   const salud = useQuery({
     queryKey: ['salud'],
     queryFn: traerSalud,
@@ -129,17 +163,6 @@ export default function Inicio() {
     [equipos],
   );
 
-  const estados = useMemo(() => {
-    const cuenta = { enLinea: 0, detenido: 0, sinSenal: 0, deshabilitado: 0 };
-    for (const e of equipos) {
-      const clave = claveEstado(e);
-      if (clave === 'enLinea') cuenta.enLinea += 1;
-      else if (clave === 'detenido') cuenta.detenido += 1;
-      else if (clave === 'deshabilitado') cuenta.deshabilitado += 1;
-      else cuenta.sinSenal += 1;
-    }
-    return cuenta;
-  }, [equipos]);
 
   const jornadaPorPersona = useMemo(() => {
     const mapa = new Map<string, { inicioEn: string; finEn: string | null; duracionMin: number | null }>();
@@ -218,25 +241,7 @@ export default function Inicio() {
     [equipos, enRevision],
   );
 
-  const ultimasActividades = useMemo(
-    () => [...(actividades.data?.datos ?? [])].sort((a, b) => b.registro.en.localeCompare(a.registro.en)).slice(0, 30),
-    [actividades.data],
-  );
 
-  const enJornada = equipos.filter((e) => e.jornadaActiva).length;
-  // Horas en jornada dentro del día de hoy (las abiertas desde ayer cuentan
-  // desde las 00:00).
-  const horasJornadaHoy = useMemo(() => {
-    const desdeHoy = new Date(inicioDeDia(hoy)).getTime();
-    let ms = 0;
-    for (const j of jornadaPorPersona.values()) {
-      const a = Math.max(new Date(j.inicioEn).getTime(), desdeHoy);
-      const b = j.finEn ? new Date(j.finEn).getTime() : Date.now();
-      if (b > a) ms += b - a;
-    }
-    return ms / 3_600_000;
-  }, [jornadaPorPersona, hoy]);
-  const totalNuevas = novedades.data?.total ?? 0;
   const actualizado = flota.dataUpdatedAt ? hace(new Date(flota.dataUpdatedAt).toISOString()) : null;
 
   return (
@@ -257,40 +262,12 @@ export default function Inicio() {
 
       {flota.data && (
         <>
-          {/* Hoy, de un vistazo: cifras en línea y la barra de estados de la flota. */}
-          <Tarjeta className="overflow-hidden">
-            <div className="grid grid-cols-2 divide-borde md:grid-cols-4 md:divide-x">
-              <Cifra etiqueta="En jornada ahora" valor={`${enJornada}`} detalle={`de ${equipos.length} personas`} />
-              <Cifra
-                etiqueta="Horas en jornada hoy"
-                valor={jornadas.data ? `${horasJornadaHoy.toLocaleString('es-EC', { maximumFractionDigits: 1 })} h` : null}
-                detalle={resumen.data ? `${resumen.data.paradas} paradas registradas` : null}
-              />
-              <Cifra
-                etiqueta="Actividades de hoy"
-                valor={actividades.data ? `${actividades.data.datos.length}` : null}
-                detalle={
-                  totalNuevas > 0 ? (
-                    <Link to="/reportes" className="font-semibold text-marca hover:underline">
-                      {totalNuevas} nuevas sin revisar
-                    </Link>
-                  ) : (
-                    'Todo revisado'
-                  )
-                }
-              />
-              <Cifra
-                etiqueta="Para revisar"
-                valor={`${revisar.length}`}
-                detalle={(() => {
-                  const urgentes = revisar.filter((r) => r.grave).length;
-                  return urgentes === 0 ? 'Sin urgencias' : `${urgentes} ${urgentes === 1 ? 'urgente' : 'urgentes'}`;
-                })()}
-                alerta={revisar.some((r) => r.grave)}
-              />
-            </div>
-            <BarraEstados estados={estados} total={equipos.length} />
-          </Tarjeta>
+          {/* Lo que importa hoy: quién está en jornada y qué pasó (eventos de la
+              app + actividades subidas al cronograma). */}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+            <EnJornada personas={equipos.filter((e) => e.jornadaActiva)} total={equipos.length} jornadas={jornadaPorPersona} hoy={hoy} />
+            <ContadorEventos eventos={eventos.data ?? null} />
+          </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <Tarjeta className="min-w-0 overflow-hidden">
@@ -358,36 +335,7 @@ export default function Inicio() {
                 )}
               </Tarjeta>
 
-              <Tarjeta>
-                <div className="flex items-baseline justify-between px-4 pt-3.5 pb-2">
-                  <h2 className="text-[15px] font-semibold">Últimas actividades</h2>
-                  <Link to="/reportes" className="text-[12px] font-medium text-texto-2 hover:text-marca">
-                    Ver cronograma
-                  </Link>
-                </div>
-                {actividades.isPending ? (
-                  <ListaEsqueleto />
-                ) : ultimasActividades.length === 0 ? (
-                  <p className="px-4 pb-4 text-[12.5px] text-texto-2">Nadie cargó actividades hoy.</p>
-                ) : (
-                  <ul className="inicio-lista divide-y divide-borde/70 pb-1">
-                    {ultimasActividades.map((a, i) => (
-                      <li key={a.id} className="flex items-start gap-3 px-4 py-2" style={{ '--orden': i } as CSSProperties}>
-                        <span className="w-10 flex-none pt-px text-[12px] font-semibold text-marino-900 cifras">{a.hora}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] text-marino-900">
-                            <b className="font-semibold">{a.nombre}</b> · {TIPOS[a.tipo]?.etiqueta ?? a.tipo}
-                          </span>
-                          <span className="block truncate text-[11.5px] text-texto-3">
-                            {[a.lugar || a.nota, `cargada ${hora(a.registro.en)}`].filter(Boolean).join(' · ')}
-                            {a.registro.conJornada ? '' : ' sin jornada'}
-                          </span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Tarjeta>
+              <LineaDeTiempo eventos={eventos.data ?? null} />
             </div>
           </div>
         </>
@@ -396,74 +344,8 @@ export default function Inicio() {
   );
 }
 
-function Cifra({
-  etiqueta,
-  valor,
-  detalle,
-  alerta = false,
-}: {
-  etiqueta: string;
-  // null = todavía cargando: se muestra un esqueleto.
-  valor: string | null;
-  detalle: ReactNode | null;
-  alerta?: boolean;
-}) {
-  return (
-    <div className="px-4 py-3">
-      <p className="text-[11px] font-medium tracking-[0.04em] text-texto-3 uppercase">{etiqueta}</p>
-      {valor == null ? (
-        <Esqueleto className="mt-1.5 h-6 w-16" />
-      ) : (
-        <p className={cn('inicio-aparecer mt-0.5 font-display text-[22px] leading-tight font-semibold cifras', alerta ? 'text-peligro' : 'text-marino-900')}>
-          {valor}
-        </p>
-      )}
-      {detalle == null ? <Esqueleto className="mt-1.5 h-3 w-28" /> : <p className="mt-0.5 truncate text-[12px] text-texto-2">{detalle}</p>}
-    </div>
-  );
-}
 
 // Barra proporcional de la flota por estado, con la cuenta escrita al lado.
-function BarraEstados({
-  estados,
-  total,
-}: {
-  estados: { enLinea: number; detenido: number; sinSenal: number; deshabilitado: number };
-  total: number;
-}) {
-  const partes = [
-    { clave: 'enLinea', n: estados.enLinea, texto: 'en movimiento', ayuda: 'Responde y su último punto (de hace menos de 3 min) tiene velocidad.' },
-    {
-      clave: 'detenido',
-      n: estados.detenido,
-      texto: 'detenidas',
-      ayuda: 'Responde (punto GPS o diagnóstico en los últimos 15 min) pero no avanza: en un edificio, almorzando o con el teléfono guardado.',
-    },
-    {
-      clave: 'sinSenal',
-      n: estados.sinSenal,
-      texto: 'sin señal',
-      ayuda: 'Señal débil: más de 15 min sin responder a los reintentos. Sin señal: más de 60 min o nunca respondió.',
-    },
-    { clave: 'deshabilitado', n: estados.deshabilitado, texto: 'fuera de jornada', ayuda: 'Sin jornada abierta o dada de baja.' },
-  ];
-  return (
-    <div className="border-t border-borde px-4 py-2.5">
-      <div className="flex h-1.5 overflow-hidden rounded-full bg-fondo" aria-hidden="true">
-        {total > 0 &&
-          partes.map((p) => (p.n > 0 ? <span key={p.clave} className={PUNTO_ESTADO[p.clave]} style={{ width: `${(p.n / total) * 100}%` }} /> : null))}
-      </div>
-      <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-texto-2">
-        {partes.map((p) => (
-          <span key={p.clave} className="inline-flex cursor-help items-center gap-1.5" title={p.ayuda}>
-            <span className={cn('size-2 rounded-full', PUNTO_ESTADO[p.clave])} />
-            <b className="font-semibold text-marino-900 cifras">{p.n}</b> {p.texto}
-          </span>
-        ))}
-      </p>
-    </div>
-  );
-}
 
 function FilaPersona({
   equipo,
@@ -627,5 +509,131 @@ function InicioEsqueleto() {
         </Tarjeta>
       </div>
     </div>
+  );
+}
+
+// Quién está en jornada ahora y desde cuándo. Es la cifra que manda.
+function EnJornada({
+  personas,
+  total,
+  jornadas,
+  hoy,
+}: {
+  personas: Dispositivo[];
+  total: number;
+  jornadas: Map<string, { inicioEn: string; finEn: string | null }>;
+  hoy: string;
+}) {
+  const visibles = [...personas].sort((a, b) =>
+    (jornadas.get(a.idPublico)?.inicioEn ?? '').localeCompare(jornadas.get(b.idPublico)?.inicioEn ?? ''),
+  );
+  return (
+    <Tarjeta className="flex flex-col p-4">
+      <div className="flex items-center gap-2">
+        <span className="relative flex size-2.5">
+          {personas.length > 0 && <span className="absolute inset-0 animate-ping rounded-full bg-movimiento/60 motion-reduce:hidden" />}
+          <span className={cn('relative size-2.5 rounded-full', personas.length > 0 ? 'bg-movimiento' : 'bg-deshabilitado')} />
+        </span>
+        <h2 className="text-[13px] font-semibold text-texto-2">En jornada ahora</h2>
+      </div>
+      <p className="mt-1 font-display text-marino-900 cifras">
+        <span className="inicio-aparecer text-[40px] leading-none font-semibold">{personas.length}</span>
+        <span className="ml-1.5 text-[15px] text-texto-3">de {total}</span>
+      </p>
+      {visibles.length === 0 ? (
+        <p className="mt-3 text-[12.5px] text-texto-2">Nadie ha iniciado jornada.</p>
+      ) : (
+        <ul className="inicio-lista mt-3 flex flex-wrap gap-1.5" style={{ maxHeight: 132 }}>
+          {visibles.map((p, i) => {
+            const j = jornadas.get(p.idPublico);
+            return (
+              <li key={p.id} style={{ '--orden': i } as CSSProperties}>
+                <Link
+                  to={`/replay${consulta({ dispositivo: p.idPublico, desde: hoy, hasta: hoy })}`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-borde bg-fondo/60 py-0.5 pr-2.5 pl-0.5 text-[12px] transition-colors hover:border-marca/40 hover:bg-marca-suave"
+                  title={`Ver el recorrido de hoy de ${p.nombre}`}
+                >
+                  <Avatar nombre={p.nombre} tamano="sm" />
+                  <b className="font-semibold text-marino-900">{p.nombre}</b>
+                  {j && <span className="text-texto-3 cifras">desde {inicioJornada(j.inicioEn, hoy).replace(/^Ayer/, 'ayer')}</span>}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Tarjeta>
+  );
+}
+
+// Un solo contador: eventos de la app + actividades subidas, con su desglose.
+function ContadorEventos({ eventos }: { eventos: RespuestaEventos | null }) {
+  const partes: { categoria: CategoriaEvento; texto: string }[] = [
+    { categoria: 'inicio_jornada', texto: 'Inicios de jornada' },
+    { categoria: 'fin_jornada', texto: 'Cierres de jornada' },
+    { categoria: 'actividad', texto: 'Actividades subidas' },
+    { categoria: 'alerta', texto: 'Alertas' },
+  ];
+  return (
+    <Tarjeta className="flex flex-col p-4">
+      <h2 className="text-[13px] font-semibold text-texto-2">Eventos de hoy</h2>
+      {eventos == null ? (
+        <Esqueleto className="mt-2 h-10 w-20" />
+      ) : (
+        <p key={eventos.total} className="inicio-aparecer mt-1 font-display text-[40px] leading-none font-semibold text-marino-900 cifras">
+          {eventos.total}
+        </p>
+      )}
+      <dl className="mt-auto grid grid-cols-2 gap-x-4 gap-y-2 pt-3 sm:grid-cols-4">
+        {partes.map((p) => {
+          const n = eventos?.conteo[p.categoria] ?? null;
+          return (
+            <div key={p.categoria} className="border-l-2 border-borde pl-2.5">
+              <dt className="flex items-center gap-1.5 text-[11.5px] text-texto-3">
+                <span className={cn('size-1.5 rounded-full', COLOR_EVENTO[p.categoria])} />
+                {p.texto}
+              </dt>
+              <dd className={cn('text-[17px] font-semibold cifras', p.categoria === 'alerta' && (n ?? 0) > 0 ? 'text-peligro' : 'text-marino-900')}>
+                {n == null ? <Esqueleto className="mt-1 h-4 w-8" /> : n}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    </Tarjeta>
+  );
+}
+
+// Línea de tiempo del día, lo más reciente arriba; cada evento con su color.
+function LineaDeTiempo({ eventos }: { eventos: RespuestaEventos | null }) {
+  return (
+    <Tarjeta>
+      <div className="flex items-baseline justify-between px-4 pt-3.5 pb-2">
+        <h2 className="text-[15px] font-semibold">Línea de tiempo de hoy</h2>
+        <Link to="/reportes" className="text-[12px] font-medium text-texto-2 hover:text-marca">
+          Cronograma
+        </Link>
+      </div>
+      {eventos == null ? (
+        <ListaEsqueleto filas={4} />
+      ) : eventos.datos.length === 0 ? (
+        <p className="px-4 pb-4 text-[12.5px] text-texto-2">Todavía no hay eventos hoy.</p>
+      ) : (
+        <ol className="inicio-lista relative pb-2 before:absolute before:top-1 before:bottom-3 before:left-[68px] before:w-px before:bg-borde">
+          {eventos.datos.slice(0, 80).map((e, i) => (
+            <li key={`${e.en}-${e.dispositivoId}-${i}`} className="relative flex items-start gap-3 px-4 py-1.5" style={{ '--orden': i } as CSSProperties}>
+              <span className="w-10 flex-none pt-px text-right text-[12px] font-semibold text-marino-900 cifras">{hora(e.en)}</span>
+              <span className={cn('relative z-[1] mt-1.5 size-2 flex-none rounded-full ring-2 ring-superficie', COLOR_EVENTO[e.categoria])} />
+              <span className="min-w-0 flex-1 leading-snug">
+                <span className="block truncate text-[13px] text-marino-900">
+                  <b className="font-semibold">{e.nombre}</b> · {e.texto}
+                </span>
+                {e.detalle && <span className="block truncate text-[11.5px] text-texto-3">{e.detalle}</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Tarjeta>
   );
 }
