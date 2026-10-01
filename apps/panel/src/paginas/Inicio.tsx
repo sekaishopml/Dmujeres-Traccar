@@ -294,7 +294,7 @@ export default function Inicio() {
           {/* Lo que importa hoy: quién está en jornada y qué pasó (eventos de la
               app + actividades subidas al cronograma). */}
           {/* Fila de arriba, compacta y de alto fijo: lo que hay que mirar primero. */}
-          <div className="grid flex-none gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] xl:h-[156px]">
+          <div className="grid flex-none gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_340px] xl:h-[156px]">
             <EnJornada
               personas={equipos.filter((e) => e.jornadaActiva)}
               total={equipos.length}
